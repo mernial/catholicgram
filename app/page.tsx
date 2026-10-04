@@ -1,10 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
-import Cropper from 'react-easy-crop';
 
 const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
 
@@ -25,28 +24,6 @@ interface Post {
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
-
-// --- 이미지 자르기 유틸리티 ---
-const createImage = (url: string): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const image = new Image();
-    image.addEventListener('load', () => resolve(image));
-    image.addEventListener('error', (error) => reject(error));
-    image.src = url;
-  });
-
-async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
-  const image = await createImage(imageSrc);
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('No 2d context');
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
-  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
-  return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.9);
-  });
-}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -85,15 +62,6 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  const [avatarFile, setAvatarFile] = useState<string | null>(null);
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
-
-  const handleCropComplete = (croppedArea: any, croppedPixels: any) => {
-    setCroppedAreaPixels(croppedPixels);
-  };
 
   useEffect(() => {
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
@@ -308,7 +276,7 @@ export default function Home() {
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
-      const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true });
+      const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: false });
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
       const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed);
       if (!uploadError) {
@@ -383,28 +351,52 @@ export default function Home() {
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
     }
   };
-  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const reader = new FileReader();
-      reader.addEventListener('load', () => setAvatarFile(reader.result?.toString() || null));
-      reader.readAsDataURL(e.target.files[0]);
-    }
-  };
-  const handleCropSave = async () => {
-    if (!croppedAreaPixels || !avatarFile || !user) return;
-    setLoading(true);
+
+  // 🌟 안전하게 수정된 프로필 사진 업로드 핸들러 (useWebWorker: false)
+  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
-      const croppedBlob = await getCroppedImg(avatarFile, croppedAreaPixels);
+      if (!e.target.files || e.target.files.length === 0 || !user) return;
+      const file = e.target.files[0];
+      setLoading(true);
+
+      let uploadFile = file;
+      try {
+        uploadFile = await imageCompression(file, {
+          maxSizeMB: 1,
+          maxWidthOrHeight: 800,
+          useWebWorker: false,
+        });
+      } catch (compErr) {
+        console.warn('이미지 압축 우회:', compErr);
+      }
+
       const fileName = `${user.id}_${Date.now()}.jpg`;
-      await supabase.storage.from('avatars').upload(fileName, croppedBlob);
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, uploadFile);
+      if (uploadError) {
+        alert(`사진 업로드 실패: ${uploadError.message}`);
+        setLoading(false);
+        return;
+      }
+
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
-      setProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
-      setViewingProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
-      setAvatarFile(null);
-      fetchPosts();
-    } catch (err) { alert('사진 변경에 실패했습니다.'); }
-    setLoading(false);
+      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      if (updateError) {
+        alert(`프로필 반영 실패: ${updateError.message}`);
+        setLoading(false);
+        return;
+      }
+
+      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
+      setViewingProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
+      await fetchPosts();
+      alert('프로필 사진이 안전하게 변경되었습니다.');
+    } catch (err: any) {
+      console.error(err);
+      alert('사진 변경 중 오류가 발생했습니다.');
+    } finally {
+      setLoading(false);
+      if (e.target) e.target.value = '';
+    }
   };
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
@@ -601,8 +593,8 @@ export default function Home() {
             <div className="mt-5 flex gap-2">
               {viewingUserId === user?.id ? (
                 <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
-                  프로필 사진 변경
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+                  {loading ? '변경 중...' : '프로필 사진 변경'}
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} disabled={loading} />
                 </label>
               ) : (
                 <>
@@ -731,7 +723,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🌟 로그인 모달 (누락되었던 부분 추가!) */}
+      {/* 로그인 모달 */}
       {showAuthModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAuthModal(false)}>
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200" onClick={e => e.stopPropagation()}>
@@ -754,28 +746,6 @@ export default function Home() {
             <div className="flex justify-center pt-2">
               <button onClick={() => setShowAuthModal(false)} className="text-xs text-stone-400 hover:text-stone-600">닫기</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* 사진 자르기 모달 */}
-      {avatarFile && (
-        <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
-          <div className="relative flex-1">
-            <Cropper
-              image={avatarFile}
-              crop={crop}
-              zoom={zoom}
-              aspect={1}
-              cropShape="round"
-              showGrid={false}
-              onCropChange={setCrop}
-              onZoomChange={setZoom}
-              onCropComplete={handleCropComplete}
-            />
-          </div>
-          <div className="p-5 bg-white flex justify-between items-center pb-safe">
-            <button onClick={() => setAvatarFile(null)} className="text-stone-500 font-medium text-sm">취소</button><p className="text-xs text-stone-400">손가락으로 확대/이동</p><button onClick={handleCropSave} disabled={loading} className="text-blue-500 font-bold text-sm">{loading ? '적용중...' : '확인'}</button>
           </div>
         </div>
       )}
