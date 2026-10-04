@@ -8,7 +8,7 @@ import { VAPID_PUBLIC_KEY } from '@/lib/push';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'message'; id?: string };
+type NotifyBody = { type?: 'comment' | 'message' | 'follow'; id?: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || (type !== 'comment' && type !== 'message')) {
+  if (!id || (type !== 'comment' && type !== 'message' && type !== 'follow')) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -51,6 +51,18 @@ export async function POST(request: Request) {
       body: `${comment.author_name}님: ${truncate(comment.content || '')}`,
       url: `/?post=${comment.post_id}`,
       tag: `comment-${comment.post_id}`,
+    };
+  } else if (type === 'follow') {
+    const { data: follow } = await admin.from('follows').select('*').eq('id', id).single();
+    if (!follow || follow.follower_id !== user.id || follow.status !== 'pending') return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (follow.created_at && Date.now() - new Date(follow.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: follower } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).single();
+    recipientId = follow.following_id;
+    payload = {
+      title: '👤 팔로우 요청',
+      body: `${follower?.baptismal_name || '교우'}님이 팔로우를 요청했습니다`,
+      url: '/?alerts=1',
+      tag: `follow-${user.id}`,
     };
   } else {
     const { data: message } = await admin.from('messages')

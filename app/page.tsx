@@ -38,8 +38,11 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
+type FollowStatus = 'none' | 'pending' | 'accepted';
+interface FollowRequest { id: string; follower: UserProfile; created_at?: string; }
+interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
 
 // --- 이미지 자르기 유틸리티 ---
@@ -124,7 +127,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean } | null>(null);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -138,10 +141,12 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat'>('home');
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
-  const [followData, setFollowData] = useState({ followers: 0, following: 0, isFollowing: false });
+  const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
 
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
-  const [isFollowingActionUser, setIsFollowingActionUser] = useState(false);
+  const [actionUserFollowStatus, setActionUserFollowStatus] = useState<FollowStatus>('none');
+  const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
+  const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
 
   const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string })[]>([]);
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
@@ -187,8 +192,9 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     const linkPost = params.get('post');
     const linkChat = params.get('chat');
-    if (linkPost || linkChat) {
-      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined });
+    const linkAlerts = params.get('alerts') === '1';
+    if (linkPost || linkChat || linkAlerts) {
+      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined, alerts: linkAlerts });
       window.history.replaceState(null, '', '/');
     }
 
@@ -234,13 +240,14 @@ export default function Home() {
       if (latestViewingUserIdRef.current !== viewingUserId) {
         // 다른 프로필로 이동하면 이전 사람의 정보가 보이지 않도록 초기화
         setViewingProfile(null);
-        setFollowData({ followers: 0, following: 0, isFollowing: false });
+        setFollowData({ followers: 0, following: 0, status: 'none' });
       }
       latestViewingUserIdRef.current = viewingUserId;
       fetchViewingProfile(viewingUserId);
       fetchFollowData(viewingUserId);
     } else if (activeTab === 'messages') {
       fetchChatPartners();
+      if (user) fetchUnreadMessages(user.id);
     }
   }, [activeTab, viewingUserId, user]);
 
@@ -294,27 +301,61 @@ export default function Home() {
     if (data && latestViewingUserIdRef.current === userId) setViewingProfile(data);
   };
 
-  const fetchFollowData = async (targetId: string) => {
-    const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', targetId);
-    const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', targetId);
-    let isFollowing = false;
-    if (user) {
-      const { data } = await supabase.from('follows').select('id').eq('follower_id', user.id).eq('following_id', targetId).maybeSingle();
-      isFollowing = !!data;
-    }
-    if (latestViewingUserIdRef.current !== targetId) return;
-    setFollowData({ followers: followers || 0, following: following || 0, isFollowing });
+  // 내가 target 을 팔로우하는 상태 (없음 / 요청 중 / 수락됨)
+  const getFollowStatus = async (targetId: string): Promise<FollowStatus> => {
+    if (!user) return 'none';
+    // 중복 기록이 있어도 오류 나지 않도록 limit(1)
+    const { data } = await supabase.from('follows').select('status').eq('follower_id', user.id).eq('following_id', targetId).limit(1);
+    const row = data?.[0] as { status?: string } | undefined;
+    if (!row) return 'none';
+    return row.status === 'pending' ? 'pending' : 'accepted';
   };
 
-  const toggleFollow = async (targetId: string, currentStatus: boolean) => {
+  const fetchFollowData = async (targetId: string) => {
+    // 수락된 팔로우만 숫자에 포함
+    const { count: followers } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', targetId).eq('status', 'accepted');
+    const { count: following } = await supabase.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', targetId).eq('status', 'accepted');
+    const status = await getFollowStatus(targetId);
+    if (latestViewingUserIdRef.current !== targetId) return;
+    setFollowData({ followers: followers || 0, following: following || 0, status });
+  };
+
+  // 팔로우 요청 보내기 / 요청 취소 / 언팔로우
+  const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
-    if (currentStatus) {
-      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
+    if (currentStatus === 'accepted' && !window.confirm('팔로우를 취소하시겠습니까?')) return;
+    if (currentStatus === 'none') {
+      const { data: created, error } = await supabase.from('follows')
+        .insert({ follower_id: user.id, following_id: targetId, status: 'pending' }).select('id').single();
+      if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
+      if (created) sendPush('follow', created.id);
     } else {
-      await supabase.from('follows').insert({ follower_id: user.id, following_id: targetId });
+      const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
+      if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
     }
+    const next: FollowStatus = currentStatus === 'none' ? 'pending' : 'none';
     if (activeTab === 'profile' && viewingUserId === targetId) fetchFollowData(targetId);
-    if (actionModalUser && actionModalUser.id === targetId) setIsFollowingActionUser(!currentStatus);
+    if (actionModalUser && actionModalUser.id === targetId) setActionUserFollowStatus(next);
+  };
+
+  // 나에게 온 팔로우 요청
+  const fetchFollowRequests = async (userId: string) => {
+    const { data } = await supabase.from('follows').select('id, follower_id, created_at')
+      .eq('following_id', userId).eq('status', 'pending');
+    if (!data || data.length === 0) { setFollowRequests([]); return; }
+    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
+      .in('id', data.map(r => r.follower_id));
+    const byId = Object.fromEntries((profiles || []).map(p => [p.id, p]));
+    setFollowRequests(data.filter(r => byId[r.follower_id]).map(r => ({ id: r.id, follower: byId[r.follower_id], created_at: r.created_at })));
+  };
+
+  const respondFollowRequest = async (request: FollowRequest, accept: boolean) => {
+    const { error } = accept
+      ? await supabase.from('follows').update({ status: 'accepted' }).eq('id', request.id)
+      : await supabase.from('follows').delete().eq('id', request.id);
+    if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
+    setFollowRequests(prev => prev.filter(r => r.id !== request.id));
+    if (user && activeTab === 'profile' && viewingUserId === user.id) fetchFollowData(user.id);
   };
 
   const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
@@ -323,8 +364,7 @@ export default function Home() {
       goToProfile(user.id);
       return;
     }
-    const { data } = await supabase.from('follows').select('id').eq('follower_id', user.id).eq('following_id', postUser.id).maybeSingle();
-    setIsFollowingActionUser(!!data);
+    setActionUserFollowStatus(await getFollowStatus(postUser.id));
     setActionModalUser({ id: postUser.id, baptismal_name: postUser.name, avatar_url: postUser.avatar_url, handle: postUser.handle, badge_type: postUser.badge_type });
   };
 
@@ -362,7 +402,10 @@ export default function Home() {
     const { data, error } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .order('created_at', { ascending: true });
-    if (data) setChatMessages(data);
+    if (data) {
+      setChatMessages(data);
+      if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
+    }
     else if (error) console.error('메시지를 불러오지 못했습니다', error);
   };
 
@@ -518,9 +561,43 @@ export default function Home() {
     if (data) setNotifications(data.map(c => ({ ...c, post_content: postContent[c.post_id] })));
   };
 
-  const unreadCount = !user ? 0 : notifications.filter(n =>
+  // 아직 읽지 않은 받은 메시지 (보낸 사람별로 묶음)
+  const fetchUnreadMessages = async (userId: string) => {
+    const { data } = await supabase.from('messages').select('sender_id, content, created_at')
+      .eq('receiver_id', userId).is('read_at', null)
+      .order('created_at', { ascending: false }).limit(100);
+    if (!data || data.length === 0) { setUnreadMessages([]); return; }
+    const grouped = new Map<string, { count: number; lastMessage: string; lastAt: string }>();
+    data.forEach(m => {
+      const g = grouped.get(m.sender_id);
+      if (g) g.count += 1;
+      else grouped.set(m.sender_id, { count: 1, lastMessage: m.content, lastAt: m.created_at });
+    });
+    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
+      .in('id', Array.from(grouped.keys()));
+    setUnreadMessages((profiles || []).filter(p => grouped.has(p.id)).map(p => ({ partner: p, ...grouped.get(p.id)! }))
+      .sort((a, b) => b.lastAt.localeCompare(a.lastAt)));
+  };
+
+  // 상대가 보낸 메시지를 읽음 처리
+  const markMessagesRead = async (partnerId: string) => {
+    if (!user || !unreadMessages.some(u => u.partner.id === partnerId)) return;
+    setUnreadMessages(prev => prev.filter(u => u.partner.id !== partnerId));
+    await supabase.from('messages').update({ read_at: new Date().toISOString() })
+      .eq('sender_id', partnerId).eq('receiver_id', user.id).is('read_at', null);
+  };
+
+  const refreshAlerts = (userId: string) => {
+    fetchNotifications(userId);
+    fetchUnreadMessages(userId);
+    fetchFollowRequests(userId);
+  };
+
+  const unreadCommentCount = !user ? 0 : notifications.filter(n =>
     !notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen)
   ).length;
+  const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
+  const unreadCount = unreadCommentCount + unreadMessageCount + (user ? followRequests.length : 0);
 
   const openNotifications = () => {
     if (!user) return;
@@ -555,7 +632,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'message', id: string) => {
+  const sendPush = async (type: 'comment' | 'message' | 'follow', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -643,15 +720,17 @@ export default function Home() {
     } else if (deepLink.chat) {
       supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).single()
         .then(({ data }) => { if (data) openChatRoom(data); });
+    } else if (deepLink.alerts) {
+      openNotifications();
     }
   }, [deepLink, user]);
 
   // 내 글에 달린 댓글 알림: 로그인 중에는 30초마다, 앱으로 돌아왔을 때 다시 확인
   useEffect(() => {
     if (!user) return;
-    fetchNotifications(user.id);
-    const interval = setInterval(() => fetchNotifications(user.id), 30000);
-    const onVisible = () => { if (document.visibilityState === 'visible') fetchNotifications(user.id); };
+    refreshAlerts(user.id);
+    const interval = setInterval(() => refreshAlerts(user.id), 20000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refreshAlerts(user.id); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
       clearInterval(interval);
@@ -958,8 +1037,8 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <button onClick={() => toggleFollow(viewingUserId!, followData.isFollowing)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.isFollowing ? 'bg-stone-200 text-stone-800' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
-                    {followData.isFollowing ? '팔로잉' : '팔로우'}
+                  <button onClick={() => toggleFollow(viewingUserId!, followData.status)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.status === 'none' ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-stone-200 text-stone-800'}`}>
+                    {followData.status === 'accepted' ? '팔로잉' : followData.status === 'pending' ? '요청됨' : '팔로우'}
                   </button>
                   <button onClick={() => viewingProfile && openChatRoom(viewingProfile)} disabled={!viewingProfile} className="px-6 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     메시지
@@ -1022,13 +1101,17 @@ export default function Home() {
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{partner.baptismal_name[0]}</div>
                   )}
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
                       <RoleBadge type={partner.badge_type} />
                     </div>
-                    <p className="text-xs text-stone-500 mt-0.5 line-clamp-1">{partner.lastMessage || `@${partner.handle}`}</p>
+                    <p className={`text-xs mt-0.5 line-clamp-1 ${unreadMessages.some(u => u.partner.id === partner.id) ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>{partner.lastMessage || `@${partner.handle}`}</p>
                   </div>
+                  {(() => {
+                    const n = unreadMessages.find(u => u.partner.id === partner.id)?.count || 0;
+                    return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
+                  })()}
                 </button>
               ))
             )}
@@ -1043,13 +1126,27 @@ export default function Home() {
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>
             ) : (
-              chatMessages.map(msg => {
+              chatMessages.map((msg, i) => {
                 const isMe = msg.sender_id === user?.id;
+                // 내가 보낸 메시지 중 상대가 읽은 마지막 메시지에만 '읽음' 표시
+                const lastReadMineIndex = chatMessages.reduce((last, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : last), -1);
+                const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    {isMe && (
+                      <div className="flex flex-col items-end text-[10px] leading-tight shrink-0">
+                        {!msg.read_at ? (
+                          <span className="text-amber-500 font-bold" title="아직 읽지 않음">1</span>
+                        ) : i === lastReadMineIndex ? (
+                          <span className="text-stone-400">읽음</span>
+                        ) : null}
+                        <span className="text-stone-400">{time}</span>
+                      </div>
+                    )}
                     <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-[13.5px] ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}>
                       {msg.content}
                     </div>
+                    {!isMe && <span className="text-[10px] text-stone-400 shrink-0">{time}</span>}
                   </div>
                 );
               })
@@ -1087,8 +1184,8 @@ export default function Home() {
               <button onClick={() => goToProfile(actionModalUser.id)} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
                 👤 프로필(공간) 보러가기
               </button>
-              <button onClick={() => { toggleFollow(actionModalUser.id, isFollowingActionUser); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                {isFollowingActionUser ? '✖ 팔로우 취소' : '➕ 팔로우하기'}
+              <button onClick={() => { toggleFollow(actionModalUser.id, actionUserFollowStatus); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
+                {actionUserFollowStatus === 'accepted' ? '✖ 팔로우 취소' : actionUserFollowStatus === 'pending' ? '⏳ 요청됨 (누르면 요청 취소)' : '➕ 팔로우 요청'}
               </button>
               <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 transition-colors">
                 💬 개인 메시지(DM) 보내기
@@ -1175,7 +1272,32 @@ export default function Home() {
               </div>
             )}
             <div className="overflow-y-auto divide-y divide-stone-100">
-              {notifications.length === 0 ? (
+              {followRequests.map(r => (
+                <div key={r.id} className="p-4 flex items-center gap-3 bg-blue-50/40">
+                  <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
+                    {r.follower.avatar_url ? (
+                      <img src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
+                    )}
+                    <p className="text-[13px] text-stone-800 min-w-0">
+                      👤 <b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 팔로우를 요청했습니다
+                    </p>
+                  </button>
+                  <button onClick={() => respondFollowRequest(r, true)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold shrink-0">수락</button>
+                  <button onClick={() => respondFollowRequest(r, false)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">거절</button>
+                </div>
+              ))}
+              {unreadMessages.map(u => (
+                <button key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
+                  <p className="text-[13px] text-stone-800">
+                    ✉️ <b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[10px] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
+                  </p>
+                  <p className="text-xs text-stone-600 line-clamp-1">&ldquo;{u.lastMessage}&rdquo;</p>
+                  <p className="text-[11px] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
+                </button>
+              ))}
+              {notifications.length === 0 && followRequests.length === 0 && unreadMessages.length === 0 ? (
                 <div className="p-10 text-center text-stone-400 text-sm">아직 받은 알림이 없습니다.</div>
               ) : (
                 notifications.map(n => (
@@ -1359,7 +1481,12 @@ export default function Home() {
             <span className="text-[10px] font-medium">홈</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); storageSet('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
-            <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+            <span className="relative">
+              <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
+              {unreadMessageCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+              )}
+            </span>
             <span className="text-[10px] font-medium">메시지</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-stone-900' : 'text-stone-400'}`}>
