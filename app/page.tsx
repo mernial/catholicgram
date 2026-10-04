@@ -479,17 +479,18 @@ export default function Home() {
     };
   }, [user]);
 
-  const handleInstallClick = async () => {
-    // 안드로이드 크롬: 브라우저의 설치 창을 바로 띄움
-    if (installPrompt) {
-      await installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      setInstallPrompt(null);
-      if (outcome === 'accepted') setIsStandalone(true);
-      return;
-    }
-    // 아이폰 및 설치 창을 지원하지 않는 브라우저: 직접 추가하는 방법 안내
-    setShowInstallGuide(true);
+  // 먼저 안내 창을 띄운다. 안드로이드는 설치 중 'Play 프로텍트' 경고가 뜰 수 있어
+  // '무시하고 설치'를 눌러야 한다는 점을 설치 전에 미리 알려준다.
+  const handleInstallClick = () => setShowInstallGuide(true);
+
+  // 안드로이드 크롬: 안내를 본 뒤 브라우저의 설치 창을 띄움
+  const startNativeInstall = async () => {
+    if (!installPrompt) return;
+    setShowInstallGuide(false);
+    await installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    if (outcome === 'accepted') setIsStandalone(true);
   };
 
   const dismissInstallBanner = () => {
@@ -914,13 +915,34 @@ export default function Home() {
                 <li>오른쪽 위 <b>추가</b>를 누르면 완료!</li>
               </ol>
             ) : (
-              <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
-                <li><b>Chrome</b>: 오른쪽 위 <b>⋮</b> 메뉴 → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b></li>
-                <li><b>삼성 인터넷</b>: 아래 <b>≡</b> 메뉴 → <b>현재 페이지 추가</b> → <b>홈 화면</b></li>
-                <li>확인 창에서 <b>추가</b>를 누르면 완료!</li>
-              </ol>
+              <>
+                {!installPrompt && (
+                  <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
+                    <li><b>Chrome</b>: 오른쪽 위 <b>⋮</b> 메뉴 → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b></li>
+                    <li><b>삼성 인터넷</b>: 아래 <b>≡</b> 메뉴 → <b>현재 페이지 추가</b> → <b>홈 화면</b></li>
+                  </ol>
+                )}
+                <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex flex-col gap-2">
+                  <p className="text-[15px] font-bold text-red-700">⚠️ 설치 중 경고 창이 뜨면</p>
+                  <p className="text-sm text-stone-800 leading-relaxed">
+                    &lsquo;Play 프로텍트&rsquo; 등의 경고가 뜰 수 있어요.<br />
+                    큰 <b>[확인]</b> 버튼을 누르면 <b className="text-red-700">설치가 취소</b>됩니다.
+                  </p>
+                  <p className="text-[15px] font-bold text-stone-900 bg-yellow-200 rounded-lg px-3 py-2 text-center">
+                    👉 아래쪽 작은 글씨 <u>무시하고 설치</u>를 눌러주세요
+                  </p>
+                  <p className="text-xs text-stone-500 text-center">(안 보이면 <b>자세히</b>를 먼저 누르세요)</p>
+                </div>
+              </>
             )}
-            <button onClick={() => setShowInstallGuide(false)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">확인</button>
+            {!isIOS && installPrompt ? (
+              <div className="flex gap-2">
+                <button onClick={() => setShowInstallGuide(false)} className="px-4 py-3 rounded-xl text-sm font-medium text-stone-500 border border-stone-200">취소</button>
+                <button onClick={startNativeInstall} className="flex-1 bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">알겠어요, 설치하기</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowInstallGuide(false)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">확인</button>
+            )}
           </div>
         </div>
       )}
