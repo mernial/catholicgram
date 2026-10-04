@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
+import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size";
 
 // 나눔스퀘어라운드 (네이버, OFL 무료 글꼴) — 둥글고 부드러운 고딕체
 const nanumSquareRound = localFont({
@@ -42,7 +43,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="ko"
       className={`${nanumSquareRound.variable} h-full antialiased`}
+      suppressHydrationWarning // 글씨 크기 설정이 html 에 바로 적용되므로
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

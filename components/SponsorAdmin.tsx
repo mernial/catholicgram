@@ -145,7 +145,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
   };
 
   const input = 'w-full text-sm p-2.5 border border-stone-200 rounded-xl bg-white focus:outline-none focus:ring-2 focus:ring-amber-200';
-  const label = 'text-[11px] font-bold text-stone-500 mb-1 block';
+  const label = 'text-[0.8125rem] font-bold text-stone-500 mb-1 block';
   const preview: SponsorBannerData | null = draft ? {
     id: 'preview', sponsor_name: draft.sponsor_name || '후원 업체', title: draft.title || '배너 문구', description: draft.description || null,
     image_url: draft.image_url || null, link_url: draft.link_url || null, placement: draft.placement, starts_at: null, ends_at: null,
@@ -213,7 +213,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
           <div className="overflow-y-auto">
             <div className="p-4 border-b border-stone-100">
               <button onClick={() => setDraft({ ...EMPTY })} className="w-full bg-amber-500 text-white py-2.5 rounded-xl text-sm font-bold">+ 새 광고 등록</button>
-              <p className="text-[11px] text-stone-400 mt-2 leading-relaxed">광고는 홈 피드에 일반 게시글처럼 &lsquo;광고&rsquo; 표시와 함께 섞여 나오며, 고민상담·메시지에는 나오지 않습니다.</p>
+              <p className="text-[0.8125rem] text-stone-400 mt-2 leading-relaxed">광고는 홈 피드에 일반 게시글처럼 &lsquo;광고&rsquo; 표시와 함께 섞여 나오며, 고민상담·메시지에는 나오지 않습니다.</p>
             </div>
             {banners.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">등록된 배너가 없습니다.</div>}
             <div className="divide-y divide-stone-100">
@@ -225,17 +225,17 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="text-sm font-bold text-stone-900 truncate">{b.title}</p>
-                        <p className="text-[11px] text-stone-500">{b.sponsor_name} · {PLACEMENTS.find(p => p.key === b.placement)?.label}</p>
-                        <p className="text-[11px] text-stone-400">
+                        <p className="text-[0.8125rem] text-stone-500">{b.sponsor_name} · {PLACEMENTS.find(p => p.key === b.placement)?.label}</p>
+                        <p className="text-[0.8125rem] text-stone-400">
                           {b.starts_at ? toDateInput(b.starts_at) : '즉시'} ~ {b.ends_at ? toDateInput(b.ends_at, true) : '계속'}
                         </p>
                       </div>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 ${st.className}`}>{st.label}</span>
+                      <span className={`text-[0.75rem] px-2 py-0.5 rounded-full border font-bold shrink-0 ${st.className}`}>{st.label}</span>
                     </div>
                     <div className="grid grid-cols-3 text-center bg-stone-50 rounded-xl py-2">
-                      <div><p className="text-sm font-bold text-stone-800">{b.impressions.toLocaleString()}</p><p className="text-[10px] text-stone-500">노출</p></div>
-                      <div><p className="text-sm font-bold text-stone-800">{b.clicks.toLocaleString()}</p><p className="text-[10px] text-stone-500">클릭</p></div>
-                      <div><p className="text-sm font-bold text-stone-800">{ctr}%</p><p className="text-[10px] text-stone-500">클릭률</p></div>
+                      <div><p className="text-sm font-bold text-stone-800">{b.impressions.toLocaleString()}</p><p className="text-[0.75rem] text-stone-500">노출</p></div>
+                      <div><p className="text-sm font-bold text-stone-800">{b.clicks.toLocaleString()}</p><p className="text-[0.75rem] text-stone-500">클릭</p></div>
+                      <div><p className="text-sm font-bold text-stone-800">{ctr}%</p><p className="text-[0.75rem] text-stone-500">클릭률</p></div>
                     </div>
                     <div className="flex gap-1.5 justify-end">
                       <button onClick={() => edit(b)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-700">수정</button>

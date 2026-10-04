@@ -40,11 +40,11 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-bold text-stone-800 truncate">{banner.sponsor_name}</span>
-            <span className="text-[11px] text-stone-400">광고</span>
+            <span className="text-[0.8125rem] text-stone-400">광고</span>
           </div>
         </button>
 
-        {banner.title && <p className="text-stone-800 text-[13.5px] leading-relaxed"><b>{banner.title}</b>{banner.description && <><br />{banner.description}</>}</p>}
+        {banner.title && <p className="text-stone-800 text-[1rem] leading-relaxed"><b>{banner.title}</b>{banner.description && <><br />{banner.description}</>}</p>}
 
         {banner.image_url && (
           <button onClick={handleClick} className="rounded-xl overflow-hidden border border-stone-100">
@@ -71,13 +71,13 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
         )}
         <div className="px-3.5 py-2.5 flex items-center gap-3">
           <div className="flex-1 min-w-0">
-            <p className="text-[13px] font-bold text-stone-900 truncate">{banner.title}</p>
-            {banner.description && <p className="text-[11px] text-stone-600 line-clamp-2 mt-0.5">{banner.description}</p>}
-            <p className="text-[10px] text-stone-400 mt-1">{banner.sponsor_name}</p>
+            <p className="text-[0.9375rem] font-bold text-stone-900 truncate">{banner.title}</p>
+            {banner.description && <p className="text-[0.8125rem] text-stone-600 line-clamp-2 mt-0.5">{banner.description}</p>}
+            <p className="text-[0.75rem] text-stone-400 mt-1">{banner.sponsor_name}</p>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
-            <span className="text-[9px] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-px">광고</span>
-            {banner.link_url && <span className="text-[11px] font-bold text-amber-700">자세히 ›</span>}
+            <span className="text-[0.6875rem] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded px-1.5 py-px">광고</span>
+            {banner.link_url && <span className="text-[0.8125rem] font-bold text-amber-700">자세히 ›</span>}
           </div>
         </div>
       </button>

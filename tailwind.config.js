@@ -14,6 +14,18 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // 글씨 크기: 55세 이상 이용자를 위해 기본보다 한 단계씩 크게
+      // (rem 단위라 설정의 '글씨 크기'를 바꾸면 전체가 함께 커지고 작아짐)
+      fontSize: {
+        xs: ['0.875rem', { lineHeight: '1.35rem' }],     // 12 → 14px
+        sm: ['1rem', { lineHeight: '1.55rem' }],         // 14 → 16px
+        base: ['1.0625rem', { lineHeight: '1.7rem' }],   // 16 → 17px
+        lg: ['1.25rem', { lineHeight: '1.8rem' }],       // 18 → 20px
+        xl: ['1.375rem', { lineHeight: '1.9rem' }],      // 20 → 22px
+        '2xl': ['1.625rem', { lineHeight: '2.1rem' }],   // 24 → 26px
+        '3xl': ['2rem', { lineHeight: '2.4rem' }],       // 30 → 32px
+        '4xl': ['2.375rem', { lineHeight: '2.6rem' }],   // 36 → 38px
+      },
       fontFamily: {
         sans: roundFont,
         serif: roundFont, // 제목/로고도 같은 둥근 글꼴로

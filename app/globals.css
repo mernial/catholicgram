@@ -18,6 +18,10 @@ body {
 img, video {
   max-width: 100%;
 }
+/* 입력칸은 기본 최소 너비가 있어 글씨가 커지면 화면 밖으로 밀림 → 줄어들 수 있게 */
+input, textarea, select {
+  min-width: 0;
+}
 
 /* 노치·홈 버튼 영역(아이폰 등) 피하기 */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
