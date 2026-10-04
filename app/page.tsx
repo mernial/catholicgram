@@ -8,9 +8,8 @@ import Cropper from 'react-easy-crop';
 import AnonBoard from '@/components/AnonBoard';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
-
-// 관리자 계정 (게시물 삭제, 인증 뱃지 지정). 바꿀 때는 supabase/admin-badges.sql 도 함께 수정
-const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr'];
+import { ADMIN_EMAILS } from '@/lib/admin';
+import FeedbackModal from '@/components/FeedbackModal';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -125,11 +124,12 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [installBannerDismissed, setInstallBannerDismissed] = useState(true);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   // 휴대폰 푸시 알림 상태
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean } | null>(null);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -206,8 +206,9 @@ export default function Home() {
     const linkPost = params.get('post');
     const linkChat = params.get('chat');
     const linkAlerts = params.get('alerts') === '1';
-    if (linkPost || linkChat || linkAlerts) {
-      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined, alerts: linkAlerts });
+    const linkFeedback = params.get('feedback') === '1';
+    if (linkPost || linkChat || linkAlerts || linkFeedback) {
+      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined, alerts: linkAlerts, feedback: linkFeedback });
       window.history.replaceState(null, '', '/');
     }
 
@@ -654,7 +655,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'message' | 'follow', id: string) => {
+  const sendPush = async (type: 'comment' | 'message' | 'follow' | 'feedback' | 'feedback_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -779,6 +780,8 @@ export default function Home() {
         .then(({ data }) => { if (data) openChatRoom(data); });
     } else if (deepLink.alerts) {
       openNotifications();
+    } else if (deepLink.feedback) {
+      setShowFeedback(true);
     }
   }, [deepLink, user]);
 
@@ -1079,13 +1082,16 @@ export default function Home() {
               <div><p className="text-lg font-bold text-stone-800">{followData.following}</p><p className="text-xs text-stone-500 font-medium">팔로잉</p></div>
             </div>
 
-            <div className="mt-5 flex gap-2">
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
               {viewingUserId === user?.id ? (
                 <>
                   <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
                     프로필 사진 변경
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                   </label>
+                  <button onClick={() => setShowFeedback(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                    {isAdmin ? '📮 건의함' : '📮 건의하기'}
+                  </button>
                   {!isStandalone && (
                     <button onClick={handleInstallClick} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                       📱 홈 화면에 추가
@@ -1258,6 +1264,11 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 운영자 건의함 */}
+      {showFeedback && user && (
+        <FeedbackModal user={user} isAdmin={isAdmin} onClose={() => setShowFeedback(false)} sendPush={sendPush} />
       )}
 
       {/* 앱 사용 중 새 알림 배너 */}
