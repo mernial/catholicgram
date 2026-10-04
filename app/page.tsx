@@ -53,7 +53,8 @@ type FollowStatus = 'none' | 'pending' | 'accepted';
 type Tab = 'home' | 'explore' | 'profile' | 'messages' | 'chat' | 'anon';
 // 뒤로가기(쓸어 넘기기)를 위해 휴대폰 이동 기록(history)에 남기는 화면 정보
 interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null }
-interface FollowRequest { id: string; follower: UserProfile; created_at?: string; }
+// 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
+interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
@@ -366,20 +367,25 @@ export default function Home() {
     setFollowData({ followers: followers || 0, following: following || 0, status });
   };
 
-  // 팔로우 요청 보내기 / 요청 취소 / 언팔로우
+  // 팔로우 (승인 없이 바로) / 언팔로우
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
     if (currentStatus === 'accepted' && !window.confirm('팔로우를 취소하시겠습니까?')) return;
     if (currentStatus === 'none') {
-      const { data: created, error } = await supabase.from('follows')
-        .insert({ follower_id: user.id, following_id: targetId, status: 'pending' }).select('id').single();
+      let { data: created, error } = await supabase.from('follows')
+        .insert({ follower_id: user.id, following_id: targetId, status: 'accepted' }).select('id').single();
+      // supabase/follow-no-approval.sql 실행 전에는 '요청'만 허용되므로 그 방식으로라도 저장
+      if (error && /row-level security|violates/i.test(error.message)) {
+        ({ data: created, error } = await supabase.from('follows')
+          .insert({ follower_id: user.id, following_id: targetId, status: 'pending' }).select('id').single());
+      }
       if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
       if (created) sendPush('follow', created.id);
     } else {
       const { error } = await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
       if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
     }
-    const next: FollowStatus = currentStatus === 'none' ? 'pending' : 'none';
+    const next: FollowStatus = currentStatus === 'none' ? 'accepted' : 'none';
     if (activeTab === 'profile' && viewingUserId === targetId) fetchFollowData(targetId);
     if (actionModalUser && actionModalUser.id === targetId) setActionUserFollowStatus(next);
   };
@@ -409,27 +415,28 @@ export default function Home() {
   };
 
   const confirmBlock = (target: UserProfile) => {
-    if (window.confirm(`${target.baptismal_name}님을 차단할까요?\n서로의 글과 댓글이 보이지 않고, 메시지와 팔로우 요청을 받지 않습니다.`)) blockUser(target.id);
+    if (window.confirm(`${target.baptismal_name}님을 차단할까요?\n서로의 글과 댓글이 보이지 않고, 메시지를 받지 않으며 서로 팔로우할 수 없습니다.`)) blockUser(target.id);
   };
 
-  // 나에게 온 팔로우 요청
+  // 나를 새로 팔로우한 사람 (최근 20명)
   const fetchFollowRequests = async (userId: string) => {
     const { data } = await supabase.from('follows').select('id, follower_id, created_at')
-      .eq('following_id', userId).eq('status', 'pending');
+      .eq('following_id', userId).order('created_at', { ascending: false }).limit(20);
     if (!data || data.length === 0) { setFollowRequests([]); return; }
-    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
-      .in('id', data.map(r => r.follower_id));
+    const ids = data.map(r => r.follower_id);
+    const [{ data: profiles }, { data: mine }] = await Promise.all([
+      supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', ids),
+      supabase.from('follows').select('following_id').eq('follower_id', userId).in('following_id', ids),
+    ]);
     const byId = Object.fromEntries((profiles || []).map(p => [p.id, p]));
-    setFollowRequests(data.filter(r => byId[r.follower_id]).map(r => ({ id: r.id, follower: byId[r.follower_id], created_at: r.created_at })));
+    const iFollow = new Set((mine || []).map(m => m.following_id));
+    setFollowRequests(data.filter(r => byId[r.follower_id]).map(r => ({ id: r.id, follower: byId[r.follower_id], created_at: r.created_at, iFollow: iFollow.has(r.follower_id) })));
   };
 
-  const respondFollowRequest = async (request: FollowRequest, accept: boolean) => {
-    const { error } = accept
-      ? await supabase.from('follows').update({ status: 'accepted' }).eq('id', request.id)
-      : await supabase.from('follows').delete().eq('id', request.id);
-    if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
-    setFollowRequests(prev => prev.filter(r => r.id !== request.id));
-    if (user && activeTab === 'profile' && viewingUserId === user.id) fetchFollowData(user.id);
+  // 알림에서 바로 맞팔로우
+  const followBack = async (item: FollowRequest) => {
+    await toggleFollow(item.follower.id, 'none');
+    setFollowRequests(prev => prev.map(r => r.id === item.id ? { ...r, iFollow: true } : r));
   };
 
   const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
@@ -678,7 +685,10 @@ export default function Home() {
     !notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen)
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
-  const unreadCount = unreadCommentCount + unreadMessageCount + (user ? followRequests.length : 0);
+  const newFollowerCount = !user ? 0 : followRequests.filter(r =>
+    r.created_at && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
+  ).length;
+  const unreadCount = unreadCommentCount + unreadMessageCount + newFollowerCount;
 
   const openNotifications = () => {
     if (!user) return;
@@ -804,7 +814,7 @@ export default function Home() {
     type Candidate = { key: string; icon: string; title: string; body: string; action: () => void };
     const fresh: Candidate[] = [];
     followRequests.forEach(r => {
-      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '팔로우 요청', body: `${r.follower.baptismal_name}님이 팔로우를 요청했습니다`, action: () => openNotifications() });
+      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '새 팔로워', body: `${r.follower.baptismal_name}님이 회원님을 팔로우하기 시작했어요`, action: () => openNotifications() });
     });
     unreadMessages.forEach(u => {
       const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
@@ -1243,7 +1253,7 @@ export default function Home() {
               ) : (
                 <>
                   <button onClick={() => toggleFollow(viewingUserId!, followData.status)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.status === 'none' ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-stone-200 text-stone-800'}`}>
-                    {followData.status === 'accepted' ? '팔로잉' : followData.status === 'pending' ? '요청됨' : '팔로우'}
+                    {followData.status === 'none' ? '팔로우' : '팔로잉'}
                   </button>
                   <button onClick={() => viewingProfile && openChatRoom(viewingProfile)} disabled={!viewingProfile} className="px-6 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     메시지
@@ -1408,7 +1418,7 @@ export default function Home() {
                 👤 프로필(공간) 보러가기
               </button>
               <button onClick={() => { toggleFollow(actionModalUser.id, actionUserFollowStatus); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                {actionUserFollowStatus === 'accepted' ? '✖ 팔로우 취소' : actionUserFollowStatus === 'pending' ? '⏳ 요청됨 (누르면 요청 취소)' : '➕ 팔로우 요청'}
+                {actionUserFollowStatus === 'none' ? '➕ 팔로우하기' : '✖ 팔로우 취소'}
               </button>
               <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 border-b border-stone-100 transition-colors">
                 💬 개인 메시지(DM) 보내기
@@ -1550,7 +1560,7 @@ export default function Home() {
             )}
             <div className="overflow-y-auto divide-y divide-stone-100">
               {followRequests.filter(r => !blockedIds.has(r.follower.id)).map(r => (
-                <div key={r.id} className="p-4 flex items-center gap-3 bg-blue-50/40">
+                <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
                       <img src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
@@ -1558,11 +1568,12 @@ export default function Home() {
                       <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
                     )}
                     <p className="text-[0.9375rem] text-stone-800 min-w-0">
-                      👤 <b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 팔로우를 요청했습니다
+                      👤 <b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 회원님을 팔로우하기 시작했어요
                     </p>
                   </button>
-                  <button onClick={() => respondFollowRequest(r, true)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold shrink-0">수락</button>
-                  <button onClick={() => respondFollowRequest(r, false)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">거절</button>
+                  {r.iFollow
+                    ? <span className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-400 shrink-0">팔로잉</span>
+                    : <button onClick={() => followBack(r)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold shrink-0">맞팔로우</button>}
                 </div>
               ))}
               {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (

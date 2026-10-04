@@ -82,13 +82,13 @@ export async function POST(request: Request) {
     };
   } else if (type === 'follow') {
     const { data: follow } = await admin.from('follows').select('*').eq('id', id).single();
-    if (!follow || follow.follower_id !== user.id || follow.status !== 'pending') return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (!follow || follow.follower_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (follow.created_at && Date.now() - new Date(follow.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: follower } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).single();
     recipientId = follow.following_id;
     payload = {
-      title: '👤 팔로우 요청',
-      body: `${follower?.baptismal_name || '교우'}님이 팔로우를 요청했습니다`,
+      title: '👤 새 팔로워',
+      body: `${follower?.baptismal_name || '교우'}님이 회원님을 팔로우하기 시작했어요`,
       url: '/?alerts=1',
       tag: `follow-${user.id}`,
     };
