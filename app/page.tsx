@@ -705,6 +705,7 @@ export default function Home() {
       reader.addEventListener('load', () => setAvatarFile(reader.result?.toString() || null));
       reader.readAsDataURL(e.target.files[0]);
     }
+    e.target.value = ''; // 같은 사진을 다시 골라도 동작하도록
   };
 
   const handleCropSave = async () => {
