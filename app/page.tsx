@@ -31,6 +31,7 @@ interface Post {
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
+interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
 
@@ -71,6 +72,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [notifications, setNotifications] = useState<CommentNotification[]>([]);
+  const [notificationsLastSeen, setNotificationsLastSeen] = useState<string | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
@@ -399,6 +403,55 @@ export default function Home() {
     await supabase.from('posts').update(updateField).eq('id', postId);
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };
+  const fetchNotifications = async (userId: string) => {
+    const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId);
+    setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
+    if (!myPosts || myPosts.length === 0) { setNotifications([]); return; }
+    const postContent = Object.fromEntries(myPosts.map(p => [p.id, p.content || '']));
+    const { data } = await supabase.from('comments')
+      .select('id, post_id, content, author_name, created_at')
+      .in('post_id', myPosts.map(p => p.id))
+      .neq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    if (data) setNotifications(data.map(c => ({ ...c, post_content: postContent[c.post_id] })));
+  };
+
+  const unreadCount = !user ? 0 : notifications.filter(n =>
+    !notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen)
+  ).length;
+
+  const openNotifications = () => {
+    if (!user) return;
+    setShowNotifications(true);
+    // 목록을 열면 모두 읽음 처리 (빨간 숫자는 사라지고, 새 알림 표시는 이번 목록에서만 유지)
+    const now = new Date().toISOString();
+    storageSet(`notificationsLastSeen:${user.id}`, now);
+    setTimeout(() => setNotificationsLastSeen(now), 0);
+  };
+
+  const openNotification = async (n: CommentNotification) => {
+    setShowNotifications(false);
+    goToHome();
+    setOpenComments(prev => ({ ...prev, [n.post_id]: true }));
+    const { data } = await supabase.from('comments').select('*').eq('post_id', n.post_id).order('created_at', { ascending: true });
+    if (data) setComments(prev => ({ ...prev, [n.post_id]: data }));
+    setTimeout(() => document.getElementById(`post-${n.post_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  };
+
+  // 내 글에 달린 댓글 알림: 로그인 중에는 30초마다, 앱으로 돌아왔을 때 다시 확인
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications(user.id);
+    const interval = setInterval(() => fetchNotifications(user.id), 30000);
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchNotifications(user.id); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [user]);
+
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
     setOpenComments({ ...openComments, [postId]: nextState });
@@ -484,6 +537,12 @@ export default function Home() {
             <div>
               {user ? (
                 <div className="flex items-center gap-3">
+                  <button onClick={openNotifications} className="relative text-stone-600 hover:text-stone-900" aria-label="알림">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                    {unreadCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                    )}
+                  </button>
                   <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="내 프로필" className="w-6 h-6 rounded-full object-cover border border-stone-200" />
@@ -537,7 +596,7 @@ export default function Home() {
             {posts.map((post) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
               return (
-                <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
+                <article key={post.id} id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
                       {post.avatar_url ? (
@@ -769,6 +828,35 @@ export default function Home() {
               <button onClick={() => setActionModalUser(null)} className="w-full p-4 text-sm font-bold text-center text-stone-400 hover:bg-stone-50 transition-colors bg-stone-50/50 mt-2">
                 닫기
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 댓글 알림 목록 */}
+      {showNotifications && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowNotifications(false)}>
+          <div className="bg-white w-full sm:w-96 max-h-[80vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-stone-100 flex items-center justify-between">
+              <h2 className="font-bold text-stone-900">알림</h2>
+              <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
+            </div>
+            <div className="overflow-y-auto divide-y divide-stone-100">
+              {notifications.length === 0 ? (
+                <div className="p-10 text-center text-stone-400 text-sm">아직 받은 알림이 없습니다.</div>
+              ) : (
+                notifications.map(n => (
+                  <button key={n.id} onClick={() => openNotification(n)} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
+                    <p className="text-[13px] text-stone-800">
+                      💬 <b>{n.author_name}</b>님이 회원님의 글에 댓글을 남겼습니다
+                    </p>
+                    <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
+                    <p className="text-[11px] text-stone-400 truncate">
+                      {new Date(n.created_at).toLocaleString('ko-KR')} · {n.post_content || '사진 게시물'}
+                    </p>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
