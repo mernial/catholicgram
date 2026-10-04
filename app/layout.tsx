@@ -12,9 +12,10 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "우리 커뮤니티",
-  description: "마음을 나누고 함께 기도하는 커뮤니티 피드",
+export const metadata = {
+  title: 'Catholicgram',
+  description: 'Catholicgram',
+  manifest: '/manifest.json', 
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
