@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
@@ -12,6 +12,9 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 import FeedbackModal from '@/components/FeedbackModal';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
+import SponsorBanner from '@/components/SponsorBanner';
+import SponsorAdmin from '@/components/SponsorAdmin';
+import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -128,6 +131,9 @@ export default function Home() {
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [sponsorBanners, setSponsorBanners] = useState<SponsorBannerData[]>([]);
+  const [showSponsorAdmin, setShowSponsorAdmin] = useState(false);
+  const [topBannerSeed] = useState(() => Math.random());
   const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   // 휴대폰 푸시 알림 상태
@@ -234,6 +240,8 @@ export default function Home() {
 
     checkUser();
     fetchPosts();
+    fetchSponsorBanners();
+    const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
@@ -248,6 +256,7 @@ export default function Home() {
       }
     });
     return () => {
+      clearInterval(bannerTimer);
       authListener.subscription.unsubscribe();
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
       window.removeEventListener('appinstalled', onAppInstalled);
@@ -917,6 +926,26 @@ export default function Home() {
     fetchPosts();
   };
 
+  // --- 후원 배너 ---
+  const fetchSponsorBanners = async () => {
+    const { data } = await supabase.from('sponsor_banners').select('*')
+      .order('priority', { ascending: false }).order('created_at', { ascending: false });
+    setSponsorBanners((data || []) as SponsorBannerData[]);
+  };
+  // 관리자는 모든 배너를 받아오므로 '지금 진행 중'인 것만 노출
+  const liveBanners = sponsorBanners.filter(b => {
+    const now = Date.now();
+    return b.active && (!b.starts_at || new Date(b.starts_at).getTime() <= now) && (!b.ends_at || new Date(b.ends_at).getTime() > now);
+  });
+  const topCandidates = liveBanners.filter(b => b.placement !== 'feed');
+  const topBanner = topCandidates.length > 0
+    ? (() => {
+        const best = topCandidates.filter(b => b.priority === topCandidates[0].priority); // 가장 높은 우선순위끼리 번갈아
+        return best[Math.floor(topBannerSeed * best.length)];
+      })()
+    : null;
+  const feedBanners = liveBanners.filter(b => b.placement !== 'top');
+
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
@@ -996,6 +1025,7 @@ export default function Home() {
               <button onClick={dismissInstallBanner} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
             </div>
           )}
+          {topBanner && <SponsorBanner banner={topBanner} variant="top" />}
           <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
               <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요..." : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
@@ -1022,10 +1052,14 @@ export default function Home() {
           </section>
 
           <section className="divide-y divide-stone-200/70 flex-1">
-            {posts.filter(post => !blockedIds.has(post.user_id)).map((post) => {
+            {posts.filter(post => !blockedIds.has(post.user_id)).map((post, postIndex) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
+              // 게시글 FEED_BANNER_EVERY 개마다 후원 배너를 번갈아 끼움
+              const slot = (postIndex + 1) % FEED_BANNER_EVERY === 0 ? (postIndex + 1) / FEED_BANNER_EVERY - 1 : -1;
+              const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
-                <article key={post.id} id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
+                <Fragment key={post.id}>
+                <article id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
                       {post.avatar_url ? (
@@ -1096,6 +1130,8 @@ export default function Home() {
                     </div>
                   )}
                 </article>
+                {inlineBanner && <SponsorBanner banner={inlineBanner} variant="feed" />}
+                </Fragment>
               );
             })}
           </section>
@@ -1135,6 +1171,11 @@ export default function Home() {
                   <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     ⚙️ 설정
                   </button>
+                  {isAdmin && (
+                    <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors">
+                      📢 후원 배너
+                    </button>
+                  )}
                   <button onClick={() => setShowFeedback(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     {isAdmin ? '📮 건의함' : '📮 건의하기'}
                   </button>
@@ -1322,6 +1363,11 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 후원 배너 관리 (관리자) */}
+      {showSponsorAdmin && isAdmin && (
+        <SponsorAdmin onClose={() => setShowSponsorAdmin(false)} onChanged={fetchSponsorBanners} />
       )}
 
       {/* 신고 */}
