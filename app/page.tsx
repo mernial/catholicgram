@@ -91,8 +91,8 @@ export default function Home() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
-  // 🌟 타입 에러가 나지 않도록 함수형태로 분리
-  const onCropComplete = useCallback((_: any, croppedPixels: any) => {
+  // 🌟 타입 에러 방지를 위해 매개변수 타입 명시
+  const onCropComplete = useCallback((croppedArea: any, croppedPixels: any) => {
     setCroppedAreaPixels(croppedPixels);
   }, []);
 
