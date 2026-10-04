@@ -2,20 +2,24 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
-    const handleAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         router.push('/');
       }
+    });
+
+    return () => {
+      subscription.unsubscribe();
     };
-    handleAuth();
   }, [router, supabase]);
 
   return (
