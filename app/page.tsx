@@ -63,6 +63,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isKakaoInApp, setIsKakaoInApp] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -99,6 +100,13 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // 카카오톡 인앱 브라우저(특히 아이폰)에서는 로그인 버튼이 동작하지 않는 경우가 있어
+    // 기본 브라우저(Safari/Chrome)로 다시 열도록 한다.
+    if (/KAKAOTALK/i.test(navigator.userAgent)) {
+      setIsKakaoInApp(true);
+      window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
+    }
+
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = localStorage.getItem('viewingUserId');
     if (savedTab) setActiveTab(savedTab);
@@ -262,10 +270,14 @@ export default function Home() {
 
   const handleKakaoLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
-    const { data } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'kakao', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true },
     });
-    if (data?.url) window.location.href = data.url;
+    if (error || !data?.url) {
+      alert('로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    window.location.href = data.url;
   };
 
   const handleProfileSetup = async (e: React.FormEvent) => {
@@ -761,6 +773,13 @@ export default function Home() {
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
               <p className="text-xs text-stone-500 mt-1.5">카카오 계정으로 3초 만에 시작하세요</p>
             </div>
+
+            {isKakaoInApp && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
+                카카오톡 안에서는 로그인이 안 될 수 있어요.<br />
+                오른쪽 아래 <b>⋯</b> 버튼 → <b>다른 브라우저로 열기</b>(Safari)를 눌러주세요.
+              </p>
+            )}
             
             <div className="flex flex-col gap-3 mt-2">
               <button 
