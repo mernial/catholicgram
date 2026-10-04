@@ -29,6 +29,9 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover', // 노치가 있는 폰에서 화면 끝까지 사용 (안전 영역은 pb-safe 등으로 피함)
   themeColor: '#1c1917',
 };
 

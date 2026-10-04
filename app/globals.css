@@ -1,6 +1,29 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---- 모든 휴대폰 화면 크기 대응 ---- */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  overflow-x: hidden;               /* 가로로 화면이 밀리지 않도록 */
+  word-break: keep-all;             /* 한글은 단어 단위로 줄바꿈 */
+  overflow-wrap: anywhere;          /* 긴 링크·영문은 화면 안에서 줄바꿈 */
+  -webkit-tap-highlight-color: transparent;
+}
+img, video {
+  max-width: 100%;
+}
+
+/* 노치·홈 버튼 영역(아이폰 등) 피하기 */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+/* 아이폰 Safari: 글자가 16px보다 작은 입력칸을 누르면 화면이 확대되는 현상 방지 */
+@supports (-webkit-touch-callout: none) {
+  input, textarea, select { font-size: 16px !important; }
+}
 /* 새 알림 배너가 위에서 내려오는 효과 */
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(-16px); }
