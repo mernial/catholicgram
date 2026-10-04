@@ -74,11 +74,11 @@ export default function Home() {
     }
   };
 
-  const handleOAuthLogin = async (provider: 'google' | 'kakao') => {
+  const handleGoogleLogin = async () => {
     await supabase.auth.signInWithOAuth({
-      provider,
+      provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}/auth/signin-complete`, // 이 부분 수정
+        redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete',
       },
     });
   };
