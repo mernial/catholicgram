@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
@@ -69,7 +69,7 @@ export default function Home() {
   const [setupError, setSetupError] = useState('');
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null); // 🌟 게시물 상세 보기(사진+캡션)
+  const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
@@ -92,10 +92,10 @@ export default function Home() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
-  // 🌟 타입 에러 방지를 위해 명시적 타입 지정
-  const onCropComplete = useCallback((_: any, croppedPixels: any) => {
+  // 🌟 TS7006 타입 에러 방지를 위해 매개변수에 명시적 타입 지정
+  const onCropComplete = (croppedArea: any, croppedPixels: any) => {
     setCroppedAreaPixels(croppedPixels);
-  }, []);
+  };
 
   useEffect(() => {
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
@@ -788,7 +788,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🌟 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
+      {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
