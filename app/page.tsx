@@ -19,7 +19,7 @@ interface Post {
   created_at: string;
   avatar_url?: string;
   handle?: string;
-  badge_type?: string; // 🌟 뱃지 타입 추가
+  badge_type?: string;
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
@@ -72,11 +72,13 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
+  // 🌟 탭 및 새로고침 유지 상태 관리
   const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat'>('home');
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [followData, setFollowData] = useState({ followers: 0, following: 0, isFollowing: false });
 
+  // 🌟 아이디 클릭 시 뜨는 팝업 메뉴 상태
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [isFollowingActionUser, setIsFollowingActionUser] = useState(false);
 
@@ -92,8 +94,15 @@ export default function Home() {
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
   useEffect(() => {
+    // 🌟 새로고침 시 마지막으로 보던 탭과 프로필 기억 복원
+    const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
+    const savedUserId = localStorage.getItem('viewingUserId');
+    if (savedTab) setActiveTab(savedTab);
+    if (savedUserId) setViewingUserId(savedUserId);
+
     checkUser();
     fetchPosts();
+
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
@@ -133,10 +142,16 @@ export default function Home() {
     }
   }, [chatMessages, activeTab]);
 
-  const goToHome = () => { setActiveTab('home'); };
+  const goToHome = () => { 
+    setActiveTab('home'); 
+    localStorage.setItem('activeTab', 'home');
+  };
+
   const goToProfile = (targetUserId: string) => {
     setViewingUserId(targetUserId);
     setActiveTab('profile');
+    localStorage.setItem('activeTab', 'profile');
+    localStorage.setItem('viewingUserId', targetUserId);
     setActionModalUser(null);
   };
 
@@ -183,6 +198,7 @@ export default function Home() {
     if (actionModalUser && actionModalUser.id === targetId) setIsFollowingActionUser(!currentStatus);
   };
 
+  // 🌟 홈에서 아이디 클릭 시 팝업 띄우기 함수
   const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
     if (!user) { setShowAuthModal(true); return; }
     if (postUser.id === user.id) {
@@ -212,6 +228,7 @@ export default function Home() {
   const openChatRoom = (partner: UserProfile) => {
     setCurrentChatUser(partner);
     setActiveTab('chat');
+    localStorage.setItem('activeTab', 'chat');
     setActionModalUser(null);
   };
 
@@ -399,7 +416,7 @@ export default function Home() {
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between z-20">
         {activeTab === 'chat' ? (
           <div className="flex items-center gap-3">
-            <button onClick={() => setActiveTab('messages')} className="text-stone-600 hover:text-black">
+            <button onClick={() => { setActiveTab('messages'); localStorage.setItem('activeTab', 'messages'); }} className="text-stone-600 hover:text-black">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <div className="flex items-center gap-2">
@@ -483,6 +500,7 @@ export default function Home() {
               return (
                 <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
                   <div className="flex items-center justify-between">
+                    {/* 🌟 홈 피드에서 아이디/프로필 클릭 시 팝업창 호출 */}
                     <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
                       {post.avatar_url ? (
                         <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
@@ -492,7 +510,6 @@ export default function Home() {
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
-                          {/* 🌟 신부님 뱃지 표시 */}
                           {post.badge_type === 'priest' && (
                             <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-serif font-bold border border-amber-200 flex items-center gap-0.5">
                               ✟ 신부님
@@ -661,7 +678,7 @@ export default function Home() {
         </section>
       )}
 
-      {/* 사용자 액션 팝업 메뉴 */}
+      {/* 🌟 사용자 액션 팝업 메뉴 (프로필 보러가기, 팔로우, 메시지 보내기) */}
       {actionModalUser && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setActionModalUser(null)}>
           <div className="bg-white w-full sm:w-80 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
@@ -768,11 +785,11 @@ export default function Home() {
       {/* 하단 네비게이션 */}
       {activeTab !== 'chat' && (
         <nav className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto bg-white border-t border-stone-200 flex items-center justify-around z-40 pb-safe">
-          <button onClick={goToHome} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => { goToHome(); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span className="text-[10px] font-medium">홈</span>
           </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else setActiveTab('messages'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); localStorage.setItem('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
             <span className="text-[10px] font-medium">메시지</span>
           </button>
