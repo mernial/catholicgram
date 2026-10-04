@@ -18,12 +18,14 @@ export default function SignInComplete() {
       }
     });
 
-    // 혹시 처리가 늦어져도 1.5초 뒤에 무조건 메인으로 복귀
-    setTimeout(() => {
+    // 로그인 처리가 끝나기 전에 넘어가면 세션이 사라지므로 넉넉히 기다린 뒤에만 복귀
+    // (아이폰 등 느린 환경 대비)
+    const fallback = setTimeout(() => {
       window.location.replace('/');
-    }, 1500);
+    }, 6000);
 
     return () => {
+      clearTimeout(fallback);
       authListener?.subscription.unsubscribe();
     };
   }, []);

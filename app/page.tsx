@@ -8,6 +8,14 @@ import Cropper from 'react-easy-crop';
 
 const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
 
+// Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
+// localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
+const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
+const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
+const isStorageAvailable = () => {
+  try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; } catch { return false; }
+};
+
 interface Post {
   id: string;
   content: string;
@@ -63,6 +71,8 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isKakaoInApp, setIsKakaoInApp] = useState(false);
+  const [storageBlocked, setStorageBlocked] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -99,8 +109,16 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
-    const savedUserId = localStorage.getItem('viewingUserId');
+    // 카카오톡 인앱 브라우저(특히 아이폰)에서는 로그인 버튼이 동작하지 않는 경우가 있어
+    // 기본 브라우저(Safari/Chrome)로 다시 열도록 한다.
+    if (/KAKAOTALK/i.test(navigator.userAgent)) {
+      setIsKakaoInApp(true);
+      window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
+    }
+    if (!isStorageAvailable()) setStorageBlocked(true);
+
+    const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
+    const savedUserId = storageGet('viewingUserId');
     if (savedTab) setActiveTab(savedTab);
     if (savedUserId) setViewingUserId(savedUserId);
 
@@ -154,14 +172,14 @@ export default function Home() {
 
   const goToHome = () => { 
     setActiveTab('home'); 
-    localStorage.setItem('activeTab', 'home');
+    storageSet('activeTab', 'home');
   };
 
   const goToProfile = (targetUserId: string) => {
     setViewingUserId(targetUserId);
     setActiveTab('profile');
-    localStorage.setItem('activeTab', 'profile');
-    localStorage.setItem('viewingUserId', targetUserId);
+    storageSet('activeTab', 'profile');
+    storageSet('viewingUserId', targetUserId);
     setActionModalUser(null);
   };
 
@@ -239,7 +257,7 @@ export default function Home() {
   const openChatRoom = (partner: UserProfile) => {
     setCurrentChatUser(partner);
     setActiveTab('chat');
-    localStorage.setItem('activeTab', 'chat');
+    storageSet('activeTab', 'chat');
     setActionModalUser(null);
   };
 
@@ -262,10 +280,14 @@ export default function Home() {
 
   const handleKakaoLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
-    const { data } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'kakao', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true },
     });
-    if (data?.url) window.location.href = data.url;
+    if (error || !data?.url) {
+      alert('로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    window.location.href = data.url;
   };
 
   const handleProfileSetup = async (e: React.FormEvent) => {
@@ -433,7 +455,7 @@ export default function Home() {
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between z-20">
         {activeTab === 'chat' ? (
           <div className="flex items-center gap-3">
-            <button onClick={() => { setActiveTab('messages'); localStorage.setItem('activeTab', 'messages'); }} className="text-stone-600 hover:text-black">
+            <button onClick={() => { setActiveTab('messages'); storageSet('activeTab', 'messages'); }} className="text-stone-600 hover:text-black">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <div className="flex items-center gap-2">
@@ -761,6 +783,21 @@ export default function Home() {
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
               <p className="text-xs text-stone-500 mt-1.5">카카오 계정으로 3초 만에 시작하세요</p>
             </div>
+
+            {isKakaoInApp && (
+              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
+                카카오톡 안에서는 로그인이 안 될 수 있어요.<br />
+                오른쪽 아래 <b>⋯</b> 버튼 → <b>다른 브라우저로 열기</b>를 눌러주세요.
+              </p>
+            )}
+
+            {storageBlocked && (
+              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 leading-relaxed text-center">
+                브라우저 설정 때문에 로그인 정보를 저장할 수 없어요.<br />
+                아이폰 <b>설정 → Safari → 모든 쿠키 차단</b>을 끄거나, 개인정보 보호 브라우징을 끄고 다시 시도해주세요.<br />
+                (또는 Chrome에서 열어주세요)
+              </p>
+            )}
             
             <div className="flex flex-col gap-3 mt-2">
               <button 
@@ -900,7 +937,7 @@ export default function Home() {
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span className="text-[10px] font-medium">홈</span>
           </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); localStorage.setItem('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); storageSet('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
             <span className="text-[10px] font-medium">메시지</span>
           </button>
