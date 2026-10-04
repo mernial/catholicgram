@@ -18,7 +18,7 @@ interface Post {
   user_id: string; 
   created_at: string;
   avatar_url?: string;
-  handle?: string; // 🌟 핸들 추가
+  handle?: string;
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
@@ -64,7 +64,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
-  const [handleInput, setHandleInput] = useState(''); // 🌟 핸들 입력 상태
+  const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -247,7 +247,6 @@ export default function Home() {
       return;
     }
 
-    // 핸들 형식 정리 (공백 제거, 특수문자 방지 및 @ 자동 추가 처리)
     const cleanHandle = handleInput.trim().replace(/^@/, '').toLowerCase();
 
     setLoading(true);
@@ -309,6 +308,7 @@ export default function Home() {
     setLoading(false);
   };
 
+  // 🌟 사진첩이 바로 열리도록 accept="image/*" 설정
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files).slice(0, 3);
@@ -459,8 +459,11 @@ export default function Home() {
               )}
               <div className="flex items-center justify-between pt-1">
                 <div>
+                  {/* 🌟 폰에서 누르면 파일 폴더 대신 사진첩(갤러리)이 바로 뜨도록 설정 */}
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
-                  <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl">📷 사진 첨부</label>
+                  <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
+                    📷 사진첩에서 선택
+                  </label>
                 </div>
                 <button type="submit" disabled={loading || (!content.trim() && selectedFiles.length === 0)} className="bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-40">{loading ? '올리는 중...' : '나눔 올리기'}</button>
               </div>
@@ -543,8 +546,9 @@ export default function Home() {
 
             <div className="mt-5 flex gap-2">
               {viewingUserId === user?.id ? (
-                <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm">
+                <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
                   프로필 사진 변경
+                  {/* 🌟 프로필 사진 변경 시에도 갤러리가 바로 열리도록 설정 */}
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                 </label>
               ) : (
@@ -684,7 +688,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 🌟 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
+      {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
       {user && needsProfileSetup && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[90]">
           <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200">
