@@ -88,7 +88,7 @@ function RoleBadge({ type, size = 'sm', showLabel = true }: { type?: string | nu
   const badge = type ? BADGES[type] : undefined;
   if (!badge) return null;
   const icon = size === 'md' ? 'w-[18px] h-[18px]' : size === 'sm' ? 'w-[15px] h-[15px]' : 'w-[13px] h-[13px]';
-  const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[10px] px-1.5 py-px' : 'text-[9px] px-1 py-px';
+  const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[0.75rem] px-1.5 py-px' : 'text-[0.6875rem] px-1 py-px';
   return (
     <span className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`}>
       {/* 인스타그램 스타일 파란 인증 표시 */}
@@ -969,7 +969,7 @@ export default function Home() {
                   <h1 className="font-bold text-stone-900 text-sm truncate">{currentChatUser?.baptismal_name}</h1>
                   <RoleBadge type={currentChatUser?.badge_type} />
                 </div>
-                <p className="text-[10px] text-stone-400 truncate">@{currentChatUser?.handle}</p>
+                <p className="text-[0.75rem] text-stone-400 truncate">@{currentChatUser?.handle}</p>
               </div>
             </div>
           </div>
@@ -988,14 +988,14 @@ export default function Home() {
                   <button onClick={openNotifications} className="relative text-stone-600 hover:text-stone-900" aria-label="알림">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
                     )}
                   </button>
                   <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity min-w-0">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="내 프로필" className="w-6 h-6 rounded-full object-cover border border-stone-200" />
                     ) : (
-                      <div className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-[10px] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
+                      <div className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-[0.75rem] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
                     )}
                     {/* 좁은 화면에서는 이름을 숨기고 사진만 */}
                     <span className="text-xs font-medium text-stone-700 hidden min-[380px]:flex items-center gap-1 min-w-0">
@@ -1004,7 +1004,7 @@ export default function Home() {
                     </span>
                   </button>
                   {/* 휴대폰에서는 내 공간 → 설정에서 로그아웃 */}
-                  <button onClick={() => supabase.auth.signOut()} className="hidden sm:inline text-[11px] text-stone-400 hover:text-stone-700 whitespace-nowrap">로그아웃</button>
+                  <button onClick={() => supabase.auth.signOut()} className="hidden sm:inline text-[0.8125rem] text-stone-400 hover:text-stone-700 whitespace-nowrap">로그아웃</button>
                 </div>
               ) : (
                 <button onClick={() => setShowAuthModal(true)} className="text-xs font-semibold bg-stone-900 text-white px-3.5 py-1.5 rounded-full">로그인</button>
@@ -1036,7 +1036,7 @@ export default function Home() {
                   {previewUrls.map((url, idx) => (
                     <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden shadow-sm">
                       <img src={url} alt="미리보기" className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeFile(idx)} className="absolute top-0 right-0 bg-black/60 text-white w-4 h-4 flex items-center justify-center text-[10px]">×</button>
+                      <button type="button" onClick={() => removeFile(idx)} className="absolute top-0 right-0 bg-black/60 text-white w-4 h-4 flex items-center justify-center text-[0.75rem]">×</button>
                     </div>
                   ))}
                 </div>
@@ -1074,13 +1074,13 @@ export default function Home() {
                           <span className="text-xs font-bold text-stone-800 truncate">{post.author_name}</span>
                           <RoleBadge type={post.badge_type} />
                         </div>
-                        <span className="text-[11px] text-stone-400 truncate">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
+                        <span className="text-[0.8125rem] text-stone-400 truncate">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
                       </div>
                     </button>
                     <div className="flex items-center gap-0.5 shrink-0 whitespace-nowrap">
-                      {user?.id === post.user_id && <button onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }} className="text-[11px] text-stone-400 hover:text-stone-700 px-2 py-1">수정</button>}
-                      {canDelete && <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">삭제</button>}
-                      {user && user.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content })} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">신고</button>}
+                      {user?.id === post.user_id && <button onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }} className="text-[0.8125rem] text-stone-400 hover:text-stone-700 px-2 py-1">수정</button>}
+                      {canDelete && <button onClick={() => handleDeletePost(post.id)} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-2 py-1">삭제</button>}
+                      {user && user.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content })} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-2 py-1">신고</button>}
                     </div>
                   </div>
                   
@@ -1093,7 +1093,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-stone-800 text-[13.5px] whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                    <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">{post.content}</p>
                   )}
                   
                   {post.images && post.images.length > 0 && (
@@ -1116,9 +1116,9 @@ export default function Home() {
                         {(comments[post.id] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).map((c) => (
                           <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
                             <span className="flex items-center justify-between gap-2">
-                              <span className="font-bold text-[11px] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
+                              <span className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
                               {user && c.user_id !== user.id && (
-                                <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[10px] text-stone-400 hover:text-red-500">신고</button>
+                                <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
                               )}
                             </span>
                             <span>{c.content}</span>
@@ -1227,7 +1227,7 @@ export default function Home() {
                   {post.images && post.images.length > 0 ? (
                     <img src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full p-2 text-[10px] text-stone-600 flex items-center justify-center text-center">{post.content}</div>
+                    <div className="w-full h-full p-2 text-[0.75rem] text-stone-600 flex items-center justify-center text-center">{post.content}</div>
                   )}
                 </div>
               ))
@@ -1267,7 +1267,7 @@ export default function Home() {
                   </div>
                   {(() => {
                     const n = unreadMessages.find(u => u.partner.id === partner.id)?.count || 0;
-                    return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
+                    return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
                   })()}
                 </button>
               ))
@@ -1278,7 +1278,7 @@ export default function Home() {
 
       {/* 4. 1:1 실시간 채팅방 탭 */}
       {activeTab === 'chat' && (
-        <section className="flex-1 flex flex-col bg-[#F5F5F5]">
+        <section className="flex-1 flex flex-col bg-stone-100">
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>
@@ -1291,7 +1291,7 @@ export default function Home() {
                 return (
                   <div key={msg.id} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     {isMe && (
-                      <div className="flex flex-col items-end text-[10px] leading-tight shrink-0">
+                      <div className="flex flex-col items-end text-[0.75rem] leading-tight shrink-0">
                         {!msg.read_at ? (
                           <span className="text-amber-500 font-bold" title="아직 읽지 않음">1</span>
                         ) : i === lastReadMineIndex ? (
@@ -1300,10 +1300,10 @@ export default function Home() {
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
-                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-[13.5px] ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}>
+                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-[1rem] ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}>
                       {msg.content}
                     </div>
-                    {!isMe && <span className="text-[10px] text-stone-400 shrink-0">{time}</span>}
+                    {!isMe && <span className="text-[0.75rem] text-stone-400 shrink-0">{time}</span>}
                   </div>
                 );
               })
@@ -1396,10 +1396,10 @@ export default function Home() {
           >
             <span className="text-2xl shrink-0">{toast.icon}</span>
             <span className="flex-1 min-w-0">
-              <span className="block text-[13px] font-bold text-stone-900 truncate">{toast.title}</span>
+              <span className="block text-[0.9375rem] font-bold text-stone-900 truncate">{toast.title}</span>
               <span className="block text-xs text-stone-600 truncate">{toast.body}</span>
             </span>
-            <span className="text-[11px] text-blue-600 font-bold shrink-0">보기</span>
+            <span className="text-[0.8125rem] text-blue-600 font-bold shrink-0">보기</span>
           </button>
         </div>
       )}
@@ -1431,12 +1431,12 @@ export default function Home() {
                   </ol>
                 )}
                 <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex flex-col gap-2">
-                  <p className="text-[15px] font-bold text-red-700">⚠️ 설치 중 경고 창이 뜨면</p>
+                  <p className="text-[1.0625rem] font-bold text-red-700">⚠️ 설치 중 경고 창이 뜨면</p>
                   <p className="text-sm text-stone-800 leading-relaxed">
                     &lsquo;Play 프로텍트&rsquo; 등의 경고가 뜰 수 있어요.<br />
                     큰 <b>[확인]</b> 버튼을 누르면 <b className="text-red-700">설치가 취소</b>됩니다.
                   </p>
-                  <p className="text-[15px] font-bold text-stone-900 bg-yellow-200 rounded-lg px-3 py-2 text-center">
+                  <p className="text-[1.0625rem] font-bold text-stone-900 bg-yellow-200 rounded-lg px-3 py-2 text-center">
                     👉 아래쪽 작은 글씨 <u>무시하고 설치</u>를 눌러주세요
                   </p>
                   <p className="text-xs text-stone-500 text-center">(안 보이면 <b>자세히</b>를 먼저 누르세요)</p>
@@ -1491,7 +1491,7 @@ export default function Home() {
                     ) : (
                       <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
                     )}
-                    <p className="text-[13px] text-stone-800 min-w-0">
+                    <p className="text-[0.9375rem] text-stone-800 min-w-0">
                       👤 <b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 팔로우를 요청했습니다
                     </p>
                   </button>
@@ -1501,11 +1501,11 @@ export default function Home() {
               ))}
               {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
                 <button key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
-                  <p className="text-[13px] text-stone-800">
-                    ✉️ <b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[10px] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
+                  <p className="text-[0.9375rem] text-stone-800">
+                    ✉️ <b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[0.75rem] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
                   </p>
                   <p className="text-xs text-stone-600 line-clamp-1">&ldquo;{u.lastMessage}&rdquo;</p>
-                  <p className="text-[11px] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
+                  <p className="text-[0.8125rem] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
                 </button>
               ))}
               {notifications.length === 0 && followRequests.length === 0 && unreadMessages.length === 0 ? (
@@ -1513,11 +1513,11 @@ export default function Home() {
               ) : (
                 notifications.map(n => (
                   <button key={n.id} onClick={() => openNotification(n)} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
-                    <p className="text-[13px] text-stone-800">
+                    <p className="text-[0.9375rem] text-stone-800">
                       💬 <b>{n.author_name}</b>님이 회원님의 글에 댓글을 남겼습니다
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
-                    <p className="text-[11px] text-stone-400 truncate">
+                    <p className="text-[0.8125rem] text-stone-400 truncate">
                       {new Date(n.created_at).toLocaleString('ko-KR')} · {n.post_content || '사진 게시물'}
                     </p>
                   </button>
@@ -1539,14 +1539,14 @@ export default function Home() {
             </div>
 
             {isKakaoInApp && (
-              <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
+              <p className="text-[0.8125rem] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
                 카카오톡 안에서는 로그인이 안 될 수 있어요.<br />
                 오른쪽 아래 <b>⋯</b> 버튼 → <b>다른 브라우저로 열기</b>를 눌러주세요.
               </p>
             )}
 
             {storageBlocked && (
-              <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 leading-relaxed text-center">
+              <p className="text-[0.8125rem] text-red-700 bg-red-50 border border-red-200 rounded-xl p-3 leading-relaxed text-center">
                 브라우저 설정 때문에 로그인 정보를 저장할 수 없어요.<br />
                 아이폰 <b>설정 → Safari → 모든 쿠키 차단</b>을 끄거나, 개인정보 보호 브라우징을 끄고 다시 시도해주세요.<br />
                 (또는 Chrome에서 열어주세요)
@@ -1605,7 +1605,7 @@ export default function Home() {
                 )}
                 <div>
                   <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
-                  <span className="text-[10px] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
+                  <span className="text-[0.75rem] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
                 </div>
               </div>
               <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 font-bold text-lg">×</button>
@@ -1619,7 +1619,7 @@ export default function Home() {
               )}
               <div className="p-5 flex flex-col gap-2">
                 <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed">{selectedPostDetail.content}</p>
-                <span className="text-[11px] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
+                <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
               </div>
             </div>
           </div>
@@ -1645,7 +1645,7 @@ export default function Home() {
             </div>
             <form onSubmit={handleProfileSetup} className="flex flex-col gap-3 mt-2">
               <div>
-                <label className="text-[11px] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명</label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명</label>
                 <input
                   type="text"
                   placeholder="예: 홍길동 미카엘"
@@ -1656,7 +1656,7 @@ export default function Home() {
                 />
               </div>
               <div>
-                <label className="text-[11px] font-bold text-stone-500 mb-1 block text-left">나만의 고유 핸들 (@아이디)</label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">나만의 고유 핸들 (@아이디)</label>
                 <div className="flex items-center bg-stone-50 border border-stone-300 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-stone-400">
                   <span className="pl-3.5 text-stone-400 text-sm font-medium">@</span>
                   <input
@@ -1689,24 +1689,24 @@ export default function Home() {
         <nav className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto bg-white border-t border-stone-200 flex items-center justify-around z-40 pb-safe">
           <button onClick={() => { goToHome(); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-            <span className="text-[10px] font-medium">홈</span>
+            <span className="text-[0.75rem] font-medium">홈</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); storageSet('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
             <span className="relative">
               <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               {unreadMessageCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
               )}
             </span>
-            <span className="text-[10px] font-medium">메시지</span>
+            <span className="text-[0.75rem] font-medium">메시지</span>
           </button>
           <button onClick={() => { setActiveTab('anon'); storageSet('activeTab', 'anon'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
-            <span className="text-[10px] font-medium">고민상담</span>
+            <span className="text-[0.75rem] font-medium">고민상담</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'profile' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            <span className="text-[10px] font-medium">내 공간</span>
+            <span className="text-[0.75rem] font-medium">내 공간</span>
           </button>
         </nav>
       )}

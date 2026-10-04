@@ -45,7 +45,7 @@ export function Composer({
             onChange={(event) => onTextChange(event.target.value)}
             placeholder="마음을 나눠 주세요..."
             rows={3}
-            className="w-full resize-none bg-transparent text-[15px] leading-6 text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500"
+            className="w-full resize-none bg-transparent text-[1.0625rem] leading-6 text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:text-zinc-100 dark:placeholder:text-zinc-500"
           />
 
           {images.length > 0 ? (

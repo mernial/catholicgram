@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { deleteMyAccount } from '@/lib/account';
+import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -16,6 +17,14 @@ export default function SettingsModal({ user, onClose, onUnblock }: {
   const [view, setView] = useState<'main' | 'blocks'>('main');
   const [blocked, setBlocked] = useState<BlockedProfile[]>([]);
   const [deleting, setDeleting] = useState(false);
+  const [textSize, setTextSize] = useState('100%');
+
+  useEffect(() => { setTextSize(getTextSize()); }, []);
+
+  const changeTextSize = (size: string) => {
+    applyTextSize(size);
+    setTextSize(size);
+  };
 
   const loadBlocked = async () => {
     const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', user.id);
@@ -52,6 +61,21 @@ export default function SettingsModal({ user, onClose, onUnblock }: {
 
         {view === 'main' ? (
           <div className="overflow-y-auto">
+            <div className="p-4 border-b border-stone-100">
+              <p className="text-sm mb-2.5">🔠 글씨 크기</p>
+              <div className="grid grid-cols-3 gap-1.5">
+                {TEXT_SIZES.map((t, i) => (
+                  <button
+                    key={t.key}
+                    onClick={() => changeTextSize(t.key)}
+                    className={`py-2.5 rounded-xl border font-bold ${textSize === t.key ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-700 border-stone-200'}`}
+                    style={{ fontSize: `${14 + i * 3}px` }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <button onClick={() => setView('blocks')} className={row}><span>🚫 차단 목록</span><span className="text-stone-300">›</span></button>
             <a href="/terms" className={row}><span>📜 이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
             <a href="/privacy" className={row}><span>🔒 개인정보처리방침</span><span className="text-stone-300">›</span></a>
@@ -59,7 +83,7 @@ export default function SettingsModal({ user, onClose, onUnblock }: {
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>
-            <p className="p-4 text-[11px] text-stone-400">로그인 계정: {user.email || '카카오 계정'}</p>
+            <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.email || '카카오 계정'}</p>
           </div>
         ) : (
           <div className="overflow-y-auto divide-y divide-stone-100">

@@ -1,15 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
+import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+// 나눔스퀘어라운드 (네이버, OFL 무료 글꼴) — 둥글고 부드러운 고딕체
+const nanumSquareRound = localFont({
+  src: [
+    { path: "./fonts/NanumSquareRoundL.woff2", weight: "300", style: "normal" },
+    { path: "./fonts/NanumSquareRoundR.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/NanumSquareRoundB.woff2", weight: "700", style: "normal" },
+    { path: "./fonts/NanumSquareRoundEB.woff2", weight: "800", style: "normal" },
+  ],
+  variable: "--font-round",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -32,15 +35,19 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover', // 노치가 있는 폰에서 화면 끝까지 사용 (안전 영역은 pb-safe 등으로 피함)
-  themeColor: '#1c1917',
+  themeColor: '#FAF7F2',
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ko"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${nanumSquareRound.variable} h-full antialiased`}
+      suppressHydrationWarning // 글씨 크기 설정이 html 에 바로 적용되므로
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
+      </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
   );

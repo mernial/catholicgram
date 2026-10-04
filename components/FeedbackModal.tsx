@@ -197,13 +197,13 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             {!loading && reports.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">접수된 신고가 없습니다.</div>}
             {reports.map(r => (
               <div key={r.id} className="p-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2 text-[11px]">
+                <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
                   <span className="font-bold text-stone-700">{REPORT_TYPE[r.target_type]} · {REPORT_REASON[r.reason] || r.reason}</span>
                   <span className={`px-2 py-0.5 rounded-full border font-bold ${REPORT_STATUS[r.status].className}`}>{REPORT_STATUS[r.status].label}</span>
                 </div>
-                {r.target_preview && <p className="text-[13px] text-stone-800 bg-stone-50 rounded-lg p-2.5 whitespace-pre-wrap line-clamp-4">{r.target_preview}</p>}
+                {r.target_preview && <p className="text-[0.9375rem] text-stone-800 bg-stone-50 rounded-lg p-2.5 whitespace-pre-wrap line-clamp-4">{r.target_preview}</p>}
                 {r.detail && <p className="text-xs text-stone-600">신고 내용: {r.detail}</p>}
-                <p className="text-[11px] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')}</p>
+                <p className="text-[0.8125rem] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')}</p>
                 <div className="flex gap-1.5 flex-wrap">
                   {['post', 'comment', 'anon_post', 'anon_reply'].includes(r.target_type) && r.status === 'open' && (
                     <button onClick={() => deleteReportedContent(r)} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">콘텐츠 삭제</button>
@@ -247,37 +247,37 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             {items.map(item => (
               <div key={item.id} className="p-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 min-w-0 text-[11px]">
+                  <div className="flex items-center gap-1.5 min-w-0 text-[0.8125rem]">
                     <span className="font-bold text-stone-700">{categoryLabel(item.category)}</span>
                     {view === 'inbox' && <span className="text-stone-500 truncate">· {item.author_name || '교우'}{item.author_handle && ` @${item.author_handle}`}</span>}
                     <span className="text-stone-400 shrink-0">· {new Date(item.created_at).toLocaleDateString('ko-KR')}</span>
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold shrink-0 ${STATUS[item.status].className}`}>{STATUS[item.status].label}</span>
+                  <span className={`text-[0.75rem] px-2 py-0.5 rounded-full border font-bold shrink-0 ${STATUS[item.status].className}`}>{STATUS[item.status].label}</span>
                 </div>
-                <p className="text-[13px] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>
 
                 {view === 'mine' && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-[11px] font-bold text-blue-700 mb-1">📮 운영자 답변</p>
+                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1">📮 운영자 답변</p>
                     <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
                   </div>
                 )}
                 {view === 'mine' && item.status === 'received' && (
                   <div className="flex justify-end">
-                    <button onClick={() => deleteItem(item)} className="text-[11px] text-stone-400 hover:text-red-500">삭제</button>
+                    <button onClick={() => deleteItem(item)} className="text-[0.8125rem] text-stone-400 hover:text-red-500">삭제</button>
                   </div>
                 )}
 
                 {view === 'inbox' && (
                   <div className="flex flex-col gap-2 bg-stone-50 rounded-xl p-2.5">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] text-stone-500">상태</span>
+                      <span className="text-[0.8125rem] text-stone-500">상태</span>
                       {(Object.keys(STATUS) as Feedback['status'][]).map(s => (
-                        <button key={s} onClick={() => updateStatus(item, s)} className={`text-[11px] px-2 py-0.5 rounded-full border ${item.status === s ? STATUS[s].className + ' font-bold' : 'bg-white text-stone-400 border-stone-200'}`}>
+                        <button key={s} onClick={() => updateStatus(item, s)} className={`text-[0.8125rem] px-2 py-0.5 rounded-full border ${item.status === s ? STATUS[s].className + ' font-bold' : 'bg-white text-stone-400 border-stone-200'}`}>
                           {STATUS[s].label}
                         </button>
                       ))}
-                      <button onClick={() => deleteItem(item)} className="ml-auto text-[11px] text-stone-400 hover:text-red-500">삭제</button>
+                      <button onClick={() => deleteItem(item)} className="ml-auto text-[0.8125rem] text-stone-400 hover:text-red-500">삭제</button>
                     </div>
                     <textarea
                       value={replyDrafts[item.id] ?? item.admin_reply ?? ''}

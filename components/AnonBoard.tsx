@@ -73,10 +73,10 @@ const timeLeft = (iso: string) => {
 function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean; isMine?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[11px]">🕊️</span>
+      <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[0.8125rem]">🕊️</span>
       <span className="text-xs font-bold text-stone-800">익명 #{code}</span>
-      {isAuthor && <span className="text-[10px] bg-violet-600 text-white px-1.5 py-px rounded-full font-bold">작성자</span>}
-      {isMine && <span className="text-[10px] text-stone-400">(나)</span>}
+      {isAuthor && <span className="text-[0.75rem] bg-violet-600 text-white px-1.5 py-px rounded-full font-bold">작성자</span>}
+      {isMine && <span className="text-[0.75rem] text-stone-400">(나)</span>}
     </span>
   );
 }
@@ -189,7 +189,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
     <section className="flex-1 flex flex-col bg-stone-50/30">
       <div className="px-4 pt-4 pb-3 bg-violet-50/60 border-b border-violet-100">
         <h2 className="font-bold text-stone-900 flex items-center gap-1.5">🕊️ 익명 고민상담</h2>
-        <p className="text-[11px] text-stone-600 mt-1 leading-relaxed">
+        <p className="text-[0.8125rem] text-stone-600 mt-1 leading-relaxed">
           글과 답글은 <b>익명 코드</b>로만 표시되고, 누가 썼는지는 아무에게도 보이지 않아요.<br />
           서로의 아픔을 존중하며 따뜻하게 답해주세요.
         </p>
@@ -217,13 +217,13 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
               className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
             />
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11px] font-bold text-stone-500">⏳ 자동 삭제</span>
+              <span className="text-[0.8125rem] font-bold text-stone-500">⏳ 자동 삭제</span>
               {EXPIRY_OPTIONS.map(o => (
                 <button
                   type="button"
                   key={o.hours}
                   onClick={() => setExpiryHours(o.hours)}
-                  className={`text-[11px] px-2.5 py-1 rounded-full border transition-colors ${expiryHours === o.hours ? 'bg-violet-600 text-white border-violet-600 font-bold' : 'bg-white text-stone-600 border-stone-200'}`}
+                  className={`text-[0.8125rem] px-2.5 py-1 rounded-full border transition-colors ${expiryHours === o.hours ? 'bg-violet-600 text-white border-violet-600 font-bold' : 'bg-white text-stone-600 border-stone-200'}`}
                 >
                   {o.label}
                 </button>
@@ -245,22 +245,22 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <AnonTag code={post.anon_code} isMine={post.is_mine} />
-                    <span className="text-[11px] text-stone-400">· {timeAgo(post.created_at)}</span>
+                    <span className="text-[0.8125rem] text-stone-400">· {timeAgo(post.created_at)}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {post.expires_at && (
-                      <span className="text-[10px] text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2 py-0.5">⏳ {timeLeft(post.expires_at)} 후 삭제</span>
+                      <span className="text-[0.75rem] text-violet-700 bg-violet-50 border border-violet-100 rounded-full px-2 py-0.5">⏳ {timeLeft(post.expires_at)} 후 삭제</span>
                     )}
                     {(post.is_mine || isAdmin) && (
-                      <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 px-1.5 py-1">삭제</button>
+                      <button onClick={() => handleDeletePost(post.id)} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-1.5 py-1">삭제</button>
                     )}
                     {!post.is_mine && (
-                      <button onClick={() => onReport({ type: 'anon_post', id: post.id, preview: post.content })} className="text-[11px] text-stone-400 hover:text-red-500 px-1.5 py-1">신고</button>
+                      <button onClick={() => onReport({ type: 'anon_post', id: post.id, preview: post.content })} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-1.5 py-1">신고</button>
                     )}
                   </div>
                 </div>
 
-                <p className="text-stone-800 text-[13.5px] whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
                 <div className="flex items-center gap-4 text-xs font-medium pt-1 flex-wrap">
                   {REACTIONS.map(r => {
@@ -284,14 +284,14 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-1.5">
                             <AnonTag code={reply.anon_code} isAuthor={reply.is_post_author} isMine={reply.is_mine} />
-                            <span className="text-[10px] text-stone-400">{timeAgo(reply.created_at)}</span>
+                            <span className="text-[0.75rem] text-stone-400">{timeAgo(reply.created_at)}</span>
                           </span>
                           <span className="flex items-center gap-2">
                             {(reply.is_mine || isAdmin) && (
-                              <button onClick={() => handleDeleteReply(post.id, reply.id)} className="text-[10px] text-stone-400 hover:text-red-500">삭제</button>
+                              <button onClick={() => handleDeleteReply(post.id, reply.id)} className="text-[0.75rem] text-stone-400 hover:text-red-500">삭제</button>
                             )}
                             {!reply.is_mine && (
-                              <button onClick={() => onReport({ type: 'anon_reply', id: reply.id, preview: reply.content })} className="text-[10px] text-stone-400 hover:text-red-500">신고</button>
+                              <button onClick={() => onReport({ type: 'anon_reply', id: reply.id, preview: reply.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
                             )}
                           </span>
                         </div>

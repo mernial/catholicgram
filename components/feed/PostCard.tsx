@@ -26,20 +26,20 @@ export function PostCard({ post, onPray, onEmpathy, onAddComment }: Props) {
     <article className="border-b border-zinc-200 bg-white px-4 py-4 dark:border-zinc-800 dark:bg-zinc-950">
       <header className="flex items-start gap-3">
         <div
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 text-[11px] font-semibold text-white"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-indigo-500 text-[0.8125rem] font-semibold text-white"
           aria-hidden
         >
           {post.initials}
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
-            <h2 className="text-[15px] font-semibold text-zinc-900 dark:text-zinc-50">
+            <h2 className="text-[1.0625rem] font-semibold text-zinc-900 dark:text-zinc-50">
               {post.author}
             </h2>
             <span className="text-sm text-zinc-500">@{post.handle}</span>
             <span className="text-sm text-zinc-400">· {post.createdAt}</span>
           </div>
-          <p className="mt-1 whitespace-pre-wrap text-[15px] leading-6 text-zinc-800 dark:text-zinc-200">
+          <p className="mt-1 whitespace-pre-wrap text-[1.0625rem] leading-6 text-zinc-800 dark:text-zinc-200">
             {post.text}
           </p>
         </div>
@@ -77,7 +77,7 @@ export function PostCard({ post, onPray, onEmpathy, onAddComment }: Props) {
         <button
           type="button"
           onClick={() => onPray(post.id)}
-          className={`rounded-full px-1 py-2 text-center text-[12px] font-medium leading-tight sm:text-[13px] sm:px-2 transition ${
+          className={`rounded-full px-1 py-2 text-center text-[0.875rem] font-medium leading-tight sm:text-[0.9375rem] sm:px-2 transition ${
             post.prayed
               ? "bg-amber-50 text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900"
               : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
@@ -89,7 +89,7 @@ export function PostCard({ post, onPray, onEmpathy, onAddComment }: Props) {
         <button
           type="button"
           onClick={() => onEmpathy(post.id)}
-          className={`rounded-full px-2 py-2 text-center text-[13px] font-medium transition ${
+          className={`rounded-full px-2 py-2 text-center text-[0.9375rem] font-medium transition ${
             post.empathized
               ? "bg-rose-50 text-rose-800 ring-1 ring-rose-200 dark:bg-rose-950/40 dark:text-rose-200 dark:ring-rose-900"
               : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
@@ -101,7 +101,7 @@ export function PostCard({ post, onPray, onEmpathy, onAddComment }: Props) {
         <button
           type="button"
           onClick={() => setOpenComments((open) => !open)}
-          className={`rounded-full px-2 py-2 text-center text-[13px] font-medium transition ${
+          className={`rounded-full px-2 py-2 text-center text-[0.9375rem] font-medium transition ${
             openComments
               ? "bg-sky-50 text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900"
               : "bg-zinc-50 text-zinc-700 hover:bg-zinc-100 dark:bg-zinc-900 dark:text-zinc-200 dark:hover:bg-zinc-800"
