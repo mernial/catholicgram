@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
+import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 
 // 관리자 계정 (게시물 삭제, 인증 뱃지 지정). 바꿀 때는 supabase/admin-badges.sql 도 함께 수정
 const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr'];
@@ -119,6 +120,11 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [installBannerDismissed, setInstallBannerDismissed] = useState(true);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  // 휴대폰 푸시 알림 상태
+  const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
+  const [pushBusy, setPushBusy] = useState(false);
+  // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string } | null>(null);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -175,6 +181,16 @@ export default function Home() {
     const onAppInstalled = () => { setIsStandalone(true); setInstallPrompt(null); };
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
     window.addEventListener('appinstalled', onAppInstalled);
+
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+    const params = new URLSearchParams(window.location.search);
+    const linkPost = params.get('post');
+    const linkChat = params.get('chat');
+    if (linkPost || linkChat) {
+      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined });
+      window.history.replaceState(null, '', '/');
+    }
 
     const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = storageGet('viewingUserId');
@@ -337,8 +353,9 @@ export default function Home() {
     if (!user || !currentChatUser || !messageInput.trim()) return;
     const newMsg = messageInput.trim();
     setMessageInput('');
-    await supabase.from('messages').insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg });
+    const { data: sent } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg }).select('id').single();
     fetchChatMessages(currentChatUser.id);
+    if (sent) sendPush('message', sent.id);
   };
 
   const handleKakaoLogin = async (e: React.MouseEvent) => {
@@ -489,14 +506,120 @@ export default function Home() {
     setTimeout(() => setNotificationsLastSeen(now), 0);
   };
 
-  const openNotification = async (n: CommentNotification) => {
-    setShowNotifications(false);
-    goToHome();
-    setOpenComments(prev => ({ ...prev, [n.post_id]: true }));
-    const { data } = await supabase.from('comments').select('*').eq('post_id', n.post_id).order('created_at', { ascending: true });
-    if (data) { setComments(prev => ({ ...prev, [n.post_id]: data })); loadCommentBadges(data); }
-    setTimeout(() => document.getElementById(`post-${n.post_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  // 댓글 작성자들의 뱃지 정보를 불러온다
+  const loadCommentBadges = async (list: Comment[]) => {
+    const ids = Array.from(new Set(list.map(c => c.user_id).filter((id): id is string => !!id)));
+    if (ids.length === 0) return;
+    const { data } = await supabase.from('profiles').select('id, badge_type').in('id', ids);
+    if (data) setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
   };
+
+  // 홈에서 해당 글로 이동해 댓글을 펼친다
+  const openPostComments = async (postId: string) => {
+    goToHome();
+    setOpenComments(prev => ({ ...prev, [postId]: true }));
+    const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+    if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
+    setTimeout(() => document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  };
+
+  const openNotification = (n: CommentNotification) => {
+    setShowNotifications(false);
+    openPostComments(n.post_id);
+  };
+
+  // --- 휴대폰 푸시 알림 ---
+  // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
+  const sendPush = async (type: 'comment' | 'message', id: string) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    fetch('/api/push/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ type, id }),
+    }).catch(() => {});
+  };
+
+  const savePushSubscription = async (sub: PushSubscription, userId: string) => {
+    const json = sub.toJSON();
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
+    const { error } = await supabase.from('push_subscriptions').upsert(
+      { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+      { onConflict: 'endpoint' }
+    );
+    return !error;
+  };
+
+  const checkPushStatus = async (userId: string) => {
+    const nav = navigator as Navigator & { standalone?: boolean };
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+    const ios = /iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      setPushStatus(ios && !standalone ? 'ios-needs-install' : 'unsupported');
+      return;
+    }
+    if (Notification.permission === 'denied') { setPushStatus('denied'); return; }
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => undefined);
+    const sub = reg ? await reg.pushManager.getSubscription() : null;
+    if (sub && Notification.permission === 'granted') {
+      await savePushSubscription(sub, userId); // 로그인 계정이 바뀌었을 수 있으므로 갱신
+      setPushStatus('on');
+    } else {
+      setPushStatus('off');
+    }
+  };
+
+  const enablePush = async () => {
+    if (!user) return;
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') { setPushStatus(permission === 'denied' ? 'denied' : 'off'); return; }
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+      if (await savePushSubscription(sub, user.id)) setPushStatus('on');
+      else alert('알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+    } catch {
+      alert('알림을 켜지 못했습니다. 브라우저 알림 설정을 확인해주세요.');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const disablePush = async () => {
+    setPushBusy(true);
+    try {
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js');
+      const sub = reg ? await reg.pushManager.getSubscription() : null;
+      if (sub) {
+        await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
+        await sub.unsubscribe();
+      }
+      setPushStatus('off');
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) checkPushStatus(user.id);
+  }, [user]);
+
+  // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
+  useEffect(() => {
+    if (!deepLink || !user) return;
+    setDeepLink(null);
+    if (deepLink.post) {
+      openPostComments(deepLink.post);
+    } else if (deepLink.chat) {
+      supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).single()
+        .then(({ data }) => { if (data) openChatRoom(data); });
+    }
+  }, [deepLink, user]);
 
   // 내 글에 달린 댓글 알림: 로그인 중에는 30초마다, 앱으로 돌아왔을 때 다시 확인
   useEffect(() => {
@@ -530,14 +653,6 @@ export default function Home() {
     storageSet('installBannerDismissed', '1');
   };
 
-  // 댓글 작성자들의 뱃지 정보를 불러온다
-  const loadCommentBadges = async (list: Comment[]) => {
-    const ids = Array.from(new Set(list.map(c => c.user_id).filter((id): id is string => !!id)));
-    if (ids.length === 0) return;
-    const { data } = await supabase.from('profiles').select('id, badge_type').in('id', ids);
-    if (data) setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
-  };
-
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
     setOpenComments({ ...openComments, [postId]: nextState });
@@ -555,6 +670,7 @@ export default function Home() {
     if (!error && data) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
+      sendPush('comment', data[0].id);
     }
   };
 
@@ -1018,6 +1134,20 @@ export default function Home() {
               <h2 className="font-bold text-stone-900">알림</h2>
               <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
             </div>
+            {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (
+              <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
+                <span className="text-xl">📲</span>
+                <div className="flex-1 text-xs text-stone-700 leading-snug">
+                  {pushStatus === 'on' && <><b>휴대폰 알림 켜짐</b><br />앱을 닫아도 댓글·메시지 알림이 와요</>}
+                  {pushStatus === 'off' && <><b>휴대폰 알림 받기</b><br />앱을 닫아도 댓글·메시지 알림을 받아요</>}
+                  {pushStatus === 'denied' && <><b>알림이 차단되어 있어요</b><br />휴대폰 설정에서 이 사이트(앱)의 알림을 허용해주세요</>}
+                  {pushStatus === 'ios-needs-install' && <><b>아이폰은 홈 화면 앱에서만</b> 알림을 받을 수 있어요<br />먼저 홈 화면에 추가한 뒤 그 아이콘으로 열어주세요</>}
+                </div>
+                {pushStatus === 'on' && <button onClick={disablePush} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">끄기</button>}
+                {pushStatus === 'off' && <button onClick={enablePush} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">{pushBusy ? '설정 중...' : '켜기'}</button>}
+                {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
+              </div>
+            )}
             <div className="overflow-y-auto divide-y divide-stone-100">
               {notifications.length === 0 ? (
                 <div className="p-10 text-center text-stone-400 text-sm">아직 받은 알림이 없습니다.</div>
