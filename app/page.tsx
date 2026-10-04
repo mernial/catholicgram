@@ -80,8 +80,9 @@ export default function Home() {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete',
-        skipBrowserRedirect: true, // 브라우저 자동 리디렉션을 막고 URL을 직접 제어
+        // 서브 경로 없이 메인 주소로 바로 복귀 (404 원천 차단)
+        redirectTo: 'https://catholicgram-dey7.vercel.app',
+        skipBrowserRedirect: true,
       },
     });
 
@@ -91,7 +92,6 @@ export default function Home() {
     }
 
     if (data?.url) {
-      // 메일 앱 딥링크 간섭 없이 구글 로그인 웹페이지로 강제 이동
       window.location.href = data.url;
     }
   };
