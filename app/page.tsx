@@ -6,7 +6,8 @@ import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
 
-const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
+// 관리자 계정 (게시물 삭제, 인증 뱃지 지정). 바꿀 때는 supabase/admin-badges.sql 도 함께 수정
+const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr'];
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -30,7 +31,7 @@ interface Post {
   badge_type?: string;
 }
 
-interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
+interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; }
 // 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -62,6 +63,36 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
   });
 }
 
+// --- 성직자/수도자 인증 뱃지 ---
+// profiles.badge_type 값에 따라 이름 옆에 파란 인증 표시와 호칭을 보여준다.
+const BADGES: Record<string, { label: string; className: string }> = {
+  bishop: { label: '주교님', className: 'bg-purple-50 text-purple-800 border-purple-200' },
+  priest: { label: '신부님', className: 'bg-amber-50 text-amber-800 border-amber-200' },
+  deacon: { label: '부제님', className: 'bg-amber-50 text-amber-800 border-amber-200' },
+  sister: { label: '수녀님', className: 'bg-sky-50 text-sky-800 border-sky-200' },
+  brother: { label: '수사님', className: 'bg-sky-50 text-sky-800 border-sky-200' },
+  seminarian: { label: '신학생', className: 'bg-stone-50 text-stone-700 border-stone-200' },
+};
+
+function RoleBadge({ type, size = 'sm', showLabel = true }: { type?: string | null; size?: 'xs' | 'sm' | 'md'; showLabel?: boolean }) {
+  const badge = type ? BADGES[type] : undefined;
+  if (!badge) return null;
+  const icon = size === 'md' ? 'w-[18px] h-[18px]' : size === 'sm' ? 'w-[15px] h-[15px]' : 'w-[13px] h-[13px]';
+  const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[10px] px-1.5 py-px' : 'text-[9px] px-1 py-px';
+  return (
+    <span className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`}>
+      {/* 인스타그램 스타일 파란 인증 표시 */}
+      <svg viewBox="0 0 24 24" className={icon} aria-label="인증됨">
+        <path fill="#0095F6" d="M12 1.5l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3-3.2-.1L12 22.5l-2.6-1.9-3.2.1-1-3-2.6-1.9 1-3.1-1-3.1 2.6-1.9 1-3 3.2.1z" />
+        <path fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" d="M7.8 12.2l2.8 2.8 5.6-5.8" />
+      </svg>
+      {showLabel && (
+        <span className={`rounded-full border font-serif font-bold leading-tight ${badge.className} ${text}`}>{badge.label}</span>
+      )}
+    </span>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -73,6 +104,7 @@ export default function Home() {
   
   const [openComments, setOpenComments] = useState<{ [key: string]: boolean }>({});
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({});
+  const [badgeByUser, setBadgeByUser] = useState<{ [userId: string]: string | null }>({});
   const [commentInputs, setCommentInputs] = useState<{ [key: string]: string }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -462,7 +494,7 @@ export default function Home() {
     goToHome();
     setOpenComments(prev => ({ ...prev, [n.post_id]: true }));
     const { data } = await supabase.from('comments').select('*').eq('post_id', n.post_id).order('created_at', { ascending: true });
-    if (data) setComments(prev => ({ ...prev, [n.post_id]: data }));
+    if (data) { setComments(prev => ({ ...prev, [n.post_id]: data })); loadCommentBadges(data); }
     setTimeout(() => document.getElementById(`post-${n.post_id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
@@ -498,12 +530,20 @@ export default function Home() {
     storageSet('installBannerDismissed', '1');
   };
 
+  // 댓글 작성자들의 뱃지 정보를 불러온다
+  const loadCommentBadges = async (list: Comment[]) => {
+    const ids = Array.from(new Set(list.map(c => c.user_id).filter((id): id is string => !!id)));
+    if (ids.length === 0) return;
+    const { data } = await supabase.from('profiles').select('id, badge_type').in('id', ids);
+    if (data) setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
+  };
+
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
     setOpenComments({ ...openComments, [postId]: nextState });
     if (nextState && !comments[postId]) {
       const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
-      if (data) setComments(prev => ({ ...prev, [postId]: data }));
+      if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
     }
   };
   const handleAddComment = async (postId: string) => {
@@ -545,6 +585,23 @@ export default function Home() {
     setLoading(false);
   };
 
+  const isAdmin = !!(user?.email && ADMIN_EMAILS.includes(user.email));
+
+  // 관리자 전용: 성직자/수도자 뱃지 지정
+  const handleSetBadge = async (targetId: string, badge: string) => {
+    const value = badge || null;
+    const { data, error } = await supabase.from('profiles').update({ badge_type: value }).eq('id', targetId).select('id');
+    // RLS로 막히면 오류 없이 0건이 수정되므로 결과 건수까지 확인
+    if (error || !data || data.length === 0) {
+      alert('뱃지를 저장하지 못했습니다. Supabase에서 관리자 수정 권한(RLS)을 확인해주세요.');
+      return;
+    }
+    setViewingProfile(prev => prev && prev.id === targetId ? { ...prev, badge_type: value ?? undefined } : prev);
+    if (targetId === user?.id) setProfile(prev => prev ? { ...prev, badge_type: value ?? undefined } : prev);
+    setBadgeByUser(prev => ({ ...prev, [targetId]: value }));
+    fetchPosts();
+  };
+
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
@@ -566,9 +623,7 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-1">
                   <h1 className="font-bold text-stone-900 text-sm">{currentChatUser?.baptismal_name}</h1>
-                  {currentChatUser?.badge_type === 'priest' && (
-                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
-                  )}
+                  <RoleBadge type={currentChatUser?.badge_type} />
                 </div>
                 <p className="text-[10px] text-stone-400">@{currentChatUser?.handle}</p>
               </div>
@@ -597,7 +652,7 @@ export default function Home() {
                     )}
                     <span className="text-xs font-medium text-stone-700 flex items-center gap-1">
                       {profile?.baptismal_name}
-                      {profile?.badge_type === 'priest' && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                      <RoleBadge type={profile?.badge_type} size="xs" showLabel={false} />
                     </span>
                   </button>
                   <button onClick={() => supabase.auth.signOut()} className="text-[11px] text-stone-400 hover:text-stone-700">로그아웃</button>
@@ -663,11 +718,7 @@ export default function Home() {
                       <div className="flex flex-col">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
-                          {post.badge_type === 'priest' && (
-                            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-serif font-bold border border-amber-200 flex items-center gap-0.5">
-                              ✟ 신부님
-                            </span>
-                          )}
+                          <RoleBadge type={post.badge_type} />
                         </div>
                         <span className="text-[11px] text-stone-400">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
                       </div>
@@ -709,7 +760,7 @@ export default function Home() {
                       <div className="flex flex-col gap-1.5">
                         {(comments[post.id] || []).map((c) => (
                           <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
-                            <span className="font-bold text-[11px] text-stone-700">{c.author_name}</span>
+                            <span className="font-bold text-[11px] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
                             <span>{c.content}</span>
                           </div>
                         ))}
@@ -740,9 +791,7 @@ export default function Home() {
             )}
             <div className="flex items-center gap-1.5">
               <h2 className="text-xl font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
-              {viewingProfile?.badge_type === 'priest' && (
-                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
-              )}
+              <RoleBadge type={viewingProfile?.badge_type} size="md" />
             </div>
             <p className="text-xs text-stone-400 mt-0.5">@{viewingProfile?.handle || 'user'}</p>
             
@@ -776,6 +825,20 @@ export default function Home() {
                 </>
               )}
             </div>
+
+            {isAdmin && viewingProfile && (
+              <div className="mt-4 flex items-center gap-2 text-xs bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-sm">
+                <span className="font-bold text-stone-600">👑 관리자 · 인증 뱃지</span>
+                <select
+                  value={viewingProfile.badge_type || ''}
+                  onChange={(e) => handleSetBadge(viewingProfile.id, e.target.value)}
+                  className="border border-stone-300 rounded-lg px-2 py-1 bg-white focus:outline-none"
+                >
+                  <option value="">없음</option>
+                  {Object.entries(BADGES).map(([key, b]) => <option key={key} value={key}>{b.label}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           
           <div className="grid grid-cols-3 gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-stone-100">
@@ -820,7 +883,7 @@ export default function Home() {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
-                      {partner.badge_type === 'priest' && <span className="text-[10px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                      <RoleBadge type={partner.badge_type} />
                     </div>
                     <p className="text-xs text-stone-400 mt-0.5">@{partner.handle} • 대화 계속하기...</p>
                   </div>
@@ -873,7 +936,7 @@ export default function Home() {
               <div>
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-stone-900">{actionModalUser.baptismal_name}</h3>
-                  {actionModalUser.badge_type === 'priest' && <span className="text-[10px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                  <RoleBadge type={actionModalUser.badge_type} />
                 </div>
                 <p className="text-xs text-stone-400">@{actionModalUser.handle}</p>
               </div>
@@ -1052,7 +1115,7 @@ export default function Home() {
                   <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(selectedPostDetail.author_name || '교')[0]}</div>
                 )}
                 <div>
-                  <span className="text-xs font-bold text-stone-800">{selectedPostDetail.author_name}</span>
+                  <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
                   <span className="text-[10px] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
                 </div>
               </div>
