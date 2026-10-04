@@ -72,13 +72,11 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
-  // 🌟 탭 및 새로고침 유지 상태 관리
   const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat'>('home');
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [followData, setFollowData] = useState({ followers: 0, following: 0, isFollowing: false });
 
-  // 🌟 아이디 클릭 시 뜨는 팝업 메뉴 상태
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [isFollowingActionUser, setIsFollowingActionUser] = useState(false);
 
@@ -91,10 +89,9 @@ export default function Home() {
   const [avatarFile, setAvatarFile] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
   useEffect(() => {
-    // 🌟 새로고침 시 마지막으로 보던 탭과 프로필 기억 복원
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = localStorage.getItem('viewingUserId');
     if (savedTab) setActiveTab(savedTab);
@@ -198,7 +195,6 @@ export default function Home() {
     if (actionModalUser && actionModalUser.id === targetId) setIsFollowingActionUser(!currentStatus);
   };
 
-  // 🌟 홈에서 아이디 클릭 시 팝업 띄우기 함수
   const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
     if (!user) { setShowAuthModal(true); return; }
     if (postUser.id === user.id) {
@@ -500,7 +496,6 @@ export default function Home() {
               return (
                 <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    {/* 🌟 홈 피드에서 아이디/프로필 클릭 시 팝업창 호출 */}
                     <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
                       {post.avatar_url ? (
                         <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
@@ -678,7 +673,7 @@ export default function Home() {
         </section>
       )}
 
-      {/* 🌟 사용자 액션 팝업 메뉴 (프로필 보러가기, 팔로우, 메시지 보내기) */}
+      {/* 사용자 액션 팝업 메뉴 */}
       {actionModalUser && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setActionModalUser(null)}>
           <div className="bg-white w-full sm:w-80 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
@@ -717,7 +712,19 @@ export default function Home() {
       {/* 사진 자르기 모달 */}
       {avatarFile && (
         <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
-          <div className="relative flex-1"><Cropper image={avatarFile} crop={crop} zoom={zoom} aspect={1} cropShape="round" showGrid={false} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={useCallback((_, croppedPixels) => setCroppedAreaPixels(croppedPixels as any), [])} /></div>
+          <div className="relative flex-1">
+            <Cropper
+              image={avatarFile}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={useCallback((_: any, croppedPixels: any) => setCroppedAreaPixels(croppedPixels), [])}
+            />
+          </div>
           <div className="p-5 bg-white flex justify-between items-center pb-safe">
             <button onClick={() => setAvatarFile(null)} className="text-stone-500 font-medium text-sm">취소</button><p className="text-xs text-stone-400">손가락으로 확대/이동</p><button onClick={handleCropSave} disabled={loading} className="text-blue-500 font-bold text-sm">{loading ? '적용중...' : '확인'}</button>
           </div>
@@ -795,7 +802,7 @@ export default function Home() {
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'profile' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-            <span className="text-[10px] font-medium">내 공간</span>
+            <span className="text-xs font-medium">내 공간</span>
           </button>
         </nav>
       )}
