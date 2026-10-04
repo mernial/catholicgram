@@ -6,7 +6,8 @@ import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
 
-const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
+// 관리자 계정 (게시물 삭제, 인증 뱃지 지정). 바꿀 때는 supabase/admin-badges.sql 도 함께 수정
+const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr'];
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
