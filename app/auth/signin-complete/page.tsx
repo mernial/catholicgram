@@ -1,37 +1,36 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 
-export default function SignInCompletePage() {
-  const router = useRouter();
-
+export default function SignInComplete() {
   useEffect(() => {
-    const handleAuth = async () => {
-      // URL의 해시 토큰을 읽고 세션을 등록할 때까지 잠시 대기 후 이동
-      const { data } = await supabase.auth.getSession();
+    // URL의 토큰을 세션에 저장한 뒤 메인 페이지('/')로 자동 이동
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (session) {
+        window.location.replace('/');
+      }
+    });
+
+    supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         window.location.replace('/');
-      } else {
-        const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-          if (session) {
-            window.location.replace('/');
-          }
-        });
-        setTimeout(() => {
-          window.location.replace('/');
-        }, 1500);
       }
-    };
+    });
 
-    handleAuth();
-  }, [router]);
+    // 혹시 처리가 늦어져도 1.5초 뒤에 무조건 메인으로 복귀
+    setTimeout(() => {
+      window.location.replace('/');
+    }, 1500);
+
+    return () => {
+      authListener?.subscription.unsubscribe();
+    };
+  }, []);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-stone-50 text-stone-600 gap-3">
-      <span className="text-3xl animate-bounce">🕊️</span>
-      <p className="text-sm font-medium">로그인을 완료하는 중입니다...</p>
+    <div className="min-h-screen flex items-center justify-center bg-stone-50">
+      <p className="text-stone-600 text-sm font-medium">로그인을 완료하는 중입니다...</p>
     </div>
   );
 }
