@@ -10,6 +10,8 @@ import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import FeedbackModal from '@/components/FeedbackModal';
+import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
+import SettingsModal from '@/components/SettingsModal';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -125,6 +127,9 @@ export default function Home() {
   const [installBannerDismissed, setInstallBannerDismissed] = useState(true);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   // 휴대폰 푸시 알림 상태
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
@@ -350,6 +355,34 @@ export default function Home() {
     const next: FollowStatus = currentStatus === 'none' ? 'pending' : 'none';
     if (activeTab === 'profile' && viewingUserId === targetId) fetchFollowData(targetId);
     if (actionModalUser && actionModalUser.id === targetId) setActionUserFollowStatus(next);
+  };
+
+  // --- 차단 ---
+  const fetchBlocks = async (userId: string) => {
+    const { data } = await supabase.from('blocks').select('blocked_id').eq('blocker_id', userId);
+    setBlockedIds(new Set((data || []).map(b => b.blocked_id)));
+  };
+
+  const blockUser = async (targetId: string) => {
+    if (!user || targetId === user.id) return;
+    const { error } = await supabase.from('blocks').insert({ blocker_id: user.id, blocked_id: targetId });
+    if (error && error.code !== '23505') { alert(`차단하지 못했습니다.\n(${error.message})`); return; }
+    // 서로의 팔로우 관계 정리
+    await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', targetId);
+    await supabase.from('follows').delete().eq('follower_id', targetId).eq('following_id', user.id);
+    setBlockedIds(prev => new Set(prev).add(targetId));
+    setActionModalUser(null);
+    if (activeTab === 'chat' && currentChatUser?.id === targetId) { setActiveTab('messages'); storageSet('activeTab', 'messages'); }
+  };
+
+  const unblockUser = async (targetId: string) => {
+    if (!user) return;
+    await supabase.from('blocks').delete().eq('blocker_id', user.id).eq('blocked_id', targetId);
+    setBlockedIds(prev => { const next = new Set(prev); next.delete(targetId); return next; });
+  };
+
+  const confirmBlock = (target: UserProfile) => {
+    if (window.confirm(`${target.baptismal_name}님을 차단할까요?\n서로의 글과 댓글이 보이지 않고, 메시지와 팔로우 요청을 받지 않습니다.`)) blockUser(target.id);
   };
 
   // 나에게 온 팔로우 요청
@@ -611,6 +644,7 @@ export default function Home() {
   };
 
   const refreshAlerts = (userId: string) => {
+    fetchBlocks(userId);
     fetchNotifications(userId);
     fetchUnreadMessages(userId);
     fetchFollowRequests(userId);
@@ -910,6 +944,9 @@ export default function Home() {
               </div>
             </div>
           </div>
+        ) : null}
+        {activeTab === 'chat' && currentChatUser ? (
+          <button onClick={() => handleAvatarClick({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
         ) : (
           <>
             <div className="flex items-center gap-2 cursor-pointer" onClick={goToHome}>
@@ -985,7 +1022,7 @@ export default function Home() {
           </section>
 
           <section className="divide-y divide-stone-200/70 flex-1">
-            {posts.map((post) => {
+            {posts.filter(post => !blockedIds.has(post.user_id)).map((post) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
               return (
                 <article key={post.id} id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
@@ -1007,6 +1044,7 @@ export default function Home() {
                     <div className="flex items-center gap-1">
                       {user?.id === post.user_id && <button onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }} className="text-[11px] text-stone-400 hover:text-stone-700 px-2 py-1">수정</button>}
                       {canDelete && <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">삭제</button>}
+                      {user && user.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content })} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">신고</button>}
                     </div>
                   </div>
                   
@@ -1039,9 +1077,14 @@ export default function Home() {
                   {openComments[post.id] && (
                     <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
                       <div className="flex flex-col gap-1.5">
-                        {(comments[post.id] || []).map((c) => (
+                        {(comments[post.id] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).map((c) => (
                           <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
-                            <span className="font-bold text-[11px] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="font-bold text-[11px] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
+                              {user && c.user_id !== user.id && (
+                                <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[10px] text-stone-400 hover:text-red-500">신고</button>
+                              )}
+                            </span>
                             <span>{c.content}</span>
                           </div>
                         ))}
@@ -1089,6 +1132,9 @@ export default function Home() {
                     프로필 사진 변경
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                   </label>
+                  <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                    ⚙️ 설정
+                  </button>
                   <button onClick={() => setShowFeedback(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     {isAdmin ? '📮 건의함' : '📮 건의하기'}
                   </button>
@@ -1149,7 +1195,7 @@ export default function Home() {
 
       {/* 익명 고민상담 탭 */}
       {activeTab === 'anon' && (
-        <AnonBoard user={user} isAdmin={isAdmin} onRequireLogin={() => setShowAuthModal(true)} />
+        <AnonBoard user={user} isAdmin={isAdmin} onRequireLogin={() => setShowAuthModal(true)} onReport={setReportTarget} />
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -1162,7 +1208,7 @@ export default function Home() {
             {chatPartners.length === 0 ? (
               <div className="p-12 text-center text-stone-400 text-sm">아직 주고받은 메시지가 없습니다.</div>
             ) : (
-              chatPartners.map(partner => (
+              chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => (
                 <button key={partner.id} onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
                   {partner.avatar_url ? (
                     <img src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
@@ -1255,15 +1301,37 @@ export default function Home() {
               <button onClick={() => { toggleFollow(actionModalUser.id, actionUserFollowStatus); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
                 {actionUserFollowStatus === 'accepted' ? '✖ 팔로우 취소' : actionUserFollowStatus === 'pending' ? '⏳ 요청됨 (누르면 요청 취소)' : '➕ 팔로우 요청'}
               </button>
-              <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 transition-colors">
+              <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 border-b border-stone-100 transition-colors">
                 💬 개인 메시지(DM) 보내기
               </button>
+              <button onClick={() => { const u = actionModalUser; setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 border-b border-stone-100 transition-colors">
+                🚨 신고하기
+              </button>
+              {blockedIds.has(actionModalUser.id) ? (
+                <button onClick={() => { unblockUser(actionModalUser.id); setActionModalUser(null); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 transition-colors">
+                  ✅ 차단 해제
+                </button>
+              ) : (
+                <button onClick={() => confirmBlock(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-red-600 hover:bg-red-50 transition-colors">
+                  🚫 차단하기
+                </button>
+              )}
               <button onClick={() => setActionModalUser(null)} className="w-full p-4 text-sm font-bold text-center text-stone-400 hover:bg-stone-50 transition-colors bg-stone-50/50 mt-2">
                 닫기
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* 신고 */}
+      {reportTarget && (
+        <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} onBlock={blockUser} />
+      )}
+
+      {/* 설정 (차단 목록, 약관, 탈퇴) */}
+      {showSettings && user && (
+        <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser} />
       )}
 
       {/* 운영자 건의함 */}
@@ -1367,7 +1435,7 @@ export default function Home() {
               </div>
             )}
             <div className="overflow-y-auto divide-y divide-stone-100">
-              {followRequests.map(r => (
+              {followRequests.filter(r => !blockedIds.has(r.follower.id)).map(r => (
                 <div key={r.id} className="p-4 flex items-center gap-3 bg-blue-50/40">
                   <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
@@ -1383,7 +1451,7 @@ export default function Home() {
                   <button onClick={() => respondFollowRequest(r, false)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">거절</button>
                 </div>
               ))}
-              {unreadMessages.map(u => (
+              {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
                 <button key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
                   <p className="text-[13px] text-stone-800">
                     ✉️ <b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[10px] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>

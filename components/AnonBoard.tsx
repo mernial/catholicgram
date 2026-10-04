@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import type { ReportTarget } from '@/components/ReportDialog';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -80,7 +81,12 @@ function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean;
   );
 }
 
-export default function AnonBoard({ user, isAdmin, onRequireLogin }: { user: User | null; isAdmin: boolean; onRequireLogin: () => void }) {
+export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
+  user: User | null;
+  isAdmin: boolean;
+  onRequireLogin: () => void;
+  onReport: (target: ReportTarget) => void;
+}) {
   const [posts, setPosts] = useState<AnonPost[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
@@ -248,6 +254,9 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin }: { user: Use
                     {(post.is_mine || isAdmin) && (
                       <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 px-1.5 py-1">삭제</button>
                     )}
+                    {!post.is_mine && (
+                      <button onClick={() => onReport({ type: 'anon_post', id: post.id, preview: post.content })} className="text-[11px] text-stone-400 hover:text-red-500 px-1.5 py-1">신고</button>
+                    )}
                   </div>
                 </div>
 
@@ -277,9 +286,14 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin }: { user: Use
                             <AnonTag code={reply.anon_code} isAuthor={reply.is_post_author} isMine={reply.is_mine} />
                             <span className="text-[10px] text-stone-400">{timeAgo(reply.created_at)}</span>
                           </span>
-                          {(reply.is_mine || isAdmin) && (
-                            <button onClick={() => handleDeleteReply(post.id, reply.id)} className="text-[10px] text-stone-400 hover:text-red-500">삭제</button>
-                          )}
+                          <span className="flex items-center gap-2">
+                            {(reply.is_mine || isAdmin) && (
+                              <button onClick={() => handleDeleteReply(post.id, reply.id)} className="text-[10px] text-stone-400 hover:text-red-500">삭제</button>
+                            )}
+                            {!reply.is_mine && (
+                              <button onClick={() => onReport({ type: 'anon_reply', id: reply.id, preview: reply.content })} className="text-[10px] text-stone-400 hover:text-red-500">신고</button>
+                            )}
+                          </span>
                         </div>
                         <span className="text-stone-800 whitespace-pre-wrap pl-1">{reply.content}</span>
                       </div>
