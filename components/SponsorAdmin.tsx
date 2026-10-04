@@ -154,7 +154,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[30rem] max-h-[90vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+      <div className="bg-white w-full sm:w-[30rem] max-h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           {draft
             ? <button onClick={() => setDraft(null)} className="text-sm font-bold text-stone-900">← {draft.id ? '배너 수정' : '새 배너'}</button>

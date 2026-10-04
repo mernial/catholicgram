@@ -949,27 +949,27 @@ export default function Home() {
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
-    <main className="max-w-xl mx-auto min-h-screen border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative pb-16">
+    <main className={`w-full max-w-xl mx-auto min-h-[100dvh] sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? '' : 'pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
       
       {/* 헤더 */}
-      <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between z-20">
+      <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-3 sm:px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between gap-2 z-20">
         {activeTab === 'chat' ? (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button onClick={() => { setActiveTab('messages'); storageSet('activeTab', 'messages'); }} className="text-stone-600 hover:text-black">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               {currentChatUser?.avatar_url ? (
-                <img src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                <img src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{currentChatUser?.baptismal_name?.[0]}</div>
+                <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{currentChatUser?.baptismal_name?.[0]}</div>
               )}
-              <div>
-                <div className="flex items-center gap-1">
-                  <h1 className="font-bold text-stone-900 text-sm">{currentChatUser?.baptismal_name}</h1>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1 min-w-0">
+                  <h1 className="font-bold text-stone-900 text-sm truncate">{currentChatUser?.baptismal_name}</h1>
                   <RoleBadge type={currentChatUser?.badge_type} />
                 </div>
-                <p className="text-[10px] text-stone-400">@{currentChatUser?.handle}</p>
+                <p className="text-[10px] text-stone-400 truncate">@{currentChatUser?.handle}</p>
               </div>
             </div>
           </div>
@@ -978,31 +978,33 @@ export default function Home() {
           <button onClick={() => handleAvatarClick({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
         ) : (
           <>
-            <div className="flex items-center gap-2 cursor-pointer" onClick={goToHome}>
+            <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0" onClick={goToHome}>
               <span className="text-amber-800 text-xl font-serif">✟</span>
-              <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg">가톨릭그램</h1>
+              <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg whitespace-nowrap">가톨릭그램</h1>
             </div>
-            <div>
+            <div className="min-w-0">
               {user ? (
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                   <button onClick={openNotifications} className="relative text-stone-600 hover:text-stone-900" aria-label="알림">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
                     )}
                   </button>
-                  <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity">
+                  <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity min-w-0">
                     {profile?.avatar_url ? (
                       <img src={profile.avatar_url} alt="내 프로필" className="w-6 h-6 rounded-full object-cover border border-stone-200" />
                     ) : (
                       <div className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-[10px] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
                     )}
-                    <span className="text-xs font-medium text-stone-700 flex items-center gap-1">
-                      {profile?.baptismal_name}
+                    {/* 좁은 화면에서는 이름을 숨기고 사진만 */}
+                    <span className="text-xs font-medium text-stone-700 hidden min-[380px]:flex items-center gap-1 min-w-0">
+                      <span className="truncate max-w-[7rem] sm:max-w-[10rem]">{profile?.baptismal_name}</span>
                       <RoleBadge type={profile?.badge_type} size="xs" showLabel={false} />
                     </span>
                   </button>
-                  <button onClick={() => supabase.auth.signOut()} className="text-[11px] text-stone-400 hover:text-stone-700">로그아웃</button>
+                  {/* 휴대폰에서는 내 공간 → 설정에서 로그아웃 */}
+                  <button onClick={() => supabase.auth.signOut()} className="hidden sm:inline text-[11px] text-stone-400 hover:text-stone-700 whitespace-nowrap">로그아웃</button>
                 </div>
               ) : (
                 <button onClick={() => setShowAuthModal(true)} className="text-xs font-semibold bg-stone-900 text-white px-3.5 py-1.5 rounded-full">로그인</button>
@@ -1060,22 +1062,22 @@ export default function Home() {
               return (
                 <Fragment key={post.id}>
                 <article id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
+                  <div className="flex items-center justify-between gap-2">
+                    <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left min-w-0 flex-1">
                       {post.avatar_url ? (
-                        <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
+                        <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                       ) : (
-                        <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(post.author_name || '교')[0]}</div>
+                        <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{(post.author_name || '교')[0]}</div>
                       )}
-                      <div className="flex flex-col">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-xs font-bold text-stone-800 truncate">{post.author_name}</span>
                           <RoleBadge type={post.badge_type} />
                         </div>
-                        <span className="text-[11px] text-stone-400">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
+                        <span className="text-[11px] text-stone-400 truncate">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
                       </div>
                     </button>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-0.5 shrink-0 whitespace-nowrap">
                       {user?.id === post.user_id && <button onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }} className="text-[11px] text-stone-400 hover:text-stone-700 px-2 py-1">수정</button>}
                       {canDelete && <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">삭제</button>}
                       {user && user.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content })} className="text-[11px] text-stone-400 hover:text-red-500 px-2 py-1">신고</button>}
@@ -1102,7 +1104,7 @@ export default function Home() {
                     </div>
                   )}
 
-                  <div className="flex items-center gap-5 text-xs font-medium pt-1">
+                  <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium pt-1">
                     <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
                     <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
                     <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글</button>
@@ -1308,7 +1310,7 @@ export default function Home() {
             )}
             <div ref={messagesEndRef} />
           </div>
-          <form onSubmit={sendMessage} className="p-3 bg-white border-t border-stone-200 flex gap-2">
+          <form onSubmit={sendMessage} className="sticky bottom-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
             <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -1456,7 +1458,7 @@ export default function Home() {
       {/* 댓글 알림 목록 */}
       {showNotifications && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowNotifications(false)}>
-          <div className="bg-white w-full sm:w-96 max-h-[80vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
               <div className="flex items-center gap-2">
@@ -1593,7 +1595,7 @@ export default function Home() {
       {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
-          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 {selectedPostDetail.avatar_url ? (
@@ -1612,7 +1614,7 @@ export default function Home() {
             <div className="overflow-y-auto flex-1 flex flex-col">
               {selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
                 <div className="w-full bg-black flex items-center justify-center">
-                  <img src={selectedPostDetail.images[0]} alt="게시물 사진" className="max-h-[50vh] object-contain w-full" />
+                  <img src={selectedPostDetail.images[0]} alt="게시물 사진" className="max-h-[50dvh] object-contain w-full" />
                 </div>
               )}
               <div className="p-5 flex flex-col gap-2">
@@ -1626,7 +1628,7 @@ export default function Home() {
 
       {selectedImage && (
         <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 cursor-pointer" onClick={() => setSelectedImage(null)}>
-          <img src={selectedImage} alt="확대 사진" className="max-w-full max-h-[90vh] object-contain rounded-lg" />
+          <img src={selectedImage} alt="확대 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
 

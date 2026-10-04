@@ -174,7 +174,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] max-h-[88vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+      <div className="bg-white w-full sm:w-[28rem] max-h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="font-bold text-stone-900">📮 운영자에게 건의하기</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
