@@ -1278,7 +1278,7 @@ export default function Home() {
 
       {/* 4. 1:1 실시간 채팅방 탭 */}
       {activeTab === 'chat' && (
-        <section className="flex-1 flex flex-col bg-[#F5F5F5]">
+        <section className="flex-1 flex flex-col bg-stone-100">
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>

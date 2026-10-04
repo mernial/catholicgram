@@ -7,6 +7,9 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 body {
+  background-color: #F3EEE6;       /* 화면 바깥(태블릿) 배경: 따뜻한 모래색 */
+  color: #2A2621;
+  letter-spacing: -0.01em;
   overflow-x: hidden;               /* 가로로 화면이 밀리지 않도록 */
   word-break: keep-all;             /* 한글은 단어 단위로 줄바꿈 */
   overflow-wrap: anywhere;          /* 긴 링크·영문은 화면 안에서 줄바꿈 */
