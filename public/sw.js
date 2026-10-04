@@ -9,6 +9,10 @@ self.addEventListener('push', (event) => {
       icon: '/icon-192.png',
       badge: '/icon-192.png',
       tag: data.tag,
+      renotify: !!data.tag, // 같은 대화/글의 알림이 또 와도 다시 소리·진동
+      silent: false,
+      vibrate: [200, 100, 200],
+      timestamp: Date.now(),
       data: { url: data.url || '/' },
     })
   );
