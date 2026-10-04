@@ -1173,7 +1173,7 @@ export default function Home() {
                   </button>
                   {isAdmin && (
                     <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors">
-                      📢 후원 배너
+                      📢 광고 관리
                     </button>
                   )}
                   <button onClick={() => setShowFeedback(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
