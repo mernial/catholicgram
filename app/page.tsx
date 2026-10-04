@@ -31,6 +31,11 @@ interface Post {
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
+// 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
+interface BeforeInstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
@@ -77,6 +82,11 @@ export default function Home() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [isStandalone, setIsStandalone] = useState(true); // 확인 전에는 배너를 숨김
+  const [isIOS, setIsIOS] = useState(false);
+  const [installBannerDismissed, setInstallBannerDismissed] = useState(true);
+  const [showInstallGuide, setShowInstallGuide] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
@@ -121,6 +131,19 @@ export default function Home() {
     }
     if (!isStorageAvailable()) setStorageBlocked(true);
 
+    // 홈 화면 추가(앱 설치) 상태 확인
+    const nav = navigator as Navigator & { standalone?: boolean };
+    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true);
+    setIsIOS(/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+    setInstallBannerDismissed(storageGet('installBannerDismissed') === '1');
+    const onBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+    };
+    const onAppInstalled = () => { setIsStandalone(true); setInstallPrompt(null); };
+    window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+    window.addEventListener('appinstalled', onAppInstalled);
+
     const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = storageGet('viewingUserId');
     if (savedTab) setActiveTab(savedTab);
@@ -141,7 +164,11 @@ export default function Home() {
         goToHome();
       }
     });
-    return () => { authListener.subscription.unsubscribe(); };
+    return () => {
+      authListener.subscription.unsubscribe();
+      window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', onAppInstalled);
+    };
   }, []);
 
   useEffect(() => {
@@ -452,6 +479,24 @@ export default function Home() {
     };
   }, [user]);
 
+  const handleInstallClick = async () => {
+    // 안드로이드 크롬: 브라우저의 설치 창을 바로 띄움
+    if (installPrompt) {
+      await installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      setInstallPrompt(null);
+      if (outcome === 'accepted') setIsStandalone(true);
+      return;
+    }
+    // 아이폰 및 설치 창을 지원하지 않는 브라우저: 직접 추가하는 방법 안내
+    setShowInstallGuide(true);
+  };
+
+  const dismissInstallBanner = () => {
+    setInstallBannerDismissed(true);
+    storageSet('installBannerDismissed', '1');
+  };
+
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
     setOpenComments({ ...openComments, [postId]: nextState });
@@ -567,6 +612,16 @@ export default function Home() {
       {/* 1. 홈 탭 */}
       {activeTab === 'home' && (
         <>
+          {!isStandalone && !installBannerDismissed && !isKakaoInApp && (
+            <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
+              <img src="/icon-192.png" alt="" className="w-8 h-8 rounded-lg" />
+              <p className="flex-1 text-xs text-stone-700 leading-snug">
+                <b>가톨릭그램</b>을 홈 화면에 추가하고<br />앱처럼 바로 열어보세요
+              </p>
+              <button onClick={handleInstallClick} className="bg-stone-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0">추가하기</button>
+              <button onClick={dismissInstallBanner} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
+            </div>
+          )}
           <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
               <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요..." : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
@@ -698,10 +753,17 @@ export default function Home() {
 
             <div className="mt-5 flex gap-2">
               {viewingUserId === user?.id ? (
-                <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
-                  프로필 사진 변경
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
-                </label>
+                <>
+                  <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
+                    프로필 사진 변경
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+                  </label>
+                  {!isStandalone && (
+                    <button onClick={handleInstallClick} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                      📱 홈 화면에 추가
+                    </button>
+                  )}
+                </>
               ) : (
                 <>
                   <button onClick={() => toggleFollow(viewingUserId!, followData.isFollowing)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.isFollowing ? 'bg-stone-200 text-stone-800' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
@@ -829,6 +891,36 @@ export default function Home() {
                 닫기
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 홈 화면 추가 방법 안내 */}
+      {showInstallGuide && (
+        <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
+          <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <img src="/icon-192.png" alt="" className="w-12 h-12 rounded-xl" />
+              <div>
+                <h2 className="font-bold text-stone-900">홈 화면에 추가하기</h2>
+                <p className="text-xs text-stone-500">앱처럼 아이콘을 눌러 바로 열 수 있어요</p>
+              </div>
+            </div>
+            {isIOS ? (
+              <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
+                <li><b>Safari</b>로 이 페이지를 열어주세요 (Chrome은 오른쪽 위 공유 버튼)</li>
+                <li>화면 아래(또는 위)의 <b>공유 버튼</b> <span className="inline-block border border-stone-300 rounded px-1 text-xs">⬆︎</span> 을 누르세요</li>
+                <li>목록을 내려 <b>홈 화면에 추가</b>를 누르세요</li>
+                <li>오른쪽 위 <b>추가</b>를 누르면 완료!</li>
+              </ol>
+            ) : (
+              <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
+                <li><b>Chrome</b>: 오른쪽 위 <b>⋮</b> 메뉴 → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b></li>
+                <li><b>삼성 인터넷</b>: 아래 <b>≡</b> 메뉴 → <b>현재 페이지 추가</b> → <b>홈 화면</b></li>
+                <li>확인 창에서 <b>추가</b>를 누르면 완료!</li>
+              </ol>
+            )}
+            <button onClick={() => setShowInstallGuide(false)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">확인</button>
           </div>
         </div>
       )}
