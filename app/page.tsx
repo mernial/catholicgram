@@ -5,6 +5,9 @@ import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 
+// 관리자 이메일 설정 (윤호님의 카카오 계정 이메일을 등록하여 모든 글 삭제 권한 부여)
+const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
+
 interface Post {
   id: string;
   content: string;
@@ -12,6 +15,7 @@ interface Post {
   pray_count: number;
   like_count: number;
   author_name: string;
+  user_id: string; 
   created_at: string;
 }
 
@@ -40,6 +44,13 @@ export default function Home() {
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [setupError, setSetupError] = useState('');
+
+  // 사진 확대 모달용 상태
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  // 글 수정 기능 상태
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
 
   useEffect(() => {
     checkUser();
@@ -74,26 +85,6 @@ export default function Home() {
     }
   };
 
-  const handleGoogleLogin = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: 'https://catholicgram-dey7.vercel.app',
-        skipBrowserRedirect: true,
-      },
-    });
-
-    if (error) {
-      alert('로그인 오류가 발생했습니다.');
-      return;
-    }
-
-    if (data?.url) {
-      window.location.href = data.url;
-    }
-  };
-
   const handleKakaoLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -108,10 +99,7 @@ export default function Home() {
       alert('카카오 로그인 오류가 발생했습니다.');
       return;
     }
-
-    if (data?.url) {
-      window.location.href = data.url;
-    }
+    if (data?.url) window.location.href = data.url;
   };
 
   const handleProfileSetup = async (e: React.FormEvent) => {
@@ -200,46 +188,77 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 기도 및 공감 버튼 통합 함수 (한 사람이 한 번만 클릭 가능 / 다시 누르면 취소)
-  const handleReaction = async (postId: string, type: 'pray' | 'like') => {
-    if (!user) {
-      setShowAuthModal(true);
+  // 게시물 삭제 함수
+  const handleDeletePost = async (postId: string) => {
+    if (!window.confirm('정말로 이 글을 삭제하시겠습니까?')) return;
+    setPosts(posts.filter(p => p.id !== postId));
+    const { error } = await supabase.from('posts').delete().eq('id', postId);
+    if (error) {
+      alert('삭제 중 오류가 발생했습니다. 다시 시도해주세요.');
+      fetchPosts();
+    }
+  };
+
+  // 게시물 수정 준비 함수
+  const startEditing = (post: Post) => {
+    setEditingPostId(post.id);
+    setEditContent(post.content);
+  };
+
+  // 게시물 수정 취소 함수
+  const cancelEditing = () => {
+    setEditingPostId(null);
+    setEditContent('');
+  };
+
+  // 게시물 수정 저장 함수
+  const handleUpdatePost = async (postId: string) => {
+    if (!editContent.trim()) {
+      alert('내용을 입력해주세요.');
       return;
     }
+
+    // 화면(UI) 즉시 반영
+    setPosts(posts.map(p => p.id === postId ? { ...p, content: editContent } : p));
+    setEditingPostId(null);
+    
+    // DB 저장
+    const { error } = await supabase
+      .from('posts')
+      .update({ content: editContent })
+      .eq('id', postId);
+
+    if (error) {
+      alert('수정 중 오류가 발생했습니다.');
+      fetchPosts(); // 에러 발생 시 원상복구
+    }
+  };
+
+  const handleReaction = async (postId: string, type: 'pray' | 'like') => {
+    if (!user) { setShowAuthModal(true); return; }
     if (needsProfileSetup) return;
 
     const currentPost = posts.find((p) => p.id === postId);
     if (!currentPost) return;
 
-    // 1. 유저가 이미 눌렀는지 확인
     const { data: existingReaction } = await supabase
       .from('post_reactions')
       .select('id')
       .eq('post_id', postId)
       .eq('user_id', user.id)
       .eq('reaction_type', type)
-      .maybeSingle(); // 값이 없어도 에러가 나지 않도록 maybeSingle 사용
+      .maybeSingle(); 
 
     if (existingReaction) {
-      // 2-1. 이미 눌렀다면 기록 삭제 (취소)
       await supabase.from('post_reactions').delete().eq('id', existingReaction.id);
-      
       const newCount = type === 'pray' ? currentPost.pray_count - 1 : currentPost.like_count - 1;
       const updateField = type === 'pray' ? { pray_count: Math.max(0, newCount) } : { like_count: Math.max(0, newCount) };
-      
       await supabase.from('posts').update(updateField).eq('id', postId);
       setPosts(posts.map(p => p.id === postId ? { ...p, ...updateField } : p));
     } else {
-      // 2-2. 안 눌렀다면 기록 추가
-      await supabase.from('post_reactions').insert({
-        post_id: postId,
-        user_id: user.id,
-        reaction_type: type
-      });
-      
+      await supabase.from('post_reactions').insert({ post_id: postId, user_id: user.id, reaction_type: type });
       const newCount = type === 'pray' ? currentPost.pray_count + 1 : currentPost.like_count + 1;
       const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
-      
       await supabase.from('posts').update(updateField).eq('id', postId);
       setPosts(posts.map(p => p.id === postId ? { ...p, ...updateField } : p));
     }
@@ -273,7 +292,7 @@ export default function Home() {
   };
 
   return (
-    <main className="max-w-xl mx-auto min-h-screen border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans">
+    <main className="max-w-xl mx-auto min-h-screen border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative">
       {/* 헤더 */}
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-4 py-3 flex items-center justify-between z-20">
         <div className="flex items-center gap-2">
@@ -340,68 +359,141 @@ export default function Home() {
             아직 등록된 묵상 나눔이 없습니다.<br />첫 기도의 불을 밝혀주세요.
           </div>
         ) : (
-          posts.map((post) => (
-            <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3 hover:bg-stone-50/50 transition-colors">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">
-                  {(post.author_name || '교')[0]}
-                </div>
-                <span className="text-xs font-bold text-stone-800">{post.author_name || '익명 교우'}</span>
-                <span className="text-[11px] text-stone-400">• {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
-              </div>
-              <p className="text-stone-800 text-[13.5px] whitespace-pre-wrap leading-relaxed">{post.content}</p>
-              {post.images && post.images.length > 0 && (
-                <div className={`grid gap-2 rounded-2xl overflow-hidden border border-stone-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
-                  {post.images.map((img, i) => (
-                    <div key={i} className="aspect-square bg-stone-100 flex items-center justify-center overflow-hidden">
-                      <img src={img} alt="첨부 사진" className="w-full h-full object-cover" />
+          posts.map((post) => {
+            const isAuthor = user?.id === post.user_id; // 작성자 본인인지 확인
+            const isAdmin = user?.email && ADMIN_EMAILS.includes(user.email); // 관리자인지 확인
+            const canEdit = isAuthor; // 수정은 작성자 본인만 가능
+            const canDelete = isAuthor || isAdmin; // 삭제는 작성자 본인 + 관리자 가능
+
+            return (
+              <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3 hover:bg-stone-50/50 transition-colors">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">
+                      {(post.author_name || '교')[0]}
                     </div>
-                  ))}
+                    <span className="text-xs font-bold text-stone-800">{post.author_name || '익명 교우'}</span>
+                    <span className="text-[11px] text-stone-400">• {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
+                  </div>
+                  
+                  {/* 수정 & 삭제 버튼 영역 */}
+                  <div className="flex items-center gap-1">
+                    {canEdit && editingPostId !== post.id && (
+                      <button onClick={() => startEditing(post)} className="text-[11px] text-stone-400 hover:text-stone-700 font-medium px-2 py-1 transition-colors">
+                        수정
+                      </button>
+                    )}
+                    {canDelete && (
+                      <button onClick={() => handleDeletePost(post.id)} className="text-[11px] text-stone-400 hover:text-red-500 font-medium px-2 py-1 transition-colors">
+                        삭제
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
-              <div className="flex items-center gap-5 text-xs text-stone-600 font-medium pt-1">
-                <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
-                  <span>🙏</span> 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}
-                </button>
-                <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 hover:text-purple-600 transition-colors">
-                  <span>🍇</span> 공감해요 {post.like_count > 0 && `(${post.like_count})`}
-                </button>
-                <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 hover:text-stone-900 transition-colors">
-                  <span>💬</span> 댓글
-                </button>
-              </div>
-              {openComments[post.id] && (
-                <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
-                  <div className="flex flex-col gap-1.5">
-                    {(comments[post.id] || []).map((c) => (
-                      <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
-                        <span className="font-bold text-[11px] text-stone-700">{c.author_name || '교우'}</span>
-                        <span>{c.content}</span>
+                
+                {/* 글 내용 표시 (수정 모드 vs 일반 모드) */}
+                {editingPostId === post.id ? (
+                  <div className="flex flex-col gap-2 animate-fade-in">
+                    <textarea
+                      value={editContent}
+                      onChange={(e) => setEditContent(e.target.value)}
+                      className="w-full p-3.5 text-sm bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400 text-stone-900 transition-all"
+                      rows={4}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button onClick={cancelEditing} className="px-3.5 py-1.5 rounded-lg border border-stone-200 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors">
+                        취소
+                      </button>
+                      <button onClick={() => handleUpdatePost(post.id)} className="px-3.5 py-1.5 rounded-lg bg-stone-900 text-white text-xs font-bold hover:bg-stone-800 transition-colors">
+                        저장
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-stone-800 text-[13.5px] whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                )}
+                
+                {/* 이미지 영역 */}
+                {post.images && post.images.length > 0 && (
+                  <div className={`grid gap-2 rounded-2xl overflow-hidden border border-stone-100 ${post.images.length === 1 ? 'grid-cols-1' : post.images.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                    {post.images.map((img, i) => (
+                      <div key={i} className="aspect-square bg-stone-100 flex items-center justify-center overflow-hidden cursor-pointer group" onClick={() => setSelectedImage(img)}>
+                        <img src={img} alt="첨부 사진" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                       </div>
                     ))}
                   </div>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="text"
-                      value={commentInputs[post.id] || ''}
-                      onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
-                      onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
-                      placeholder={user ? '따뜻한 위로와 격려의 댓글을...' : '로그인 후 댓글 작성 가능'}
-                      className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-stone-400 bg-white"
-                    />
-                    <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3.5 py-2 rounded-xl hover:bg-stone-700 transition-colors font-medium">
-                      등록
-                    </button>
-                  </div>
+                )}
+
+                {/* 하단 반응 버튼 */}
+                <div className="flex items-center gap-5 text-xs text-stone-600 font-medium pt-1">
+                  <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 hover:text-indigo-600 transition-colors">
+                    <span>🙏</span> 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}
+                  </button>
+                  <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 hover:text-purple-600 transition-colors">
+                    <span>🍇</span> 공감해요 {post.like_count > 0 && `(${post.like_count})`}
+                  </button>
+                  <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 hover:text-stone-900 transition-colors">
+                    <span>💬</span> 댓글
+                  </button>
                 </div>
-              )}
-            </article>
-          ))
+
+                {/* 댓글 영역 */}
+                {openComments[post.id] && (
+                  <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
+                    <div className="flex flex-col gap-1.5">
+                      {(comments[post.id] || []).map((c) => (
+                        <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
+                          <span className="font-bold text-[11px] text-stone-700">{c.author_name || '교우'}</span>
+                          <span>{c.content}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={commentInputs[post.id] || ''}
+                        onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)}
+                        placeholder={user ? '따뜻한 위로와 격려의 댓글을...' : '로그인 후 댓글 작성 가능'}
+                        className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 focus:outline-none focus:ring-1 focus:ring-stone-400 bg-white"
+                      />
+                      <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3.5 py-2 rounded-xl hover:bg-stone-700 transition-colors font-medium">
+                        등록
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })
         )}
       </section>
 
-     {/* 소셜 로그인 모달 창 */}
-     {showAuthModal && (
+      {/* 사진 전체화면 모달 */}
+      {selectedImage && (
+        <div 
+          className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 cursor-pointer"
+          onClick={() => setSelectedImage(null)}
+        >
+          <img 
+            src={selectedImage} 
+            alt="확대 사진" 
+            className="max-w-full max-h-[90vh] object-contain rounded-lg" 
+          />
+          <button 
+            className="absolute top-4 right-4 text-white text-3xl font-light hover:text-stone-300 w-10 h-10 flex items-center justify-center"
+            onClick={(e) => {
+              e.stopPropagation(); 
+              setSelectedImage(null);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* 소셜 로그인 모달 창 */}
+      {showAuthModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200">
             <div className="text-center">
@@ -427,7 +519,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* 프로필(세례명) 설정 강제 모달 */}
+      {/* 프로필 설정 모달 */}
       {user && needsProfileSetup && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200">
