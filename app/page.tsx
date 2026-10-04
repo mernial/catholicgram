@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
+import Cropper from 'react-easy-crop';
 
 const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr']; 
 
@@ -24,6 +25,28 @@ interface Post {
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
+
+// --- 이미지 자르기 유틸리티 ---
+const createImage = (url: string): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image));
+    image.addEventListener('error', (error) => reject(error));
+    image.src = url;
+  });
+
+async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
+  const image = await createImage(imageSrc);
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('No 2d context');
+  canvas.width = pixelCrop.width;
+  canvas.height = pixelCrop.height;
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.9);
+  });
+}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -46,6 +69,7 @@ export default function Home() {
   const [setupError, setSetupError] = useState('');
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null); // 🌟 게시물 상세 보기(사진+캡션)
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
@@ -62,6 +86,16 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [avatarFile, setAvatarFile] = useState<string | null>(null);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
+
+  // 🌟 타입 에러 방지를 위해 명시적 타입 지정
+  const onCropComplete = useCallback((_: any, croppedPixels: any) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
 
   useEffect(() => {
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
@@ -276,14 +310,9 @@ export default function Home() {
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
-      let uploadFile = file;
-      try {
-        uploadFile = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: false });
-      } catch (err) {
-        console.warn('압축 생략:', err);
-      }
+      const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true });
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, uploadFile);
+      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed);
       if (!uploadError) {
         const { data: { publicUrl } } = supabase.storage.from('community-images').getPublicUrl(fileName);
         uploadedUrls.push(publicUrl);
@@ -357,40 +386,29 @@ export default function Home() {
     }
   };
 
-  // 🌟 압축 과정 전면 제거, 원본 파일 곧바로 업로드 (절대 크래시 안 남)
-  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    try {
-      if (!e.target.files || e.target.files.length === 0 || !user) return;
-      const file = e.target.files[0];
-      setLoading(true);
-
-      const fileName = `${user.id}_${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
-      if (uploadError) {
-        alert(`사진 업로드 실패: ${uploadError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
-      if (updateError) {
-        alert(`프로필 반영 실패: ${updateError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
-      setViewingProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
-      await fetchPosts();
-      alert('프로필 사진이 변경되었습니다.');
-    } catch (err: any) {
-      console.error(err);
-      alert('사진 변경 중 오류가 발생했습니다.');
-    } finally {
-      setLoading(false);
-      if (e.target) e.target.value = '';
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const reader = new FileReader();
+      reader.addEventListener('load', () => setAvatarFile(reader.result?.toString() || null));
+      reader.readAsDataURL(e.target.files[0]);
     }
+  };
+
+  const handleCropSave = async () => {
+    if (!croppedAreaPixels || !avatarFile || !user) return;
+    setLoading(true);
+    try {
+      const croppedBlob = await getCroppedImg(avatarFile, croppedAreaPixels);
+      const fileName = `${user.id}_${Date.now()}.jpg`;
+      await supabase.storage.from('avatars').upload(fileName, croppedBlob);
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      setProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
+      setViewingProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
+      setAvatarFile(null);
+      fetchPosts();
+    } catch (err) { alert('사진 변경에 실패했습니다.'); }
+    setLoading(false);
   };
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
@@ -587,8 +605,8 @@ export default function Home() {
             <div className="mt-5 flex gap-2">
               {viewingUserId === user?.id ? (
                 <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
-                  {loading ? '변경 중...' : '프로필 사진 변경'}
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} disabled={loading} />
+                  프로필 사진 변경
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                 </label>
               ) : (
                 <>
@@ -608,7 +626,11 @@ export default function Home() {
               <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">게시물이 없습니다.</div>
             ) : (
               myPosts.map((post) => (
-                <div key={post.id} className="aspect-square bg-white relative group overflow-hidden border border-stone-100">
+                <div 
+                  key={post.id} 
+                  onClick={() => setSelectedPostDetail(post)} 
+                  className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
+                >
                   {post.images && post.images.length > 0 ? (
                     <img src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
@@ -739,6 +761,62 @@ export default function Home() {
 
             <div className="flex justify-center pt-2">
               <button onClick={() => setShowAuthModal(false)} className="text-xs text-stone-400 hover:text-stone-600">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 사진 자르기 모달 */}
+      {avatarFile && (
+        <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
+          <div className="relative flex-1">
+            <Cropper
+              image={avatarFile}
+              crop={crop}
+              zoom={zoom}
+              aspect={1}
+              cropShape="round"
+              showGrid={false}
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onCropComplete={onCropComplete}
+            />
+          </div>
+          <div className="p-5 bg-white flex justify-between items-center pb-safe">
+            <button onClick={() => setAvatarFile(null)} className="text-stone-500 font-medium text-sm">취소</button><p className="text-xs text-stone-400">손가락으로 확대/이동</p><button onClick={handleCropSave} disabled={loading} className="text-blue-500 font-bold text-sm">{loading ? '적용중...' : '확인'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
+      {selectedPostDetail && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
+          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-stone-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                {selectedPostDetail.avatar_url ? (
+                  <img src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(selectedPostDetail.author_name || '교')[0]}</div>
+                )}
+                <div>
+                  <span className="text-xs font-bold text-stone-800">{selectedPostDetail.author_name}</span>
+                  <span className="text-[10px] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
+                </div>
+              </div>
+              <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 font-bold text-lg">×</button>
+            </div>
+            
+            <div className="overflow-y-auto flex-1 flex flex-col">
+              {selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
+                <div className="w-full bg-black flex items-center justify-center">
+                  <img src={selectedPostDetail.images[0]} alt="게시물 사진" className="max-h-[50vh] object-contain w-full" />
+                </div>
+              )}
+              <div className="p-5 flex flex-col gap-2">
+                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed">{selectedPostDetail.content}</p>
+                <span className="text-[11px] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
+              </div>
             </div>
           </div>
         </div>
