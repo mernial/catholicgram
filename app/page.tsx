@@ -143,7 +143,7 @@ export default function Home() {
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [isFollowingActionUser, setIsFollowingActionUser] = useState(false);
 
-  const [chatPartners, setChatPartners] = useState<UserProfile[]>([]);
+  const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string })[]>([]);
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
@@ -194,7 +194,17 @@ export default function Home() {
 
     const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = storageGet('viewingUserId');
-    if (savedTab) setActiveTab(savedTab);
+    // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 열거나 메시지 목록으로 돌아간다
+    const savedChatUserId = storageGet('chatUserId');
+    if (savedTab === 'chat') {
+      setActiveTab('messages');
+      if (savedChatUserId) {
+        supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', savedChatUserId).single()
+          .then(({ data }) => { if (data) { setCurrentChatUser(data); setActiveTab('chat'); } });
+      }
+    } else if (savedTab) {
+      setActiveTab(savedTab);
+    }
     if (savedUserId) setViewingUserId(savedUserId);
 
     checkUser();
@@ -236,12 +246,12 @@ export default function Home() {
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
-    if (activeTab === 'chat' && currentChatUser) {
+    if (activeTab === 'chat' && currentChatUser && user) {
       fetchChatMessages(currentChatUser.id);
       interval = setInterval(() => fetchChatMessages(currentChatUser.id), 3000);
     }
     return () => clearInterval(interval);
-  }, [activeTab, currentChatUser]);
+  }, [activeTab, currentChatUser, user]);
 
   useEffect(() => {
     if (activeTab === 'chat') {
@@ -323,29 +333,37 @@ export default function Home() {
     const { data } = await supabase.from('messages').select('*').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`).order('created_at', { ascending: false });
     if (!data || data.length === 0) { setChatPartners([]); return; }
 
-    const partnerIds = new Set<string>();
+    // 상대별 가장 최근 메시지 (data는 최신순)
+    const latest = new Map<string, { content: string; created_at: string }>();
     data.forEach(m => {
-      if (m.sender_id !== user.id) partnerIds.add(m.sender_id);
-      if (m.receiver_id !== user.id) partnerIds.add(m.receiver_id);
+      const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
+      if (partnerId && !latest.has(partnerId)) latest.set(partnerId, { content: m.content, created_at: m.created_at });
     });
 
-    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(partnerIds));
-    setChatPartners(profiles || []);
+    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(latest.keys()));
+    const list = (profiles || []).map(p => ({ ...p, lastMessage: latest.get(p.id)?.content, lastAt: latest.get(p.id)?.created_at }));
+    list.sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''));
+    setChatPartners(list);
   };
 
   const openChatRoom = (partner: UserProfile) => {
+    if (!user) { setShowAuthModal(true); return; }
+    if (partner.id === user.id) return;
+    if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
     setCurrentChatUser(partner);
     setActiveTab('chat');
     storageSet('activeTab', 'chat');
+    storageSet('chatUserId', partner.id);
     setActionModalUser(null);
   };
 
   const fetchChatMessages = async (partnerId: string) => {
     if (!user) return;
-    const { data } = await supabase.from('messages').select('*')
+    const { data, error } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .order('created_at', { ascending: true });
     if (data) setChatMessages(data);
+    else if (error) console.error('메시지를 불러오지 못했습니다', error);
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -353,7 +371,14 @@ export default function Home() {
     if (!user || !currentChatUser || !messageInput.trim()) return;
     const newMsg = messageInput.trim();
     setMessageInput('');
-    const { data: sent } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg }).select('id').single();
+    const { data: sent, error } = await supabase.from('messages')
+      .insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg })
+      .select('id').single();
+    if (error) {
+      setMessageInput(newMsg); // 보내지 못한 내용은 입력창에 되돌려 둔다
+      alert(`메시지를 보내지 못했습니다.\n(${error.message})`);
+      return;
+    }
     fetchChatMessages(currentChatUser.id);
     if (sent) sendPush('message', sent.id);
   };
@@ -1001,7 +1026,7 @@ export default function Home() {
                       <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
                       <RoleBadge type={partner.badge_type} />
                     </div>
-                    <p className="text-xs text-stone-400 mt-0.5">@{partner.handle} • 대화 계속하기...</p>
+                    <p className="text-xs text-stone-500 mt-0.5 line-clamp-1">{partner.lastMessage || `@${partner.handle}`}</p>
                   </div>
                 </button>
               ))
