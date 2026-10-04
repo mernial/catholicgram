@@ -276,9 +276,14 @@ export default function Home() {
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
-      const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: false });
+      let uploadFile = file;
+      try {
+        uploadFile = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: false });
+      } catch (err) {
+        console.warn('압축 생략:', err);
+      }
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed);
+      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, uploadFile);
       if (!uploadError) {
         const { data: { publicUrl } } = supabase.storage.from('community-images').getPublicUrl(fileName);
         uploadedUrls.push(publicUrl);
@@ -352,26 +357,15 @@ export default function Home() {
     }
   };
 
-  // 🌟 안전하게 수정된 프로필 사진 업로드 핸들러 (useWebWorker: false)
+  // 🌟 압축 과정 전면 제거, 원본 파일 곧바로 업로드 (절대 크래시 안 남)
   const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     try {
       if (!e.target.files || e.target.files.length === 0 || !user) return;
       const file = e.target.files[0];
       setLoading(true);
 
-      let uploadFile = file;
-      try {
-        uploadFile = await imageCompression(file, {
-          maxSizeMB: 1,
-          maxWidthOrHeight: 800,
-          useWebWorker: false,
-        });
-      } catch (compErr) {
-        console.warn('이미지 압축 우회:', compErr);
-      }
-
       const fileName = `${user.id}_${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, uploadFile);
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, file);
       if (uploadError) {
         alert(`사진 업로드 실패: ${uploadError.message}`);
         setLoading(false);
@@ -389,7 +383,7 @@ export default function Home() {
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
       setViewingProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : null);
       await fetchPosts();
-      alert('프로필 사진이 안전하게 변경되었습니다.');
+      alert('프로필 사진이 변경되었습니다.');
     } catch (err: any) {
       console.error(err);
       alert('사진 변경 중 오류가 발생했습니다.');
