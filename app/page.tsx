@@ -91,6 +91,11 @@ export default function Home() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
+  // 🌟 타입 에러가 나지 않도록 함수형태로 분리
+  const onCropComplete = useCallback((_: any, croppedPixels: any) => {
+    setCroppedAreaPixels(croppedPixels);
+  }, []);
+
   useEffect(() => {
     const savedTab = localStorage.getItem('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
     const savedUserId = localStorage.getItem('viewingUserId');
@@ -722,7 +727,7 @@ export default function Home() {
               showGrid={false}
               onCropChange={setCrop}
               onZoomChange={setZoom}
-              onCropComplete={useCallback((_: any, croppedPixels: any) => setCroppedAreaPixels(croppedPixels), [])}
+              onCropComplete={onCropComplete}
             />
           </div>
           <div className="p-5 bg-white flex justify-between items-center pb-safe">
