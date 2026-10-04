@@ -86,6 +86,7 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const latestViewingUserIdRef = useRef<string | null>(null);
 
   const [avatarFile, setAvatarFile] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -123,6 +124,12 @@ export default function Home() {
 
   useEffect(() => {
     if (activeTab === 'profile' && viewingUserId) {
+      if (latestViewingUserIdRef.current !== viewingUserId) {
+        // 다른 프로필로 이동하면 이전 사람의 정보가 보이지 않도록 초기화
+        setViewingProfile(null);
+        setFollowData({ followers: 0, following: 0, isFollowing: false });
+      }
+      latestViewingUserIdRef.current = viewingUserId;
       fetchViewingProfile(viewingUserId);
       fetchFollowData(viewingUserId);
     } else if (activeTab === 'messages') {
@@ -176,7 +183,8 @@ export default function Home() {
 
   const fetchViewingProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
-    if (data) setViewingProfile(data);
+    // 응답이 늦게 도착해도 지금 보고 있는 프로필이 아니면 무시
+    if (data && latestViewingUserIdRef.current === userId) setViewingProfile(data);
   };
 
   const fetchFollowData = async (targetId: string) => {
@@ -187,6 +195,7 @@ export default function Home() {
       const { data } = await supabase.from('follows').select('id').eq('follower_id', user.id).eq('following_id', targetId).maybeSingle();
       isFollowing = !!data;
     }
+    if (latestViewingUserIdRef.current !== targetId) return;
     setFollowData({ followers: followers || 0, following: following || 0, isFollowing });
   };
 
@@ -290,8 +299,13 @@ export default function Home() {
 
   const fetchPosts = async () => {
     const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-    const { data: profilesData } = await supabase.from('profiles').select('id, avatar_url, handle, badge_type');
-    if (postsData && profilesData) {
+    if (!postsData) return;
+    // 게시물 작성자의 프로필만 가져오기
+    const authorIds = Array.from(new Set(postsData.map(p => p.user_id).filter(Boolean)));
+    const { data: profilesData } = authorIds.length > 0
+      ? await supabase.from('profiles').select('id, avatar_url, handle, badge_type').in('id', authorIds)
+      : { data: [] };
+    if (profilesData) {
       const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type }]));
       setPosts(postsData.map(p => ({ 
         ...p, 
@@ -349,22 +363,19 @@ export default function Home() {
   };
   const handleReaction = async (postId: string, type: 'pray' | 'like') => {
     if (!user) { setShowAuthModal(true); return; }
-    const currentPost = posts.find((p) => p.id === postId);
-    if (!currentPost) return;
+    if (!posts.some((p) => p.id === postId)) return;
     const { data: existing } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('reaction_type', type).maybeSingle(); 
-    if (existing) {
-      await supabase.from('post_reactions').delete().eq('id', existing.id);
-      const newCount = Math.max(0, type === 'pray' ? currentPost.pray_count - 1 : currentPost.like_count - 1);
-      const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
-      await supabase.from('posts').update(updateField).eq('id', postId);
-      setPosts(posts.map(p => p.id === postId ? { ...p, ...updateField } : p));
-    } else {
-      await supabase.from('post_reactions').insert({ post_id: postId, user_id: user.id, reaction_type: type });
-      const newCount = type === 'pray' ? currentPost.pray_count + 1 : currentPost.like_count + 1;
-      const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
-      await supabase.from('posts').update(updateField).eq('id', postId);
-      setPosts(posts.map(p => p.id === postId ? { ...p, ...updateField } : p));
-    }
+    const { error } = existing
+      ? await supabase.from('post_reactions').delete().eq('id', existing.id)
+      : await supabase.from('post_reactions').insert({ post_id: postId, user_id: user.id, reaction_type: type });
+    if (error) return;
+    // 화면의 숫자에 ±1 하지 않고 post_reactions 테이블에서 실제 개수를 다시 세어 저장
+    // (여러 사람이 동시에 눌러도 값이 어긋나지 않음)
+    const { count } = await supabase.from('post_reactions').select('*', { count: 'exact', head: true }).eq('post_id', postId).eq('reaction_type', type);
+    const newCount = count ?? 0;
+    const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
+    await supabase.from('posts').update(updateField).eq('id', postId);
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
@@ -400,11 +411,13 @@ export default function Home() {
     try {
       const croppedBlob = await getCroppedImg(avatarFile, croppedAreaPixels);
       const fileName = `${user.id}_${Date.now()}.jpg`;
-      await supabase.storage.from('avatars').upload(fileName, croppedBlob);
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, croppedBlob, { contentType: 'image/jpeg' });
+      if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-      await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
-      setProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
-      setViewingProfile(prev => ({ ...prev!, avatar_url: publicUrl }));
+      const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
+      if (updateError) throw updateError;
+      setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev);
+      setViewingProfile(prev => prev && prev.id === user.id ? { ...prev, avatar_url: publicUrl } : prev);
       setAvatarFile(null);
       fetchPosts();
     } catch (err) { alert('사진 변경에 실패했습니다.'); }
@@ -433,7 +446,7 @@ export default function Home() {
                 <div className="flex items-center gap-1">
                   <h1 className="font-bold text-stone-900 text-sm">{currentChatUser?.baptismal_name}</h1>
                   {currentChatUser?.badge_type === 'priest' && (
-                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
+                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
                   )}
                 </div>
                 <p className="text-[10px] text-stone-400">@{currentChatUser?.handle}</p>
@@ -514,7 +527,7 @@ export default function Home() {
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
                           {post.badge_type === 'priest' && (
-                            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-serif font-bold border border-amber-200 flex items-center gap-0.5">
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-full font-serif font-bold border border-amber-200 flex items-center gap-0.5">
                               ✟ 신부님
                             </span>
                           )}
@@ -613,7 +626,7 @@ export default function Home() {
                   <button onClick={() => toggleFollow(viewingUserId!, followData.isFollowing)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.isFollowing ? 'bg-stone-200 text-stone-800' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
                     {followData.isFollowing ? '팔로잉' : '팔로우'}
                   </button>
-                  <button onClick={() => openChatRoom(viewingProfile!)} className="px-6 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                  <button onClick={() => viewingProfile && openChatRoom(viewingProfile)} disabled={!viewingProfile} className="px-6 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     메시지
                   </button>
                 </>
