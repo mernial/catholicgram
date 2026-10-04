@@ -580,11 +580,13 @@ export default function Home() {
   };
 
   // 상대가 보낸 메시지를 읽음 처리
+  // (대화방을 불러왔을 때 상대가 보낸 안 읽은 메시지가 있으면 호출됨)
   const markMessagesRead = async (partnerId: string) => {
-    if (!user || !unreadMessages.some(u => u.partner.id === partnerId)) return;
+    if (!user) return;
     setUnreadMessages(prev => prev.filter(u => u.partner.id !== partnerId));
-    await supabase.from('messages').update({ read_at: new Date().toISOString() })
+    const { error } = await supabase.from('messages').update({ read_at: new Date().toISOString() })
       .eq('sender_id', partnerId).eq('receiver_id', user.id).is('read_at', null);
+    if (error) console.error('읽음 처리 실패', error);
   };
 
   const refreshAlerts = (userId: string) => {
