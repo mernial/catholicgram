@@ -75,13 +75,12 @@ export default function Home() {
   };
 
   const handleGoogleLogin = async (e: React.MouseEvent) => {
-    e.preventDefault(); // 스마트폰 브라우저의 기본 링크/메일 앱 동작 방지
+    e.preventDefault();
     
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete',
-        skipBrowserRedirect: false,
+        redirectTo: 'https://catholicgram-dey7.vercel.app',
       },
     });
   };
