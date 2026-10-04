@@ -2,9 +2,9 @@
   "name": "my-community",
   "version": "0.1.0",
   "private": true,
-  "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build",
+ "scripts": {
+    "dev": "next dev",
+    "build": "next build --experimental-turbo=false",
     "start": "next start",
     "lint": "next lint"
   },
