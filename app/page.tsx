@@ -1126,13 +1126,27 @@ export default function Home() {
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>
             ) : (
-              chatMessages.map(msg => {
+              chatMessages.map((msg, i) => {
                 const isMe = msg.sender_id === user?.id;
+                // 내가 보낸 메시지 중 상대가 읽은 마지막 메시지에만 '읽음' 표시
+                const lastReadMineIndex = chatMessages.reduce((last, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : last), -1);
+                const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    {isMe && (
+                      <div className="flex flex-col items-end text-[10px] leading-tight shrink-0">
+                        {!msg.read_at ? (
+                          <span className="text-amber-500 font-bold" title="아직 읽지 않음">1</span>
+                        ) : i === lastReadMineIndex ? (
+                          <span className="text-stone-400">읽음</span>
+                        ) : null}
+                        <span className="text-stone-400">{time}</span>
+                      </div>
+                    )}
                     <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-[13.5px] ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}>
                       {msg.content}
                     </div>
+                    {!isMe && <span className="text-[10px] text-stone-400 shrink-0">{time}</span>}
                   </div>
                 );
               })
