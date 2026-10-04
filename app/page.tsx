@@ -6,6 +6,7 @@ import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
+import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 
 // 관리자 계정 (게시물 삭제, 인증 뱃지 지정). 바꿀 때는 supabase/admin-badges.sql 도 함께 수정
 const ADMIN_EMAILS = ['yunho-jo@casuwon.or.kr'];
@@ -147,6 +148,11 @@ export default function Home() {
   const [actionUserFollowStatus, setActionUserFollowStatus] = useState<FollowStatus>('none');
   const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
+  // 앱 사용 중 새 알림을 화면 위에 잠깐 보여주는 배너
+  const [toast, setToast] = useState<{ key: string; icon: string; title: string; body: string; action: () => void } | null>(null);
+  const [alertSoundOn, setAlertSoundOn] = useState(true);
+  const seenAlertKeysRef = useRef<Set<string>>(new Set());
+  const sessionStartRef = useRef<number>(0);
 
   const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string })[]>([]);
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
@@ -188,6 +194,12 @@ export default function Home() {
     window.addEventListener('appinstalled', onAppInstalled);
 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+
+    // 알림음: 설정 불러오기, 첫 터치 때 오디오 활성화
+    sessionStartRef.current = Date.now();
+    setAlertSoundOn(storageGet('alertSound') !== 'off');
+    const unlock = () => unlockAlertSound();
+    window.addEventListener('pointerdown', unlock, { once: true });
 
     const params = new URLSearchParams(window.location.search);
     const linkPost = params.get('post');
@@ -589,6 +601,13 @@ export default function Home() {
     if (error) console.error('읽음 처리 실패', error);
   };
 
+  const toggleAlertSound = () => {
+    const next = !alertSoundOn;
+    setAlertSoundOn(next);
+    storageSet('alertSound', next ? 'on' : 'off');
+    if (next) playAlertSound();
+  };
+
   const refreshAlerts = (userId: string) => {
     fetchNotifications(userId);
     fetchUnreadMessages(userId);
@@ -712,6 +731,41 @@ export default function Home() {
   useEffect(() => {
     if (user) checkPushStatus(user.id);
   }, [user]);
+
+  // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동
+  useEffect(() => {
+    if (!user) return;
+    const since = sessionStartRef.current;
+    const isNew = (key: string, at?: string) => {
+      if (seenAlertKeysRef.current.has(key)) return false;
+      seenAlertKeysRef.current.add(key);
+      return !!at && new Date(at).getTime() > since; // 앱을 연 뒤에 생긴 것만
+    };
+    type Candidate = { key: string; icon: string; title: string; body: string; action: () => void };
+    const fresh: Candidate[] = [];
+    followRequests.forEach(r => {
+      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '팔로우 요청', body: `${r.follower.baptismal_name}님이 팔로우를 요청했습니다`, action: () => openNotifications() });
+    });
+    unreadMessages.forEach(u => {
+      const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
+      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner) });
+    });
+    notifications.forEach(n => {
+      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: '💬', title: '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
+    });
+    if (fresh.length === 0) return;
+    const latest = fresh[0];
+    setToast(fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건` } : latest);
+    if (alertSoundOn) playAlertSound();
+    navigator.vibrate?.([150, 80, 150]);
+  }, [notifications, unreadMessages, followRequests]);
+
+  // 배너는 5초 뒤 자동으로 사라짐
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
@@ -1200,6 +1254,23 @@ export default function Home() {
         </div>
       )}
 
+      {/* 앱 사용 중 새 알림 배너 */}
+      {toast && (
+        <div className="fixed top-2 left-0 right-0 z-[95] flex justify-center px-3 pointer-events-none">
+          <button
+            onClick={() => { const a = toast.action; setToast(null); a(); }}
+            className="pointer-events-auto w-full max-w-md bg-white/95 backdrop-blur border border-stone-200 shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 text-left animate-[toastIn_0.25s_ease-out]"
+          >
+            <span className="text-2xl shrink-0">{toast.icon}</span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[13px] font-bold text-stone-900 truncate">{toast.title}</span>
+              <span className="block text-xs text-stone-600 truncate">{toast.body}</span>
+            </span>
+            <span className="text-[11px] text-blue-600 font-bold shrink-0">보기</span>
+          </button>
+        </div>
+      )}
+
       {/* 홈 화면 추가 방법 안내 */}
       {showInstallGuide && (
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
@@ -1257,7 +1328,12 @@ export default function Home() {
           <div className="bg-white w-full sm:w-96 max-h-[80vh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
-              <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
+              <div className="flex items-center gap-2">
+                <button onClick={toggleAlertSound} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">
+                  {alertSoundOn ? '🔊 소리 켜짐' : '🔇 소리 꺼짐'}
+                </button>
+                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
+              </div>
             </div>
             {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (
               <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
