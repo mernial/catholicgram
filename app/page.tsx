@@ -6,6 +6,11 @@ import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
 import AnonBoard from '@/components/AnonBoard';
+import RoleBadge, { BADGES } from '@/components/RoleBadge';
+import ExploreTab from '@/components/ExploreTab';
+import HashtagText from '@/components/HashtagText';
+import { popularHashtags } from '@/lib/hashtags';
+import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
@@ -45,7 +50,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 type FollowStatus = 'none' | 'pending' | 'accepted';
-type Tab = 'home' | 'profile' | 'messages' | 'chat' | 'anon';
+type Tab = 'home' | 'explore' | 'profile' | 'messages' | 'chat' | 'anon';
 // 뒤로가기(쓸어 넘기기)를 위해 휴대폰 이동 기록(history)에 남기는 화면 정보
 interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null }
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; }
@@ -74,36 +79,6 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.9);
   });
-}
-
-// --- 성직자/수도자 인증 뱃지 ---
-// profiles.badge_type 값에 따라 이름 옆에 파란 인증 표시와 호칭을 보여준다.
-const BADGES: Record<string, { label: string; className: string }> = {
-  bishop: { label: '주교님', className: 'bg-purple-50 text-purple-800 border-purple-200' },
-  priest: { label: '신부님', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  deacon: { label: '부제님', className: 'bg-amber-50 text-amber-800 border-amber-200' },
-  sister: { label: '수녀님', className: 'bg-sky-50 text-sky-800 border-sky-200' },
-  brother: { label: '수사님', className: 'bg-sky-50 text-sky-800 border-sky-200' },
-  seminarian: { label: '신학생', className: 'bg-stone-50 text-stone-700 border-stone-200' },
-};
-
-function RoleBadge({ type, size = 'sm', showLabel = true }: { type?: string | null; size?: 'xs' | 'sm' | 'md'; showLabel?: boolean }) {
-  const badge = type ? BADGES[type] : undefined;
-  if (!badge) return null;
-  const icon = size === 'md' ? 'w-[18px] h-[18px]' : size === 'sm' ? 'w-[15px] h-[15px]' : 'w-[13px] h-[13px]';
-  const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[0.75rem] px-1.5 py-px' : 'text-[0.6875rem] px-1 py-px';
-  return (
-    <span className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`}>
-      {/* 인스타그램 스타일 파란 인증 표시 */}
-      <svg viewBox="0 0 24 24" className={icon} aria-label="인증됨">
-        <path fill="#0095F6" d="M12 1.5l2.6 1.9 3.2-.1 1 3 2.6 1.9-1 3.1 1 3.1-2.6 1.9-1 3-3.2-.1L12 22.5l-2.6-1.9-3.2.1-1-3-2.6-1.9 1-3.1-1-3.1 2.6-1.9 1-3 3.2.1z" />
-        <path fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" d="M7.8 12.2l2.8 2.8 5.6-5.8" />
-      </svg>
-      {showLabel && (
-        <span className={`rounded-full border font-serif font-bold leading-tight ${badge.className} ${text}`}>{badge.label}</span>
-      )}
-    </span>
-  );
 }
 
 export default function Home() {
@@ -155,6 +130,7 @@ export default function Home() {
   const [editContent, setEditContent] = useState('');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
+  const [exploreQuery, setExploreQuery] = useState('');
   const currentScreenRef = useRef<ScreenState>({ screen: true, tab: 'home' });
   const backHandlerRef = useRef<(e: PopStateEvent) => void>(() => {});
   const exitArmedAtRef = useRef(0);
@@ -239,6 +215,7 @@ export default function Home() {
     if (savedTab === 'chat' || savedTab === 'messages') stack.push({ screen: true, tab: 'messages' });
     else if (savedTab === 'profile' && savedUserId) stack.push({ screen: true, tab: 'profile', viewingUserId: savedUserId });
     else if (savedTab === 'anon') stack.push({ screen: true, tab: 'anon' });
+    else if (savedTab === 'explore') stack.push({ screen: true, tab: 'explore' });
     applyScreen(stack[stack.length - 1]);
     // Next.js 라우터가 첫 이동 기록에 자기 표시를 남긴 뒤에 기록을 쌓아야
     // 뒤로가기 때 Next.js 가 페이지를 새로고침하지 않는다 → 한 박자 뒤에 실행
@@ -334,6 +311,14 @@ export default function Home() {
 
   const goToTab = (tab: Tab) => navigate({ screen: true, tab });
   const goToHome = () => goToTab('home');
+
+  // 해시태그를 누르면 탐색 탭에서 그 태그로 검색
+  const openHashtag = (tag: string) => {
+    recordInterest(user?.id, 'tag', tag);
+    setExploreQuery(`#${tag}`);
+    setSelectedPostDetail(null);
+    goToTab('explore');
+  };
 
   const goToProfile = (targetUserId: string) => {
     navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
@@ -1002,6 +987,10 @@ export default function Home() {
     applyScreen({ screen: true, tab: 'home' });
   };
 
+  // 글쓰기 추천 태그: 많이 쓰이는 태그 중 아직 글에 없는 것
+  const usedInDraft = new Set((content.match(/#([0-9A-Za-z가-힣_]{1,30})/g) || []).map(t => t.slice(1).toLowerCase()));
+  const composerTagSuggestions = popularHashtags(posts.map(p => p.content), 12).map(t => t.tag).filter(t => !usedInDraft.has(t)).slice(0, 8);
+
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
@@ -1086,7 +1075,15 @@ export default function Home() {
           {topBanner && <SponsorBanner banner={topBanner} variant="top" />}
           <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
-              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요..." : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그를 달면 찾기 쉬워요)" : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              {user && content.length > 0 && composerTagSuggestions.length > 0 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
+                  <span className="text-[0.75rem] text-stone-500 shrink-0">추천 태그</span>
+                  {composerTagSuggestions.map(t => (
+                    <button key={t} type="button" onClick={() => setContent(c => `${c.trimEnd()} #${t} `)} className="shrink-0 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2.5 py-1">#{t}</button>
+                  ))}
+                </div>
+              )}
               {previewUrls.length > 0 && (
                 <div className="flex gap-2 pt-1">
                   {previewUrls.map((url, idx) => (
@@ -1149,7 +1146,7 @@ export default function Home() {
                       </div>
                     </div>
                   ) : (
-                    <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">{post.content}</p>
+                    <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"><HashtagText text={post.content} onTag={openHashtag} /></p>
                   )}
                   
                   {post.images && post.images.length > 0 && (
@@ -1290,6 +1287,19 @@ export default function Home() {
             )}
           </div>
         </section>
+      )}
+
+      {/* 탐색 탭 */}
+      {activeTab === 'explore' && (
+        <ExploreTab
+          user={user}
+          posts={posts}
+          blockedIds={blockedIds}
+          initialQuery={exploreQuery}
+          onOpenProfile={goToProfile}
+          onOpenPost={openPostComments}
+          onRequireLogin={() => setShowAuthModal(true)}
+        />
       )}
 
       {/* 익명 고민상담 탭 */}
@@ -1674,7 +1684,7 @@ export default function Home() {
                 </div>
               )}
               <div className="p-5 flex flex-col gap-2">
-                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed">{selectedPostDetail.content}</p>
+                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} /></p>
                 <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
               </div>
             </div>
@@ -1746,6 +1756,10 @@ export default function Home() {
           <button onClick={() => { goToHome(); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span className="text-[0.75rem] font-medium">홈</span>
+          </button>
+          <button onClick={() => { setExploreQuery(''); goToTab('explore'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'explore' ? 'text-stone-900' : 'text-stone-400'}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
+            <span className="text-[0.75rem] font-medium">탐색</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else goToTab('messages'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
             <span className="relative">

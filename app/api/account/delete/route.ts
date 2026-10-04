@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     ['reports', 'reporter_id'],
     ['blocks', 'blocker_id'],
     ['blocks', 'blocked_id'],
+    ['interest_events', 'user_id'],
     ['profiles', 'id'],
   ];
   for (const [table, column] of deletions) {
