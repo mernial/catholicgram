@@ -78,7 +78,7 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({
       provider,
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`, // 이 부분 수정
+        redirectTo: `${window.location.origin}/auth/signin-complete`, // 이 부분 수정
       },
     });
   };
