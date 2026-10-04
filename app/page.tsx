@@ -91,7 +91,6 @@ export default function Home() {
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
-  // 🌟 타입을 명시한 전용 함수로 분리하여 타입 에러 원천 차단
   const handleCropComplete = (croppedArea: any, croppedPixels: any) => {
     setCroppedAreaPixels(croppedPixels);
   };
@@ -548,7 +547,25 @@ export default function Home() {
                   <div className="flex items-center gap-5 text-xs font-medium pt-1">
                     <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
                     <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
+                    <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글</button>
                   </div>
+
+                  {openComments[post.id] && (
+                    <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
+                      <div className="flex flex-col gap-1.5">
+                        {(comments[post.id] || []).map((c) => (
+                          <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
+                            <span className="font-bold text-[11px] text-stone-700">{c.author_name}</span>
+                            <span>{c.content}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder="댓글을 입력하세요..." className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
+                        <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3 py-2 rounded-xl">등록</button>
+                      </div>
+                    </div>
+                  )}
                 </article>
               );
             })}
@@ -709,6 +726,33 @@ export default function Home() {
               <button onClick={() => setActionModalUser(null)} className="w-full p-4 text-sm font-bold text-center text-stone-400 hover:bg-stone-50 transition-colors bg-stone-50/50 mt-2">
                 닫기
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 로그인 모달 (누락되었던 부분 추가!) */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAuthModal(false)}>
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200" onClick={e => e.stopPropagation()}>
+            <div className="text-center">
+              <span className="text-3xl">✟</span>
+              <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
+              <p className="text-xs text-stone-500 mt-1.5">카카오 계정으로 3초 만에 시작하세요</p>
+            </div>
+            
+            <div className="flex flex-col gap-3 mt-2">
+              <button 
+                onClick={handleKakaoLogin} 
+                className="w-full flex items-center justify-center gap-3 bg-[#FEE500] text-black/85 py-3 rounded-xl text-sm font-semibold hover:bg-[#FDD800] transition-colors"
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M12 3C6.477 3 2 6.452 2 10.71c0 2.72 1.764 5.114 4.417 6.386l-1.127 4.144c-.066.24.237.424.444.258l4.8-3.328c.47.054.957.082 1.466.082 5.523 0 10-3.452 10-7.71C22 6.452 17.523 3 12 3z"/></svg>
+                카카오로 시작하기
+              </button>
+            </div>
+
+            <div className="flex justify-center pt-2">
+              <button onClick={() => setShowAuthModal(false)} className="text-xs text-stone-400 hover:text-stone-600">닫기</button>
             </div>
           </div>
         </div>
