@@ -80,7 +80,7 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: 'https://catholicgram-dey7.vercel.app',
+        redirectTo: 'https://catholicgram-dey7.vercel.app/auth/finish',
       },
     });
   };
