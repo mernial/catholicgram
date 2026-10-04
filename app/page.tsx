@@ -80,7 +80,8 @@ export default function Home() {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        // 뒤에 /auth/finish 같은 경로 없이 메인 홈으로 바로 복귀
+        redirectTo: 'https://catholicgram-dey7.vercel.app',
       },
     });
   };
