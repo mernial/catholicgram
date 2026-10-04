@@ -705,6 +705,7 @@ export default function Home() {
       reader.addEventListener('load', () => setAvatarFile(reader.result?.toString() || null));
       reader.readAsDataURL(e.target.files[0]);
     }
+    e.target.value = ''; // 같은 사진을 다시 골라도 동작하도록
   };
 
   const handleCropSave = async () => {
@@ -947,7 +948,9 @@ export default function Home() {
                 <>
                   <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
                     프로필 사진 변경
-                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+                    {/* 안드로이드 홈 화면 앱에서는 한 장 선택 시 '파일'이 열리고 여러 장 선택 시 사진첩이 열려서,
+                        게시물 사진 선택과 같게 multiple 로 열고 첫 장만 사용한다 */}
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={handleAvatarSelect} />
                   </label>
                   {!isStandalone && (
                     <button onClick={handleInstallClick} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
