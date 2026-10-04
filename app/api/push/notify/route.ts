@@ -1,6 +1,7 @@
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
+import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -8,7 +9,7 @@ import { VAPID_PUBLIC_KEY } from '@/lib/push';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'message' | 'follow'; id?: string };
+type NotifyBody = { type?: 'comment' | 'message' | 'follow' | 'feedback' | 'feedback_reply'; id?: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -31,7 +32,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || (type !== 'comment' && type !== 'message' && type !== 'follow')) {
+  if (!id || !type || !['comment', 'message', 'follow', 'feedback', 'feedback_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -51,6 +52,33 @@ export async function POST(request: Request) {
       body: `${comment.author_name}님: ${truncate(comment.content || '')}`,
       url: `/?post=${comment.post_id}`,
       tag: `comment-${comment.post_id}`,
+    };
+  } else if (type === 'feedback') {
+    // 새 건의 → 관리자에게
+    const { data: fb } = await admin.from('feedback').select('id, user_id, author_name, content, created_at').eq('id', id).single();
+    if (!fb || fb.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(fb.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
+    if (!adminProfile) return Response.json({ skipped: 'admin not found' });
+    recipientId = adminProfile.id;
+    payload = {
+      title: '📮 새 건의사항',
+      body: `${fb.author_name || '교우'}님: ${truncate(fb.content || '')}`,
+      url: '/?feedback=1',
+      tag: `feedback-${fb.id}`,
+    };
+  } else if (type === 'feedback_reply') {
+    // 관리자 답변 → 건의한 사람에게
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: fb } = await admin.from('feedback').select('id, user_id, admin_reply, replied_at').eq('id', id).single();
+    if (!fb || !fb.admin_reply || !fb.replied_at) return Response.json({ error: 'bad request' }, { status: 400 });
+    if (Date.now() - new Date(fb.replied_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    recipientId = fb.user_id;
+    payload = {
+      title: '📮 운영자 답변이 도착했어요',
+      body: truncate(fb.admin_reply),
+      url: '/?feedback=1',
+      tag: `feedback-${fb.id}`,
     };
   } else if (type === 'follow') {
     const { data: follow } = await admin.from('follows').select('*').eq('id', id).single();
