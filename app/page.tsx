@@ -19,11 +19,12 @@ interface Post {
   created_at: string;
   avatar_url?: string;
   handle?: string;
+  badge_type?: string; // 🌟 뱃지 타입 추가
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; }
-interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; }
+interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
 
 // --- 이미지 자르기 유틸리티 ---
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -146,7 +147,7 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle').eq('id', userId).single();
+    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
     if (data && data.baptismal_name && data.handle) { 
       setProfile(data); 
       setNeedsProfileSetup(false); 
@@ -156,7 +157,7 @@ export default function Home() {
   };
 
   const fetchViewingProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle').eq('id', userId).single();
+    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
     if (data) setViewingProfile(data);
   };
 
@@ -182,7 +183,7 @@ export default function Home() {
     if (actionModalUser && actionModalUser.id === targetId) setIsFollowingActionUser(!currentStatus);
   };
 
-  const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string }) => {
+  const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
     if (!user) { setShowAuthModal(true); return; }
     if (postUser.id === user.id) {
       goToProfile(user.id);
@@ -190,7 +191,7 @@ export default function Home() {
     }
     const { data } = await supabase.from('follows').select('id').eq('follower_id', user.id).eq('following_id', postUser.id).maybeSingle();
     setIsFollowingActionUser(!!data);
-    setActionModalUser({ id: postUser.id, baptismal_name: postUser.name, avatar_url: postUser.avatar_url, handle: postUser.handle });
+    setActionModalUser({ id: postUser.id, baptismal_name: postUser.name, avatar_url: postUser.avatar_url, handle: postUser.handle, badge_type: postUser.badge_type });
   };
 
   const fetchChatPartners = async () => {
@@ -204,7 +205,7 @@ export default function Home() {
       if (m.receiver_id !== user.id) partnerIds.add(m.receiver_id);
     });
 
-    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle').in('id', Array.from(partnerIds));
+    const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(partnerIds));
     setChatPartners(profiles || []);
   };
 
@@ -248,7 +249,6 @@ export default function Home() {
     }
 
     const cleanHandle = handleInput.trim().replace(/^@/, '').toLowerCase();
-
     setLoading(true);
     setSetupError('');
 
@@ -271,13 +271,14 @@ export default function Home() {
 
   const fetchPosts = async () => {
     const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-    const { data: profilesData } = await supabase.from('profiles').select('id, avatar_url, handle');
+    const { data: profilesData } = await supabase.from('profiles').select('id, avatar_url, handle, badge_type');
     if (postsData && profilesData) {
-      const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle }]));
+      const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type }]));
       setPosts(postsData.map(p => ({ 
         ...p, 
         avatar_url: profileMap[p.user_id]?.avatar_url,
-        handle: profileMap[p.user_id]?.handle 
+        handle: profileMap[p.user_id]?.handle,
+        badge_type: profileMap[p.user_id]?.badge_type
       })));
     }
   };
@@ -308,7 +309,6 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 🌟 사진첩이 바로 열리도록 accept="image/*" 설정
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files).slice(0, 3);
@@ -409,7 +409,12 @@ export default function Home() {
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{currentChatUser?.baptismal_name?.[0]}</div>
               )}
               <div>
-                <h1 className="font-bold text-stone-900 text-sm">{currentChatUser?.baptismal_name}</h1>
+                <div className="flex items-center gap-1">
+                  <h1 className="font-bold text-stone-900 text-sm">{currentChatUser?.baptismal_name}</h1>
+                  {currentChatUser?.badge_type === 'priest' && (
+                    <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
+                  )}
+                </div>
                 <p className="text-[10px] text-stone-400">@{currentChatUser?.handle}</p>
               </div>
             </div>
@@ -429,7 +434,10 @@ export default function Home() {
                     ) : (
                       <div className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-[10px] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
                     )}
-                    <span className="text-xs font-medium text-stone-700">{profile?.baptismal_name}</span>
+                    <span className="text-xs font-medium text-stone-700 flex items-center gap-1">
+                      {profile?.baptismal_name}
+                      {profile?.badge_type === 'priest' && <span className="text-[9px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                    </span>
                   </button>
                   <button onClick={() => supabase.auth.signOut()} className="text-[11px] text-stone-400 hover:text-stone-700">로그아웃</button>
                 </div>
@@ -459,7 +467,6 @@ export default function Home() {
               )}
               <div className="flex items-center justify-between pt-1">
                 <div>
-                  {/* 🌟 폰에서 누르면 파일 폴더 대신 사진첩(갤러리)이 바로 뜨도록 설정 */}
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
                   <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
                     📷 사진첩에서 선택
@@ -476,14 +483,22 @@ export default function Home() {
               return (
                 <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
+                    <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left">
                       {post.avatar_url ? (
                         <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
                       ) : (
                         <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(post.author_name || '교')[0]}</div>
                       )}
                       <div className="flex flex-col">
-                        <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-stone-800">{post.author_name}</span>
+                          {/* 🌟 신부님 뱃지 표시 */}
+                          {post.badge_type === 'priest' && (
+                            <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded-full font-serif font-bold border border-amber-200 flex items-center gap-0.5">
+                              ✟ 신부님
+                            </span>
+                          )}
+                        </div>
                         <span className="text-[11px] text-stone-400">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
                       </div>
                     </button>
@@ -535,7 +550,12 @@ export default function Home() {
                 {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
               </div>
             )}
-            <h2 className="text-xl font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
+            <div className="flex items-center gap-1.5">
+              <h2 className="text-xl font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
+              {viewingProfile?.badge_type === 'priest' && (
+                <span className="text-xs bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-serif font-bold border border-amber-200">✟ 신부님</span>
+              )}
+            </div>
             <p className="text-xs text-stone-400 mt-0.5">@{viewingProfile?.handle || 'user'}</p>
             
             <div className="flex gap-6 mt-4 text-center">
@@ -548,7 +568,6 @@ export default function Home() {
               {viewingUserId === user?.id ? (
                 <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
                   프로필 사진 변경
-                  {/* 🌟 프로필 사진 변경 시에도 갤러리가 바로 열리도록 설정 */}
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                 </label>
               ) : (
@@ -600,8 +619,11 @@ export default function Home() {
                     <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{partner.baptismal_name[0]}</div>
                   )}
                   <div>
-                    <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name} <span className="text-xs font-normal text-stone-400">@{partner.handle}</span></h3>
-                    <p className="text-xs text-stone-400 mt-0.5">대화 계속하기...</p>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
+                      {partner.badge_type === 'priest' && <span className="text-[10px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                    </div>
+                    <p className="text-xs text-stone-400 mt-0.5">@{partner.handle} • 대화 계속하기...</p>
                   </div>
                 </button>
               ))
@@ -650,7 +672,10 @@ export default function Home() {
                 <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{actionModalUser.baptismal_name[0]}</div>
               )}
               <div>
-                <h3 className="font-bold text-stone-900">{actionModalUser.baptismal_name}</h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-stone-900">{actionModalUser.baptismal_name}</h3>
+                  {actionModalUser.badge_type === 'priest' && <span className="text-[10px] bg-amber-100 text-amber-800 px-1 rounded font-serif">신부님</span>}
+                </div>
                 <p className="text-xs text-stone-400">@{actionModalUser.handle}</p>
               </div>
             </div>
