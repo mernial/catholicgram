@@ -1,14 +1,14 @@
-'useEffect'
+'use client';
+
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createClientComponentClient();
 
   useEffect(() => {
-    // 인증 코드를 처리하고 메인 페이지로 이동
     supabase.auth.onAuthStateChange((event, session) => {
       if (session) {
         router.push('/');
