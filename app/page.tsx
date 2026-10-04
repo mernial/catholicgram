@@ -81,6 +81,9 @@ export default function Home() {
       provider: 'google',
       options: {
         redirectTo: 'https://catholicgram-dey7.vercel.app/auth/finish',
+        queryParams: {
+          prompt: 'select_account',
+        },
       },
     });
   };
