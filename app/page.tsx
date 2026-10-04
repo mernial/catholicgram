@@ -45,6 +45,9 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 type FollowStatus = 'none' | 'pending' | 'accepted';
+type Tab = 'home' | 'profile' | 'messages' | 'chat' | 'anon';
+// 뒤로가기(쓸어 넘기기)를 위해 휴대폰 이동 기록(history)에 남기는 화면 정보
+interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null }
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
@@ -151,7 +154,10 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat' | 'anon'>('home');
+  const [activeTab, setActiveTab] = useState<Tab>('home');
+  const currentScreenRef = useRef<ScreenState>({ screen: true, tab: 'home' });
+  const backHandlerRef = useRef<(e: PopStateEvent) => void>(() => {});
+  const exitArmedAtRef = useRef(0);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
@@ -223,20 +229,31 @@ export default function Home() {
       window.history.replaceState(null, '', '/');
     }
 
-    const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat' | 'anon';
+    const savedTab = storageGet('activeTab') as Tab | null;
     const savedUserId = storageGet('viewingUserId');
-    // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 열거나 메시지 목록으로 돌아간다
     const savedChatUserId = storageGet('chatUserId');
-    if (savedTab === 'chat') {
-      setActiveTab('messages');
-      if (savedChatUserId) {
+
+    // 이동 기록 쌓기: [종료 확인용 표시] → 홈 → (마지막으로 보던 화면)
+    // 그래서 뒤로가기를 하면 앱이 바로 꺼지지 않고 이전 화면 → 홈 → '한 번 더 누르면 종료' 순서가 된다
+    const stack: ScreenState[] = [{ screen: true, tab: 'home' }];
+    if (savedTab === 'chat' || savedTab === 'messages') stack.push({ screen: true, tab: 'messages' });
+    else if (savedTab === 'profile' && savedUserId) stack.push({ screen: true, tab: 'profile', viewingUserId: savedUserId });
+    else if (savedTab === 'anon') stack.push({ screen: true, tab: 'anon' });
+    applyScreen(stack[stack.length - 1]);
+    // Next.js 라우터가 첫 이동 기록에 자기 표시를 남긴 뒤에 기록을 쌓아야
+    // 뒤로가기 때 Next.js 가 페이지를 새로고침하지 않는다 → 한 박자 뒤에 실행
+    const historyTimer = setTimeout(() => {
+      window.history.replaceState({ guard: true }, '');
+      stack.forEach(st => window.history.pushState(st, ''));
+      // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 연다
+      if (savedTab === 'chat' && savedChatUserId) {
         supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', savedChatUserId).single()
-          .then(({ data }) => { if (data) { setCurrentChatUser(data); setActiveTab('chat'); } });
+          .then(({ data }) => { if (data) navigate({ screen: true, tab: 'chat', chatUser: data }); });
       }
-    } else if (savedTab) {
-      setActiveTab(savedTab);
-    }
+    }, 0);
     if (savedUserId) setViewingUserId(savedUserId);
+    const onPopState = (e: PopStateEvent) => backHandlerRef.current(e);
+    window.addEventListener('popstate', onPopState);
 
     checkUser();
     fetchPosts();
@@ -256,6 +273,8 @@ export default function Home() {
       }
     });
     return () => {
+      clearTimeout(historyTimer);
+      window.removeEventListener('popstate', onPopState);
       clearInterval(bannerTimer);
       authListener.subscription.unsubscribe();
       window.removeEventListener('beforeinstallprompt', onBeforeInstallPrompt);
@@ -294,16 +313,30 @@ export default function Home() {
     }
   }, [chatMessages, activeTab]);
 
-  const goToHome = () => { 
-    setActiveTab('home'); 
-    storageSet('activeTab', 'home');
+  // --- 화면 이동 + 뒤로가기 ---
+  const applyScreen = (st: ScreenState) => {
+    currentScreenRef.current = st;
+    if (st.tab === 'chat' && !st.chatUser) { setActiveTab('messages'); storageSet('activeTab', 'messages'); return; }
+    setActiveTab(st.tab);
+    storageSet('activeTab', st.tab);
+    if (st.tab === 'profile' && st.viewingUserId) { setViewingUserId(st.viewingUserId); storageSet('viewingUserId', st.viewingUserId); }
+    if (st.tab === 'chat' && st.chatUser) { setCurrentChatUser(st.chatUser); storageSet('chatUserId', st.chatUser.id); }
   };
 
+  // 새 화면으로 이동하면서 이동 기록을 남긴다 (같은 화면이면 기록을 늘리지 않음)
+  const navigate = (st: ScreenState) => {
+    const cur = currentScreenRef.current;
+    const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
+    if (same) window.history.replaceState(st, '');
+    else window.history.pushState(st, '');
+    applyScreen(st);
+  };
+
+  const goToTab = (tab: Tab) => navigate({ screen: true, tab });
+  const goToHome = () => goToTab('home');
+
   const goToProfile = (targetUserId: string) => {
-    setViewingUserId(targetUserId);
-    setActiveTab('profile');
-    storageSet('activeTab', 'profile');
-    storageSet('viewingUserId', targetUserId);
+    navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
     setActionModalUser(null);
   };
 
@@ -381,7 +414,7 @@ export default function Home() {
     await supabase.from('follows').delete().eq('follower_id', targetId).eq('following_id', user.id);
     setBlockedIds(prev => new Set(prev).add(targetId));
     setActionModalUser(null);
-    if (activeTab === 'chat' && currentChatUser?.id === targetId) { setActiveTab('messages'); storageSet('activeTab', 'messages'); }
+    if (activeTab === 'chat' && currentChatUser?.id === targetId) goToTab('messages');
   };
 
   const unblockUser = async (targetId: string) => {
@@ -446,10 +479,7 @@ export default function Home() {
     if (!user) { setShowAuthModal(true); return; }
     if (partner.id === user.id) return;
     if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
-    setCurrentChatUser(partner);
-    setActiveTab('chat');
-    storageSet('activeTab', 'chat');
-    storageSet('chatUserId', partner.id);
+    navigate({ screen: true, tab: 'chat', chatUser: partner });
     setActionModalUser(null);
   };
 
@@ -946,6 +976,32 @@ export default function Home() {
     : null;
   const feedBanners = liveBanners.filter(b => b.placement !== 'top');
 
+  // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
+  const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin);
+  const closeAllModals = () => {
+    setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
+    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
+    setShowInstallGuide(false); setShowSponsorAdmin(false);
+  };
+  backHandlerRef.current = (e: PopStateEvent) => {
+    const st = e.state as ScreenState | { guard: true } | null;
+    if (anyModalOpen) {
+      closeAllModals();
+      window.history.pushState(currentScreenRef.current, ''); // 화면은 그대로 유지
+      return;
+    }
+    if (st && 'guard' in st) {
+      if (Date.now() - exitArmedAtRef.current < 2000) { window.history.back(); return; } // 앱 종료
+      exitArmedAtRef.current = Date.now();
+      window.history.pushState(currentScreenRef.current, '');
+      setToast({ key: `exit-${Date.now()}`, icon: '👋', title: '한 번 더 뒤로가기를 하면 종료돼요', body: '', action: () => {} });
+      return;
+    }
+    if (st && 'screen' in st) { applyScreen(st); return; }
+    applyScreen({ screen: true, tab: 'home' });
+  };
+
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
@@ -955,7 +1011,7 @@ export default function Home() {
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-3 sm:px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between gap-2 z-20">
         {activeTab === 'chat' ? (
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-            <button onClick={() => { setActiveTab('messages'); storageSet('activeTab', 'messages'); }} className="text-stone-600 hover:text-black">
+            <button onClick={() => window.history.back()} className="text-stone-600 hover:text-black" aria-label="뒤로">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <div className="flex items-center gap-2 min-w-0">
@@ -1397,9 +1453,9 @@ export default function Home() {
             <span className="text-2xl shrink-0">{toast.icon}</span>
             <span className="flex-1 min-w-0">
               <span className="block text-[0.9375rem] font-bold text-stone-900 truncate">{toast.title}</span>
-              <span className="block text-xs text-stone-600 truncate">{toast.body}</span>
+              {toast.body && <span className="block text-xs text-stone-600 truncate">{toast.body}</span>}
             </span>
-            <span className="text-[0.8125rem] text-blue-600 font-bold shrink-0">보기</span>
+            {!toast.key.startsWith('exit') && <span className="text-[0.8125rem] text-blue-600 font-bold shrink-0">보기</span>}
           </button>
         </div>
       )}
@@ -1691,7 +1747,7 @@ export default function Home() {
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span className="text-[0.75rem] font-medium">홈</span>
           </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else { setActiveTab('messages'); storageSet('activeTab', 'messages'); } }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => { if (!user) setShowAuthModal(true); else goToTab('messages'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
             <span className="relative">
               <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
               {unreadMessageCount > 0 && (
@@ -1700,7 +1756,7 @@ export default function Home() {
             </span>
             <span className="text-[0.75rem] font-medium">메시지</span>
           </button>
-          <button onClick={() => { setActiveTab('anon'); storageSet('activeTab', 'anon'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
+          <button onClick={() => goToTab('anon')} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
             <span className="text-[0.75rem] font-medium">고민상담</span>
           </button>
