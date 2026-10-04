@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
+import AnonBoard from '@/components/AnonBoard';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 
@@ -139,7 +140,7 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat'>('home');
+  const [activeTab, setActiveTab] = useState<'home' | 'profile' | 'messages' | 'chat' | 'anon'>('home');
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
@@ -210,7 +211,7 @@ export default function Home() {
       window.history.replaceState(null, '', '/');
     }
 
-    const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat';
+    const savedTab = storageGet('activeTab') as 'home' | 'profile' | 'messages' | 'chat' | 'anon';
     const savedUserId = storageGet('viewingUserId');
     // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 열거나 메시지 목록으로 돌아간다
     const savedChatUserId = storageGet('chatUserId');
@@ -1140,6 +1141,11 @@ export default function Home() {
         </section>
       )}
 
+      {/* 익명 고민상담 탭 */}
+      {activeTab === 'anon' && (
+        <AnonBoard user={user} isAdmin={isAdmin} onRequireLogin={() => setShowAuthModal(true)} />
+      )}
+
       {/* 3. 메시지 목록 탭 */}
       {activeTab === 'messages' && (
         <section className="flex-1 bg-white flex flex-col">
@@ -1566,6 +1572,10 @@ export default function Home() {
               )}
             </span>
             <span className="text-[10px] font-medium">메시지</span>
+          </button>
+          <button onClick={() => { setActiveTab('anon'); storageSet('activeTab', 'anon'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
+            <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
+            <span className="text-[10px] font-medium">고민상담</span>
           </button>
           <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'profile' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
