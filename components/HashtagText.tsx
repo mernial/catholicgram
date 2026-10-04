@@ -18,12 +18,12 @@ export default function HashtagText({ text, onTag }: { text: string; onTag?: (ta
           key={`${start}-${tag}`}
           type="button"
           onClick={(e) => { e.stopPropagation(); onTag(tag.toLowerCase()); }}
-          className="text-blue-600 font-bold hover:underline"
+          className="text-blue-600 font-bold hover:underline whitespace-nowrap"
         >
           #{tag}
         </button>
       ) : (
-        <span key={`${start}-${tag}`} className="text-blue-600 font-bold">#{tag}</span>
+        <span key={`${start}-${tag}`} className="text-blue-600 font-bold whitespace-nowrap">#{tag}</span>
       )
     );
     last = start + m[0].length;
