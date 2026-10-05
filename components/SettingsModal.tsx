@@ -11,7 +11,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onEditProfile }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -21,6 +21,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
+  onEditProfile?: () => void;
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast'>(initialView);
   const [feastInput, setFeastInput] = useState(feastDay);
@@ -94,6 +95,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
                 ))}
               </div>
             </div>
+            {onEditProfile && (
+              <button onClick={onEditProfile} className={row}><span>✏️ 닉네임·핸들·실명 수정</span><span className="text-stone-300">›</span></button>
+            )}
             <button onClick={() => { setFeastInput(feastDay); setView('feast'); }} className={row}>
               <span>🕯️ 나의 축일</span>
               <span className="text-stone-400 text-xs">{feastDay ? formatFeastDay(feastDay) : '등록하기'} <span className="text-stone-300">›</span></span>
@@ -111,7 +115,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>
-            <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.email || (user.app_metadata?.provider === 'google' ? '구글 계정' : '카카오 계정')}</p>
+            <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.app_metadata?.naver_id ? '네이버 계정' : user.email || (user.app_metadata?.provider === 'google' ? '구글 계정' : '카카오 계정')}</p>
           </div>
         ) : view === 'feast' ? (
           <div className="overflow-y-auto p-4 flex flex-col gap-3">

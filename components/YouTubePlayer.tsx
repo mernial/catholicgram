@@ -44,6 +44,7 @@ const loadYouTubeApi = () => {
 };
 
 const PLAYING = 1;
+const API_TIMEOUT_MS = 5000;
 
 // 게시물 보기에서 유튜브 음악을 바로 재생한다.
 // 휴대폰이 소리 있는 자동재생을 막으면 소리 없이 먼저 재생하고 '🔊 소리 켜기' 버튼을 크게 보여준다.
@@ -52,12 +53,16 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
   const playerRef = useRef<YTPlayer | null>(null);
   const [needsSound, setNeedsSound] = useState(false);
   const [needsTap, setNeedsTap] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<number | null>(null);
+  // 유튜브 재생 도구를 불러오지 못하면(광고 차단 등) 기본 재생기로 대신 보여준다
+  const [plainEmbed, setPlainEmbed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const apiTimer = setTimeout(() => { if (!cancelled && !playerRef.current) setPlainEmbed(true); }, API_TIMEOUT_MS);
     loadYouTubeApi().then(YT => {
+      clearTimeout(apiTimer);
       if (cancelled || !holderRef.current) return;
       const el = document.createElement('div');
       holderRef.current.innerHTML = '';
@@ -88,13 +93,14 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
               if (!e.target.isMuted()) setNeedsSound(false);
             }
           },
-          onError: () => setError(true),
+          onError: e => setError(e.data),
         },
       });
     });
     return () => {
       cancelled = true;
       clearTimeout(fallbackTimer);
+      clearTimeout(apiTimer);
       try { playerRef.current?.destroy(); } catch { /* 이미 정리됨 */ }
       playerRef.current = null;
     };
@@ -113,20 +119,40 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
     <div className="bg-stone-900">
       <div className="relative w-full aspect-video">
         <div ref={holderRef} className="absolute inset-0 [&>iframe]:w-full [&>iframe]:h-full" />
-        {(needsSound || needsTap) && !error && (
+        {plainEmbed && (
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&autoplay=1${start ? `&start=${start}` : ''}`}
+            title={title || '음악'}
+            allow="autoplay; encrypted-media"
+            className="absolute inset-0 w-full h-full"
+          />
+        )}
+        {(needsSound || needsTap) && error === null && !plainEmbed && (
           <button onClick={turnOnSound} className="absolute inset-0 flex items-center justify-center bg-black/40">
             <span className="bg-white text-stone-900 font-bold text-base rounded-full px-5 py-3 shadow-lg">
               {needsSound ? '🔊 소리 켜기' : '▶ 눌러서 듣기'}
             </span>
           </button>
         )}
-        {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-white text-sm text-center p-4">
-            이 영상은 앱에서 재생할 수 없어요.<br />(유튜브에서 다른 곳 재생을 막아둔 영상)
+        {error !== null && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 text-white text-sm text-center p-4 leading-relaxed">
+            {error === 101 || error === 150 || error === 152
+              ? <>이 영상은 유튜브에서 다른 곳 재생을 막아두었어요.<br />아래 버튼으로 유튜브에서 들어주세요.</>
+              : <>이 영상을 재생하지 못했어요. (오류 {error})<br />아래 버튼으로 유튜브에서 들어주세요.</>}
           </div>
         )}
       </div>
-      <p className="px-4 py-2 text-xs text-white/80 truncate">🎵 {title || '유튜브 음악'}</p>
+      <div className="flex items-center gap-2 px-4 py-2">
+        <p className="flex-1 min-w-0 text-xs text-white/80 truncate">🎵 {title || '유튜브 음악'}</p>
+        <a
+          href={`https://www.youtube.com/watch?v=${videoId}${start ? `&t=${start}s` : ''}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 text-xs font-bold text-white bg-red-600 rounded-full px-3 py-1.5"
+        >
+          ▶ 유튜브에서 듣기
+        </a>
+      </div>
     </div>
   );
 }

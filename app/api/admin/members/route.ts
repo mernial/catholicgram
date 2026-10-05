@@ -42,13 +42,15 @@ export async function GET(request: Request) {
     if (data.users.length < 1000) break;
   }
 
-  const [{ data: profiles }, { data: posts }, { data: reports }, { data: pushes }, { data: followers }] = await Promise.all([
+  const [{ data: profiles }, { data: posts }, { data: reports }, { data: pushes }, { data: followers }, { data: privates }] = await Promise.all([
     admin.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type, feast_day'),
     admin.from('posts').select('user_id'),
     admin.from('reports').select('target_user_id').eq('status', 'open'),
     admin.from('push_subscriptions').select('user_id'),
     admin.from('follows').select('following_id').eq('status', 'accepted'),
+    admin.from('profile_private').select('id, real_name'),
   ]);
+  const realNameById = new Map((privates || []).map(p => [p.id, p.real_name as string | null]));
   const profileById = new Map((profiles || []).map(p => [p.id, p]));
   const postCount = countBy(posts, 'user_id');
   const reportCount = countBy(reports, 'target_user_id');
@@ -62,10 +64,11 @@ export async function GET(request: Request) {
     return {
       id: u.id,
       email: u.email || null,
-      provider: (u.app_metadata?.provider as string) || null,
+      provider: (u.app_metadata?.naver_id ? 'naver' : (u.app_metadata?.provider as string)) || null,
       created_at: u.created_at,
       last_sign_in_at: u.last_sign_in_at || null,
       baptismal_name: p?.baptismal_name || null,
+      real_name: realNameById.get(u.id) || null,
       handle: p?.handle || null,
       avatar_url: p?.avatar_url || null,
       badge_type: p?.badge_type || null,

@@ -11,7 +11,8 @@ export interface AdminMember {
   provider: string | null;
   created_at: string;
   last_sign_in_at: string | null;
-  baptismal_name: string | null;
+  baptismal_name: string | null;  // 공개 닉네임
+  real_name: string | null;       // 이름 + 세례명 (관리자만)
   handle: string | null;
   avatar_url: string | null;
   badge_type: string | null;
@@ -51,7 +52,7 @@ const relative = (iso: string | null) => {
   return new Date(iso).toLocaleDateString('ko-KR');
 };
 
-const PROVIDERS: Record<string, string> = { kakao: '카카오', google: '구글', email: '이메일' };
+const PROVIDERS: Record<string, string> = { kakao: '카카오', google: '구글', naver: '네이버', email: '이메일' };
 
 // 관리자 전용: 가입 회원 상태 확인 + 메시지 / 이용 정지 / 정지 해제
 export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
@@ -108,7 +109,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
       if (filter === 'suspended' && !m.suspended) return false;
       if (filter === 'incomplete' && m.baptismal_name && m.handle) return false;
       if (!q) return true;
-      return [m.baptismal_name, m.handle, m.email].some(v => v?.toLowerCase().includes(q));
+      return [m.baptismal_name, m.real_name, m.handle, m.email].some(v => v?.toLowerCase().includes(q));
     });
   }, [members, query, filter]);
 
@@ -155,7 +156,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
               <input
                 value={query}
                 onChange={e => { setQuery(e.target.value); setLimit(PAGE); }}
-                placeholder="이름, @핸들, 이메일 검색"
+                placeholder="닉네임, 실명, @핸들, 이메일 검색"
                 className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
               />
               <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
@@ -185,6 +186,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                           {m.open_reports > 0 && <span className="text-[0.6875rem] px-1.5 py-px rounded bg-amber-500 text-white">신고 {m.open_reports}</span>}
                         </p>
                         <p className="text-xs text-stone-500 truncate">{m.handle ? `@${m.handle}` : '핸들 없음'} · {m.email || '이메일 없음'}</p>
+                        <p className="text-xs text-stone-700 truncate">🔒 실명: {m.real_name || '미입력'}</p>
                       </div>
                     </button>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-stone-600 bg-stone-50 rounded-xl p-2.5">

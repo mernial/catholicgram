@@ -53,7 +53,7 @@ interface Post {
   music_title?: string | null;
 }
 
-interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; }
+interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; }
 // 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -66,9 +66,10 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
-interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
+interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
-interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; }
+// baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
+interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
 
 // --- 이미지 자르기 유틸리티 ---
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -138,6 +139,12 @@ export default function Home() {
   const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
   const [feastDayInput, setFeastDayInput] = useState('');
+  const [nicknameInput, setNicknameInput] = useState('');   // 공개 닉네임 (baptismalName 은 비공개 실명)
+  const [profileEditMode, setProfileEditMode] = useState(false); // 설정에서 프로필 정보 수정 중
+  const [myRealName, setMyRealName] = useState('');
+  const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
+  // 댓글 답글 대상 (게시물별)
+  const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string } | null>>({});
   // 오늘 축일인 팔로잉 교우들 + 축일 카드 닫음 여부(하루 단위)
   const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
   const [feastCardDismissed, setFeastCardDismissed] = useState(true);
@@ -202,6 +209,17 @@ export default function Home() {
       window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
     }
     if (!isStorageAvailable()) setStorageBlocked(true);
+
+    // 네이버 로그인 실패 안내
+    const loginError = new URLSearchParams(window.location.search).get('login_error');
+    if (loginError) {
+      window.history.replaceState(null, '', window.location.pathname);
+      if (loginError !== 'naver_cancelled') {
+        setTimeout(() => alert(loginError === 'naver_not_configured'
+          ? '네이버 로그인은 준비 중이에요. 카카오나 구글로 로그인해주세요.'
+          : '네이버 로그인에 실패했어요. 잠시 후 다시 시도해주세요.'), 300);
+      }
+    }
 
     // 홈 화면 추가(앱 설치) 상태 확인
     const nav = navigator as Navigator & { standalone?: boolean };
@@ -363,20 +381,40 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string) => {
-    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day').eq('id', userId).single();
-    // 축일 칼럼이 아직 없는 경우(SQL 실행 전)에도 동작하도록
+    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set').eq('id', userId).single();
+    // 새 칼럼이 아직 없는 경우(SQL 실행 전)에도 동작하도록
+    if (error && error.code !== 'PGRST116') {
+      ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day').eq('id', userId).single());
+    }
     if (error && error.code !== 'PGRST116') {
       ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single());
     }
-    if (data && data.baptismal_name && data.handle) { 
-      setProfile(data); 
-      setNeedsProfileSetup(false); 
-    } else { 
-      setNeedsProfileSetup(true); 
+    const { data: priv } = await supabase.from('profile_private').select('real_name').eq('id', userId).maybeSingle();
+    const realName = priv?.real_name || '';
+    setMyRealName(realName);
+    if (data && data.baptismal_name && data.handle) {
+      setProfile(data);
+      // 기존 회원: 닉네임을 아직 정하지 않았으면 안내 (칼럼이 없으면 건너뜀)
+      if ((data as UserProfile).nickname_set === false) {
+        setNicknameInput(data.baptismal_name === data.handle ? '' : data.baptismal_name);
+        setHandleInput(data.handle);
+        setBaptismalName(realName);
+        setFeastDayInput((data as UserProfile).feast_day || '');
+        setNeedsProfileSetup(true);
+      } else {
+        setNeedsProfileSetup(false);
+      }
+    } else {
+      setNeedsProfileSetup(true);
     }
   };
 
   const fetchViewingProfile = async (userId: string) => {
+    setViewingRealName('');
+    if (user?.email && ADMIN_EMAILS.includes(user.email)) {
+      supabase.from('profile_private').select('real_name').eq('id', userId).maybeSingle()
+        .then(({ data: priv }) => { if (latestViewingUserIdRef.current === userId) setViewingRealName(priv?.real_name || ''); });
+    }
     const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
     // 응답이 늦게 도착해도 지금 보고 있는 프로필이 아니면 무시
     if (data && latestViewingUserIdRef.current === userId) setViewingProfile(data);
@@ -584,29 +622,48 @@ export default function Home() {
   const handleProfileSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    if (!baptismalName.trim() || !handleInput.trim()) {
-      setSetupError('이름(세례명)과 고유 핸들을 모두 입력해주세요.');
+    if (!nicknameInput.trim() || !handleInput.trim() || !baptismalName.trim()) {
+      setSetupError('닉네임, 고유 핸들, 이름+세례명을 모두 입력해주세요.');
       return;
     }
 
     const cleanHandle = handleInput.trim().replace(/^@/, '').toLowerCase();
+    const nickname = nicknameInput.trim();
     setLoading(true);
     setSetupError('');
 
     const feastDay = isValidFeastDay(feastDayInput) ? feastDayInput : null;
-    const row = { id: user.id, baptismal_name: baptismalName.trim(), handle: cleanHandle, email: user.email };
-    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]);
-    // 축일 칼럼이 아직 없는 경우(SQL 실행 전)에는 축일 없이 저장
+    const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle, email: user.email };
+    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]);
+    // 새 칼럼이 아직 없는 경우(SQL 실행 전)에는 있는 칼럼만 저장
+    if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([row]));
 
     if (!error) {
-      setProfile({ id: user.id, baptismal_name: baptismalName.trim(), handle: cleanHandle, feast_day: feastDay });
+      // 실명은 비공개 표에, 내가 쓴 글/댓글의 작성자 이름은 새 닉네임으로
+      await supabase.from('profile_private').upsert({ id: user.id, real_name: baptismalName.trim(), updated_at: new Date().toISOString() });
+      await supabase.rpc('sync_my_author_name');
+      setMyRealName(baptismalName.trim());
+      setProfile(prev => ({ ...(prev || {}), id: user.id, baptismal_name: nickname, handle: cleanHandle, feast_day: feastDay, nickname_set: true }));
       setNeedsProfileSetup(false);
+      setProfileEditMode(false);
       fetchPosts();
     } else {
-      setSetupError('이미 사용 중인 핸들(@아이디)입니다. 다른 아이디를 입력해주세요.');
+      setSetupError(error.code === '23505' ? '이미 사용 중인 핸들(@아이디)입니다. 다른 아이디를 입력해주세요.' : '저장하지 못했어요. 잠시 후 다시 시도해주세요.');
     }
     setLoading(false);
+  };
+
+  // 설정 → 프로필 정보 수정
+  const openProfileEdit = () => {
+    if (!profile) return;
+    setNicknameInput(profile.baptismal_name);
+    setHandleInput(profile.handle || '');
+    setBaptismalName(myRealName);
+    setFeastDayInput(profile.feast_day || '');
+    setSetupError('');
+    setProfileEditMode(true);
+    setShowSettings(false);
   };
 
   const fetchPosts = async () => {
@@ -727,15 +784,22 @@ export default function Home() {
   const fetchNotifications = async (userId: string) => {
     const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId);
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
-    if (!myPosts || myPosts.length === 0) { setNotifications([]); return; }
-    const postContent = Object.fromEntries(myPosts.map(p => [p.id, p.content || '']));
-    const { data } = await supabase.from('comments')
-      .select('id, post_id, content, author_name, created_at')
-      .in('post_id', myPosts.map(p => p.id))
-      .neq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(30);
-    if (data) setNotifications(data.map(c => ({ ...c, post_content: postContent[c.post_id] })));
+    const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, p.content || '']));
+    const [{ data: onMyPosts }, { data: replies }] = await Promise.all([
+      myPosts && myPosts.length > 0
+        ? supabase.from('comments').select('id, post_id, content, author_name, created_at')
+          .in('post_id', myPosts.map(p => p.id)).neq('user_id', userId)
+          .order('created_at', { ascending: false }).limit(30)
+        : Promise.resolve({ data: [] as Omit<CommentNotification, 'post_content'>[] }),
+      // 다른 사람 글에서 나에게 단 답글 (칼럼이 없으면 빈 결과)
+      supabase.from('comments').select('id, post_id, content, author_name, created_at')
+        .eq('reply_to_user_id', userId).neq('user_id', userId)
+        .order('created_at', { ascending: false }).limit(30),
+    ]);
+    const merged = new Map<string, CommentNotification>();
+    (onMyPosts || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] }));
+    (replies || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] || '', is_reply: true }));
+    setNotifications(Array.from(merged.values()).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 40));
   };
 
   // 아직 읽지 않은 받은 메시지 (보낸 사람별로 묶음)
@@ -969,7 +1033,7 @@ export default function Home() {
       if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner) });
     });
     notifications.forEach(n => {
-      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: '💬', title: '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
+      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: '💬', title: n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
     });
     if (fresh.length === 0) return;
     const latest = fresh[0];
@@ -1085,10 +1149,18 @@ export default function Home() {
     const text = commentInputs[postId];
     if (!text || !text.trim()) return;
     const author = profile?.baptismal_name || '교우';
-    const { data, error } = await supabase.from('comments').insert([{ post_id: postId, content: text.trim(), user_id: user.id, author_name: author }]).select();
+    const target = replyTargets[postId];
+    const row = { post_id: postId, content: text.trim(), user_id: user.id, author_name: author };
+    let { data, error } = await supabase.from('comments')
+      .insert([target ? { ...row, reply_to_user_id: target.userId, reply_to_name: target.name } : row]).select();
+    // 답글 칼럼이 아직 없으면(SQL 실행 전) 내용 앞에 @이름을 붙여 저장
+    if (error && target && (error.code === 'PGRST204' || error.code === '42703')) {
+      ({ data, error } = await supabase.from('comments').insert([{ ...row, content: `@${target.name} ${row.content}` }]).select());
+    }
     if (!error && data) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
+      setReplyTargets(prev => ({ ...prev, [postId]: null }));
       sendPush('comment', data[0].id);
     }
   };
@@ -1160,12 +1232,12 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup));
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1412,19 +1484,40 @@ export default function Home() {
                     <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
                       <div className="flex flex-col gap-1.5">
                         {(comments[post.id] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).map((c) => (
-                          <div key={c.id} className="text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5">
+                          <div key={c.id} className={`text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5 ${c.reply_to_user_id ? 'ml-5' : ''}`}>
                             <span className="flex items-center justify-between gap-2">
-                              <span className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1">{c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}</span>
-                              {user && c.user_id !== user.id && (
-                                <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
-                              )}
+                              <button
+                                onClick={() => user && c.user_id && c.user_id !== user.id && setReplyTargets(prev => ({ ...prev, [post.id]: { userId: c.user_id!, name: c.author_name } }))}
+                                className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1 text-left"
+                              >
+                                {c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}
+                              </button>
+                              <span className="flex items-center gap-2 shrink-0">
+                                {user && c.user_id && c.user_id !== user.id && (
+                                  <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: { userId: c.user_id!, name: c.author_name } }))} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
+                                )}
+                                {user && c.user_id !== user.id && (
+                                  <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
+                                )}
+                              </span>
                             </span>
-                            <span>{c.content}</span>
+                            <span>
+                              {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{c.reply_to_name}</span>}
+                              {c.content}
+                            </span>
                           </div>
                         ))}
                       </div>
+                      {replyTargets[post.id] ? (
+                        <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-lg px-2.5 py-1.5">
+                          <span className="flex-1 min-w-0 truncate">↩ <b>{replyTargets[post.id]!.name}</b>님에게 답글 쓰는 중</span>
+                          <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: null }))} className="text-blue-400 text-base leading-none px-1" aria-label="답글 취소">×</button>
+                        </div>
+                      ) : (
+                        <p className="text-[0.75rem] text-stone-400">💬 <b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 댓글 쓴 사람 이름을 누르면 그분에게 답글</p>
+                      )}
                       <div className="flex gap-1.5">
-                        <input type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder="댓글을 입력하세요..." className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
+                        <input type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder={replyTargets[post.id] ? `${replyTargets[post.id]!.name}님에게 답글...` : '댓글을 입력하세요...'} className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
                         <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3 py-2 rounded-xl">등록</button>
                       </div>
                     </div>
@@ -1455,6 +1548,9 @@ export default function Home() {
               <RoleBadge type={viewingProfile?.badge_type} size="md" />
             </div>
             <p className="text-xs text-stone-400 mt-0.5">@{viewingProfile?.handle || 'user'}</p>
+            {isAdmin && viewingRealName && (
+              <p className="text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5">🔒 실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
+            )}
             
             <div className="flex gap-6 mt-4 text-center">
               <div><p className="text-lg font-bold text-stone-800">{myPosts.length}</p><p className="text-xs text-stone-500 font-medium">게시물</p></div>
@@ -1693,7 +1789,8 @@ export default function Home() {
       {/* 설정 (차단 목록, 약관, 탈퇴) */}
       {showSettings && user && (
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
-          feastDay={profile?.feast_day || ''} baptismalName={profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
+          feastDay={profile?.feast_day || ''} baptismalName={myRealName || profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
+          onEditProfile={openProfileEdit}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined} />
@@ -1883,7 +1980,7 @@ export default function Home() {
                 notifications.map(n => (
                   <button key={n.id} onClick={() => openNotification(n)} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
-                      💬 <b>{n.author_name}</b>님이 회원님의 글에 댓글을 남겼습니다
+                      💬 <b>{n.author_name}</b>님이 {n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
@@ -1904,7 +2001,7 @@ export default function Home() {
             <div className="text-center">
               <span className="text-3xl">✟</span>
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
-              <p className="text-xs text-stone-500 mt-1.5">카카오 또는 구글 계정으로 간편하게 시작하세요</p>
+              <p className="text-xs text-stone-500 mt-1.5">카카오·구글·네이버 계정으로 간편하게 시작하세요</p>
             </div>
 
             {isKakaoInApp && (
@@ -1937,6 +2034,13 @@ export default function Home() {
                 <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
                 Google로 시작하기
               </button>
+              <a
+                href="/api/auth/naver/start"
+                className="w-full flex items-center justify-center gap-3 bg-[#03C75A] text-white py-3 rounded-xl text-sm font-semibold hover:bg-[#02b350] transition-colors"
+              >
+                <span className="w-5 h-5 flex items-center justify-center font-black text-base leading-none">N</span>
+                네이버로 시작하기
+              </a>
             </div>
 
             <div className="flex justify-center pt-2">
@@ -2034,24 +2138,25 @@ export default function Home() {
       )}
 
       {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
-      {user && needsProfileSetup && (
+      {user && (needsProfileSetup || profileEditMode) && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[90]">
           <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200 max-h-[92dvh] overflow-y-auto">
             <div className="text-center">
               <span className="text-2xl">🕊️</span>
-              <h2 className="font-serif font-bold text-lg text-stone-900 mt-2">환영합니다!</h2>
+              <h2 className="font-serif font-bold text-lg text-stone-900 mt-2">{profileEditMode ? '프로필 정보 수정' : profile?.handle ? '닉네임을 정해주세요' : '환영합니다!'}</h2>
               <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
-                가톨릭그램에서 사용할 프로필을 설정해주세요.<br/>(동명이인을 구분하는 고유 아이디입니다)
+                다른 교우에게는 <b>닉네임</b>과 <b>@핸들</b>만 보여요.<br />이름과 세례명은 <b>관리자만</b> 볼 수 있어요.
               </p>
             </div>
             <form onSubmit={handleProfileSetup} className="flex flex-col gap-3 mt-2">
               <div>
-                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명</label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">닉네임 <span className="font-normal text-stone-400">(모두에게 보여요)</span></label>
                 <input
                   type="text"
-                  placeholder="예: 홍길동 미카엘"
-                  value={baptismalName}
-                  onChange={(e) => setBaptismalName(e.target.value)}
+                  placeholder="예: 기쁨의미카엘"
+                  value={nicknameInput}
+                  onChange={(e) => setNicknameInput(e.target.value)}
+                  maxLength={20}
                   required
                   className="w-full p-3 text-sm font-medium border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400 bg-stone-50"
                 />
@@ -2072,6 +2177,18 @@ export default function Home() {
               </div>
 
               <div>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명 <span className="font-normal text-stone-400">(🔒 관리자만 봐요)</span></label>
+                <input
+                  type="text"
+                  placeholder="예: 홍길동 미카엘"
+                  value={baptismalName}
+                  onChange={(e) => setBaptismalName(e.target.value)}
+                  required
+                  className="w-full p-3 text-sm font-medium border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400 bg-stone-50"
+                />
+              </div>
+
+              <div>
                 <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🕯️ 나의 축일</label>
                 <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 팔로워에게도 알려드려요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
@@ -2081,11 +2198,14 @@ export default function Home() {
               
               <button 
                 type="submit" 
-                disabled={loading || !baptismalName.trim() || !handleInput.trim()}
+                disabled={loading || !nicknameInput.trim() || !baptismalName.trim() || !handleInput.trim()}
                 className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold hover:bg-stone-800 disabled:opacity-50 transition-colors mt-2"
               >
-                {loading ? '저장 중...' : '가톨릭그램 시작하기'}
+                {loading ? '저장 중...' : profileEditMode ? '저장' : '가톨릭그램 시작하기'}
               </button>
+              {profileEditMode && !needsProfileSetup && (
+                <button type="button" onClick={() => setProfileEditMode(false)} className="text-sm text-stone-400 self-center">취소</button>
+              )}
             </form>
           </div>
         </div>
