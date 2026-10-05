@@ -3436,8 +3436,9 @@ export default function Home() {
       )}
 
       {/* 왼쪽 아래 떠 있는 + : 누르면 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 위로 사르륵 펼쳐짐
-          (아래 가운데는 삼성 인터넷의 '맨 위로' 버튼 자리, 오른쪽은 ⋯·더 보기 자리라 왼쪽에 둠) */}
-      {activeTab !== 'chat' && (
+          (아래 가운데는 삼성 인터넷의 '맨 위로' 버튼 자리, 오른쪽은 ⋯·더 보기 자리라 왼쪽에 둠)
+          고민상담·내 공간(메시지 포함)에서는 화면을 가리지 않게 숨김 */}
+      {(activeTab === 'home' || activeTab === 'explore') && (
         <button
           onClick={() => setFabOpen(o => !o)}
           aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
@@ -3447,7 +3448,7 @@ export default function Home() {
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
         </button>
       )}
-      {fabOpen && activeTab !== 'chat' && (
+      {fabOpen && (activeTab === 'home' || activeTab === 'explore') && (
         <>
           <button className="fixed inset-0 z-[39] bg-black/30 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />
           <div className="fixed z-[46] left-[max(0.75rem,calc(50vw-18rem+0.75rem))] bottom-[calc(9.5rem+env(safe-area-inset-bottom))] flex flex-col-reverse items-start gap-2.5">
