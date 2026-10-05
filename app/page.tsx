@@ -275,6 +275,7 @@ export default function Home() {
   const currentScreenRef = useRef<ScreenState>({ screen: true, tab: 'home' });
   const backHandlerRef = useRef<(e: PopStateEvent) => void>(() => {});
   const exitArmedAtRef = useRef(0);
+  const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
@@ -373,19 +374,28 @@ export default function Home() {
     const savedUserId = storageGet('viewingUserId');
     const savedChatUserId = storageGet('chatUserId');
 
-    // 이동 기록 쌓기: [종료 확인용 표시] → 홈 → (마지막으로 보던 화면)
-    // 그래서 뒤로가기를 하면 앱이 바로 꺼지지 않고 이전 화면 → 홈 → '한 번 더 누르면 종료' 순서가 된다
-    const stack: ScreenState[] = [{ screen: true, tab: 'home' }];
-    if (savedTab === 'chat' || savedTab === 'messages') stack.push({ screen: true, tab: 'messages' });
-    else if (savedTab === 'profile' && savedUserId) stack.push({ screen: true, tab: 'profile', viewingUserId: savedUserId });
-    else if (savedTab === 'anon') stack.push({ screen: true, tab: 'anon' });
-    else if (savedTab === 'explore') stack.push({ screen: true, tab: 'explore' });
-    applyScreen(stack[stack.length - 1]);
-    // Next.js 라우터가 첫 이동 기록에 자기 표시를 남긴 뒤에 기록을 쌓아야
+    // 마지막으로 보던 화면으로 시작
+    let startScreen: ScreenState = { screen: true, tab: 'home' };
+    if (savedTab === 'chat' || savedTab === 'messages') startScreen = { screen: true, tab: 'messages' };
+    else if (savedTab === 'profile' && savedUserId) startScreen = { screen: true, tab: 'profile', viewingUserId: savedUserId };
+    else if (savedTab === 'anon') startScreen = { screen: true, tab: 'anon' };
+    else if (savedTab === 'explore') startScreen = { screen: true, tab: 'explore' };
+    applyScreen(startScreen);
+    // 뒤로가기용 기록은 [종료 확인용 표시] → (지금 화면) 두 칸만 둔다. 이전 화면은 뒤로가기 때 앱이 직접 정한다.
+    // 크롬·삼성 인터넷은 사람이 화면을 만지기 전에 쌓은 기록을 뒤로가기 때 건너뛰어 앱이 바로 꺼지므로
+    // (알림을 눌러 앱이 열린 경우 등) 첫 터치 때 기록을 깐다.
+    const setupHistory = () => {
+      if (historyReadyRef.current) return;
+      historyReadyRef.current = true;
+      window.history.replaceState({ guard: true }, '');
+      window.history.pushState(currentScreenRef.current, '');
+    };
+    const activationEvents = ['click', 'keydown', 'touchend'] as const;
+    activationEvents.forEach(ev => window.addEventListener(ev, setupHistory, { capture: true, once: true }));
+    // Next.js 라우터가 첫 이동 기록에 자기 표시를 남긴 뒤에 다뤄야
     // 뒤로가기 때 Next.js 가 페이지를 새로고침하지 않는다 → 한 박자 뒤에 실행
     const historyTimer = setTimeout(() => {
-      window.history.replaceState({ guard: true }, '');
-      stack.forEach(st => window.history.pushState(st, ''));
+      if (!historyReadyRef.current) window.history.replaceState(currentScreenRef.current, '');
       // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 연다
       if (savedTab === 'chat' && savedChatUserId) {
         supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', savedChatUserId).single()
@@ -446,6 +456,7 @@ export default function Home() {
     });
     return () => {
       clearTimeout(historyTimer);
+      activationEvents.forEach(ev => window.removeEventListener(ev, setupHistory, { capture: true }));
       clearInterval(intentionTimer);
       document.removeEventListener('visibilitychange', onAppResume);
       window.removeEventListener('popstate', onPopState);
@@ -501,7 +512,8 @@ export default function Home() {
   const navigate = (st: ScreenState) => {
     const cur = currentScreenRef.current;
     const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
-    if (same) window.history.replaceState(st, '');
+    // 아직 기록을 깔기 전(첫 터치 전)이면 지금 칸만 바꿔 둔다 → 첫 터치 때 그 위에 기록을 깐다
+    if (same || !historyReadyRef.current) window.history.replaceState(st, '');
     else window.history.pushState(st, '');
     applyScreen(st);
   };
@@ -1533,7 +1545,8 @@ export default function Home() {
       openPostComments(deepLink.post);
     } else if (deepLink.chat) {
       supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).single()
-        .then(({ data }) => { if (data) openChatRoom(data); });
+        // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다
+        .then(({ data }) => { if (data) { if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' }); openChatRoom(data); } });
     } else if (deepLink.alerts) {
       openNotifications();
     } else if (deepLink.feedback) {
@@ -1799,6 +1812,16 @@ export default function Home() {
       return;
     }
     if (st && 'guard' in st) {
+      // 홈이 아니면 한 단계 위 화면으로: 대화방 → 대화 목록 → 내 공간 → 홈
+      const cur = currentScreenRef.current;
+      if (cur.tab !== 'home') {
+        const parent: ScreenState = cur.tab === 'chat' ? { screen: true, tab: 'messages' }
+          : cur.tab === 'messages' && user ? { screen: true, tab: 'profile', viewingUserId: user.id }
+          : { screen: true, tab: 'home' };
+        window.history.pushState(parent, '');
+        applyScreen(parent);
+        return;
+      }
       if (Date.now() - exitArmedAtRef.current < 2000) { window.history.back(); return; } // 앱 종료
       exitArmedAtRef.current = Date.now();
       window.history.pushState(currentScreenRef.current, '');
