@@ -27,7 +27,9 @@ export default function ClampText({ lines, expanded, onExpand, prefix, prefixTex
       const probe = document.createElement('div');
       Object.assign(probe.style, {
         position: 'absolute', visibility: 'hidden', left: '-9999px', top: '0',
-        width: `${el.clientWidth}px`, font: style.font, lineHeight: style.lineHeight,
+        // font 한꺼번에 쓰기는 사파리(아이폰)에서 비어 있어 하나씩 복사
+        width: `${el.clientWidth}px`, fontFamily: style.fontFamily, fontSize: style.fontSize, fontWeight: style.fontWeight,
+        fontStyle: style.fontStyle, letterSpacing: style.letterSpacing, lineHeight: style.lineHeight,
         whiteSpace: 'pre-wrap', wordBreak: style.wordBreak, overflowWrap: 'anywhere',
       });
       document.body.appendChild(probe);
