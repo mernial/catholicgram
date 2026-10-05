@@ -160,6 +160,8 @@ export default function Home() {
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean } | null>(null);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
+  // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
+  const [setupDismissed, setSetupDismissed] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
@@ -488,8 +490,16 @@ export default function Home() {
   };
 
   // 팔로우 (승인 없이 바로) / 언팔로우
+  // 로그인 + 프로필 완성이 필요한 활동 전에 확인 (안 되어 있으면 해당 창을 연다)
+  const requireProfile = () => {
+    if (!user) { setShowAuthModal(true); return false; }
+    if (needsProfileSetup) { setSetupDismissed(false); return false; }
+    return true;
+  };
+
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     if (currentStatus === 'accepted' && !window.confirm('팔로우를 취소하시겠습니까?')) return;
     if (currentStatus === 'none') {
       let { data: created, error } = await supabase.from('follows')
@@ -608,6 +618,7 @@ export default function Home() {
 
   const openChatRoom = (partner: UserProfile) => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     if (partner.id === user.id) return;
     if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
     navigate({ screen: true, tab: 'chat', chatUser: partner });
@@ -738,7 +749,7 @@ export default function Home() {
   const handleCreatePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) { setShowAuthModal(true); return; }
-    if (needsProfileSetup) return;
+    if (!requireProfile()) return;
     if (!content.trim() && selectedFiles.length === 0 && !selectedVideo) return;
     setLoading(true);
     const uploadedUrls: string[] = [];
@@ -816,6 +827,7 @@ export default function Home() {
 
   const saveIntention = async () => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     const title = intentionTitleInput.trim().slice(0, 30);
     const content = intentionInput.trim().slice(0, 100);
     if (!title || !content) return;
@@ -934,6 +946,7 @@ export default function Home() {
   };
   const handleReaction = async (postId: string, type: 'pray' | 'like') => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     if (!posts.some((p) => p.id === postId)) return;
     const { data: existing } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('reaction_type', type).maybeSingle(); 
     const { error } = existing
@@ -1339,6 +1352,7 @@ export default function Home() {
 
   const toggleCommentReaction = async (commentId: string, type: 'pray' | 'like') => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     const current = commentReactions[commentId] || { pray: 0, like: 0, myPray: false, myLike: false };
     const mine = type === 'pray' ? current.myPray : current.myLike;
     const apply = (on: boolean) => setCommentReactions(prev => {
@@ -1396,6 +1410,7 @@ export default function Home() {
   // 닉네임을 누르면 댓글창을 열고 그 사람을 태그한 채로 입력칸에 커서를 둔다
   const tagUserInComments = async (postId: string, targetUserId: string, name: string) => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     if (targetUserId !== user.id) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name } }));
     if (!openComments[postId]) await toggleCommentBox(postId);
     setTimeout(() => {
@@ -1407,6 +1422,7 @@ export default function Home() {
 
   const handleAddComment = async (postId: string) => {
     if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
     const text = commentInputs[postId];
     if (!text || !text.trim()) return;
     const author = profile?.baptismal_name || '교우';
@@ -1589,6 +1605,13 @@ export default function Home() {
       {/* 1. 홈 탭 */}
       {activeTab === 'home' && (
         <>
+          {user && needsProfileSetup && setupDismissed && (
+            <button onClick={() => setSetupDismissed(false)} className="w-full px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-left">
+              <span className="text-lg">👀</span>
+              <span className="flex-1 text-xs text-stone-700 leading-snug"><b>둘러보는 중이에요.</b> 프로필을 만들면 글·댓글·기도지향을 쓸 수 있어요.</span>
+              <span className="text-xs font-bold bg-stone-900 text-white rounded-lg px-3 py-1.5 shrink-0">만들기</span>
+            </button>
+          )}
           {/* 오늘의 기도지향: 한 줄로 계속 흘러감, 누르면 모아 보기 */}
           {visibleIntentions.length > 0 ? (
             <button onClick={() => setShowIntentions(true)} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
@@ -2606,9 +2629,12 @@ export default function Home() {
       )}
 
       {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
-      {user && (needsProfileSetup || profileEditMode) && (
+      {user && ((needsProfileSetup && !setupDismissed) || profileEditMode) && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[90]">
-          <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200 max-h-[92dvh] overflow-y-auto">
+          <div className="relative bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200 max-h-[92dvh] overflow-y-auto">
+            {needsProfileSetup && !profileEditMode && (
+              <button type="button" onClick={() => setSetupDismissed(true)} className="absolute top-3 right-4 text-stone-400 hover:text-stone-700 text-2xl leading-none" aria-label="닫고 둘러보기">×</button>
+            )}
             <div className="text-center">
               <span className="text-2xl">🕊️</span>
               <h2 className="font-serif font-bold text-lg text-stone-900 mt-2">{profileEditMode ? '프로필 정보 수정' : profile?.handle ? '닉네임을 정해주세요' : '환영합니다!'}</h2>
@@ -2657,7 +2683,7 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🕯️ 나의 축일</label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🕯️ 나의 축일 <span className="font-normal text-stone-400">(선택)</span></label>
                 <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 팔로워에게도 알려드려요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
@@ -2673,6 +2699,9 @@ export default function Home() {
               </button>
               {profileEditMode && !needsProfileSetup && (
                 <button type="button" onClick={() => setProfileEditMode(false)} className="text-sm text-stone-400 self-center">취소</button>
+              )}
+              {needsProfileSetup && !profileEditMode && (
+                <button type="button" onClick={() => setSetupDismissed(true)} className="text-sm text-stone-500 underline self-center py-1">나중에 하고 먼저 둘러볼게요</button>
               )}
             </form>
           </div>
