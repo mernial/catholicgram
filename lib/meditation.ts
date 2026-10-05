@@ -20,7 +20,8 @@ export interface Meditation {
   keySentence: string;      // 카드에 넣을 핵심 문장
   hashtags: string[];
   color: LiturgicalColor;
-  motif: Motif;
+  motif: Motif;             // 그림을 못 그렸을 때 쓰는 기본 그림
+  illustration: string;     // 주제를 담은 단순한 선 그림 (SVG)
 }
 
 const textOf = (content: Anthropic.Beta.BetaContentBlock[]) =>
@@ -65,16 +66,17 @@ async function findReadings(client: Anthropic, isoDate: string, dateLabel: strin
 const SCHEMA = {
   type: 'object',
   additionalProperties: false,
-  required: ['liturgicalDay', 'readings', 'theme', 'meditation', 'keySentence', 'hashtags', 'color', 'motif'],
+  required: ['liturgicalDay', 'readings', 'theme', 'meditation', 'keySentence', 'hashtags', 'color', 'motif', 'illustration'],
   properties: {
     liturgicalDay: { type: 'string', description: '전례일 이름 (예: 연중 제27주간 화요일)' },
     readings: { type: 'string', description: '독서·복음 장절을 한 줄로 (예: 제1독서 갈라 1,13-24 · 복음 루카 10,38-42)' },
     theme: { type: 'string', description: '오늘의 주제, 20자 이내' },
     meditation: { type: 'string', description: '묵상글 본문, 1400~1600자' },
-    keySentence: { type: 'string', description: '포토카드에 넣을 핵심 문장, 40자 이내' },
+    keySentence: { type: 'string', description: '포토카드에 넣을 아주 짧은 핵심 문장, 20자 이내' },
     hashtags: { type: 'array', items: { type: 'string' }, description: '해시태그 6~8개, # 없이' },
     color: { type: 'string', enum: ['green', 'violet', 'white', 'red', 'rose'], description: '전례색' },
-    motif: { type: 'string', enum: MOTIF_NAMES, description: '주제를 표현하는 배경 그림' },
+    motif: { type: 'string', enum: MOTIF_NAMES, description: '그림이 안 될 때 쓸 기본 그림' },
+    illustration: { type: 'string', description: '주제를 함축하는 단순한 선 그림 SVG 코드 전체' },
   },
 } as const;
 
@@ -98,15 +100,30 @@ async function writeMeditation(client: Anthropic, isoDate: string, dateLabel: st
         '이 말씀을 묵상하여 하나의 주제를 정하고 다음을 만들어 주세요.\n' +
         '- theme: 오늘의 주제 (20자 이내, 마음에 남는 짧은 말)\n' +
         '- meditation: 1500자 내외(1400~1600자)의 묵상글. 말씀의 핵심 → 오늘 우리 삶에 비추어 보기 → 오늘 하루 실천할 작은 다짐 → 짧은 기도로 마무리. 문단 사이는 빈 줄 하나. 제목·해시태그·날짜는 넣지 마세요.\n' +
-        '- keySentence: 포토카드에 크게 넣을 핵심 문장 (40자 이내, 따옴표 없이)\n' +
+        '- keySentence: 포토카드에 넣을 아주 짧은 핵심 문장 (20자 이내, 한두 마디, 따옴표 없이)\n' +
         '- hashtags: 관련 해시태그 6~8개 (# 없이, 띄어쓰기 없이. 예: 오늘의묵상, 매일미사, 복음묵상 + 주제 관련)\n' +
-        '- color: 그날 전례색, motif: 주제에 어울리는 배경 그림',
+        '- color: 그날 전례색, motif: 주제에 어울리는 기본 그림\n' +
+        '- illustration: 오늘 주제를 함축적으로 표현하는 아주 단순한 선 그림(SVG). 예: 열린 문, 등불, 씨앗과 새싹, 빈 의자, 두 손, 길과 발자국, 그물, 빵과 잔 등.\n' +
+        '  규칙: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400"> 로 시작. 요소 4~14개(path, line, circle, ellipse, rect, polyline)만 사용.\n' +
+        '  모든 요소는 fill="none" stroke="#000" stroke-width="7" stroke-linecap="round" stroke-linejoin="round". 글자·그라데이션·이미지·사람 얼굴 묘사 금지. 여백을 넉넉히 두고 가운데에 배치.',
     }],
   });
   ensureNotRefused(res);
   const parsed = JSON.parse(textOf(res.content)) as Omit<Meditation, 'dateLabel'>;
   if (!MOTIF_NAMES.includes(parsed.motif)) parsed.motif = 'cross';
+  parsed.illustration = safeIllustration(parsed.illustration);
   return parsed;
+}
+
+// 그림 SVG 검사: 허용된 선 그림만 남기고, 이상하면 빈 문자열(기본 그림 사용)
+function safeIllustration(svg: string): string {
+  const s = (svg || '').trim();
+  if (!s.startsWith('<svg') || !s.endsWith('</svg>') || s.length > 12000) return '';
+  if (/<(script|image|text|foreignObject|use|a|style|iframe)\b|href=|on[a-z]+=|url\(/i.test(s)) return '';
+  const tags = s.match(/<([a-z]+)/gi) || [];
+  const allowed = new Set(['svg', 'g', 'path', 'line', 'circle', 'ellipse', 'rect', 'polyline', 'polygon']);
+  if (tags.some(t => !allowed.has(t.slice(1).toLowerCase())) || tags.length > 40) return '';
+  return s;
 }
 
 export async function createMeditation(isoDate: string, dateLabel: string): Promise<Meditation> {
@@ -117,7 +134,7 @@ export async function createMeditation(isoDate: string, dateLabel: string): Prom
     ...m,
     dateLabel,
     theme: m.theme.trim().slice(0, 30),
-    keySentence: m.keySentence.trim().replace(/^["“'‘]|["”'’]$/g, '').slice(0, 60),
+    keySentence: m.keySentence.trim().replace(/^["“'‘]|["”'’]$/g, '').slice(0, 30),
     hashtags: Array.from(new Set(['오늘의묵상', '매일미사', ...m.hashtags.map(t => t.replace(/[#\s]/g, ''))].filter(Boolean))).slice(0, 10),
   };
 }
