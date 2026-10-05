@@ -1729,7 +1729,7 @@ export default function Home() {
                 <span className="shrink-0 text-xs font-bold text-white bg-amber-600 rounded-full px-2 py-0.5">📢 공지</span>
                 <span className="text-sm font-bold text-stone-800 truncate">{homeNotice.title}</span>
               </button>
-              <button onClick={() => hideNotice(homeNotice.id)} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-3" aria-label="공지 닫기">×</button>
+              <button onClick={() => hideNotice(homeNotice.id)} className="shrink-0 flex items-center gap-1 text-xs font-bold text-stone-500 hover:text-stone-800 px-3 py-2.5" aria-label="공지 다시 안 보기">다시 안 보기 <span className="text-lg leading-none">×</span></button>
             </div>
           )}
           {/* 오늘의 기도지향: 한 줄로 계속 흘러감, 누르면 모아 보기 */}
@@ -2403,6 +2403,8 @@ export default function Home() {
           notices={notices}
           isAdmin={isAdmin}
           initialOpenId={noticeOpenId}
+          hiddenIds={hiddenNotices}
+          onHide={id => { hideNotice(id); setShowNotices(false); }}
           onClose={() => setShowNotices(false)}
           onChanged={fetchNotices}
         />

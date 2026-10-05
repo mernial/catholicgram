@@ -6,10 +6,12 @@ import { supabase } from '@/lib/supabase';
 export interface Notice { id: string; title: string; content: string; pinned: boolean; pushed_at: string | null; created_at: string }
 
 // 공지사항: 모두 읽기, 관리자는 쓰기·고치기·지우기·홈 고정·휴대폰 알림 보내기
-export default function NoticeBoard({ notices, isAdmin, initialOpenId, onClose, onChanged }: {
+export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds = [], onHide, onClose, onChanged }: {
   notices: Notice[];
   isAdmin: boolean;
   initialOpenId?: string | null;
+  hiddenIds?: string[];
+  onHide?: (id: string) => void; // 다시 안 보기: 홈 화면 맨 위 공지 줄에서 없앤다
   onClose: () => void;
   onChanged: () => void;
 }) {
@@ -107,6 +109,9 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, onClose, 
                 <p className="font-bold text-stone-900 text-base">{n.pinned && '📌 '}{n.title}</p>
                 <p className="text-xs text-stone-400">{new Date(n.created_at).toLocaleString('ko-KR')}</p>
                 <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{n.content}</p>
+                {n.pinned && onHide && !hiddenIds.includes(n.id) && (
+                  <button onClick={() => onHide(n.id)} className="self-start mt-2 text-sm px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold">✓ 확인했어요 · 다시 안 보기</button>
+                )}
                 {isAdmin && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <button onClick={() => startWrite(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">고치기</button>
