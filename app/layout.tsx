@@ -20,8 +20,8 @@ export const metadata: Metadata = {
   description: '기도와 묵상을 나누는 가톨릭 커뮤니티',
   manifest: '/manifest.json',
   icons: {
-    icon: '/icon-192.png',
-    apple: '/apple-touch-icon.png',
+    icon: '/icon-v2-192.png',
+    apple: '/apple-touch-icon-v2.png',
   },
   // 아이폰 '홈 화면에 추가' 시 앱처럼 열리도록
   appleWebApp: {

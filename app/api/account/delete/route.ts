@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   const deletions: [string, string][] = [
     ['post_reactions', 'user_id'],
     ['comment_reactions', 'user_id'],
+    ['prayer_intentions', 'user_id'],
     ['comments', 'user_id'],
     ['posts', 'user_id'],
     ['messages', 'sender_id'],
