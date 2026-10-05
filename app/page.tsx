@@ -237,6 +237,9 @@ export default function Home() {
   }, []);
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
+  const [editOverlays, setEditOverlays] = useState<VideoOverlays | null>(null); // 영상 글 고치기: 글자·이모티콘
+  const [showEditVideoEditor, setShowEditVideoEditor] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [exploreQuery, setExploreQuery] = useState('');
@@ -245,6 +248,10 @@ export default function Home() {
   const exitArmedAtRef = useRef(0);
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+  const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
+  const [bioDraft, setBioDraft] = useState<string | null>(null); // 소개 고치는 중이면 글자
+  const [profileTab, setProfileTab] = useState<'posts' | 'tagged'>('posts');
+  const [followList, setFollowList] = useState<{ mode: 'followers' | 'following'; items: UserProfile[] | null } | null>(null);
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
 
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
@@ -552,6 +559,33 @@ export default function Home() {
     const row = data?.[0] as { status?: string } | undefined;
     if (!row) return 'none';
     return row.status === 'pending' ? 'pending' : 'accepted';
+  };
+
+  // 한 줄 소개 불러오기 (칼럼이 아직 없으면 조용히 비워 둠)
+  useEffect(() => {
+    setViewingBio(''); setBioDraft(null); setProfileTab('posts');
+    if (!viewingUserId) return;
+    supabase.from('profiles').select('bio').eq('id', viewingUserId).maybeSingle()
+      .then(({ data, error }) => { if (!error && data) setViewingBio((data as { bio?: string | null }).bio || ''); });
+  }, [viewingUserId]);
+  const saveBio = async () => {
+    if (!user || bioDraft === null) return;
+    const bio = bioDraft.trim().slice(0, 80);
+    const { error } = await supabase.from('profiles').update({ bio: bio || null }).eq('id', user.id);
+    if (error) { alert(/bio|column/i.test(error.message) ? '소개 기능 준비 중이에요. (supabase/profile-bio.sql 실행 필요)' : '소개를 저장하지 못했어요.'); return; }
+    setViewingBio(bio); setBioDraft(null);
+  };
+  // 팔로워·팔로잉 목록
+  const openFollowList = async (mode: 'followers' | 'following') => {
+    if (!viewingUserId) return;
+    setFollowList({ mode, items: null });
+    const { data } = mode === 'followers'
+      ? await supabase.from('follows').select('follower_id').eq('following_id', viewingUserId).eq('status', 'accepted').limit(500)
+      : await supabase.from('follows').select('following_id').eq('follower_id', viewingUserId).eq('status', 'accepted').limit(500);
+    const ids = (data || []).map((r: { follower_id?: string; following_id?: string }) => (mode === 'followers' ? r.follower_id : r.following_id) as string).filter(Boolean);
+    if (ids.length === 0) { setFollowList({ mode, items: [] }); return; }
+    const { data: people } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', ids);
+    setFollowList({ mode, items: ((people || []) as UserProfile[]).filter(p => !blockedIds.has(p.id)) });
   };
 
   const fetchFollowData = async (targetId: string) => {
@@ -1043,10 +1077,22 @@ export default function Home() {
     const videoPath = target?.video_url?.split('/post-videos/')[1];
     if (videoPath) await supabase.storage.from('post-videos').remove([decodeURIComponent(videoPath)]);
   };
+  const startEditPost = (post: Post) => {
+    setEditingPostId(post.id);
+    setEditContent(post.content || '');
+    setEditOverlays(post.video_overlays || null);
+  };
   const handleUpdatePost = async (postId: string) => {
-    setPosts(posts.map(p => p.id === postId ? { ...p, content: editContent } : p));
+    const target = posts.find(p => p.id === postId);
+    if (!target) return;
+    const changes: Partial<Post> = { content: editContent.trim() };
+    if (target.video_url) changes.video_overlays = hasOverlays(editOverlays) ? editOverlays : null;
+    setSavingEdit(true);
+    const { error } = await supabase.from('posts').update(changes).eq('id', postId);
+    setSavingEdit(false);
+    if (error) { alert(`고치지 못했어요. 잠시 후 다시 해 주세요.\n(${error.message})`); return; }
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...changes } : p));
     setEditingPostId(null);
-    await supabase.from('posts').update({ content: editContent }).eq('id', postId);
   };
   // 사진·영상을 두 번 누르면 공감 (이미 공감했으면 그대로 두기)
   const likeByDoubleTap = (postId: string) => handleReaction(postId, 'like', true);
@@ -1668,7 +1714,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -1676,6 +1722,8 @@ export default function Home() {
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
     if (!showMusicPicker && !showVideoEditor) setShowComposer(false);
+    if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
+    setFollowList(null);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2044,15 +2092,7 @@ export default function Home() {
 
                   <div className="px-4 sm:px-5 flex flex-col gap-3">
                     {!(post.images && post.images.length > 0) && !post.video_url && <div className="pt-4 sm:pt-5" />}
-                    {editingPostId === post.id ? (
-                      <div className="flex flex-col gap-2">
-                        <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full p-3 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none" rows={3} />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => setEditingPostId(null)} className="px-3 py-1.5 rounded-lg border text-xs">취소</button>
-                          <button onClick={() => handleUpdatePost(post.id)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs">저장</button>
-                        </div>
-                      </div>
-                    ) : (() => {
+                    {(() => {
                       // 사진·영상이 있는 글은 첫 줄, 글만 있는 글은 두 줄만 보이고 끝에 '... 더 보기' → 누르면 전체
                       const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
                       return (
@@ -2095,7 +2135,7 @@ export default function Home() {
                     {postMenuId === post.id && (
                       <div className="flex justify-end gap-1 -mt-1">
                         <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">작성자 보기</button>
-                        {user?.id === post.user_id && <button onClick={() => { setPostMenuId(null); setEditingPostId(post.id); setEditContent(post.content); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">수정</button>}
+                        {user?.id === post.user_id && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">수정</button>}
                         {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">삭제</button>}
                         {user && user.id !== post.user_id && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">신고</button>}
                       </div>
@@ -2218,14 +2258,31 @@ export default function Home() {
               <RoleBadge type={viewingProfile?.badge_type} size="md" />
             </div>
             <p className="text-xs text-stone-400 mt-0.5">@{viewingProfile?.handle || 'user'}</p>
+            {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
+            {bioDraft !== null ? (
+              <div className="mt-3 w-full max-w-xs flex flex-col gap-1.5">
+                <textarea autoFocus value={bioDraft} onChange={e => setBioDraft(e.target.value.slice(0, 80))} rows={2} placeholder="예: 수원교구 ○○성당 / 매일 묵주기도 함께해요 🙏" className="w-full p-2.5 text-sm text-center bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-stone-400">{bioDraft.length}/80</span>
+                  <span className="flex gap-1.5">
+                    <button onClick={() => setBioDraft(null)} className="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
+                    <button onClick={saveBio} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold">저장</button>
+                  </span>
+                </div>
+              </div>
+            ) : viewingBio ? (
+              <p onClick={viewingUserId === user?.id ? () => setBioDraft(viewingBio) : undefined} className={`mt-2.5 max-w-xs text-sm text-stone-700 text-center whitespace-pre-wrap leading-relaxed ${viewingUserId === user?.id ? 'cursor-pointer' : ''}`}>{viewingBio}</p>
+            ) : viewingUserId === user?.id && (
+              <button onClick={() => setBioDraft('')} className="mt-2.5 text-xs text-stone-500 border border-dashed border-stone-300 rounded-full px-3 py-1.5">✏️ 나를 소개하는 한 마디 쓰기</button>
+            )}
             {isAdmin && viewingRealName && (
               <p className="text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5">🔒 실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
             )}
             
             <div className="flex gap-6 mt-4 text-center">
               <div><p className="text-lg font-bold text-stone-800">{myPosts.length}</p><p className="text-xs text-stone-500 font-medium">게시물</p></div>
-              <div><p className="text-lg font-bold text-stone-800">{followData.followers}</p><p className="text-xs text-stone-500 font-medium">팔로워</p></div>
-              <div><p className="text-lg font-bold text-stone-800">{followData.following}</p><p className="text-xs text-stone-500 font-medium">팔로잉</p></div>
+              <button onClick={() => openFollowList('followers')}><p className="text-lg font-bold text-stone-800">{followData.followers}</p><p className="text-xs text-stone-500 font-medium">팔로워</p></button>
+              <button onClick={() => openFollowList('following')}><p className="text-lg font-bold text-stone-800">{followData.following}</p><p className="text-xs text-stone-500 font-medium">팔로잉</p></button>
             </div>
 
             <div className="mt-5 flex flex-wrap justify-center gap-2">
@@ -2279,11 +2336,23 @@ export default function Home() {
             )}
           </div>
 
+          {/* 게시물 / 태그됨 (나를 @태그한 글 모아 보기) */}
+          <div className="flex border-b border-stone-200 bg-white">
+            {([['posts', '게시물', 'camera'], ['tagged', '태그됨', 'pin']] as const).map(([key, label, icon]) => (
+              <button key={key} onClick={() => setProfileTab(key)} className={`flex-1 py-3 inline-flex items-center justify-center gap-1.5 text-sm font-bold border-b-2 ${profileTab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>
+                <Icon name={icon} className="w-4 h-4" />{label}
+              </button>
+            ))}
+          </div>
           <div className="grid grid-cols-3 gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-stone-100">
-            {myPosts.length === 0 ? (
-              <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">게시물이 없습니다.</div>
+            {(() => {
+              const gridPosts = profileTab === 'posts'
+                ? myPosts
+                : posts.filter(p => p.user_id !== viewingUserId && !blockedIds.has(p.user_id) && mentionsHandle(p.content, viewingProfile?.handle));
+              return gridPosts.length === 0 ? (
+              <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">{profileTab === 'posts' ? '게시물이 없습니다.' : '아직 태그된 글이 없어요.'}</div>
             ) : (
-              myPosts.map((post) => (
+              gridPosts.map((post) => (
                 <div 
                   key={post.id} 
                   onClick={() => openPostViewer(post)} 
@@ -2302,7 +2371,8 @@ export default function Home() {
                   )}
                 </div>
               ))
-            )}
+            );
+            })()}
           </div>
         </section>
       )}
@@ -2579,6 +2649,83 @@ export default function Home() {
       )}
 
       {/* 숏폼 영상 꾸미기 */}
+      {/* 팔로워·팔로잉 목록 */}
+      {followList && (
+        <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center" onClick={() => setFollowList(null)}>
+          <section className="bg-white w-full sm:w-96 h-[75dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
+              <h2 className="font-bold text-stone-900">{followList.mode === 'followers' ? '팔로워' : '팔로잉'}{followList.items && ` ${followList.items.length}명`}</h2>
+              <button onClick={() => setFollowList(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
+              {!followList.items && <div className="p-10 text-center text-sm text-stone-400">불러오는 중...</div>}
+              {followList.items?.length === 0 && <div className="p-10 text-center text-sm text-stone-400">{followList.mode === 'followers' ? '아직 팔로워가 없어요.' : '아직 팔로우한 사람이 없어요.'}</div>}
+              {followList.items?.map(p => (
+                <button key={p.id} onClick={() => { setFollowList(null); goToProfile(p.id); }} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
+                  {p.avatar_url
+                    ? <img src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
+                    : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{p.baptismal_name?.[0]}</span>}
+                  <span className="min-w-0">
+                    <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /></span>
+                    <span className="block text-xs text-stone-400">@{p.handle}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* 글 고치기: 글·이모티콘, 영상이면 영상 위 글자·이모티콘도 */}
+      {editingPostId && !showEditVideoEditor && (() => {
+        const target = posts.find(p => p.id === editingPostId);
+        if (!target) return null;
+        const thumb = target.video_poster || target.images?.[0];
+        return (
+          <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center" onClick={() => setEditingPostId(null)}>
+            <section className="bg-white w-full sm:w-[30rem] max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h2 className="font-bold text-stone-900">글 고치기</h2>
+                <button onClick={() => setEditingPostId(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
+              </div>
+              {thumb && <img src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />}
+              <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              {user && <MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} />}
+              {/* 이모티콘 바로 넣기 */}
+              <div className="flex flex-wrap gap-1">
+                {['🙏', '✝️', '❤️', '😊', '🥰', '🌸', '🕊️', '⛪', '📿', '✨', '🎉', '🌿'].map(e => (
+                  <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-10 h-10 rounded-xl bg-stone-100 text-xl">{e}</button>
+                ))}
+              </div>
+              {target.video_url && (
+                <button type="button" onClick={() => setShowEditVideoEditor(true)} className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2.5 rounded-xl">
+                  <Icon name="film" className="w-[1.125rem] h-[1.125rem]" />영상 위 글자·이모티콘 고치기{hasOverlays(editOverlays) && ' ✓'}
+                </button>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => setEditingPostId(null)} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm text-stone-600">취소</button>
+                <button onClick={() => handleUpdatePost(target.id)} disabled={savingEdit || (!editContent.trim() && !target.images?.length && !target.video_url)} className="flex-1 py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40">{savingEdit ? '저장 중...' : '고치기'}</button>
+              </div>
+            </section>
+          </div>
+        );
+      })()}
+      {editingPostId && showEditVideoEditor && (() => {
+        const target = posts.find(p => p.id === editingPostId);
+        if (!target?.video_url) return null;
+        return (
+          <VideoEditor
+            src={target.video_url}
+            initial={editOverlays}
+            musicTitle={target.music_title}
+            onOpenMusic={() => alert('배경음악은 새 글을 쓸 때만 고를 수 있어요.')}
+            onRemoveMusic={() => alert('배경음악은 새 글을 쓸 때만 바꿀 수 있어요.')}
+            onDone={o => { setEditOverlays(o); setShowEditVideoEditor(false); }}
+            onCancel={() => setShowEditVideoEditor(false)}
+          />
+        );
+      })()}
+
       {showVideoEditor && videoPreviewUrl && (
         <VideoEditor
           src={videoPreviewUrl}

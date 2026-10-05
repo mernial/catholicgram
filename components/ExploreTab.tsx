@@ -149,6 +149,12 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   const allTags = useMemo(() => popularHashtags(visiblePosts.map(p => p.content), 200), [visiblePosts]);
   const matchedTags = useMemo(() => tagTerm ? allTags.filter(t => t.tag.includes(tagTerm)).slice(0, 20) : [], [allTags, tagTerm]);
 
+  // 탐색에서 글을 열면 그 글의 태그를 관심사로 기록 (다음 추천에 반영)
+  const openPost = (post: ExplorePost) => {
+    extractHashtags(post.content).slice(0, 3).forEach(t => { recordInterest(user?.id, 'tag', t); });
+    onOpenPost(post.id);
+  };
+
   const runSearch = (value: string) => {
     setQuery(value);
     setFilter('all');
@@ -179,8 +185,20 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   }, [visiblePosts, user, reacted, commented, events]);
 
 
-  // 탐색 피드: 팔로우한 교우의 글 + 내가 좋아할 만한 글 (사진 게시물 우선)
+  // 탐색 피드: 시간 순서가 아니라 '내가 좋아할 만한 글' 순서 (사진 게시물 우선)
+  //  - 팔로우한 교우, 관심 태그·검색어, 내가 자주 반응한 글쓴이, 반응 많은 글
+  //  - 오래된 글도 관심사와 맞으면 올라오고, 날마다 순서가 조금씩 바뀜
   const exploreFeed = useMemo(() => {
+    const authorAffinity = new Map<string, number>();
+    visiblePosts.forEach(p => {
+      if (reacted.has(p.id) || commented.has(p.id)) authorAffinity.set(p.user_id, (authorAffinity.get(p.user_id) || 0) + 1);
+    });
+    const daySeed = Math.floor(now / DAY);
+    const jitter = (id: string) => {
+      let h = daySeed;
+      for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+      return (h % 1000) / 1000 * 0.8;
+    };
     const scored = visiblePosts
       .filter(p => !(user && p.user_id === user.id))
       .map(p => {
@@ -189,11 +207,12 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
         const text = (p.content || '').toLowerCase();
         const kwScore = keywords.filter(k => text.includes(k)).length;
         const ageDays = (now - new Date(p.created_at).getTime()) / DAY;
-        const fresh = Math.max(0, 2 - ageDays / 7);                          // 2주에 걸쳐 서서히 낮아짐
+        const fresh = Math.max(0, 0.6 - ageDays / 30);                       // 새 글은 아주 조금만 우대
         const popular = Math.log1p((p.pray_count || 0) + (p.like_count || 0)) * 0.6;
         const followed = acceptedFollowing.has(p.user_id);
         const seen = reacted.has(p.id) || commented.has(p.id);
-        const score = (followed ? 4 : 0) + Math.min(tagScore, 6) + kwScore + fresh + popular - (seen ? 2.5 : 0);
+        const affinity = Math.min(authorAffinity.get(p.user_id) || 0, 3) * 1.2;
+        const score = (followed ? 3 : 0) + Math.min(tagScore, 6) + kwScore + affinity + fresh + popular + jitter(p.id) - (seen ? 2.5 : 0);
         return { post: p, followed, hasPhoto: (p.images?.length || 0) > 0, score };
       })
       .sort((a, b) => b.score - a.score);
@@ -242,7 +261,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   const renderGrid = (items: { post: ExplorePost; followed: boolean }[]) => (
     <div className="grid grid-cols-3 gap-0.5 bg-stone-100">
       {items.map(({ post, followed }) => (
-        <button key={post.id} onClick={() => onOpenPost(post.id)} className="relative aspect-square overflow-hidden bg-white text-left">
+        <button key={post.id} onClick={() => openPost(post)} className="relative aspect-square overflow-hidden bg-white text-left">
           {post.images?.[0] ? (
             <img src={post.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
           ) : (
@@ -266,7 +285,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   );
 
   const renderPostRow = (post: ExplorePost, note?: string) => (
-    <button key={post.id} onClick={() => onOpenPost(post.id)} className="w-full text-left p-4 flex gap-3 hover:bg-stone-50 transition-colors">
+    <button key={post.id} onClick={() => openPost(post)} className="w-full text-left p-4 flex gap-3 hover:bg-stone-50 transition-colors">
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 min-w-0">
           <Avatar p={post} size="w-7 h-7" />
