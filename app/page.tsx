@@ -110,6 +110,8 @@ export default function Home() {
   const [isIOS, setIsIOS] = useState(false);
   const [installBannerDismissed, setInstallBannerDismissed] = useState(true);
   const [showInstallGuide, setShowInstallGuide] = useState(false);
+  // 처음 들어왔을 때 휴대폰 알림을 켜도록 안내하는 창
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sponsorBanners, setSponsorBanners] = useState<SponsorBannerData[]>([]);
@@ -828,22 +830,25 @@ export default function Home() {
     }
   };
 
-  const enablePush = async () => {
-    if (!user) return;
+  // silent: 이미 알림이 허용된 경우(앱 설치 때 허용 등) 안내 없이 바로 구독
+  const enablePush = async (silent = false) => {
+    if (!user) return false;
     setPushBusy(true);
     try {
-      const permission = await Notification.requestPermission();
-      if (permission !== 'granted') { setPushStatus(permission === 'denied' ? 'denied' : 'off'); return; }
+      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      if (permission !== 'granted') { setPushStatus(permission === 'denied' ? 'denied' : 'off'); return false; }
       const reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      if (await savePushSubscription(sub, user.id)) setPushStatus('on');
-      else alert('알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      if (await savePushSubscription(sub, user.id)) { setPushStatus('on'); return true; }
+      if (!silent) alert('알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return false;
     } catch {
-      alert('알림을 켜지 못했습니다. 브라우저 알림 설정을 확인해주세요.');
+      if (!silent) alert('알림을 켜지 못했습니다. 브라우저 알림 설정을 확인해주세요.');
+      return false;
     } finally {
       setPushBusy(false);
     }
@@ -867,6 +872,29 @@ export default function Home() {
   useEffect(() => {
     if (user) checkPushStatus(user.id);
   }, [user]);
+
+  // 처음부터 알림이 오도록: 이미 허용돼 있으면 바로 구독, 아직 묻지 않았으면 안내 창을 띄운다
+  // (브라우저는 사용자가 버튼을 눌러야 알림 허용 창을 보여주므로 안내 창의 버튼으로 요청)
+  const pushPromptCheckedRef = useRef(false);
+  useEffect(() => {
+    if (!user || needsProfileSetup || pushStatus !== 'off' || pushPromptCheckedRef.current) return;
+    pushPromptCheckedRef.current = true;
+    if (Notification.permission === 'granted') { enablePush(true); return; }
+    if (Notification.permission !== 'default') return;
+    const key = `pushPromptAt:${user.id}`;
+    const last = Number(storageGet(key) || 0);
+    if (Date.now() - last < 3 * 24 * 3600e3) return; // '나중에'를 누르면 3일 뒤 다시 안내
+    const timer = setTimeout(() => {
+      storageSet(key, String(Date.now()));
+      setShowPushPrompt(true);
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [user, needsProfileSetup, pushStatus]);
+
+  const acceptPushPrompt = async () => {
+    setShowPushPrompt(false);
+    if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {} });
+  };
 
   // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동
   useEffect(() => {
@@ -955,6 +983,18 @@ export default function Home() {
   // 먼저 안내 창을 띄운다. 안드로이드는 설치 중 'Play 프로텍트' 경고가 뜰 수 있어
   // '무시하고 설치'를 눌러야 한다는 점을 설치 전에 미리 알려준다.
   const handleInstallClick = () => setShowInstallGuide(true);
+
+  // 처음 들어오면 홈 화면 추가 안내를 바로 띄운다 (닫으면 3일 뒤 다시)
+  useEffect(() => {
+    if (isStandalone || isKakaoInApp || needsProfileSetup || showAuthModal) return;
+    const last = Number(storageGet('installPromptAt') || 0);
+    if (Date.now() - last < 3 * 24 * 3600e3) return;
+    const timer = setTimeout(() => {
+      storageSet('installPromptAt', String(Date.now()));
+      setShowInstallGuide(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isStandalone, isKakaoInApp, needsProfileSetup, showAuthModal]);
 
   // 안드로이드 크롬: 안내를 본 뒤 브라우저의 설치 창을 띄움
   const startNativeInstall = async () => {
@@ -1059,11 +1099,11 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
-    setShowInstallGuide(false); setShowSponsorAdmin(false);
+    setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1604,6 +1644,24 @@ export default function Home() {
         </div>
       )}
 
+      {/* 처음 들어왔을 때 알림 켜기 안내 */}
+      {showPushPrompt && !showInstallGuide && (
+        <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPushPrompt(false)}>
+          <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe text-center" onClick={e => e.stopPropagation()}>
+            <span className="text-4xl">🔔</span>
+            <h2 className="font-bold text-lg text-stone-900">휴대폰 알림을 켜주세요</h2>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
+            </p>
+            <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
+              다음 창에서 <u>허용</u>을 눌러주세요 👍
+            </p>
+            <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">알림 받기</button>
+            <button onClick={() => setShowPushPrompt(false)} className="text-sm text-stone-400">나중에</button>
+          </div>
+        </div>
+      )}
+
       {/* 홈 화면 추가 방법 안내 */}
       {showInstallGuide && (
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
@@ -1611,14 +1669,14 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <img src="/icon-192.png" alt="" className="w-12 h-12 rounded-xl" />
               <div>
-                <h2 className="font-bold text-stone-900">홈 화면에 추가하기</h2>
-                <p className="text-xs text-stone-500">앱처럼 아이콘을 눌러 바로 열 수 있어요</p>
+                <h2 className="font-bold text-stone-900">{!isIOS && installPrompt ? '가톨릭그램 앱 설치하기' : '홈 화면에 추가하기'}</h2>
+                <p className="text-xs text-stone-500">{isIOS ? '홈 화면에 추가해야 휴대폰 알림도 받을 수 있어요' : '앱처럼 아이콘을 눌러 바로 열 수 있어요'}</p>
               </div>
             </div>
             {isIOS ? (
               <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
                 <li><b>Safari</b>로 이 페이지를 열어주세요 (Chrome은 오른쪽 위 공유 버튼)</li>
-                <li>화면 아래(또는 위)의 <b>공유 버튼</b> <span className="inline-block border border-stone-300 rounded px-1 text-xs">⬆︎</span> 을 누르세요</li>
+                <li>화면 아래(또는 위)의 <b>공유 버튼</b> <span className="inline-block border border-stone-300 rounded px-1 text-xs">⬆︎</span> 을 누르세요 (안 보이면 <b>⋯</b> 버튼 → <b>공유</b>)</li>
                 <li>목록을 내려 <b>홈 화면에 추가</b>를 누르세요</li>
                 <li>오른쪽 위 <b>추가</b>를 누르면 완료!</li>
               </ol>
@@ -1645,8 +1703,8 @@ export default function Home() {
             )}
             {!isIOS && installPrompt ? (
               <div className="flex gap-2">
-                <button onClick={() => setShowInstallGuide(false)} className="px-4 py-3 rounded-xl text-sm font-medium text-stone-500 border border-stone-200">취소</button>
-                <button onClick={startNativeInstall} className="flex-1 bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">알겠어요, 설치하기</button>
+                <button onClick={() => setShowInstallGuide(false)} className="px-4 py-3 rounded-xl text-sm font-medium text-stone-500 border border-stone-200">나중에</button>
+                <button onClick={startNativeInstall} className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">📲 지금 설치하기</button>
               </div>
             ) : (
               <button onClick={() => setShowInstallGuide(false)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">확인</button>
@@ -1678,7 +1736,7 @@ export default function Home() {
                   {pushStatus === 'ios-needs-install' && <><b>아이폰은 홈 화면 앱에서만</b> 알림을 받을 수 있어요<br />먼저 홈 화면에 추가한 뒤 그 아이콘으로 열어주세요</>}
                 </div>
                 {pushStatus === 'on' && <button onClick={disablePush} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">끄기</button>}
-                {pushStatus === 'off' && <button onClick={enablePush} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">{pushBusy ? '설정 중...' : '켜기'}</button>}
+                {pushStatus === 'off' && <button onClick={() => enablePush()} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">{pushBusy ? '설정 중...' : '켜기'}</button>}
                 {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
               </div>
             )}
