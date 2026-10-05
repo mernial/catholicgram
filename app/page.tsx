@@ -38,6 +38,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 import Icon from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
+import MeditationAdmin from '@/components/MeditationAdmin';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -230,6 +231,7 @@ export default function Home() {
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
+  const [showMeditationAdmin, setShowMeditationAdmin] = useState(false); // 관리자: 오늘의 묵상 자동 올리기
   // 접속 통계 기록 (앱 열기·나가기)
   useEffect(() => startVisitTracking(), []);
   const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
@@ -1721,7 +1723,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showMeditationAdmin);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -1732,6 +1734,7 @@ export default function Home() {
     if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
     setFollowList(null);
     setShowAdminStats(false);
+    setShowMeditationAdmin(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2648,7 +2651,8 @@ export default function Home() {
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
-          onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined} />
+          onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined}
+          onOpenMeditation={isAdmin ? () => { setShowSettings(false); setShowMeditationAdmin(true); } : undefined} />
       )}
 
       {/* 오늘의 기도지향 모아 보기 */}
@@ -2755,6 +2759,7 @@ export default function Home() {
 
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
+      {showMeditationAdmin && isAdmin && <MeditationAdmin onClose={() => setShowMeditationAdmin(false)} onPosted={fetchPosts} />}
 
       {/* 팔로워·팔로잉 목록 */}
       {followList && (
