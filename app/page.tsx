@@ -20,6 +20,8 @@ import SettingsModal from '@/components/SettingsModal';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
+import FeastDayPicker from '@/components/FeastDayPicker';
+import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -58,7 +60,7 @@ interface FollowRequest { id: string; follower: UserProfile; created_at?: string
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
-interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; }
+interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; }
 
 // --- 이미지 자르기 유틸리티 ---
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -124,6 +126,12 @@ export default function Home() {
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
+  const [feastDayInput, setFeastDayInput] = useState('');
+  // 오늘 축일인 팔로잉 교우들 + 축일 카드 닫음 여부(하루 단위)
+  const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
+  const [feastCardDismissed, setFeastCardDismissed] = useState(true);
+  const [feastPromptDismissed, setFeastPromptDismissed] = useState(true);
+  const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
@@ -247,6 +255,7 @@ export default function Home() {
       } else {
         setProfile(null);
         setNeedsProfileSetup(false);
+        setFeastFriends([]);
         goToHome();
       }
     });
@@ -333,7 +342,11 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
+    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day').eq('id', userId).single();
+    // 축일 칼럼이 아직 없는 경우(SQL 실행 전)에도 동작하도록
+    if (error && error.code !== 'PGRST116') {
+      ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single());
+    }
     if (data && data.baptismal_name && data.handle) { 
       setProfile(data); 
       setNeedsProfileSetup(false); 
@@ -433,6 +446,25 @@ export default function Home() {
     setFollowRequests(data.filter(r => byId[r.follower_id]).map(r => ({ id: r.id, follower: byId[r.follower_id], created_at: r.created_at, iFollow: iFollow.has(r.follower_id) })));
   };
 
+  // 오늘이 축일인 팔로잉 교우
+  const fetchFeastFriends = async (userId: string) => {
+    const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', userId).eq('status', 'accepted');
+    const ids = (follows || []).map(f => f.following_id);
+    if (ids.length === 0) { setFeastFriends([]); return; }
+    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day')
+      .in('id', ids).in('feast_day', todayFeastKeys());
+    setFeastFriends((data || []) as UserProfile[]);
+  };
+
+  // 설정에서 축일을 바꾼 경우
+  const updateMyFeastDay = async (value: string | null) => {
+    if (!user) return false;
+    const { error } = await supabase.from('profiles').update({ feast_day: value }).eq('id', user.id);
+    if (error) return false;
+    setProfile(prev => prev ? { ...prev, feast_day: value } : prev);
+    return true;
+  };
+
   // 알림에서 바로 맞팔로우
   const followBack = async (item: FollowRequest) => {
     await toggleFollow(item.follower.id, 'none');
@@ -516,6 +548,18 @@ export default function Home() {
     window.location.href = data.url;
   };
 
+  const handleGoogleLogin = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
+    });
+    if (error || !data?.url) {
+      alert('로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    window.location.href = data.url;
+  };
+
   const handleProfileSetup = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -528,15 +572,14 @@ export default function Home() {
     setLoading(true);
     setSetupError('');
 
-    const { error } = await supabase.from('profiles').upsert([{ 
-      id: user.id, 
-      baptismal_name: baptismalName.trim(), 
-      handle: cleanHandle,
-      email: user.email 
-    }]);
+    const feastDay = isValidFeastDay(feastDayInput) ? feastDayInput : null;
+    const row = { id: user.id, baptismal_name: baptismalName.trim(), handle: cleanHandle, email: user.email };
+    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]);
+    // 축일 칼럼이 아직 없는 경우(SQL 실행 전)에는 축일 없이 저장
+    if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([row]));
 
     if (!error) {
-      setProfile({ id: user.id, baptismal_name: baptismalName.trim(), handle: cleanHandle });
+      setProfile({ id: user.id, baptismal_name: baptismalName.trim(), handle: cleanHandle, feast_day: feastDay });
       setNeedsProfileSetup(false);
       fetchPosts();
     } else {
@@ -679,6 +722,7 @@ export default function Home() {
     fetchNotifications(userId);
     fetchUnreadMessages(userId);
     fetchFollowRequests(userId);
+    fetchFeastFriends(userId);
   };
 
   const unreadCommentCount = !user ? 0 : notifications.filter(n =>
@@ -688,7 +732,29 @@ export default function Home() {
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
     r.created_at && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
   ).length;
-  const unreadCount = unreadCommentCount + unreadMessageCount + newFollowerCount;
+  // 축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
+  const isMyFeastToday = !!profile?.feast_day && todayFeastKeys().includes(profile.feast_day);
+  const visibleFeastFriends = feastFriends.filter(f => !blockedIds.has(f.id));
+  const feastAlertCount = !user || (notificationsLastSeen && todayKst(new Date(notificationsLastSeen)) === todayKst())
+    ? 0 : visibleFeastFriends.length + (isMyFeastToday ? 1 : 0);
+  const unreadCount = unreadCommentCount + unreadMessageCount + newFollowerCount + feastAlertCount;
+
+  // 축일 축하 메시지 보내기: 대화방을 열고 인사말을 미리 채워둔다
+  const congratulateFeast = (friend: UserProfile) => {
+    setShowNotifications(false);
+    openChatRoom(friend);
+    setMessageInput(`${friend.baptismal_name}님, 축일 축하드려요! 🎉 주님의 은총이 가득하시길 기도할게요 🙏`);
+  };
+
+  const dismissFeastCard = () => {
+    setFeastCardDismissed(true);
+    if (user) storageSet(`feastCardDismissed:${user.id}`, todayKst());
+  };
+
+  const dismissFeastPrompt = () => {
+    setFeastPromptDismissed(true);
+    if (user) storageSet(`feastPromptDismissed:${user.id}`, '1');
+  };
 
   const openNotifications = () => {
     if (!user) return;
@@ -829,6 +895,26 @@ export default function Home() {
     if (alertSoundOn) playAlertSound();
     navigator.vibrate?.([150, 80, 150]);
   }, [notifications, unreadMessages, followRequests]);
+
+  // 축일 카드/안내를 닫았는지 (축일 카드는 하루 단위)
+  useEffect(() => {
+    if (!user) return;
+    setFeastCardDismissed(storageGet(`feastCardDismissed:${user.id}`) === todayKst());
+    setFeastPromptDismissed(storageGet(`feastPromptDismissed:${user.id}`) === '1');
+  }, [user]);
+
+  // 축일 알림 배너는 하루에 한 번만
+  useEffect(() => {
+    if (!user || needsProfileSetup || (!isMyFeastToday && visibleFeastFriends.length === 0)) return;
+    const key = `feastToast:${user.id}`;
+    if (storageGet(key) === todayKst()) return;
+    storageSet(key, todayKst());
+    const first = visibleFeastFriends[0];
+    setToast(isMyFeastToday
+      ? { key: 'feast:me', icon: '🎉', title: '축일을 축하드립니다!', body: `${profile?.baptismal_name}님, 주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏`, action: () => goToHome() }
+      : { key: `feast:${first.id}`, icon: '🎉', title: `오늘은 ${first.baptismal_name}님의 축일이에요`, body: visibleFeastFriends.length > 1 ? `외 ${visibleFeastFriends.length - 1}명도 축일이에요. 축하 메시지를 보내보세요` : '축하 메시지를 보내보세요', action: () => openNotifications() });
+    if (alertSoundOn) playAlertSound();
+  }, [user, needsProfileSetup, isMyFeastToday, feastFriends]);
 
   // 배너는 5초 뒤 자동으로 사라짐
   useEffect(() => {
@@ -1083,6 +1169,42 @@ export default function Home() {
             </div>
           )}
           {topBanner && <SponsorBanner banner={topBanner} variant="top" />}
+          {user && !feastCardDismissed && (isMyFeastToday || visibleFeastFriends.length > 0) && (
+            <div className="mx-4 mt-3 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-violet-50 border border-amber-200 shadow-sm relative">
+              <button onClick={dismissFeastCard} className="absolute top-2 right-3 text-stone-400 hover:text-stone-700 text-lg leading-none" aria-label="닫기">×</button>
+              {isMyFeastToday && (
+                <div className="text-center pr-4">
+                  <p className="text-2xl">🎉🕯️</p>
+                  <p className="font-serif font-bold text-stone-900 mt-1">{profile?.baptismal_name}님, 축일을 축하드립니다!</p>
+                  <p className="text-sm text-stone-600 mt-1 leading-relaxed">주님의 은총과 주보성인의 전구가<br />늘 함께하시길 기도합니다 🙏</p>
+                </div>
+              )}
+              {visibleFeastFriends.length > 0 && (
+                <div className={`flex flex-col gap-2 ${isMyFeastToday ? 'mt-3 pt-3 border-t border-amber-200' : ''}`}>
+                  <p className="text-sm font-bold text-stone-800 pr-4">🎉 오늘 축일인 교우</p>
+                  {visibleFeastFriends.map(f => (
+                    <div key={f.id} className="flex items-center gap-2.5">
+                      <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
+                        {f.avatar_url
+                          ? <img src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
+                          : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{f.baptismal_name[0]}</div>}
+                        <span className="text-sm text-stone-800 truncate"><b>{f.baptismal_name}</b>님의 축일이에요</span>
+                      </button>
+                      <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {user && profile && !profile.feast_day && feastPromptDismissed === false && (
+            <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-white border border-stone-200 flex items-center gap-3">
+              <span className="text-xl">🕯️</span>
+              <p className="flex-1 text-xs text-stone-700 leading-snug"><b>축일을 등록해보세요</b><br />축일에 축하 인사를 받고, 팔로워에게도 알려드려요</p>
+              <button onClick={() => { setSettingsView('feast'); setShowSettings(true); }} className="bg-stone-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0">등록</button>
+              <button onClick={dismissFeastPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
+            </div>
+          )}
           <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
               <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그를 달면 찾기 쉬워요)" : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
@@ -1233,7 +1355,7 @@ export default function Home() {
                     프로필 사진 변경
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                   </label>
-                  <button onClick={() => setShowSettings(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                  <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     ⚙️ 설정
                   </button>
                   {isAdmin && (
@@ -1455,7 +1577,9 @@ export default function Home() {
 
       {/* 설정 (차단 목록, 약관, 탈퇴) */}
       {showSettings && user && (
-        <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser} />
+        <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
+          feastDay={profile?.feast_day || ''} baptismalName={profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
+          initialView={settingsView} />
       )}
 
       {/* 운영자 건의함 */}
@@ -1559,6 +1683,20 @@ export default function Home() {
               </div>
             )}
             <div className="overflow-y-auto divide-y divide-stone-100">
+              {isMyFeastToday && (
+                <div className="p-4 bg-amber-50/60">
+                  <p className="text-[0.9375rem] text-stone-800">🎉 <b>{profile?.baptismal_name}</b>님, 오늘 축일을 축하드립니다!</p>
+                  <p className="text-xs text-stone-600 mt-1">주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏</p>
+                </div>
+              )}
+              {visibleFeastFriends.map(f => (
+                <div key={`feast-${f.id}`} className="p-4 flex items-center gap-3 bg-amber-50/60">
+                  <button onClick={() => { setShowNotifications(false); goToProfile(f.id); }} className="flex-1 text-left min-w-0 text-[0.9375rem] text-stone-800">
+                    🎉 오늘은 <b>{f.baptismal_name}</b>님의 축일이에요
+                  </button>
+                  <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
+                </div>
+              ))}
               {followRequests.filter(r => !blockedIds.has(r.follower.id)).map(r => (
                 <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
@@ -1585,7 +1723,7 @@ export default function Home() {
                   <p className="text-[0.8125rem] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
                 </button>
               ))}
-              {notifications.length === 0 && followRequests.length === 0 && unreadMessages.length === 0 ? (
+              {notifications.length === 0 && followRequests.length === 0 && unreadMessages.length === 0 && visibleFeastFriends.length === 0 && !isMyFeastToday ? (
                 <div className="p-10 text-center text-stone-400 text-sm">아직 받은 알림이 없습니다.</div>
               ) : (
                 notifications.map(n => (
@@ -1612,7 +1750,7 @@ export default function Home() {
             <div className="text-center">
               <span className="text-3xl">✟</span>
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
-              <p className="text-xs text-stone-500 mt-1.5">카카오 계정으로 3초 만에 시작하세요</p>
+              <p className="text-xs text-stone-500 mt-1.5">카카오 또는 구글 계정으로 간편하게 시작하세요</p>
             </div>
 
             {isKakaoInApp && (
@@ -1637,6 +1775,13 @@ export default function Home() {
               >
                 <svg viewBox="0 0 24 24" className="w-5 h-5" fill="currentColor"><path d="M12 3C6.477 3 2 6.452 2 10.71c0 2.72 1.764 5.114 4.417 6.386l-1.127 4.144c-.066.24.237.424.444.258l4.8-3.328c.47.054.957.082 1.466.082 5.523 0 10-3.452 10-7.71C22 6.452 17.523 3 12 3z"/></svg>
                 카카오로 시작하기
+              </button>
+              <button
+                onClick={handleGoogleLogin}
+                className="w-full flex items-center justify-center gap-3 bg-white text-stone-800 py-3 rounded-xl text-sm font-semibold border border-stone-300 hover:bg-stone-50 transition-colors"
+              >
+                <svg viewBox="0 0 48 48" className="w-5 h-5" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-7.9l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>
+                Google로 시작하기
               </button>
             </div>
 
@@ -1712,7 +1857,7 @@ export default function Home() {
       {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
       {user && needsProfileSetup && (
         <div className="fixed inset-0 bg-stone-900/80 backdrop-blur-md flex items-center justify-center p-4 z-[90]">
-          <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200">
+          <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl flex flex-col gap-4 border border-stone-200 max-h-[92dvh] overflow-y-auto">
             <div className="text-center">
               <span className="text-2xl">🕊️</span>
               <h2 className="font-serif font-bold text-lg text-stone-900 mt-2">환영합니다!</h2>
@@ -1745,6 +1890,12 @@ export default function Home() {
                     className="w-full p-3 pl-1 text-sm font-medium bg-transparent border-none focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🕯️ 나의 축일</label>
+                <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
+                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 팔로워에게도 알려드려요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
 
               {setupError && <p className="text-red-500 text-xs text-center">{setupError}</p>}
