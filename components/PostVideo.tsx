@@ -1,11 +1,21 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { OverlayLayer, type VideoOverlays } from '@/components/VideoOverlays';
 
 // 피드의 숏폼 영상: 화면에 보이면 소리 없이 자동 재생(반복), 누르면 소리 켜기/끄기
-export default function PostVideo({ src, poster, onOpen }: { src: string; poster?: string | null; onOpen?: () => void }) {
+// 배경음악이 있는 영상은 누르면 크게 보기(음악과 함께)로 연다
+export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle, onOpen }: {
+  src: string;
+  poster?: string | null;
+  overlays?: VideoOverlays | null;
+  hasMusic?: boolean;
+  musicTitle?: string | null;
+  onOpen?: () => void;
+}) {
   const ref = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
+  const soundless = !!overlays?.muteOriginal;
 
   useEffect(() => {
     const video = ref.current;
@@ -18,7 +28,8 @@ export default function PostVideo({ src, poster, onOpen }: { src: string; poster
     return () => observer.disconnect();
   }, []);
 
-  const toggleSound = () => {
+  const onTap = () => {
+    if (hasMusic || soundless) { onOpen?.(); return; }
     const video = ref.current;
     if (!video) return;
     video.muted = !video.muted;
@@ -27,7 +38,7 @@ export default function PostVideo({ src, poster, onOpen }: { src: string; poster
   };
 
   return (
-    <div className="relative bg-black">
+    <div className="relative bg-black [container-type:inline-size]">
       <video
         ref={ref}
         src={poster ? src : `${src}#t=0.1`}
@@ -36,16 +47,53 @@ export default function PostVideo({ src, poster, onOpen }: { src: string; poster
         loop
         playsInline
         preload="metadata"
-        onClick={toggleSound}
+        onClick={onTap}
         className="w-full aspect-[4/5] object-cover"
       />
-      <button onClick={toggleSound} className="absolute bottom-2.5 right-2.5 w-9 h-9 rounded-full bg-black/55 text-white text-base flex items-center justify-center" aria-label={muted ? '소리 켜기' : '소리 끄기'}>
-        {muted ? '🔇' : '🔊'}
+      <OverlayLayer overlays={overlays} />
+      <button onClick={onTap} className="absolute bottom-2.5 right-2.5 w-9 h-9 rounded-full bg-black/55 text-white text-base flex items-center justify-center" aria-label="소리">
+        {hasMusic ? '🎵' : soundless ? '▶' : muted ? '🔇' : '🔊'}
       </button>
-      <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5">🎬 숏폼</span>
+      {hasMusic && musicTitle ? (
+        <button onClick={onOpen} className="absolute top-2.5 left-2.5 flex items-center gap-1.5 max-w-[75%] text-xs font-bold text-white bg-black/45 backdrop-blur-sm rounded-full px-3 py-1.5">
+          <span>🎵</span><span className="truncate">{musicTitle}</span>
+        </button>
+      ) : (
+        <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5">🎬 숏폼</span>
+      )}
       {onOpen && (
         <button onClick={onOpen} className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/45 text-white text-sm flex items-center justify-center" aria-label="크게 보기">⛶</button>
       )}
+    </div>
+  );
+}
+
+// 크게 보기: 꾸민 글자·이모티콘과 함께 재생, 누르면 멈춤/재생
+export function VideoViewer({ src, poster, overlays }: { src: string; poster?: string | null; overlays?: VideoOverlays | null }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [paused, setPaused] = useState(false);
+  const soundless = !!overlays?.muteOriginal;
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    video.muted = soundless;
+    // 소리와 함께 재생이 막히면 소리 없이라도 재생
+    video.play().catch(() => { video.muted = true; video.play().catch(() => setPaused(true)); });
+  }, [src, soundless]);
+
+  const toggle = () => {
+    const video = ref.current;
+    if (!video) return;
+    if (video.paused) { video.play().catch(() => {}); setPaused(false); }
+    else { video.pause(); setPaused(true); }
+  };
+
+  return (
+    <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size]" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} onClick={toggle}>
+      <video ref={ref} src={src} poster={poster || undefined} loop playsInline className="absolute inset-0 w-full h-full object-cover" />
+      <OverlayLayer overlays={overlays} />
+      {paused && <span className="absolute inset-0 flex items-center justify-center text-white text-5xl bg-black/20">▶</span>}
     </div>
   );
 }
