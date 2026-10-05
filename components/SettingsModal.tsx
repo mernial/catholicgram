@@ -12,7 +12,7 @@ import { IconBadge } from '@/components/Icon';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onEditProfile, onOpenNotices }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -22,6 +22,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
+  onOpenStats?: () => void;   // 관리자에게만 전달
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
 }) {
@@ -108,6 +109,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
               <span className={label}><IconBadge name="calendar" tone="gold" />나의 축일</span>
               <span className="text-stone-400 text-xs">{feastDay ? formatFeastDay(feastDay) : '등록하기'} <span className="text-stone-300">›</span></span>
             </button>
+            {onOpenStats && (
+              <button onClick={onOpenStats} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="users" tone="gold" />접속 통계 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+            )}
             {onOpenMembers && (
               <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="users" tone="sky" />회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
