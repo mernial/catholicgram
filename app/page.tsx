@@ -260,15 +260,6 @@ export default function Home() {
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
   // 접속 통계 기록 (앱 열기·나가기)
   useEffect(() => startVisitTracking(), []);
-  const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
-  useEffect(() => {
-    const isField = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
-    const onIn = (e: FocusEvent) => { if (isField(e.target)) setTyping(true); };
-    const onOut = (e: FocusEvent) => { if (isField(e.target)) setTyping(false); };
-    document.addEventListener('focusin', onIn);
-    document.addEventListener('focusout', onOut);
-    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut); };
-  }, []);
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
   const [editOverlays, setEditOverlays] = useState<VideoOverlays | null>(null); // 영상 글 고치기: 글자·이모티콘
@@ -1778,7 +1769,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -1789,6 +1780,8 @@ export default function Home() {
     if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
     setFollowList(null);
     setShowAdminStats(false);
+    setPostMenuId(null);
+    setFabOpen(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2183,51 +2176,6 @@ export default function Home() {
           </div>
           )}
 
-          {/* + 버튼: 누르면 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 사르륵 펼쳐짐 */}
-          {!showComposer && !typing && (
-            <>
-              {fabOpen && <button className="fixed inset-0 z-30 bg-black/20 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />}
-              <div className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1rem,calc(50vw-18rem+1rem))] flex flex-col items-end gap-2.5">
-                {([
-                  { key: 'write', label: '글쓰기', icon: 'pencil' },
-                  { key: 'media', label: '사진·영상 보기', icon: 'camera' },
-                  { key: 'all', label: '전체 보기', icon: null },
-                  { key: 'text', label: '글만 보기', icon: 'chat' },
-                ] as const).map((item, i, arr) => {
-                  const active = item.key !== 'write' && feedFilter === item.key;
-                  return (
-                    <button
-                      key={item.key}
-                      tabIndex={fabOpen ? 0 : -1}
-                      aria-hidden={!fabOpen}
-                      onClick={() => {
-                        setFabOpen(false);
-                        if (item.key === 'write') { if (requireProfile()) setShowComposer(true); return; }
-                        setFeedFilter(item.key); storageSet('feedFilter2', item.key);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      style={{ transitionDelay: fabOpen ? `${(arr.length - 1 - i) * 45}ms` : '0ms' }}
-                      className={`flex items-center gap-2.5 transition-all duration-300 ease-out ${fabOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-90 pointer-events-none'}`}
-                    >
-                      <span className={`px-3 py-1.5 rounded-full text-sm font-bold shadow-md ${active ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}>{item.label}{active && ' ✓'}</span>
-                      <span className={`w-12 h-12 rounded-full shadow-md flex items-center justify-center ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-white text-stone-700'}`}>
-                        {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <span className="text-lg leading-none">☰</span>}
-                      </span>
-                    </button>
-                  );
-                })}
-                <button
-                  onClick={() => setFabOpen(o => !o)}
-                  className="w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
-                  aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
-                  aria-expanded={fabOpen}
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
-                </button>
-              </div>
-            </>
-          )}
-
           <section className="divide-y divide-stone-200/70 flex-1">
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
@@ -2309,14 +2257,6 @@ export default function Home() {
                         )}
                       </span>
                     </div>
-                    {postMenuId === post.id && (
-                      <div className="flex justify-end gap-1 -mt-1">
-                        <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">작성자 보기</button>
-                        {user?.id === post.user_id && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">수정</button>}
-                        {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">삭제</button>}
-                        {user && user.id !== post.user_id && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">신고</button>}
-                      </div>
-                    )}
 
                   {openComments[post.id] && (
                     <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
@@ -3426,6 +3366,64 @@ export default function Home() {
         </div>
       )}
 
+      {/* 하단 + 버튼 메뉴: 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 사르륵 펼쳐짐 */}
+      {fabOpen && activeTab !== 'chat' && (
+        <>
+          <button className="fixed inset-0 z-[39] bg-black/30 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />
+          <div className="fixed z-[46] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] flex flex-col items-center gap-2.5">
+            {([
+              { key: 'write', label: '글쓰기', icon: 'pencil' },
+              { key: 'media', label: '사진·영상 보기', icon: 'camera' },
+              { key: 'all', label: '전체 보기', icon: null },
+              { key: 'text', label: '글만 보기', icon: 'chat' },
+            ] as const).map((item, i, arr) => {
+              const active = item.key !== 'write' && activeTab === 'home' && feedFilter === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => {
+                    setFabOpen(false);
+                    if (item.key === 'write') { if (requireProfile()) { if (activeTab !== 'home') goToHome(); setShowComposer(true); } return; }
+                    setFeedFilter(item.key); storageSet('feedFilter2', item.key);
+                    if (activeTab !== 'home') goToHome();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  style={{ animationDelay: `${(arr.length - 1 - i) * 45}ms` }}
+                  className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabIn_0.28s_ease-out_both]"
+                >
+                  <span className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`}>
+                    {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <span className="text-lg leading-none">☰</span>}
+                  </span>
+                  <span className={`text-[0.9375rem] font-bold ${active ? 'text-stone-900' : 'text-stone-700'}`}>{item.label}{active && ' ✓'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* 게시글 ⋯ 메뉴: 아래에서 올라오는 큰 버튼 */}
+      {postMenuId && (() => {
+        const post = posts.find(p => p.id === postMenuId);
+        if (!post) return null;
+        const mine = user?.id === post.user_id;
+        const canDelete = mine || isAdmin;
+        const item = 'w-full py-4 text-[1rem] font-semibold border-b border-stone-100 last:border-b-0';
+        return (
+          <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setPostMenuId(null)}>
+            <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
+              <p className="pt-4 pb-2 text-center text-xs text-stone-400">{post.author_name}님의 글</p>
+              {mine && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className={`${item} text-stone-800`}>✏️ 글 고치기 · 공개 범위</button>}
+              {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className={`${item} text-red-600`}>🗑 지우기</button>}
+              <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className={`${item} text-stone-700`}>🔍 크게 보기</button>
+              {!mine && <button onClick={() => { setPostMenuId(null); goToProfile(post.user_id); }} className={`${item} text-stone-700`}>👤 {post.author_name}님 공간 가기</button>}
+              {user && !mine && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${item} text-red-500`}>🚨 신고하기</button>}
+              <button onClick={() => setPostMenuId(null)} className="w-full py-4 text-[1rem] font-bold text-stone-500 bg-stone-50">취소</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 새로 고침 표시 */}
       {refreshState && (
         <div className="fixed left-1/2 -translate-x-1/2 top-[calc(4rem+env(safe-area-inset-top))] z-50 px-4 py-2 rounded-full bg-stone-900/85 text-white text-sm font-semibold shadow-lg flex items-center gap-2 pointer-events-none">
@@ -3446,6 +3444,17 @@ export default function Home() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
             <span className="text-[0.75rem] font-medium">탐색</span>
           </button>
+          {/* 가운데 + : 글쓰기·보기 메뉴 */}
+          <div className="flex-1 flex justify-center">
+            <button
+              onClick={() => setFabOpen(o => !o)}
+              aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
+              aria-expanded={fabOpen}
+              className="w-12 h-12 -mt-1 rounded-2xl bg-stone-900 text-white shadow-md flex items-center justify-center active:scale-95 transition-transform"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+          </div>
           <button onClick={() => goToTab('anon')} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
             <span className="text-[0.75rem] font-medium">고민상담</span>
