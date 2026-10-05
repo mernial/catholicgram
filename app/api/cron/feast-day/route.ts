@@ -12,10 +12,14 @@ type Payload = { title: string; body: string; url: string; tag: string };
 type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
 
 export async function GET(request: Request) {
+  // CRON_SECRET 이 있으면 그것으로 확인하고, 없으면 Vercel Cron 요청을 아침 시간대(7~10시)에만 받는다.
+  // (feast_day_sends 로 하루 한 번만 보내므로 누가 임의로 호출해도 중복 발송되지 않음)
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret || request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
-    return Response.json({ error: 'unauthorized' }, { status: 401 });
-  }
+  const kstHour = (new Date().getUTCHours() + 9) % 24;
+  const authorized = cronSecret
+    ? request.headers.get('authorization') === `Bearer ${cronSecret}`
+    : (request.headers.get('user-agent') || '').startsWith('vercel-cron') && kstHour >= 7 && kstHour < 10;
+  if (!authorized) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
