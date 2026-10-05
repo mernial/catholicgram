@@ -5,6 +5,15 @@ import { OverlayLayer, type VideoOverlays } from '@/components/VideoOverlays';
 import { useDoubleTap } from '@/lib/double-tap';
 import HeartBurst from '@/components/HeartBurst';
 
+// 지금 영상 말고 화면의 다른 영상은 모두 소리를 끈다 (소리가 두 번 겹쳐 들리는 것 방지)
+const silenceOthers = (keep: HTMLVideoElement, pause = false) => {
+  document.querySelectorAll('video').forEach(v => {
+    if (v === keep) return;
+    v.muted = true; // 각 영상은 volumechange 로 자기 소리 표시를 맞춘다
+    if (pause) v.pause();
+  });
+};
+
 // 피드의 숏폼 영상: 화면에 보이면 소리 없이 자동 재생(반복), 누르면 소리 켜기/끄기
 // 배경음악이 있는 영상은 누르면 크게 보기(음악과 함께)로 연다
 export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle, onOpen, onDoubleTap }: {
@@ -36,6 +45,7 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
     if (hasMusic || soundless) { onOpen?.(); return; }
     const video = ref.current;
     if (!video) return;
+    if (video.muted) silenceOthers(video); // 다른 영상 소리가 겹치지 않게
     video.muted = !video.muted;
     setMuted(video.muted);
     if (video.paused) video.play().catch(() => {});
@@ -50,6 +60,7 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
         src={poster ? src : `${src}#t=0.1`}
         poster={poster || undefined}
         muted={muted}
+        onVolumeChange={e => setMuted(e.currentTarget.muted)}
         loop
         playsInline
         preload="metadata"
@@ -85,6 +96,7 @@ export function VideoViewer({ src, poster, overlays, onDoubleTap }: { src: strin
   useEffect(() => {
     const video = ref.current;
     if (!video) return;
+    silenceOthers(video, true); // 크게 보기를 열면 뒤의 피드 영상은 멈추고 소리 끔
     video.muted = soundless;
     // 소리와 함께 재생이 막히면 소리 없이라도 재생
     video.play().catch(() => { video.muted = true; video.play().catch(() => setPaused(true)); });
