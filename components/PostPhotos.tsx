@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { useDoubleTap } from '@/lib/double-tap';
 import HeartBurst from '@/components/HeartBurst';
+import Icon from '@/components/Icon';
 
 // 피드 게시물 사진: 화면 폭 가득, 여러 장이면 옆으로 넘기고 아래 점으로 위치 표시
 export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, onMusic }: {
@@ -52,7 +53,7 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
       )}
       {onMusic && (
         <button onClick={onMusic} className="absolute top-2.5 left-2.5 flex items-center gap-1.5 max-w-[75%] text-xs font-bold text-white bg-black/45 backdrop-blur-sm rounded-full px-3 py-1.5">
-          <span>🎵</span><span className="truncate">{musicTitle || '음악'}</span>
+          <Icon name="music" className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{musicTitle || '음악'}</span>
         </button>
       )}
     </div>

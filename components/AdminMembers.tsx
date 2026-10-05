@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import RoleBadge from '@/components/RoleBadge';
 import { formatFeastDay } from '@/lib/feast';
+import Icon from '@/components/Icon';
 
 export interface AdminMember {
   id: string;
@@ -138,7 +139,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
     <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-[28rem] h-[92dvh] sm:h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-          <h2 className="font-bold text-stone-900">👥 회원 관리</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="users" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />회원 관리</h2>
           <div className="flex items-center gap-2">
             <button onClick={() => { setMembers(null); load(); }} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">새로고침</button>
             <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
@@ -172,8 +173,8 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
               />
               <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
                 {chip('all', '전체', stats.total)}
-                {chip('reported', '🚨 신고됨', stats.reported)}
-                {chip('suspended', '⛔ 정지됨', stats.suspended)}
+                {chip('reported', '신고됨', stats.reported)}
+                {chip('suspended', '정지됨', stats.suspended)}
                 {chip('incomplete', '프로필 미완성', stats.incomplete)}
               </div>
             </div>
@@ -197,7 +198,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                           {m.open_reports > 0 && <span className="text-[0.6875rem] px-1.5 py-px rounded bg-amber-500 text-white">신고 {m.open_reports}</span>}
                         </p>
                         <p className="text-xs text-stone-500 truncate">{m.handle ? `@${m.handle}` : '핸들 없음'} · {m.email || '이메일 없음'}</p>
-                        <p className="text-xs text-stone-700 truncate">🔒 실명: {m.real_name || '미입력'}</p>
+                        <p className="text-xs text-stone-700 truncate"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {m.real_name || '미입력'}</p>
                       </div>
                     </button>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-stone-600 bg-stone-50 rounded-xl p-2.5">
@@ -215,14 +216,14 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                           disabled={!m.handle}
                           className="flex-1 text-xs py-2 rounded-lg border border-stone-300 text-stone-700 font-bold disabled:opacity-40"
                         >
-                          ✉️ 메시지
+                          <Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />메시지
                         </button>
                         <button
                           onClick={() => toggleSuspend(m)}
                           disabled={busyId === m.id}
                           className={`flex-1 text-xs py-2 rounded-lg font-bold disabled:opacity-50 ${m.suspended ? 'bg-stone-900 text-white' : 'border border-red-300 text-red-600'}`}
                         >
-                          {busyId === m.id ? '처리 중...' : m.suspended ? '정지 해제' : '⛔ 이용 정지'}
+                          {busyId === m.id ? '처리 중...' : m.suspended ? '정지 해제' : <><Icon name="prohibit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />이용 정지</>}
                         </button>
                       </div>
                     )}
@@ -232,7 +233,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                         disabled={busyId === m.id}
                         className="w-full text-xs py-2 rounded-lg font-bold border border-blue-300 text-blue-700 disabled:opacity-50"
                       >
-                        ✅ 신고 {m.open_reports}건 해제
+                        <Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고 {m.open_reports}건 해제
                       </button>
                     )}
                   </div>

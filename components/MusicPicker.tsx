@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import MusicSegmentPicker from '@/components/MusicSegmentPicker';
 import { type BgmTrack, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
+import Icon from '@/components/Icon';
 
 interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
 
@@ -86,7 +87,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-          <h2 className="font-bold text-stone-900">🎵 음악 추가</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-700" />음악 추가</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
         {segmentFor ? (
@@ -101,7 +102,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
           </div>
         ) : (<>
         <div className="flex border-b border-stone-100">
-          {tabBtn('youtube', '🔍 유튜브에서 찾기')}
+          {tabBtn('youtube', '유튜브에서 찾기')}
           {tabBtn('bgm', '추천 배경음악')}
         </div>
 
@@ -112,7 +113,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
             ) : tracks.map(t => (
               <div key={t.id} className="p-3.5 flex items-center gap-3">
                 <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">
-                  {previewId === t.id ? '❚❚' : '▶'}
+                  <Icon name={previewId === t.id ? 'pause' : 'play'} fill className="w-4 h-4" />
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
@@ -155,7 +156,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
                     <div className="flex items-center gap-3">
                       <button onClick={() => setPreviewVideo(previewVideo === r.videoId ? null : r.videoId)} className="relative w-28 shrink-0 rounded-lg overflow-hidden bg-stone-200" aria-label="미리 듣기">
                         <img src={r.thumbnail} alt="" className="w-full aspect-video object-cover" />
-                        <span className="absolute inset-0 flex items-center justify-center text-white text-lg bg-black/25">{previewVideo === r.videoId ? '■' : '▶'}</span>
+                        <span className="absolute inset-0 flex items-center justify-center text-white text-lg bg-black/25"><Icon name={previewVideo === r.videoId ? 'pause' : 'play'} fill className="w-6 h-6" /></span>
                         {r.duration && <span className="absolute bottom-1 right-1 text-[0.6875rem] text-white bg-black/70 rounded px-1">{r.duration}</span>}
                       </button>
                       <div className="flex-1 min-w-0">

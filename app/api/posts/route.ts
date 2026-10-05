@@ -36,6 +36,10 @@ export async function POST(request: Request) {
     const changes: Record<string, unknown> = {};
     if (typeof c.content === 'string') changes.content = c.content.trim().slice(0, 5000);
     if ('video_overlays' in c) changes.video_overlays = c.video_overlays ?? null;
+    if ('music' in c) {
+      changes.music = typeof c.music === 'string' && c.music ? c.music.slice(0, 300) : null;
+      changes.music_title = changes.music && typeof c.music_title === 'string' ? c.music_title.slice(0, 200) : null;
+    }
     if (typeof c.visibility === 'string') {
       if (!VISIBILITIES.includes(c.visibility)) return Response.json({ error: 'bad request' }, { status: 400 });
       changes.visibility = c.visibility;

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import Icon from '@/components/Icon';
 
 // 운영자 건의함 (supabase/feedback.sql)
 // 일반 교우: 건의 보내기 + 내가 보낸 건의의 상태/답변 보기
@@ -22,9 +23,9 @@ interface Feedback {
 }
 
 const CATEGORIES: { key: Feedback['category']; label: string }[] = [
-  { key: 'suggestion', label: '💡 건의' },
-  { key: 'bug', label: '🐞 오류 신고' },
-  { key: 'other', label: '💬 기타' },
+  { key: 'suggestion', label: '건의' },
+  { key: 'bug', label: '오류 신고' },
+  { key: 'other', label: '기타' },
 ];
 
 const STATUS: Record<Feedback['status'], { label: string; className: string }> = {
@@ -207,11 +208,11 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
   // 관리자(운영자)에게는 '건의하기'·'내 건의'가 필요 없으므로 받은 건의·답변·신고만
   const tabs: { key: typeof view; label: string }[] = [
-    ...(!isAdmin ? [{ key: 'write' as const, label: '건의하기' }, { key: 'mine' as const, label: '내 건의' }, { key: 'reports' as const, label: '🚨 내 신고' }] : []),
+    ...(!isAdmin ? [{ key: 'write' as const, label: '건의하기' }, { key: 'mine' as const, label: '내 건의' }, { key: 'reports' as const, label: '내 신고' }] : []),
     ...(isAdmin ? [
-      { key: 'inbox' as const, label: `👑 받은 건의함${pendingCount ? ` (${pendingCount})` : ''}` },
-      { key: 'answered' as const, label: '✅ 답변한 건의' },
-      { key: 'reports' as const, label: '🚨 신고' },
+      { key: 'inbox' as const, label: `받은 건의함${pendingCount ? ` (${pendingCount})` : ''}` },
+      { key: 'answered' as const, label: '답변한 건의' },
+      { key: 'reports' as const, label: '신고' },
     ] : []),
   ];
 
@@ -219,7 +220,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
-          <h2 className="font-bold text-stone-900">{isAdmin ? '📮 건의함 · 신고 관리' : '📮 운영자에게 건의하기'}</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{isAdmin ? '건의함 · 신고 관리' : '운영자에게 건의하기'}</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
         <div className="shrink-0 flex gap-1 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -248,7 +249,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                 <p className="text-[0.8125rem] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')} 신고</p>
                 {r.admin_reply ? (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-xs font-bold text-blue-800 mb-1">👑 운영자 답변</p>
+                    <p className="text-xs font-bold text-blue-800 mb-1"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />운영자 답변</p>
                     <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">{r.admin_reply}</p>
                   </div>
                 ) : r.status === 'open' && <p className="text-xs text-stone-500">운영자가 확인하고 있어요. 처리되면 알림으로 알려드려요.</p>}
@@ -268,7 +269,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                     <button onClick={() => deleteReportedContent(r)} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">콘텐츠 삭제</button>
                   )}
                   {r.status !== 'resolved' && <button onClick={() => setReportStatus(r, 'resolved')} className="text-xs px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700">조치 완료</button>}
-                  {r.status !== 'dismissed' && <button onClick={() => { if (window.confirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)')) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold">✅ 신고 해제</button>}
+                  {r.status !== 'dismissed' && <button onClick={() => { if (window.confirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)')) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold"><Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고 해제</button>}
                   {r.status !== 'open' && <button onClick={() => setReportStatus(r, 'open')} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-500">다시 미처리로</button>}
                 </div>
                 {/* 신고한 분께 처리 결과 알려주기 */}
@@ -285,7 +286,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                       ))}
                     </div>
                     <textarea value={reportReplyDrafts[r.id] || ''} onChange={e => setReportReplyDrafts(prev => ({ ...prev, [r.id]: e.target.value }))} rows={2} maxLength={500} placeholder="처리 결과를 적어주세요" className="w-full p-2.5 text-sm bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                    <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40">📲 답변 보내기</button>
+                    <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40"><Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />답변 보내기</button>
                   </div>
                 )}
               </div>
@@ -352,7 +353,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
                 {view === 'mine' && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1">📮 운영자 답변</p>
+                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1"><Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />운영자 답변</p>
                     <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
                   </div>
                 )}
@@ -364,7 +365,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
                 {view === 'answered' && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1">📮 보낸 답변{item.replied_at && <span className="font-normal text-blue-500"> · {new Date(item.replied_at).toLocaleString('ko-KR')}</span>}</p>
+                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1"><Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />보낸 답변{item.replied_at && <span className="font-normal text-blue-500"> · {new Date(item.replied_at).toLocaleString('ko-KR')}</span>}</p>
                     <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
                   </div>
                 )}

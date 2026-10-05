@@ -7,6 +7,7 @@ import RoleBadge from '@/components/RoleBadge';
 import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
 import { InterestEvent, loadInterests, recordInterest, removeSearch } from '@/lib/interests';
+import Icon from '@/components/Icon';
 
 // 탐색 탭: 사람 / 게시글 / #해시태그 검색 + 내 활동 기반 맞춤 추천
 //
@@ -271,8 +272,8 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
               <p className="text-[0.8125rem] text-stone-700 leading-snug line-clamp-5 break-words"><HashtagText text={post.content} /></p>
             </div>
           )}
-          {(post.images?.length || 0) > 1 && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow">❐</span>}
-          {post.is_video && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow">▶</span>}
+          {(post.images?.length || 0) > 1 && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow"><Icon name="stack" fill className="w-4 h-4" /></span>}
+          {post.is_video && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow"><Icon name="play" fill className="w-4 h-4" /></span>}
           {followed && (
             <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/45 text-white rounded-full pl-0.5 pr-1.5 py-0.5 max-w-[90%]">
               {post.avatar_url
@@ -297,7 +298,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
         </div>
         <p className="text-sm text-stone-800 line-clamp-3 leading-relaxed"><HashtagText text={post.content} onTag={openTag} /></p>
         <p className="text-[0.75rem] text-stone-500">
-          🙏 {post.pray_count || 0} · ❤️ {post.like_count || 0}
+          <Icon name="pray" fill className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{post.pray_count || 0} · <Icon name="heart" fill className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{post.like_count || 0}
           {note && <span className="text-blue-600 ml-1.5">· {note}</span>}
         </p>
       </div>
@@ -324,7 +325,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       {/* 검색창 */}
       <form onSubmit={(e) => { e.preventDefault(); runSearch(query); }} className="sticky top-[calc(3.6rem+env(safe-area-inset-top))] z-10 p-3 bg-white/95 backdrop-blur border-b border-stone-200">
         <div className="flex items-center gap-2 bg-stone-100 rounded-2xl px-3.5">
-          <span className="text-stone-400">🔍</span>
+          <Icon name="search" className="w-5 h-5 text-stone-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -377,7 +378,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
           {searchFocused && recentSearches.length > 0 && (
             <div className="bg-white p-4 border-b border-stone-200">
               <p className={sectionTitle}>
-                <span>🕘 최근 검색</span>
+                <span><Icon name="history" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />최근 검색</span>
                 <button onMouseDown={(e) => e.preventDefault()} onClick={() => deleteSearch(null)} className="text-xs font-normal text-stone-400">전체 삭제</button>
               </p>
               <div className="flex flex-wrap gap-1.5" onMouseDown={(e) => e.preventDefault()}>
@@ -393,7 +394,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
               {renderGrid(exploreFeed.slice(0, 9))}
               {user && recommendedPeople.length > 0 && (
                 <div className="bg-white py-4 my-1 border-y border-stone-200">
-                  <p className={`${sectionTitle} px-4`}><span>🙋 이런 교우는 어때요?</span></p>
+                  <p className={`${sectionTitle} px-4`}><span><Icon name="handWave" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />이런 교우는 어때요?</span></p>
                   <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x">
                     {recommendedPeople.map(p => (
                       <button key={p.id} onClick={() => onOpenProfile(p.id)} className="snap-start shrink-0 w-36 border border-stone-200 rounded-2xl p-3 flex flex-col items-center gap-1.5 text-center bg-stone-50/50">
