@@ -38,21 +38,33 @@ export async function POST(request: Request) {
 
   let recipientId: string | null = null;
   let payload: { title: string; body: string; url: string; tag: string } | null = null;
+  // 댓글 답글: 글쓴이 외에 답글 받은 사람에게도 따로 보낸다
+  let extra: { recipientId: string; payload: { title: string; body: string; url: string; tag: string } } | null = null;
 
   if (type === 'comment') {
-    const { data: comment } = await admin.from('comments')
-      .select('id, post_id, user_id, author_name, content, created_at').eq('id', id).single();
+    const { data: comment } = await admin.from('comments').select('*').eq('id', id).single();
     if (!comment || comment.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(comment.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: post } = await admin.from('posts').select('user_id').eq('id', comment.post_id).single();
-    if (!post || post.user_id === user.id) return Response.json({ skipped: 'own post' });
-    recipientId = post.user_id;
-    payload = {
-      title: '💬 새 댓글',
-      body: `${comment.author_name}님: ${truncate(comment.content || '')}`,
-      url: `/?post=${comment.post_id}`,
-      tag: `comment-${comment.post_id}`,
-    };
+    const replyTo = comment.reply_to_user_id as string | null | undefined;
+    if (replyTo && replyTo !== user.id && replyTo !== post?.user_id) {
+      extra = {
+        recipientId: replyTo,
+        payload: { title: '↩ 새 답글', body: `${comment.author_name}님: ${truncate(comment.content || '')}`, url: `/?post=${comment.post_id}`, tag: `reply-${comment.post_id}` },
+      };
+    }
+    if (!post || post.user_id === user.id) {
+      if (!extra) return Response.json({ skipped: 'own post' });
+      recipientId = extra.recipientId; payload = extra.payload; extra = null;
+    } else {
+      recipientId = post.user_id;
+      payload = {
+        title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글',
+        body: `${comment.author_name}님: ${truncate(comment.content || '')}`,
+        url: `/?post=${comment.post_id}`,
+        tag: `comment-${comment.post_id}`,
+      };
+    }
   } else if (type === 'feedback') {
     // 새 건의 → 관리자에게
     const { data: fb } = await admin.from('feedback').select('id, user_id, author_name, content, created_at').eq('id', id).single();
@@ -107,13 +119,15 @@ export async function POST(request: Request) {
     };
   }
 
+  const targets = [{ recipientId: recipientId!, payload: payload! }, ...(extra ? [extra] : [])];
+  const payloadByUser = new Map(targets.map(t => [t.recipientId, t.payload]));
   const { data: subscriptions } = await admin.from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth').eq('user_id', recipientId);
+    .select('id, user_id, endpoint, p256dh, auth').in('user_id', targets.map(t => t.recipientId));
   if (!subscriptions || subscriptions.length === 0) return Response.json({ sent: 0 });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
   const results = await Promise.allSettled(subscriptions.map(sub =>
-    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payload))
+    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)))
   ));
 
   // 만료되었거나 해지된 구독은 정리
