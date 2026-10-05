@@ -2034,7 +2034,7 @@ export default function Home() {
 
       {/* 익명 고민상담 탭 */}
       {activeTab === 'anon' && (
-        <AnonBoard user={user} isAdmin={isAdmin} onRequireLogin={() => setShowAuthModal(true)} onReport={setReportTarget} />
+        <AnonBoard user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} />
       )}
 
       {/* 3. 메시지 목록 탭 */}

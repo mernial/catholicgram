@@ -81,10 +81,11 @@ function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean;
   );
 }
 
-export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
+export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true }: {
   user: User | null;
   isAdmin: boolean;
-  onRequireLogin: () => void;
+  onRequireLogin: () => void;      // 로그인 안 했거나 프로필을 아직 안 만들었을 때
+  profileReady?: boolean;           // 프로필(닉네임·핸들)을 만든 회원만 글·답글·공감 가능 (광고 방지)
   onReport: (target: ReportTarget) => void;
 }) {
   const [posts, setPosts] = useState<AnonPost[]>([]);
@@ -127,7 +128,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) { onRequireLogin(); return; }
+    if (!user || !profileReady) { onRequireLogin(); return; }
     const text = content.trim();
     if (!text) return;
     setPosting(true);
@@ -146,7 +147,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
   };
 
   const handleReply = async (postId: string) => {
-    if (!user) { onRequireLogin(); return; }
+    if (!user || !profileReady) { onRequireLogin(); return; }
     const text = (replyInputs[postId] || '').trim();
     if (!text) return;
     const { error } = await supabase.from('anon_replies').insert({ post_id: postId, content: text });
@@ -157,7 +158,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport }: {
   };
 
   const handleReaction = async (post: AnonPost, reaction: Reaction) => {
-    if (!user) { onRequireLogin(); return; }
+    if (!user || !profileReady) { onRequireLogin(); return; }
     const mine = post.my_reactions.includes(reaction);
     const countKey = `${reaction}_count` as 'pray_count' | 'like_count' | 'cheer_count';
     // 화면 먼저 반영
