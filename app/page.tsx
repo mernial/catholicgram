@@ -144,6 +144,9 @@ export default function Home() {
   const [myRealName, setMyRealName] = useState('');
   const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
   // 댓글 답글 대상 (게시물별)
+  // 게시물별 댓글 수, 댓글별 🙏/🍇 (mine: 내가 누른 것)
+  const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
+  const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string } | null>>({});
@@ -671,6 +674,7 @@ export default function Home() {
   const fetchPosts = async () => {
     const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
     if (!postsData) return;
+    fetchCommentCounts(postsData.map(p => p.id));
     // 게시물 작성자의 프로필만 가져오기
     const authorIds = Array.from(new Set(postsData.map(p => p.user_id).filter(Boolean)));
     const { data: profilesData } = authorIds.length > 0
@@ -899,8 +903,7 @@ export default function Home() {
   const openPostComments = async (postId: string) => {
     goToHome();
     setOpenComments(prev => ({ ...prev, [postId]: true }));
-    const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
-    if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
+    await loadCommentsFor(postId);
     setTimeout(() => document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
@@ -1138,13 +1141,58 @@ export default function Home() {
     storageSet('installBannerDismissed', '1');
   };
 
+  const fetchCommentCounts = async (postIds: string[]) => {
+    if (postIds.length === 0) return;
+    const { data } = await supabase.from('comments').select('post_id').in('post_id', postIds);
+    const counts: Record<string, number> = {};
+    (data || []).forEach(c => { counts[c.post_id] = (counts[c.post_id] || 0) + 1; });
+    setCommentCounts(counts);
+  };
+
+  // 댓글을 불러오며 댓글별 기도/공감 수도 함께
+  const loadCommentsFor = async (postId: string) => {
+    const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
+    if (!data) return;
+    setComments(prev => ({ ...prev, [postId]: data }));
+    setCommentCounts(prev => ({ ...prev, [postId]: data.length }));
+    loadCommentBadges(data);
+    if (data.length === 0) return;
+    const { data: reactions } = await supabase.from('comment_reactions').select('comment_id, user_id, reaction_type').in('comment_id', data.map(c => c.id));
+    const next: typeof commentReactions = {};
+    data.forEach(c => { next[c.id] = { pray: 0, like: 0, myPray: false, myLike: false }; });
+    (reactions || []).forEach(r => {
+      const entry = next[r.comment_id];
+      if (!entry) return;
+      if (r.reaction_type === 'pray') { entry.pray += 1; if (r.user_id === user?.id) entry.myPray = true; }
+      else { entry.like += 1; if (r.user_id === user?.id) entry.myLike = true; }
+    });
+    setCommentReactions(prev => ({ ...prev, ...next }));
+  };
+
+  const toggleCommentReaction = async (commentId: string, type: 'pray' | 'like') => {
+    if (!user) { setShowAuthModal(true); return; }
+    const current = commentReactions[commentId] || { pray: 0, like: 0, myPray: false, myLike: false };
+    const mine = type === 'pray' ? current.myPray : current.myLike;
+    const apply = (on: boolean) => setCommentReactions(prev => {
+      const c = prev[commentId] || { pray: 0, like: 0, myPray: false, myLike: false };
+      return { ...prev, [commentId]: type === 'pray'
+        ? { ...c, myPray: on, pray: Math.max(0, c.pray + (on ? 1 : -1)) }
+        : { ...c, myLike: on, like: Math.max(0, c.like + (on ? 1 : -1)) } };
+    });
+    apply(!mine); // 먼저 화면에 반영
+    const { error } = mine
+      ? await supabase.from('comment_reactions').delete().eq('comment_id', commentId).eq('user_id', user.id).eq('reaction_type', type)
+      : await supabase.from('comment_reactions').insert({ comment_id: commentId, user_id: user.id, reaction_type: type });
+    if (error && error.code !== '23505') {
+      apply(mine);
+      if (error.code === '42P01' || error.code === 'PGRST205') alert('댓글 기도/공감 기능을 준비 중이에요. (관리자: supabase/comment-reactions.sql 실행 필요)');
+    }
+  };
+
   const toggleCommentBox = async (postId: string) => {
     const nextState = !openComments[postId];
     setOpenComments({ ...openComments, [postId]: nextState });
-    if (nextState && !comments[postId]) {
-      const { data } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true });
-      if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
-    }
+    if (nextState && !comments[postId]) await loadCommentsFor(postId);
   };
   // 내 댓글 수정 / 삭제 (관리자는 삭제 가능)
   const callCommentApi = async (body: object) => {
@@ -1174,6 +1222,7 @@ export default function Home() {
     const result = await callCommentApi({ action: 'delete', id: c.id });
     if (result.error) { alert(result.error); return; }
     setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).filter(x => x.id !== c.id) }));
+    setCommentCounts(prev => ({ ...prev, [c.post_id]: Math.max(0, (prev[c.post_id] || 1) - 1) }));
   };
 
   // 닉네임을 누르면 댓글창을 열고 그 사람을 태그한 채로 입력칸에 커서를 둔다
@@ -1203,6 +1252,7 @@ export default function Home() {
     }
     if (!error && data) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
+      setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
       setReplyTargets(prev => ({ ...prev, [postId]: null }));
       sendPush('comment', data[0].id);
@@ -1514,7 +1564,7 @@ export default function Home() {
                     <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium">
                       <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
                       <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
-                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글</button>
+                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글{commentCounts[post.id] ? ` (${commentCounts[post.id]})` : ''}</button>
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
@@ -1579,6 +1629,19 @@ export default function Home() {
                                 {c.edited_at && <span className="text-stone-400 ml-1 text-[0.6875rem]">(수정됨)</span>}
                               </span>
                             )}
+                            {editingCommentId !== c.id && (() => {
+                              const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
+                              return (
+                                <span className="flex gap-1.5 mt-1">
+                                  <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myPray ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
+                                    🙏 기도할게요{r.pray > 0 && ` ${r.pray}`}
+                                  </button>
+                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-violet-50 border-violet-300 text-violet-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
+                                    🍇 공감해요{r.like > 0 && ` ${r.like}`}
+                                  </button>
+                                </span>
+                              );
+                            })()}
                           </div>
                         ))}
                       </div>

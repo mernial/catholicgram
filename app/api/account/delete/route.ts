@@ -36,6 +36,7 @@ export async function POST(request: Request) {
   // 작성한 데이터 삭제 (없는 테이블은 건너뜀)
   const deletions: [string, string][] = [
     ['post_reactions', 'user_id'],
+    ['comment_reactions', 'user_id'],
     ['comments', 'user_id'],
     ['posts', 'user_id'],
     ['messages', 'sender_id'],
