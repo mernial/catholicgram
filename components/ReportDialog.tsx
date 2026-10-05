@@ -28,10 +28,11 @@ const TYPE_LABEL: Record<ReportTargetType, string> = {
   post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지',
 };
 
-export default function ReportDialog({ target, onClose, onBlock }: {
+export default function ReportDialog({ target, onClose, onBlock, onSent }: {
   target: ReportTarget;
   onClose: () => void;
   onBlock?: (userId: string) => Promise<void> | void;
+  onSent?: (reportId: string) => void; // 관리자에게 바로 알림
 }) {
   const [reason, setReason] = useState('');
   const [detail, setDetail] = useState('');
@@ -42,7 +43,9 @@ export default function ReportDialog({ target, onClose, onBlock }: {
   const submit = async () => {
     if (!reason) return;
     setSending(true);
+    const reportId = crypto.randomUUID(); // 저장 후 다시 읽지 않아도 알림에 쓸 수 있게 미리 만듦
     const { error } = await supabase.from('reports').insert({
+      id: reportId,
       target_type: target.type,
       target_id: target.id,
       target_user_id: target.userId || null,
@@ -53,7 +56,8 @@ export default function ReportDialog({ target, onClose, onBlock }: {
     if (!error && alsoBlock && target.userId && onBlock) await onBlock(target.userId);
     setSending(false);
     if (error) { alert(`신고하지 못했습니다.\n(${error.message})`); return; }
-    alert('신고가 접수되었습니다. 운영자가 24시간 이내에 확인하겠습니다. 🙏');
+    onSent?.(reportId);
+    alert('신고가 접수되었습니다. 운영자가 확인한 뒤 처리 결과를 알려드릴게요. 🙏\n(내 공간 › 건의하기 › 내 신고에서도 볼 수 있어요)');
     onClose();
   };
 

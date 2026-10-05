@@ -47,7 +47,8 @@ const deepLinkFromSearch = (search: string) => {
   const alerts = params.get('alerts') === '1';
   const feedback = params.get('feedback') === '1';
   const notice = params.get('notice') || undefined;
-  return post || chat || alerts || feedback || notice ? { post, chat, alerts, feedback, notice } : null;
+  const reports = params.get('reports') === '1';
+  return post || chat || alerts || feedback || notice || reports ? { post, chat, alerts, feedback, notice, reports } : null;
 };
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -168,7 +169,8 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean } | null>(null);
+  const [feedbackView, setFeedbackView] = useState<'reports' | null>(null); // 신고 알림으로 열면 신고 목록부터
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
   const [showNotices, setShowNotices] = useState(false);
@@ -1233,7 +1235,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply', id: string) => {
+  const sendPush = async (type: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -1414,6 +1416,10 @@ export default function Home() {
     } else if (deepLink.alerts) {
       openNotifications();
     } else if (deepLink.feedback) {
+      setFeedbackView(null);
+      setShowFeedback(true);
+    } else if (deepLink.reports) {
+      setFeedbackView('reports');
       setShowFeedback(true);
     }
   }, [deepLink, user]);
@@ -1684,7 +1690,7 @@ export default function Home() {
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   return (
-    <main className={`w-full max-w-xl mx-auto min-h-[100dvh] sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? '' : 'pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
+    <main className={`w-full max-w-xl mx-auto sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
       
       {/* 헤더 */}
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-3 sm:px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between gap-2 z-20">
@@ -2181,6 +2187,10 @@ export default function Home() {
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {viewingUserId === user?.id ? (
                 <>
+                  <button onClick={() => goToTab('messages')} className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-stone-900 text-white shadow-sm hover:bg-stone-800 transition-colors">
+                    <Icon name="send" className="w-4 h-4" />메시지
+                    {unreadMessageCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>}
+                  </button>
                   <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     <Icon name="gear" className="w-4 h-4" />설정
                   </button>
@@ -2274,8 +2284,11 @@ export default function Home() {
       {/* 3. 메시지 목록 탭 */}
       {activeTab === 'messages' && (
         <section className="flex-1 bg-white flex flex-col">
-          <div className="p-4 border-b border-stone-200">
-            <h2 className="font-bold text-lg text-stone-900">메시지 목록</h2>
+          <div className="p-4 border-b border-stone-200 flex items-center gap-2">
+            <button onClick={() => user && goToProfile(user.id)} className="text-stone-600 hover:text-black -ml-1" aria-label="내 공간으로">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <h2 className="font-bold text-lg text-stone-900">메시지</h2>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
             {chatPartners.length === 0 ? (
@@ -2308,8 +2321,9 @@ export default function Home() {
 
       {/* 4. 1:1 실시간 채팅방 탭 */}
       {activeTab === 'chat' && (
-        <section className="flex-1 flex flex-col bg-stone-100">
-          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3">
+        // 채팅방: 화면 높이에 맞춰 메시지만 스크롤되고 입력창은 항상 맨 아래에 보임
+        <section className="flex-1 min-h-0 flex flex-col bg-stone-100">
+          <div className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col gap-3">
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>
             ) : (
@@ -2340,7 +2354,7 @@ export default function Home() {
             )}
             <div ref={messagesEndRef} />
           </div>
-          <form onSubmit={sendMessage} className="sticky bottom-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
+          <form onSubmit={sendMessage} className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
             <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
@@ -2404,7 +2418,7 @@ export default function Home() {
 
       {/* 신고 */}
       {reportTarget && (
-        <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} onBlock={blockUser} />
+        <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} onBlock={blockUser} onSent={id => sendPush('report', id)} />
       )}
 
       {/* 설정 (차단 목록, 약관, 탈퇴) */}
@@ -2554,7 +2568,7 @@ export default function Home() {
 
       {/* 운영자 건의함 */}
       {showFeedback && user && (
-        <FeedbackModal user={user} isAdmin={isAdmin} onClose={() => setShowFeedback(false)} sendPush={sendPush} />
+        <FeedbackModal user={user} isAdmin={isAdmin} initialView={feedbackView} onClose={() => { setShowFeedback(false); setFeedbackView(null); }} sendPush={sendPush} />
       )}
 
       {/* 앱 사용 중 새 알림 배너 */}
@@ -2973,21 +2987,18 @@ export default function Home() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
             <span className="text-[0.75rem] font-medium">탐색</span>
           </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else goToTab('messages'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
-            <span className="relative">
-              <svg viewBox="0 0 24 24" fill={activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" /></svg>
-              {unreadMessageCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
-              )}
-            </span>
-            <span className="text-[0.75rem] font-medium">메시지</span>
-          </button>
           <button onClick={() => goToTab('anon')} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
             <span className="text-[0.75rem] font-medium">고민상담</span>
           </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-stone-900' : 'text-stone-400'}`}>
-            <svg viewBox="0 0 24 24" fill={activeTab === 'profile' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+          <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' || activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
+            {/* 메시지는 내 공간 안으로 옮김: 안 읽은 메시지가 있으면 여기에 숫자 표시 */}
+            <span className="relative">
+              <svg viewBox="0 0 24 24" fill={activeTab === 'profile' || activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+              {unreadMessageCount > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+              )}
+            </span>
             <span className="text-[0.75rem] font-medium">내 공간</span>
           </button>
         </nav>
