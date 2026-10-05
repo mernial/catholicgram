@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import MusicSegmentPicker from '@/components/MusicSegmentPicker';
 import { type BgmTrack, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
 
 interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
@@ -26,6 +27,8 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
   const [searchUnavailable, setSearchUnavailable] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
+  // 유튜브 곡을 고른 뒤 30초 구간 고르기
+  const [segmentFor, setSegmentFor] = useState<{ videoId: string; title: string; start: number } | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -86,6 +89,17 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
           <h2 className="font-bold text-stone-900">🎵 음악 추가</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
+        {segmentFor ? (
+          <div className="overflow-y-auto">
+            <MusicSegmentPicker
+              videoId={segmentFor.videoId}
+              title={segmentFor.title}
+              initialStart={segmentFor.start}
+              onBack={() => setSegmentFor(null)}
+              onConfirm={(start, clip) => onSelect({ value: encodeYouTube(segmentFor.videoId, start, clip), title: segmentFor.title })}
+            />
+          </div>
+        ) : (<>
         <div className="flex border-b border-stone-100">
           {tabBtn('youtube', '🔍 유튜브에서 찾기')}
           {tabBtn('bgm', '추천 배경음악')}
@@ -148,7 +162,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
                         <p className="text-sm font-bold text-stone-800 line-clamp-2 leading-snug">{r.title}</p>
                         <p className="text-xs text-stone-500 truncate mt-0.5">{r.channel}</p>
                       </div>
-                      <button onClick={() => onSelect({ value: encodeYouTube(r.videoId), title: r.title })} className="text-xs px-3 py-2 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
+                      <button onClick={() => { setPreviewVideo(null); setSegmentFor({ videoId: r.videoId, title: r.title, start: 0 }); }} className="text-xs px-3 py-2 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
                     </div>
                     {previewVideo === r.videoId && (
                       <iframe src={youTubeEmbedUrl(r.videoId)} title={r.title} allow="autoplay; encrypted-media" className="w-full aspect-video rounded-lg" />
@@ -187,11 +201,11 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
                         className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
                       />
                       <button
-                        onClick={() => onSelect({ value: encodeYouTube(found.videoId, found.start), title: ytTitle.trim() || '유튜브 음악' })}
+                        onClick={() => setSegmentFor({ videoId: found.videoId, title: ytTitle.trim() || '유튜브 음악', start: found.start })}
                         disabled={checking}
                         className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
                       >
-                        이 음악 추가하기
+                        다음: 30초 구간 고르기
                       </button>
                     </div>
                   )}
@@ -200,6 +214,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
             </div>
           </div>
         )}
+        </>)}
       </div>
     </div>
   );

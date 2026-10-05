@@ -1422,6 +1422,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
                   <span className="text-sm">🎵</span>
                   <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
+                  {(() => { const m = parsePostMusic(composerMusic.value); return m?.kind === 'youtube' && m.clip ? <span className="text-[0.75rem] text-violet-700 shrink-0">{`${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초`}</span> : null; })()}
                   <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
                 </div>
               )}
@@ -2170,7 +2171,7 @@ export default function Home() {
                 const music = parsePostMusic(selectedPostDetail.music);
                 if (!music) return null;
                 if (music.kind === 'youtube') {
-                  return <YouTubePlayer key={selectedPostDetail.id} videoId={music.videoId} start={music.start} title={selectedPostDetail.music_title} />;
+                  return <YouTubePlayer key={selectedPostDetail.id} videoId={music.videoId} start={music.start} clip={music.clip} title={selectedPostDetail.music_title} />;
                 }
                 const track = bgmTracks.find(t => t.id === music.trackId);
                 if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50">🎵 이 음악은 더 이상 제공되지 않아요</p>;

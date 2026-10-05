@@ -2,53 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// 유튜브 IFrame Player API (필요한 부분만)
-interface YTPlayer {
-  playVideo: () => void;
-  pauseVideo: () => void;
-  mute: () => void;
-  unMute: () => void;
-  isMuted: () => boolean;
-  getPlayerState: () => number;
-  destroy: () => void;
-}
-interface YTNamespace {
-  Player: new (el: HTMLElement, opts: {
-    videoId: string;
-    host?: string;
-    playerVars?: Record<string, string | number>;
-    events?: {
-      onReady?: (e: { target: YTPlayer }) => void;
-      onStateChange?: (e: { data: number; target: YTPlayer }) => void;
-      onError?: (e: { data: number }) => void;
-    };
-  }) => YTPlayer;
-}
-declare global {
-  interface Window { YT?: YTNamespace; onYouTubeIframeAPIReady?: () => void }
-}
-
-let apiPromise: Promise<YTNamespace> | null = null;
-const loadYouTubeApi = () => {
-  if (window.YT?.Player) return Promise.resolve(window.YT);
-  if (!apiPromise) {
-    apiPromise = new Promise(resolve => {
-      const prev = window.onYouTubeIframeAPIReady;
-      window.onYouTubeIframeAPIReady = () => { prev?.(); if (window.YT) resolve(window.YT); };
-      const script = document.createElement('script');
-      script.src = 'https://www.youtube.com/iframe_api';
-      document.head.appendChild(script);
-    });
-  }
-  return apiPromise;
-};
+import { loadYouTubeApi, type YTPlayer } from '@/lib/youtube-api';
 
 const PLAYING = 1;
 const API_TIMEOUT_MS = 5000;
 
 // 게시물 보기에서 유튜브 음악을 바로 재생한다.
 // 휴대폰이 소리 있는 자동재생을 막으면 소리 없이 먼저 재생하고 '🔊 소리 켜기' 버튼을 크게 보여준다.
-export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: string; start?: number; title?: string | null }) {
+// clip: 올린 사람이 고른 구간 길이(초). 있으면 그 구간만 반복 재생
+export default function YouTubePlayer({ videoId, start = 0, clip, title }: { videoId: string; start?: number; clip?: number; title?: string | null }) {
   const holderRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<YTPlayer | null>(null);
   const [needsSound, setNeedsSound] = useState(false);
@@ -69,7 +31,9 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
       holderRef.current.appendChild(el);
       playerRef.current = new YT.Player(el, {
         videoId,
-        playerVars: { autoplay: 1, playsinline: 1, rel: 0, start, loop: 1, playlist: videoId },
+        playerVars: clip
+          ? { autoplay: 1, playsinline: 1, rel: 0, start, end: start + clip }
+          : { autoplay: 1, playsinline: 1, rel: 0, start, loop: 1, playlist: videoId },
         events: {
           onReady: e => {
             e.target.playVideo();
@@ -88,6 +52,8 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
             }, 1500);
           },
           onStateChange: e => {
+            // 고른 구간이 끝나면 처음으로 돌아가 반복
+            if (clip && e.data === 0) { e.target.seekTo(start, true); e.target.playVideo(); return; }
             if (e.data === PLAYING) {
               setNeedsTap(false);
               if (!e.target.isMuted()) setNeedsSound(false);
@@ -104,7 +70,7 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
       try { playerRef.current?.destroy(); } catch { /* 이미 정리됨 */ }
       playerRef.current = null;
     };
-  }, [videoId, start]);
+  }, [videoId, start, clip]);
 
   const turnOnSound = () => {
     const p = playerRef.current;
@@ -121,7 +87,7 @@ export default function YouTubePlayer({ videoId, start = 0, title }: { videoId: 
         <div ref={holderRef} className="absolute inset-0 [&>iframe]:w-full [&>iframe]:h-full" />
         {plainEmbed && (
           <iframe
-            src={`https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&autoplay=1${start ? `&start=${start}` : ''}`}
+            src={`https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&autoplay=1${start ? `&start=${start}` : ''}${clip ? `&end=${start + clip}` : ''}`}
             title={title || '음악'}
             allow="autoplay; encrypted-media"
             className="absolute inset-0 w-full h-full"
