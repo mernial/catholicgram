@@ -274,7 +274,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
         </div>
         <p className="text-sm text-stone-800 line-clamp-3 leading-relaxed"><HashtagText text={post.content} onTag={openTag} /></p>
         <p className="text-[0.75rem] text-stone-500">
-          🙏 {post.pray_count || 0} · 🍇 {post.like_count || 0}
+          🙏 {post.pray_count || 0} · ❤️ {post.like_count || 0}
           {note && <span className="text-blue-600 ml-1.5">· {note}</span>}
         </p>
       </div>
