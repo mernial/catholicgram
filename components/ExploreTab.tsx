@@ -69,7 +69,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   blockedIds: Set<string>;
   initialQuery: string;
   onOpenProfile: (userId: string) => void;
-  onOpenPost: (postId: string) => void;
+  onOpenPost: (postId: string, queue: string[]) => void; // queue: 위로 밀면 이어서 볼 추천 순서
   onRequireLogin: () => void;
 }) {
   const [query, setQuery] = useState(initialQuery);
@@ -152,7 +152,9 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   // 탐색에서 글을 열면 그 글의 태그를 관심사로 기록 (다음 추천에 반영)
   const openPost = (post: ExplorePost) => {
     extractHashtags(post.content).slice(0, 3).forEach(t => { recordInterest(user?.id, 'tag', t); });
-    onOpenPost(post.id);
+    // 검색 중이면 검색 결과 순서, 아니면 추천 순서대로 이어서 보기
+    const queue = term ? matchedPosts.map(p => p.id) : exploreFeed.map(s => s.post.id);
+    onOpenPost(post.id, queue);
   };
 
   const runSearch = (value: string) => {
