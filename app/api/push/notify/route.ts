@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { extractMentions } from '@/lib/mentions';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -9,7 +10,8 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'message' | 'follow' | 'feedback' | 'feedback_reply'; id?: string };
+type NotifyBody = { type?: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply'; id?: string };
+type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -32,14 +34,22 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['comment', 'message', 'follow', 'feedback', 'feedback_reply'].includes(type)) {
+  if (!id || !type || !['comment', 'post', 'message', 'follow', 'feedback', 'feedback_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
   let recipientId: string | null = null;
   let payload: { title: string; body: string; url: string; tag: string } | null = null;
   // 댓글 답글: 글쓴이 외에 답글 받은 사람에게도 따로 보낸다
-  let extra: { recipientId: string; payload: { title: string; body: string; url: string; tag: string } } | null = null;
+  // 댓글·글은 여러 사람에게(글쓴이, 답글 받은 사람, @태그된 사람) 보낼 수 있다
+  const list: { recipientId: string; payload: Payload }[] = [];
+  // 글·댓글에서 @태그된 회원 (이미 알림 받는 사람·본인 제외)
+  const mentionedIds = async (text: string | null | undefined, skip: Set<string>) => {
+    const handles = extractMentions(text);
+    if (handles.length === 0) return [];
+    const { data } = await admin.from('profiles').select('id').in('handle', handles.slice(0, 20));
+    return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
+  };
 
   if (type === 'comment') {
     const { data: comment } = await admin.from('comments').select('*').eq('id', id).single();
@@ -47,24 +57,30 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(comment.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: post } = await admin.from('posts').select('user_id').eq('id', comment.post_id).single();
     const replyTo = comment.reply_to_user_id as string | null | undefined;
-    if (replyTo && replyTo !== user.id && replyTo !== post?.user_id) {
-      extra = {
-        recipientId: replyTo,
-        payload: { title: '↩ 새 답글', body: `${comment.author_name}님: ${truncate(comment.content || '')}`, url: `/?post=${comment.post_id}`, tag: `reply-${comment.post_id}` },
-      };
+    const body = `${comment.author_name}님: ${truncate(comment.content || '')}`;
+    const url = `/?post=${comment.post_id}`;
+    const notified = new Set<string>([user.id]);
+    if (post && !notified.has(post.user_id)) {
+      list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: `comment-${comment.post_id}` } });
+      notified.add(post.user_id);
     }
-    if (!post || post.user_id === user.id) {
-      if (!extra) return Response.json({ skipped: 'own post' });
-      recipientId = extra.recipientId; payload = extra.payload; extra = null;
-    } else {
-      recipientId = post.user_id;
-      payload = {
-        title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글',
-        body: `${comment.author_name}님: ${truncate(comment.content || '')}`,
-        url: `/?post=${comment.post_id}`,
-        tag: `comment-${comment.post_id}`,
-      };
+    if (replyTo && !notified.has(replyTo)) {
+      list.push({ recipientId: replyTo, payload: { title: '↩ 새 답글', body, url, tag: `reply-${comment.post_id}` } });
+      notified.add(replyTo);
     }
+    for (const pid of await mentionedIds(comment.content, notified)) {
+      list.push({ recipientId: pid, payload: { title: '🏷️ 댓글에서 회원님을 언급했어요', body, url, tag: `mention-${comment.id}` } });
+    }
+    if (list.length === 0) return Response.json({ skipped: 'nobody to notify' });
+  } else if (type === 'post') {
+    // 새 글에서 @태그된 사람에게
+    const { data: post } = await admin.from('posts').select('id, user_id, author_name, content, created_at').eq('id', id).single();
+    if (!post || post.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(post.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    for (const pid of await mentionedIds(post.content, new Set([user.id]))) {
+      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(post.content || '')}`, url: `/?post=${post.id}`, tag: `mention-${post.id}` } });
+    }
+    if (list.length === 0) return Response.json({ skipped: 'no mentions' });
   } else if (type === 'feedback') {
     // 새 건의 → 관리자에게
     const { data: fb } = await admin.from('feedback').select('id, user_id, author_name, content, created_at').eq('id', id).single();
@@ -119,7 +135,7 @@ export async function POST(request: Request) {
     };
   }
 
-  const targets = [{ recipientId: recipientId!, payload: payload! }, ...(extra ? [extra] : [])];
+  const targets = list.length > 0 ? list : [{ recipientId: recipientId!, payload: payload! }];
   const payloadByUser = new Map(targets.map(t => [t.recipientId, t.payload]));
   const { data: subscriptions } = await admin.from('push_subscriptions')
     .select('id, user_id, endpoint, p256dh, auth').in('user_id', targets.map(t => t.recipientId));

@@ -9,6 +9,8 @@ import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
+import MentionSuggest from '@/components/MentionSuggest';
+import { extractMentions, mentionsHandle } from '@/lib/mentions';
 import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
@@ -82,7 +84,7 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
-interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; }
+interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
@@ -137,6 +139,7 @@ export default function Home() {
   const [notifications, setNotifications] = useState<CommentNotification[]>([]);
   const [notificationsLastSeen, setNotificationsLastSeen] = useState<string | null>(null);
   // 알림 지우기: 이 시각 이전 알림은 모두 숨김 + 하나씩 지운 알림
+  const myHandleRef = useRef<string | null>(null);
   const [notificationsClearedAt, setNotificationsClearedAt] = useState<string | null>(null);
   const [hiddenAlerts, setHiddenAlerts] = useState<Set<string>>(new Set());
   const [showNotifications, setShowNotifications] = useState(false);
@@ -422,6 +425,13 @@ export default function Home() {
     goToTab('explore');
   };
 
+  // @핸들을 누르면 그 사람 프로필로
+  const goToHandle = async (handle: string) => {
+    const { data } = await supabase.from('profiles').select('id').eq('handle', handle.toLowerCase()).maybeSingle();
+    if (data) goToProfile(data.id);
+    else alert(`@${handle} 회원을 찾을 수 없어요.`);
+  };
+
   const goToProfile = (targetUserId: string) => {
     navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
     setActionModalUser(null);
@@ -461,6 +471,13 @@ export default function Home() {
       setNeedsProfileSetup(true);
     }
   };
+
+  // 알림 확인용 내 핸들 (주기적으로 도는 확인 함수에서도 최신 값을 쓰도록)
+  myHandleRef.current = profile?.handle || null;
+  // 핸들을 알게 되면(로그인 직후 프로필을 불러온 뒤) 나를 태그한 글도 바로 확인
+  useEffect(() => {
+    if (user && profile?.handle) fetchNotifications(user.id);
+  }, [user, profile?.handle]);
 
   const fetchViewingProfile = async (userId: string) => {
     setViewingRealName('');
@@ -797,10 +814,10 @@ export default function Home() {
     }
     const author = profile?.baptismal_name || '교우';
     const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}) };
-    let { error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]);
+    let { data: created, error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]).select('id');
     // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
     if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) {
-      ({ error } = await supabase.from('posts').insert([row]));
+      ({ data: created, error } = await supabase.from('posts').insert([row]).select('id'));
       alert('글은 올렸지만 음악은 저장하지 못했어요.\n(관리자: Supabase에서 supabase/music.sql 을 실행해야 음악이 저장됩니다)');
     }
     if (error && videoFields && (error.code === 'PGRST204' || error.code === '42703')) {
@@ -809,6 +826,8 @@ export default function Home() {
       return;
     }
     if (!error) {
+      // 글에서 @태그한 사람에게 휴대폰 알림
+      if (created?.[0]?.id && extractMentions(content).length > 0) sendPush('post', created[0].id);
       setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
       if (fileInputRef.current) fileInputRef.current.value = '';
       fetchPosts(); goToHome();
@@ -965,12 +984,17 @@ export default function Home() {
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };
   const fetchNotifications = async (userId: string) => {
+    const myHandle = myHandleRef.current;
     const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId);
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
     setNotificationsClearedAt(storageGet(`notificationsClearedAt:${userId}`));
     try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
     const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, p.content || '']));
-    const [{ data: onMyPosts }, { data: replies }] = await Promise.all([
+    const mentionQuery = (table: 'posts' | 'comments', cols: string) => myHandle
+      ? supabase.from(table).select(cols).ilike('content', `%@${myHandle}%`).neq('user_id', userId)
+        .order('created_at', { ascending: false }).limit(20)
+      : Promise.resolve({ data: [] });
+    const [{ data: onMyPosts }, { data: replies }, { data: postMentions }, { data: commentMentions }] = await Promise.all([
       myPosts && myPosts.length > 0
         ? supabase.from('comments').select('id, post_id, content, author_name, created_at')
           .in('post_id', myPosts.map(p => p.id)).neq('user_id', userId)
@@ -980,10 +1004,20 @@ export default function Home() {
       supabase.from('comments').select('id, post_id, content, author_name, created_at')
         .eq('reply_to_user_id', userId).neq('user_id', userId)
         .order('created_at', { ascending: false }).limit(30),
+      // 나를 @태그한 글과 댓글
+      mentionQuery('posts', 'id, content, author_name, created_at'),
+      mentionQuery('comments', 'id, post_id, content, author_name, created_at'),
     ]);
     const merged = new Map<string, CommentNotification>();
     (onMyPosts || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] }));
     (replies || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] || '', is_reply: true }));
+    type Row = { id: string; post_id?: string; content: string; author_name: string; created_at: string };
+    ((postMentions || []) as unknown as Row[]).filter(p => mentionsHandle(p.content, myHandle)).forEach(p =>
+      merged.set(`mp:${p.id}`, { id: `mp:${p.id}`, post_id: p.id, content: p.content, author_name: p.author_name, created_at: p.created_at, post_content: p.content, mention: 'post' }));
+    ((commentMentions || []) as unknown as Row[]).filter(c => mentionsHandle(c.content, myHandle)).forEach(c => {
+      const prev = merged.get(c.id);
+      merged.set(c.id, { ...(prev || { ...c, post_id: c.post_id || '', post_content: postContent[c.post_id || ''] || '' }), mention: 'comment' });
+    });
     setNotifications(Array.from(merged.values()).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 40));
   };
 
@@ -1122,7 +1156,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'message' | 'follow' | 'feedback' | 'feedback_reply', id: string) => {
+  const sendPush = async (type: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -1246,7 +1280,7 @@ export default function Home() {
       if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner) });
     });
     notifications.forEach(n => {
-      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: '💬', title: n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
+      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
     });
     if (fresh.length === 0) return;
     const latest = fresh[0];
@@ -1711,7 +1745,8 @@ export default function Home() {
           )}
           <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
-              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그를 달면 찾기 쉬워요)" : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그, @아이디로 교우 태그)" : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              {user && <MentionSuggest value={content} onChange={setContent} excludeId={user.id} />}
               {user && content.length > 0 && composerTagSuggestions.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
                   <span className="text-[0.75rem] text-stone-500 shrink-0">추천 태그</span>
@@ -1822,7 +1857,7 @@ export default function Home() {
                         <button onClick={() => tagUserInComments(post.id, post.user_id, post.author_name)} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
                           {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
                         </button>
-                        {post.content && <HashtagText text={post.content} onTag={openHashtag} />}
+                        {post.content && <HashtagText text={post.content} onTag={openHashtag} onMention={goToHandle} />}
                       </p>
                     )}
 
@@ -1897,7 +1932,7 @@ export default function Home() {
                             ) : (
                               <span>
                                 {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
-                                {c.content}
+                                <HashtagText text={c.content} onTag={openHashtag} onMention={goToHandle} />
                                 {c.edited_at && <span className="text-stone-400 ml-1 text-[0.6875rem]">(수정됨)</span>}
                               </span>
                             )}
@@ -1925,6 +1960,7 @@ export default function Home() {
                       ) : (
                         <p className="text-[0.75rem] text-stone-400">💬 <b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 닉네임을 누르면 그분을 태그해요</p>
                       )}
+                      {user && <MentionSuggest value={commentInputs[post.id] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))} excludeId={user.id} />}
                       <div className="flex gap-1.5">
                         <input id={`comment-input-${post.id}`} type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder={replyTargets[post.id] ? `${replyTargets[post.id]!.name}님에게 답글...` : '댓글을 입력하세요...'} className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
                         <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3 py-2 rounded-xl">등록</button>
@@ -2499,7 +2535,7 @@ export default function Home() {
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
-                      💬 <b>{n.author_name}</b>님이 {n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
+                      {n.mention ? '🏷️' : '💬'} <b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
@@ -2646,7 +2682,7 @@ export default function Home() {
                 );
               })()}
               <div className="p-5 flex flex-col gap-2">
-                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} /></p>
+                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} /></p>
                 <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
               </div>
             </div>
