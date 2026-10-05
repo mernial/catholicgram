@@ -31,6 +31,16 @@ import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
+// 알림 주소(?post=…, ?chat=…, ?alerts=1, ?feedback=1)에서 열어야 할 화면
+const deepLinkFromSearch = (search: string) => {
+  const params = new URLSearchParams(search);
+  const post = params.get('post') || undefined;
+  const chat = params.get('chat') || undefined;
+  const alerts = params.get('alerts') === '1';
+  const feedback = params.get('feedback') === '1';
+  return post || chat || alerts || feedback ? { post, chat, alerts, feedback } : null;
+};
+
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
 const isStorageAvailable = () => {
@@ -239,7 +249,19 @@ export default function Home() {
     window.addEventListener('beforeinstallprompt', onBeforeInstallPrompt);
     window.addEventListener('appinstalled', onAppInstalled);
 
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+      // 이 창이 홈 화면 앱인지 알려서, 알림을 누르면 브라우저가 아닌 앱으로 열리게 한다
+      const standaloneNow = window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true;
+      navigator.serviceWorker.ready.then(reg => reg.active?.postMessage({ type: 'client-info', standalone: standaloneNow })).catch(() => {});
+      // 앱이 열려 있을 때 알림을 누르면: 새로고침 없이 해당 글/대화로 이동
+      navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+        if (e.data?.type !== 'open-url') return;
+        e.ports?.[0]?.postMessage('ok');
+        const link = deepLinkFromSearch(new URL(e.data.url, window.location.origin).search);
+        if (link) setDeepLink(link); else goToHome();
+      });
+    }
 
     // 알림음: 설정 불러오기, 첫 터치 때 오디오 활성화
     sessionStartRef.current = Date.now();
@@ -247,13 +269,9 @@ export default function Home() {
     const unlock = () => unlockAlertSound();
     window.addEventListener('pointerdown', unlock, { once: true });
 
-    const params = new URLSearchParams(window.location.search);
-    const linkPost = params.get('post');
-    const linkChat = params.get('chat');
-    const linkAlerts = params.get('alerts') === '1';
-    const linkFeedback = params.get('feedback') === '1';
-    if (linkPost || linkChat || linkAlerts || linkFeedback) {
-      setDeepLink({ post: linkPost || undefined, chat: linkChat || undefined, alerts: linkAlerts, feedback: linkFeedback });
+    const initialLink = deepLinkFromSearch(window.location.search);
+    if (initialLink) {
+      setDeepLink(initialLink);
       window.history.replaceState(null, '', '/');
     }
 
