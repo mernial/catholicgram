@@ -10,6 +10,7 @@ import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
 import MentionSuggest from '@/components/MentionSuggest';
+import NoticeBoard, { type Notice } from '@/components/NoticeBoard';
 import { extractMentions, mentionsHandle } from '@/lib/mentions';
 import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
@@ -43,7 +44,8 @@ const deepLinkFromSearch = (search: string) => {
   const chat = params.get('chat') || undefined;
   const alerts = params.get('alerts') === '1';
   const feedback = params.get('feedback') === '1';
-  return post || chat || alerts || feedback ? { post, chat, alerts, feedback } : null;
+  const notice = params.get('notice') || undefined;
+  return post || chat || alerts || feedback || notice ? { post, chat, alerts, feedback, notice } : null;
 };
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -164,7 +166,12 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string } | null>(null);
+  // 공지사항
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [showNotices, setShowNotices] = useState(false);
+  const [noticeOpenId, setNoticeOpenId] = useState<string | null>(null);
+  const [hiddenNotices, setHiddenNotices] = useState<string[]>([]);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -336,6 +343,8 @@ export default function Home() {
     fetchPosts();
     fetchBgmTracks();
     fetchIntentions();
+    fetchNotices();
+    try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
@@ -835,6 +844,18 @@ export default function Home() {
     setLoading(false);
   };
 
+  const fetchNotices = async () => {
+    const { data } = await supabase.from('announcements').select('id, title, content, pinned, pushed_at, created_at')
+      .order('created_at', { ascending: false }).limit(50);
+    setNotices((data || []) as Notice[]);
+  };
+  const hideNotice = (id: string) => {
+    const next = [...hiddenNotices, id].slice(-100);
+    setHiddenNotices(next);
+    storageSet('noticeHidden', JSON.stringify(next));
+  };
+  const homeNotice = notices.find(n => n.pinned && !hiddenNotices.includes(n.id));
+
   const fetchIntentions = async () => {
     const query = (cols: string) => supabase.from('prayer_intentions').select(cols)
       .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
@@ -1329,6 +1350,8 @@ export default function Home() {
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
+    // 공지 알림은 로그인 없이도 열린다
+    if (deepLink?.notice) { setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
     if (deepLink.post) {
@@ -1575,12 +1598,12 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1676,6 +1699,16 @@ export default function Home() {
               <span className="flex-1 text-xs text-stone-700 leading-snug"><b>둘러보는 중이에요.</b> 프로필을 만들면 글·댓글·기도지향을 쓸 수 있어요.</span>
               <span className="text-xs font-bold bg-stone-900 text-white rounded-lg px-3 py-1.5 shrink-0">만들기</span>
             </button>
+          )}
+          {/* 관리자 공지 (홈 맨 위) */}
+          {homeNotice && (
+            <div className="flex items-center bg-amber-50 border-b border-amber-200">
+              <button onClick={() => { setNoticeOpenId(homeNotice.id); setShowNotices(true); }} className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 text-left">
+                <span className="shrink-0 text-xs font-bold text-white bg-amber-600 rounded-full px-2 py-0.5">📢 공지</span>
+                <span className="text-sm font-bold text-stone-800 truncate">{homeNotice.title}</span>
+              </button>
+              <button onClick={() => hideNotice(homeNotice.id)} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-3" aria-label="공지 닫기">×</button>
+            </div>
           )}
           {/* 오늘의 기도지향: 한 줄로 계속 흘러감, 누르면 모아 보기 */}
           {visibleIntentions.length > 0 ? (
@@ -2247,6 +2280,7 @@ export default function Home() {
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} baptismalName={myRealName || profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={openProfileEdit}
+          onOpenNotices={() => { setShowSettings(false); setNoticeOpenId(null); setShowNotices(true); }}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined} />
@@ -2338,6 +2372,18 @@ export default function Home() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 공지사항 */}
+      {showNotices && (
+        <NoticeBoard
+          key={noticeOpenId || 'list'}
+          notices={notices}
+          isAdmin={isAdmin}
+          initialOpenId={noticeOpenId}
+          onClose={() => setShowNotices(false)}
+          onChanged={fetchNotices}
+        />
       )}
 
       {/* 숏폼 영상 꾸미기 */}
