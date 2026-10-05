@@ -11,7 +11,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -20,6 +20,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   onFeastDayChange: (value: string | null) => Promise<boolean>;
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
+  onOpenBgm?: () => void;     // 관리자에게만 전달
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast'>(initialView);
   const [feastInput, setFeastInput] = useState(feastDay);
@@ -99,6 +100,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             </button>
             {onOpenMembers && (
               <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span>👥 회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+            )}
+            {onOpenBgm && (
+              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span>🎵 배경음악 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => setView('blocks')} className={row}><span>🚫 차단 목록</span><span className="text-stone-300">›</span></button>
             <a href="/terms" className={row}><span>📜 이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
