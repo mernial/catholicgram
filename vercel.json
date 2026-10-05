@@ -4,10 +4,6 @@
     {
       "path": "/api/cron/feast-day",
       "schedule": "0 23 * * *"
-    },
-    {
-      "path": "/api/cron/daily-meditation",
-      "schedule": "0 11 * * *"
     }
   ]
 }
