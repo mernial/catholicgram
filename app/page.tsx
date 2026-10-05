@@ -53,7 +53,7 @@ interface Post {
   music_title?: string | null;
 }
 
-interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; }
+interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; edited_at?: string | null; }
 // 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -144,6 +144,8 @@ export default function Home() {
   const [myRealName, setMyRealName] = useState('');
   const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
   // 댓글 답글 대상 (게시물별)
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editCommentText, setEditCommentText] = useState('');
   const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string } | null>>({});
   // 오늘 축일인 팔로잉 교우들 + 축일 카드 닫음 여부(하루 단위)
   const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
@@ -1144,6 +1146,25 @@ export default function Home() {
       if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
     }
   };
+  // 내 댓글 수정 / 삭제 (관리자는 삭제 가능)
+  const saveCommentEdit = async (c: Comment) => {
+    const text = editCommentText.trim();
+    if (!text) return;
+    const editedAt = new Date().toISOString();
+    let { data, error } = await supabase.from('comments').update({ content: text, edited_at: editedAt }).eq('id', c.id).select('id');
+    if (error && (error.code === 'PGRST204' || error.code === '42703')) ({ data, error } = await supabase.from('comments').update({ content: text }).eq('id', c.id).select('id'));
+    if (error || !data || data.length === 0) { alert('댓글을 수정하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
+    setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).map(x => x.id === c.id ? { ...x, content: text, edited_at: editedAt } : x) }));
+    setEditingCommentId(null);
+  };
+
+  const deleteComment = async (c: Comment) => {
+    if (!window.confirm('이 댓글을 삭제할까요?')) return;
+    const { data, error } = await supabase.from('comments').delete().eq('id', c.id).select('id');
+    if (error || !data || data.length === 0) { alert('댓글을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
+    setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).filter(x => x.id !== c.id) }));
+  };
+
   // 닉네임을 누르면 댓글창을 열고 그 사람을 태그한 채로 입력칸에 커서를 둔다
   const tagUserInComments = async (postId: string, targetUserId: string, name: string) => {
     if (!user) { setShowAuthModal(true); return; }
@@ -1517,12 +1538,35 @@ export default function Home() {
                                 {user && c.user_id !== user.id && (
                                   <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
                                 )}
+                                {user && c.user_id === user.id && editingCommentId !== c.id && (
+                                  <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }} className="text-[0.75rem] text-stone-500 font-bold">수정</button>
+                                )}
+                                {user && (c.user_id === user.id || isAdmin) && editingCommentId !== c.id && (
+                                  <button onClick={() => deleteComment(c)} className="text-[0.75rem] text-red-500 font-bold">삭제</button>
+                                )}
                               </span>
                             </span>
-                            <span>
-                              {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{c.reply_to_name}</span>}
-                              {c.content}
-                            </span>
+                            {editingCommentId === c.id ? (
+                              <div className="flex flex-col gap-1.5 mt-1">
+                                <textarea
+                                  value={editCommentText}
+                                  onChange={e => setEditCommentText(e.target.value)}
+                                  rows={2}
+                                  autoFocus
+                                  className="w-full text-xs border border-stone-300 rounded-lg px-2.5 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-stone-400"
+                                />
+                                <div className="flex justify-end gap-1.5">
+                                  <button onClick={() => setEditingCommentId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
+                                  <button onClick={() => saveCommentEdit(c)} disabled={!editCommentText.trim()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold disabled:opacity-40">저장</button>
+                                </div>
+                              </div>
+                            ) : (
+                              <span>
+                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{c.reply_to_name}</span>}
+                                {c.content}
+                                {c.edited_at && <span className="text-stone-400 ml-1 text-[0.6875rem]">(수정됨)</span>}
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>
