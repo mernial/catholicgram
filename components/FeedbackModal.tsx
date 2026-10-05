@@ -56,7 +56,7 @@ const REPORT_REASON: Record<string, string> = {
 const REPORT_STATUS: Record<Report['status'], { label: string; className: string }> = {
   open: { label: '미처리', className: 'bg-red-50 text-red-700 border-red-200' },
   resolved: { label: '조치 완료', className: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
-  dismissed: { label: '기각', className: 'bg-stone-100 text-stone-500 border-stone-200' },
+  dismissed: { label: '신고 해제', className: 'bg-stone-100 text-stone-500 border-stone-200' },
 };
 
 export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
@@ -209,7 +209,8 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
                     <button onClick={() => deleteReportedContent(r)} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">콘텐츠 삭제</button>
                   )}
                   {r.status !== 'resolved' && <button onClick={() => setReportStatus(r, 'resolved')} className="text-xs px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700">조치 완료</button>}
-                  {r.status !== 'dismissed' && <button onClick={() => setReportStatus(r, 'dismissed')} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">기각</button>}
+                  {r.status !== 'dismissed' && <button onClick={() => { if (window.confirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)')) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold">✅ 신고 해제</button>}
+                  {r.status !== 'open' && <button onClick={() => setReportStatus(r, 'open')} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-500">다시 미처리로</button>}
                 </div>
               </div>
             ))}

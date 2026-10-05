@@ -3,7 +3,7 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 관리자 전용 회원 관리
 // GET  : 가입 회원 목록과 상태 (가입일, 마지막 접속, 로그인 방식, 글 수, 신고 수, 알림 여부, 이용 정지 여부)
-// POST : { action: 'suspend' | 'unsuspend', userId } 이용 정지 / 해제
+// POST : { action: 'suspend' | 'unsuspend' | 'dismiss-reports', userId } 이용 정지 / 해제 / 신고 해제
 //        정지하면 로그인이 막히고, 이미 로그인한 기기도 최대 1시간 안에 로그아웃된다.
 
 const FOREVER = '876000h'; // 약 100년
@@ -91,7 +91,16 @@ export async function POST(request: Request) {
   const { admin, me } = auth;
 
   const { action, userId } = ((await request.json().catch(() => ({}))) ?? {}) as { action?: string; userId?: string };
-  if (!userId || (action !== 'suspend' && action !== 'unsuspend')) return Response.json({ error: 'bad request' }, { status: 400 });
+  if (!userId || !['suspend', 'unsuspend', 'dismiss-reports'].includes(action || '')) return Response.json({ error: 'bad request' }, { status: 400 });
+
+  // 신고 해제: 이 회원에 대한 미처리 신고를 모두 '해제(dismissed)'로
+  if (action === 'dismiss-reports') {
+    const { data, error } = await admin.from('reports').update({ status: 'dismissed' })
+      .eq('target_user_id', userId).eq('status', 'open').select('id');
+    if (error) return Response.json({ error: error.message }, { status: 500 });
+    return Response.json({ ok: true, dismissed: data?.length || 0 });
+  }
+
   if (userId === me.id) return Response.json({ error: '본인 계정은 정지할 수 없습니다.' }, { status: 400 });
 
   const { data: target } = await admin.auth.admin.getUserById(userId);
