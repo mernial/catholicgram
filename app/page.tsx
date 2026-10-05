@@ -218,6 +218,7 @@ export default function Home() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
+  const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all'); // 홈 피드: 전체 / 사진·영상 / 글
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
 
@@ -349,6 +350,8 @@ export default function Home() {
     fetchIntentions();
     fetchNotices();
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
+    const savedFilter = storageGet('feedFilter');
+    if (savedFilter === 'media' || savedFilter === 'text') setFeedFilter(savedFilter);
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
 
     // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
@@ -1887,8 +1890,29 @@ export default function Home() {
             </form>
           </section>
 
+          {/* 피드 보기 탭: 전체 / 사진·영상만 / 글만 */}
+          <div className="sticky top-[calc(3.375rem+env(safe-area-inset-top))] z-10 bg-white/95 backdrop-blur border-y border-stone-200/70 px-3 py-2 flex gap-1.5">
+            {([['all', '전체', null], ['media', '사진·영상', 'camera'], ['text', '글', 'pencil']] as const).map(([key, label, icon]) => (
+              <button
+                key={key}
+                onClick={() => { setFeedFilter(key); storageSet('feedFilter', key); }}
+                aria-pressed={feedFilter === key}
+                className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-full text-[0.875rem] font-bold transition-colors ${feedFilter === key ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}
+              >
+                {icon && <Icon name={icon} className="w-4 h-4" />}{label}
+              </button>
+            ))}
+          </div>
+
           <section className="divide-y divide-stone-200/70 flex-1">
-            {posts.filter(post => !blockedIds.has(post.user_id)).map((post, postIndex) => {
+            {(() => {
+              const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
+              const shown = posts.filter(post => !blockedIds.has(post.user_id)
+                && (feedFilter === 'all' || (feedFilter === 'media' ? hasMedia(post) : !hasMedia(post))));
+              if (shown.length === 0 && posts.length > 0) {
+                return <div className="py-16 text-center text-sm text-stone-400">{feedFilter === 'media' ? '아직 사진·영상 글이 없어요.' : '아직 글만 쓴 나눔이 없어요.'}</div>;
+              }
+              return shown.map((post, postIndex) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
               // 게시글 FEED_BANNER_EVERY 개마다 후원 배너를 번갈아 끼움
               const slot = (postIndex + 1) % FEED_BANNER_EVERY === 0 ? (postIndex + 1) / FEED_BANNER_EVERY - 1 : -1;
@@ -2079,7 +2103,8 @@ export default function Home() {
                 {inlineBanner && <SponsorBanner banner={inlineBanner} variant="feed" />}
                 </Fragment>
               );
-            })}
+            });
+            })()}
           </section>
         </>
       )}
