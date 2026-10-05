@@ -966,11 +966,15 @@ export default function Home() {
     setEditingPostId(null);
     await supabase.from('posts').update({ content: editContent }).eq('id', postId);
   };
-  const handleReaction = async (postId: string, type: 'pray' | 'like') => {
+  // 사진·영상을 두 번 누르면 공감 (이미 공감했으면 그대로 두기)
+  const likeByDoubleTap = (postId: string) => handleReaction(postId, 'like', true);
+
+  const handleReaction = async (postId: string, type: 'pray' | 'like', onlyAdd = false) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
     if (!posts.some((p) => p.id === postId)) return;
-    const { data: existing } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('reaction_type', type).maybeSingle(); 
+    const { data: existing } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('reaction_type', type).maybeSingle();
+    if (existing && onlyAdd) return;
     const { error } = existing
       ? await supabase.from('post_reactions').delete().eq('id', existing.id)
       : await supabase.from('post_reactions').insert({ post_id: postId, user_id: user.id, reaction_type: type });
@@ -1830,12 +1834,14 @@ export default function Home() {
                       hasMusic={!!parsePostMusic(post.music)}
                       musicTitle={post.music_title}
                       onOpen={() => openPostViewer(post)}
+                      onDoubleTap={() => likeByDoubleTap(post.id)}
                     />
                   )}
                   {!post.video_url && post.images && post.images.length > 0 && (
                     <PostPhotos
                       images={post.images}
                       onOpen={i => openPostViewer(post, i)}
+                      onDoubleTap={() => likeByDoubleTap(post.id)}
                       musicTitle={post.music_title}
                       onMusic={parsePostMusic(post.music) ? () => openPostViewer(post) : undefined}
                     />
