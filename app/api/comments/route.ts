@@ -37,6 +37,7 @@ export async function POST(request: Request) {
   }
 
   if (!isOwner && !isAdmin) return Response.json({ error: '내 댓글만 삭제할 수 있어요.' }, { status: 403 });
+  await admin.from('comment_reactions').delete().eq('comment_id', id); // 표가 없어도 무시
   const { error } = await admin.from('comments').delete().eq('id', id);
   if (error) return Response.json({ error: '삭제하지 못했어요.' }, { status: 500 });
   return Response.json({ ok: true });
