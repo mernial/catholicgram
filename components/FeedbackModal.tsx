@@ -189,12 +189,12 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] max-h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-b border-stone-100 flex items-center justify-between">
+      <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-stone-900">📮 운영자에게 건의하기</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
-        <div className="flex gap-1 px-4 pt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="shrink-0 flex gap-1 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map(t => (
             <button key={t.key} onClick={() => setView(t.key)} className={`shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-full border ${view === t.key ? 'bg-stone-900 text-white border-stone-900 font-bold' : 'bg-white text-stone-600 border-stone-200'}`}>
               {t.label}
@@ -208,7 +208,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             <span className="text-xs">(관리자: Supabase에서 <code>supabase/feedback.sql</code> 을 실행해주세요)</span>
           </div>
         ) : view === 'reports' ? (
-          <div className="overflow-y-auto divide-y divide-stone-100 mt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-stone-100 mt-2">
             {!loading && reports.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">접수된 신고가 없습니다.</div>}
             {reports.map(r => (
               <div key={r.id} className="p-4 flex flex-col gap-2">
@@ -231,7 +231,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             ))}
           </div>
         ) : view === 'write' ? (
-          <form onSubmit={handleSend} className="p-4 flex flex-col gap-3">
+          <form onSubmit={handleSend} className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
             <p className="text-xs text-stone-500 leading-relaxed">
               가톨릭그램을 더 좋게 만들 의견이나 불편한 점을 알려주세요.<br />운영자가 확인 후 답변드립니다.
             </p>
@@ -255,7 +255,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             </button>
           </form>
         ) : (
-          <div className="overflow-y-auto divide-y divide-stone-100 mt-2">
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-stone-100 mt-2">
             {loading && items.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">불러오는 중...</div>}
             {!loading && shownItems.length === 0 && (
               <div className="p-10 text-center text-stone-400 text-sm">
@@ -265,8 +265,13 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
             {shownItems.map(item => view === 'answered' && openAnsweredId !== item.id ? (
               // 답변한 건의: 아이디 + 건의 내용 한 줄 (누르면 펼쳐서 답변 보기·수정)
               <button key={item.id} onClick={() => setOpenAnsweredId(item.id)} className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-stone-50">
-                <span className="text-[0.8125rem] font-bold text-stone-700 shrink-0 max-w-[40%] truncate">{item.author_handle ? `@${item.author_handle}` : (item.author_name || '교우')}</span>
-                <span className="flex-1 min-w-0 text-sm text-stone-600 truncate">{item.content}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline gap-1.5 min-w-0">
+                    <b className="text-sm text-stone-900 truncate">{item.author_name || '교우'}</b>
+                    {item.author_handle && <span className="text-xs text-stone-400 truncate">@{item.author_handle}</span>}
+                  </span>
+                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.content}</span>
+                </span>
                 <span className="text-stone-300 shrink-0">›</span>
               </button>
             ) : (
