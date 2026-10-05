@@ -997,6 +997,7 @@ export default function Home() {
   // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
   // (휴대폰 브라우저는 사용자가 누른 순간에만 소리 재생을 허용하므로 누른 즉시 재생을 시작)
   const openPostViewer = (post: Post, imageIndex = 0) => {
+    setViewerTextOpen(false);
     setSelectedPostDetail(post);
     setDetailImageIndex(imageIndex);
     const music = parsePostMusic(post.music);
@@ -1757,29 +1758,57 @@ export default function Home() {
   const [viewerQueue, setViewerQueue] = useState<string[] | null>(null);
   const viewerScrollRef = useRef<HTMLDivElement>(null);
   const viewerTouch = useRef<{ x: number; y: number; atTop: boolean; atBottom: boolean; onImage: boolean } | null>(null);
-  const [viewerSlide, setViewerSlide] = useState<'up' | 'down' | null>(null); // 다음 글로 넘어갈 때 살짝 움직이는 효과
-  const viewerStep = (dir: 1 | -1) => {
-    if (!viewerQueue || !selectedPostDetail) return false;
+  // 위아래로 밀 때 카드가 손가락을 따라 움직이고, 다음 글이 아래에서 이어서 올라옴
+  const [viewerDrag, setViewerDrag] = useState(0);
+  const [viewerAnimating, setViewerAnimating] = useState(false);
+  const [viewerTextOpen, setViewerTextOpen] = useState(false); // 크게 보기 글: 처음엔 짧게, 누르면 전체
+  const viewerCardRef = useRef<HTMLDivElement>(null);
+  // 다음 글 미리보기가 지금 글 바로 아래(위)에 붙어서 따라오도록 하는 거리
+  // 밀기 시작할 때 지금 카드의 위치 (다음 글 미리보기를 바로 아래에 16px 띄워 붙임)
+  const viewerCardRect = useRef<{ top: number; bottom: number }>({ top: 100, bottom: 700 });
+  const viewerGap = () => viewerCardRect.current.bottom - viewerCardRect.current.top + 16;
+  const viewerNeighbor = (dir: 1 | -1) => {
+    if (!viewerQueue || !selectedPostDetail) return null;
     const queue = viewerQueue.filter(id => posts.some(p => p.id === id));
-    const next = posts.find(p => p.id === queue[queue.indexOf(selectedPostDetail.id) + dir]);
-    if (!next) return false;
-    bgmAudioRef.current?.pause();
-    setBgmPlaying(false);
-    setViewerSlide(dir === 1 ? 'up' : 'down');
-    setTimeout(() => setViewerSlide(null), 320);
-    openPostViewer(next);
-    viewerScrollRef.current?.scrollTo({ top: 0 });
+    return posts.find(p => p.id === queue[queue.indexOf(selectedPostDetail.id) + dir]) || null;
+  };
+  const viewerStep = (dir: 1 | -1) => {
+    const next = viewerNeighbor(dir);
+    if (!next) { setViewerAnimating(true); setViewerDrag(0); return false; }
+    const gap = viewerGap();
+    setViewerAnimating(true);
+    setViewerDrag(dir === 1 ? -gap : gap); // 지금 글이 위(아래)로 빠져나가고 바로 아래 붙어 있던 다음 글이 가운데로
+    setTimeout(() => {
+      bgmAudioRef.current?.pause();
+      setBgmPlaying(false);
+      setViewerAnimating(false);
+      setViewerDrag(0);
+      setViewerTextOpen(false);
+      openPostViewer(next);
+      viewerScrollRef.current?.scrollTo({ top: 0 });
+    }, 260);
     return true;
   };
   const onViewerTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
     const el = viewerScrollRef.current;
+    setViewerAnimating(false);
+    const rect = viewerCardRef.current?.getBoundingClientRect();
+    if (rect && viewerDrag === 0) viewerCardRect.current = { top: rect.top, bottom: rect.bottom };
     viewerTouch.current = {
       x: t.clientX, y: t.clientY,
       atTop: !el || el.scrollTop <= 2,
       atBottom: !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 2,
       onImage: !!(e.target as HTMLElement).closest?.('[data-viewer-media]'),
     };
+  };
+  const onViewerTouchMove = (e: React.TouchEvent) => {
+    const start = viewerTouch.current;
+    if (!start || !viewerQueue) return;
+    const t = e.touches[0];
+    const dx = t.clientX - start.x, dy = t.clientY - start.y;
+    if (Math.abs(dy) < Math.abs(dx) * 1.2) return;
+    if ((dy < 0 && start.atBottom && viewerNeighbor(1)) || (dy > 0 && start.atTop && viewerNeighbor(-1))) setViewerDrag(dy);
   };
   const onViewerTouchEnd = (e: React.TouchEvent) => {
     const start = viewerTouch.current;
@@ -1792,10 +1821,8 @@ export default function Home() {
       setDetailImageIndex(i => Math.max(0, Math.min(images.length - 1, i + (dx < 0 ? 1 : -1))));
       return;
     }
-    if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.2) {
-      if (dy < 0 && start.atBottom) viewerStep(1);
-      else if (dy > 0 && start.atTop) viewerStep(-1);
-    }
+    if (viewerDrag !== 0 && Math.abs(dy) > 80) { viewerStep(dy < 0 ? 1 : -1); return; }
+    if (viewerDrag !== 0) { setViewerAnimating(true); setViewerDrag(0); } // 덜 밀었으면 제자리로
   };
 
   // 크게 보기: 사진을 두 번 누르면 공감 (한 번 누르면 아무 일 없음)
@@ -3088,10 +3115,34 @@ export default function Home() {
       {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
+          {/* 다음(이전) 추천 글 미리보기: 밀면 아래(위)에서 따라 올라옴 */}
+          {viewerDrag !== 0 && (() => {
+            const peek = viewerNeighbor(viewerDrag < 0 ? 1 : -1);
+            if (!peek) return null;
+            const thumb = peek.video_poster || peek.images?.[0];
+            const { top, bottom } = viewerCardRect.current;
+            const H = typeof window !== 'undefined' ? window.innerHeight : 800;
+            const pos = viewerDrag < 0 ? { top: bottom + 16 + viewerDrag } : { bottom: H - (top - 16 + viewerDrag) };
+            return (
+              <div
+                className="pointer-events-none absolute left-4 right-4 mx-auto max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
+                style={{ ...pos, transition: viewerAnimating ? 'top 0.26s ease-out, bottom 0.26s ease-out' : 'none' }}
+              >
+                <div className="p-4 flex items-center gap-2.5 border-b border-stone-100">
+                  {peek.avatar_url ? <img src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
+                  <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
+                </div>
+                {thumb ? <img src={thumb} alt="" className="w-full max-h-[50dvh] object-cover" /> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
+              </div>
+            );
+          })()}
           <div
-            className={`bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh] transition-transform duration-300 ${viewerSlide === 'up' ? 'animate-[viewerUp_0.3s_ease-out]' : viewerSlide === 'down' ? 'animate-[viewerDown_0.3s_ease-out]' : ''}`}
+            ref={viewerCardRef}
+            className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh]"
+            style={{ transform: `translateY(${viewerDrag}px)`, transition: viewerAnimating ? 'transform 0.26s ease-out' : 'none' }}
             onClick={e => e.stopPropagation()}
             onTouchStart={onViewerTouchStart}
+            onTouchMove={onViewerTouchMove}
             onTouchEnd={onViewerTouchEnd}
           >
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
@@ -3160,23 +3211,28 @@ export default function Home() {
                 );
               })()}
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
-                <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} /></p>
-                <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
-                {/* 탐색에서 열었을 때: 다음 추천 (위로 밀어도 됨) */}
-                {viewerQueue && (() => {
-                  const queue = viewerQueue.filter(id => posts.some(p => p.id === id));
-                  const idx = queue.indexOf(selectedPostDetail.id);
-                  return (
-                    <div className="mt-3 flex gap-2">
-                      {idx > 0 && <button onClick={() => viewerStep(-1)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-600">↑ 이전</button>}
-                      {idx < queue.length - 1 && <button onClick={() => viewerStep(1)} className="flex-[2] py-2.5 rounded-xl bg-stone-900 text-white text-sm font-bold">다음 추천 보기 ↓</button>}
-                    </div>
-                  );
-                })()}
-                {viewerQueue && <p className="text-center text-[0.75rem] text-stone-400">화면을 위로 밀면 다음 추천 글이 나와요</p>}
+                {/* 글은 처음엔 두 줄만, 누르면 전체 */}
+                <ClampText
+                  key={selectedPostDetail.id}
+                  lines={2}
+                  expanded={viewerTextOpen}
+                  onExpand={() => setViewerTextOpen(true)}
+                  className="text-stone-800 text-[0.9375rem] whitespace-pre-wrap leading-relaxed"
+                  text={selectedPostDetail.content || ''}
+                  renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
+                />
+                <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
+
               </div>
             </div>
           </div>
+          {/* 반투명 안내: 위로 밀면 다음 추천 */}
+          {viewerQueue && viewerDrag === 0 && viewerNeighbor(1) && (
+            <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col items-center gap-0.5 px-4 py-2 rounded-full bg-white/20 border border-white/30 backdrop-blur-md text-white text-[0.8125rem] font-semibold shadow-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5 animate-bounce"><path d="M6 15l6-6 6 6" /></svg>
+              위로 밀면 다음 추천
+            </div>
+          )}
         </div>
       )}
 
