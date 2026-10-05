@@ -154,7 +154,7 @@ export default function Home() {
   const [myRealName, setMyRealName] = useState('');
   const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
   // 댓글 답글 대상 (게시물별)
-  // 게시물별 댓글 수, 댓글별 🙏/🍇 (mine: 내가 누른 것)
+  // 게시물별 댓글 수, 댓글별 🙏/❤️ (mine: 내가 누른 것)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
@@ -1580,8 +1580,8 @@ export default function Home() {
                     )}
 
                     <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium">
-                      <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
-                      <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
+                      <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도 {post.pray_count > 0 && `(${post.pray_count})`}</button>
+                      <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-rose-600">❤️ 공감 {post.like_count > 0 && `(${post.like_count})`}</button>
                       <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글{commentCounts[post.id] ? ` (${commentCounts[post.id]})` : ''}</button>
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
@@ -1652,10 +1652,10 @@ export default function Home() {
                               return (
                                 <span className="flex gap-1.5 mt-1">
                                   <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myPray ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    🙏 기도할게요{r.pray > 0 && ` ${r.pray}`}
+                                    🙏 기도{r.pray > 0 && ` ${r.pray}`}
                                   </button>
-                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-violet-50 border-violet-300 text-violet-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    🍇 공감해요{r.like > 0 && ` ${r.like}`}
+                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
+                                    ❤️ 공감{r.like > 0 && ` ${r.like}`}
                                   </button>
                                 </span>
                               );

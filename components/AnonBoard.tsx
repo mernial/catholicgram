@@ -36,8 +36,8 @@ interface AnonReply {
 type Reaction = 'pray' | 'like' | 'cheer';
 
 const REACTIONS: { key: Reaction; emoji: string; label: string; count: keyof AnonPost; hover: string }[] = [
-  { key: 'pray', emoji: '🙏', label: '기도할게요', count: 'pray_count', hover: 'hover:text-indigo-600' },
-  { key: 'like', emoji: '🍇', label: '공감해요', count: 'like_count', hover: 'hover:text-purple-600' },
+  { key: 'pray', emoji: '🙏', label: '기도', count: 'pray_count', hover: 'hover:text-indigo-600' },
+  { key: 'like', emoji: '❤️', label: '공감', count: 'like_count', hover: 'hover:text-rose-600' },
   { key: 'cheer', emoji: '🤗', label: '힘내요', count: 'cheer_count', hover: 'hover:text-amber-600' },
 ];
 
