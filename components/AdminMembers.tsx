@@ -89,6 +89,17 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
     setMembers(prev => prev?.map(x => x.id === m.id ? { ...x, suspended: !!result.suspended } : x) || prev);
   };
 
+  // 이 회원에 대한 미처리 신고를 모두 해제 (글은 그대로, 신고 표시만 없앰)
+  const dismissReports = async (m: AdminMember) => {
+    const name = m.baptismal_name || m.email || '이 회원';
+    if (!window.confirm(`${name}님에 대한 신고 ${m.open_reports}건을 해제할까요?\n(문제없다고 보고 신고 표시만 없애요. 글은 그대로예요)`)) return;
+    setBusyId(m.id);
+    const result = await callApi('POST', { action: 'dismiss-reports', userId: m.id });
+    setBusyId(null);
+    if (result.error) { alert(result.error); return; }
+    setMembers(prev => prev?.map(x => x.id === m.id ? { ...x, open_reports: 0 } : x) || prev);
+  };
+
   const stats = useMemo(() => {
     const list = members || [];
     const now = Date.now();
@@ -214,6 +225,15 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                           {busyId === m.id ? '처리 중...' : m.suspended ? '정지 해제' : '⛔ 이용 정지'}
                         </button>
                       </div>
+                    )}
+                    {!m.is_admin && m.open_reports > 0 && (
+                      <button
+                        onClick={() => dismissReports(m)}
+                        disabled={busyId === m.id}
+                        className="w-full text-xs py-2 rounded-lg font-bold border border-blue-300 text-blue-700 disabled:opacity-50"
+                      >
+                        ✅ 신고 {m.open_reports}건 해제
+                      </button>
                     )}
                   </div>
                 );
