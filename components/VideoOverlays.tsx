@@ -55,11 +55,11 @@ function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; sele
     >
       {item.text}
       {selected && onHandleDown && (
-        // 한 손가락으로 끌면 돌리기 + 키우기
+        // 한 손가락으로 끌면 돌리기 + 키우기 (55세 이상도 잘 보이고 누르기 쉽게 크게)
         <span
           onPointerDown={onHandleDown}
-          className="absolute -right-4 -bottom-4 w-8 h-8 rounded-full bg-white text-stone-900 shadow-lg flex items-center justify-center text-base not-italic font-bold touch-none cursor-grab"
-          style={{ fontSize: 18, lineHeight: 1 }}
+          className="absolute -right-6 -bottom-6 w-12 h-12 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white shadow-[0_0_0_4px_rgba(232,184,90,0.35),0_4px_12px_rgba(0,0,0,0.5)] flex items-center justify-center font-black touch-none cursor-grab"
+          style={{ fontSize: 26, lineHeight: 1, transform: `rotate(${-(item.rotation || 0)}deg)` }}
           aria-label="돌리기·크기"
         >↻</span>
       )}
@@ -325,7 +325,7 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
           </button>
         </div>
       )}
-      <p className="text-center text-[0.6875rem] text-white/50 pb-2">끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 돌리고 키워요</p>
+      <p className="text-center text-xs text-white/70 pb-2">끌어서 옮기고, 노란 <b className="text-[#fbe7b0]">↻ 단추</b>를 끌면 돌리고 키울 수 있어요</p>
     </div>
   );
 }
