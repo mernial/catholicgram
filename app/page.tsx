@@ -1826,6 +1826,15 @@ export default function Home() {
     if (again) refreshFeed();
   };
 
+  // 아래로 많이 내려가면 + 버튼 바로 위에 '맨 위로' 버튼
+  const [showToTop, setShowToTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowToTop(window.scrollY > 900);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
   // 다른 탭으로 가면 + 메뉴 접기
   useEffect(() => { setFabOpen(false); }, [activeTab]);
 
@@ -3423,6 +3432,18 @@ export default function Home() {
           </div>
         );
       })()}
+
+      {/* 맨 위로: 하단 가운데 + 버튼 바로 위 */}
+      {showToTop && !fabOpen && activeTab !== 'chat' && (
+        <button
+          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          className="fixed z-[38] left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex items-center gap-1 pl-3 pr-4 py-2 rounded-full bg-white/95 backdrop-blur border border-stone-200 shadow-lg text-sm font-bold text-stone-700 animate-fade-in"
+          aria-label="맨 위로"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
+          맨 위로
+        </button>
+      )}
 
       {/* 새로 고침 표시 */}
       {refreshState && (
