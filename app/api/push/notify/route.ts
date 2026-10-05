@@ -10,7 +10,7 @@ import { extractMentions } from '@/lib/mentions';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply'; id?: string };
+type NotifyBody = { type?: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['comment', 'post', 'message', 'follow', 'feedback', 'feedback_reply'].includes(type)) {
+  if (!id || !type || !['comment', 'post', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -107,6 +107,34 @@ export async function POST(request: Request) {
       body: truncate(fb.admin_reply),
       url: '/?feedback=1',
       tag: `feedback-${fb.id}`,
+    };
+  } else if (type === 'report') {
+    // 새 신고 → 관리자에게 바로
+    const { data: rp } = await admin.from('reports').select('id, reporter_id, target_type, target_preview, reason, created_at').eq('id', id).single();
+    if (!rp || rp.reporter_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(rp.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
+    if (!adminProfile) return Response.json({ skipped: 'admin not found' });
+    const what: Record<string, string> = { post: '게시글', comment: '댓글', anon_post: '고민글', anon_reply: '고민 답글', user: '사용자', message: '메시지' };
+    recipientId = adminProfile.id;
+    payload = {
+      title: `🚨 새 신고 (${what[rp.target_type] || rp.target_type})`,
+      body: truncate(rp.target_preview || '신고 내용을 확인해 주세요'),
+      url: '/?reports=1',
+      tag: `report-${rp.id}`,
+    };
+  } else if (type === 'report_reply') {
+    // 관리자 처리 답변 → 신고한 사람에게
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: rp } = await admin.from('reports').select('id, reporter_id, admin_reply, replied_at').eq('id', id).single();
+    if (!rp || !rp.admin_reply || !rp.replied_at) return Response.json({ error: 'bad request' }, { status: 400 });
+    if (Date.now() - new Date(rp.replied_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    recipientId = rp.reporter_id;
+    payload = {
+      title: '🚨 신고 처리 결과를 알려드려요',
+      body: truncate(rp.admin_reply),
+      url: '/?reports=1',
+      tag: `report-${rp.id}`,
     };
   } else if (type === 'follow') {
     const { data: follow } = await admin.from('follows').select('*').eq('id', id).single();

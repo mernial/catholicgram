@@ -46,7 +46,15 @@ interface Report {
   detail: string | null;
   status: 'open' | 'resolved' | 'dismissed';
   created_at: string;
+  admin_reply?: string | null;
+  replied_at?: string | null;
 }
+// 관리자가 신고한 분께 보내는 처리 답변 (눌러서 바로 쓰고 고칠 수 있음)
+const REPORT_REPLY_PRESETS = [
+  '신고해 주셔서 감사합니다. 확인 후 해당 내용을 삭제했습니다.',
+  '신고해 주셔서 감사합니다. 작성자에게 주의를 주고 지켜보겠습니다.',
+  '검토해 보니 운영 규칙에 어긋나지 않아 그대로 두었습니다. 관심 가져 주셔서 감사합니다.',
+];
 const REPORT_TYPE: Record<Report['target_type'], string> = {
   post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지',
 };
@@ -59,13 +67,16 @@ const REPORT_STATUS: Record<Report['status'], { label: string; className: string
   dismissed: { label: '신고 해제', className: 'bg-stone-100 text-stone-500 border-stone-200' },
 };
 
-export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
+export default function FeedbackModal({ user, isAdmin, initialView, onClose, sendPush }: {
   user: User;
   isAdmin: boolean;
+  initialView?: 'reports' | null; // 신고 알림으로 열었을 때
   onClose: () => void;
-  sendPush: (type: 'feedback' | 'feedback_reply', id: string) => void;
+  sendPush: (type: 'feedback' | 'feedback_reply' | 'report_reply', id: string) => void;
 }) {
-  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'answered' | 'reports'>(isAdmin ? 'inbox' : 'write');
+  // 'reports': 관리자는 받은 신고 전체, 일반 회원은 내가 한 신고와 처리 결과
+  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'answered' | 'reports'>(initialView || (isAdmin ? 'inbox' : 'write'));
+  const [reportReplyDrafts, setReportReplyDrafts] = useState<{ [id: string]: string }>({});
   const [reports, setReports] = useState<Report[]>([]);
   const [category, setCategory] = useState<Feedback['category']>('suggestion');
   const [content, setContent] = useState('');
@@ -91,7 +102,9 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
 
   const fetchReports = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(200);
+    let query = supabase.from('reports').select('*').order('created_at', { ascending: false }).limit(200);
+    if (!isAdmin) query = query.eq('reporter_id', user.id);
+    const { data, error } = await query;
     setLoading(false);
     if (error) {
       if (/does not exist|schema cache/i.test(error.message)) setSetupNeeded(true);
@@ -104,6 +117,21 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
     const { error } = await supabase.from('reports').update({ status }).eq('id', report.id);
     if (error) { alert(`변경하지 못했습니다.\n(${error.message})`); return; }
     setReports(prev => prev.map(r => r.id === report.id ? { ...r, status } : r));
+  };
+
+  // 신고한 분께 처리 결과 답변 보내기 (휴대폰 알림도 감)
+  const sendReportReply = async (report: Report) => {
+    const reply = (reportReplyDrafts[report.id] || '').trim();
+    if (!reply) return;
+    const replied_at = new Date().toISOString();
+    const { error } = await supabase.from('reports').update({ admin_reply: reply, replied_at, ...(report.status === 'open' ? { status: 'resolved' } : {}) }).eq('id', report.id);
+    if (error) {
+      alert(/admin_reply|column/i.test(error.message) ? '답변 기능 준비 중이에요. (supabase/report-reply.sql 실행 필요)' : `보내지 못했습니다.\n(${error.message})`);
+      return;
+    }
+    setReports(prev => prev.map(r => r.id === report.id ? { ...r, admin_reply: reply, replied_at, status: r.status === 'open' ? 'resolved' : r.status } : r));
+    setReportReplyDrafts(prev => ({ ...prev, [report.id]: '' }));
+    sendPush('report_reply', report.id);
   };
 
   // 신고된 콘텐츠 삭제 후 '조치 완료'로 표시
@@ -177,9 +205,9 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
       : items;
   const pendingCount = items.filter(f => !f.admin_reply).length;
 
+  // 관리자(운영자)에게는 '건의하기'·'내 건의'가 필요 없으므로 받은 건의·답변·신고만
   const tabs: { key: typeof view; label: string }[] = [
-    { key: 'write', label: '건의하기' },
-    { key: 'mine', label: '내 건의' },
+    ...(!isAdmin ? [{ key: 'write' as const, label: '건의하기' }, { key: 'mine' as const, label: '내 건의' }, { key: 'reports' as const, label: '🚨 내 신고' }] : []),
     ...(isAdmin ? [
       { key: 'inbox' as const, label: `👑 받은 건의함${pendingCount ? ` (${pendingCount})` : ''}` },
       { key: 'answered' as const, label: '✅ 답변한 건의' },
@@ -191,7 +219,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
-          <h2 className="font-bold text-stone-900">📮 운영자에게 건의하기</h2>
+          <h2 className="font-bold text-stone-900">{isAdmin ? '📮 건의함 · 신고 관리' : '📮 운영자에게 건의하기'}</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
         <div className="shrink-0 flex gap-1 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -209,8 +237,24 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
           </div>
         ) : view === 'reports' ? (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-stone-100 mt-2">
-            {!loading && reports.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">접수된 신고가 없습니다.</div>}
-            {reports.map(r => (
+            {!loading && reports.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">{isAdmin ? '접수된 신고가 없습니다.' : '내가 한 신고가 없어요.'}</div>}
+            {!isAdmin && reports.map(r => (
+              <div key={r.id} className="p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
+                  <span className="font-bold text-stone-700">{REPORT_TYPE[r.target_type]} · {REPORT_REASON[r.reason] || r.reason}</span>
+                  <span className={`px-2 py-0.5 rounded-full border font-bold ${REPORT_STATUS[r.status].className}`}>{r.status === 'open' ? '확인 중' : '처리됨'}</span>
+                </div>
+                {r.target_preview && <p className="text-sm text-stone-600 bg-stone-50 rounded-lg p-2.5 whitespace-pre-wrap line-clamp-2">{r.target_preview}</p>}
+                <p className="text-[0.8125rem] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')} 신고</p>
+                {r.admin_reply ? (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-xs font-bold text-blue-800 mb-1">👑 운영자 답변</p>
+                    <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">{r.admin_reply}</p>
+                  </div>
+                ) : r.status === 'open' && <p className="text-xs text-stone-500">운영자가 확인하고 있어요. 처리되면 알림으로 알려드려요.</p>}
+              </div>
+            ))}
+            {isAdmin && reports.map(r => (
               <div key={r.id} className="p-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
                   <span className="font-bold text-stone-700">{REPORT_TYPE[r.target_type]} · {REPORT_REASON[r.reason] || r.reason}</span>
@@ -227,6 +271,23 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
                   {r.status !== 'dismissed' && <button onClick={() => { if (window.confirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)')) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold">✅ 신고 해제</button>}
                   {r.status !== 'open' && <button onClick={() => setReportStatus(r, 'open')} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-500">다시 미처리로</button>}
                 </div>
+                {/* 신고한 분께 처리 결과 알려주기 */}
+                {r.admin_reply ? (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 text-[0.8125rem] text-stone-700">
+                    <b className="text-blue-800">보낸 답변</b> · {r.replied_at && new Date(r.replied_at).toLocaleString('ko-KR')}<br />{r.admin_reply}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1.5 bg-stone-50 rounded-xl p-2.5">
+                    <p className="text-xs font-bold text-stone-600">신고한 분께 처리 결과 알려주기</p>
+                    <div className="flex flex-wrap gap-1">
+                      {REPORT_REPLY_PRESETS.map(t => (
+                        <button key={t} onClick={() => setReportReplyDrafts(prev => ({ ...prev, [r.id]: t }))} className="text-[0.75rem] text-left px-2 py-1 rounded-lg bg-white border border-stone-200 text-stone-600">{t.replace('신고해 주셔서 감사합니다. ', '').slice(0, 22)}…</button>
+                      ))}
+                    </div>
+                    <textarea value={reportReplyDrafts[r.id] || ''} onChange={e => setReportReplyDrafts(prev => ({ ...prev, [r.id]: e.target.value }))} rows={2} maxLength={500} placeholder="처리 결과를 적어주세요" className="w-full p-2.5 text-sm bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40">📲 답변 보내기</button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
