@@ -2,19 +2,23 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { OverlayLayer, type VideoOverlays } from '@/components/VideoOverlays';
+import { useDoubleTap } from '@/lib/double-tap';
+import HeartBurst from '@/components/HeartBurst';
 
 // 피드의 숏폼 영상: 화면에 보이면 소리 없이 자동 재생(반복), 누르면 소리 켜기/끄기
 // 배경음악이 있는 영상은 누르면 크게 보기(음악과 함께)로 연다
-export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle, onOpen }: {
+export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle, onOpen, onDoubleTap }: {
   src: string;
   poster?: string | null;
   overlays?: VideoOverlays | null;
   hasMusic?: boolean;
   musicTitle?: string | null;
   onOpen?: () => void;
+  onDoubleTap?: () => void; // 두 번 누르면 공감
 }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [muted, setMuted] = useState(true);
+  const [burst, setBurst] = useState(0);
   const soundless = !!overlays?.muteOriginal;
 
   useEffect(() => {
@@ -37,6 +41,8 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
     if (video.paused) video.play().catch(() => {});
   };
 
+  const videoTap = useDoubleTap(onTap, () => { if (onDoubleTap) { setBurst(Date.now()); onDoubleTap(); } else onTap(); });
+
   return (
     <div className="relative bg-black [container-type:inline-size]">
       <video
@@ -47,10 +53,11 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
         loop
         playsInline
         preload="metadata"
-        onClick={onTap}
+        onClick={videoTap}
         className="w-full aspect-[4/5] object-cover"
       />
       <OverlayLayer overlays={overlays} />
+      <HeartBurst show={burst} />
       <button onClick={onTap} className="absolute bottom-2.5 right-2.5 w-9 h-9 rounded-full bg-black/55 text-white text-base flex items-center justify-center" aria-label="소리">
         {hasMusic ? '🎵' : soundless ? '▶' : muted ? '🔇' : '🔊'}
       </button>
