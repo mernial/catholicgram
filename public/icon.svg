@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="42%" r="75%">
+      <stop offset="0%" stop-color="#2c4486"/>
+      <stop offset="45%" stop-color="#16244f"/>
+      <stop offset="100%" stop-color="#070c22"/>
+    </radialGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffe6a6" stop-opacity="0.55"/>
+      <stop offset="55%" stop-color="#e8b85a" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#e8b85a" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gold" gradientUnits="userSpaceOnUse" x1="170" y1="110" x2="350" y2="410">
+      <stop offset="0%" stop-color="#fff4cf"/>
+      <stop offset="30%" stop-color="#f3d27a"/>
+      <stop offset="60%" stop-color="#c99330"/>
+      <stop offset="100%" stop-color="#fbe3a0"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f6dc93" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#b8862c" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#f6dc93" stop-opacity="0.9"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feColorMatrix in="b" type="matrix" values="1 0 0 0 0.25  0 1 0 0 0.18  0 0 1 0 0  0 0 0 0.85 0" result="g"/>
+      <feMerge><feMergeNode in="g"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- 은은한 빛줄기 -->
+  <g stroke="#f3d27a" stroke-opacity="0.10" stroke-width="3">
+    <line x1="256" y1="260" x2="256" y2="20"/><line x1="256" y1="260" x2="256" y2="500"/>
+    <line x1="256" y1="260" x2="20" y2="260"/><line x1="256" y1="260" x2="492" y2="260"/>
+    <line x1="256" y1="260" x2="86" y2="90"/><line x1="256" y1="260" x2="426" y2="90"/>
+    <line x1="256" y1="260" x2="86" y2="430"/><line x1="256" y1="260" x2="426" y2="430"/>
+  </g>
+  <circle cx="256" cy="258" r="200" fill="url(#halo)"/>
+  <circle cx="256" cy="258" r="178" fill="none" stroke="url(#ring)" stroke-width="4"/>
+  <circle cx="256" cy="258" r="166" fill="none" stroke="#f3d27a" stroke-opacity="0.25" stroke-width="1.5"/>
+  <!-- 키로(☧): 세로 기둥 + 위쪽 P 고리 + X -->
+  <g filter="url(#glow)" fill="none" stroke="url(#gold)" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 122 V 396" stroke-width="30"/>
+    <path d="M256 124 H 290 A 52 52 0 0 1 290 228 H 256" stroke-width="26"/>
+    <path d="M186 214 L 326 354 M 326 214 L 186 354" stroke-width="26"/>
+  </g>
+</svg>

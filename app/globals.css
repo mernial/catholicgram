@@ -36,3 +36,10 @@ input, textarea, select {
   from { opacity: 0; transform: translateY(-16px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+/* 오늘의 기도지향: 홈 맨 위에서 한 줄로 흘러가는 글 */
+@keyframes intentionMarquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.intention-marquee { animation: intentionMarquee var(--marquee-duration, 30s) linear infinite; }

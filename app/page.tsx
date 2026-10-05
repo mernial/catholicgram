@@ -157,6 +157,11 @@ export default function Home() {
   // 게시물별 댓글 수, 댓글별 🙏/❤️ (mine: 내가 누른 것)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
+  // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
+  const [intentions, setIntentions] = useState<{ id: string; user_id: string; author_name: string | null; content: string; created_at: string }[]>([]);
+  const [showIntentions, setShowIntentions] = useState(false);
+  const [intentionInput, setIntentionInput] = useState('');
+  const [intentionSaving, setIntentionSaving] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
   const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string } | null>>({});
@@ -305,6 +310,8 @@ export default function Home() {
     checkUser();
     fetchPosts();
     fetchBgmTracks();
+    fetchIntentions();
+    const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
@@ -323,6 +330,7 @@ export default function Home() {
     });
     return () => {
       clearTimeout(historyTimer);
+      clearInterval(intentionTimer);
       window.removeEventListener('popstate', onPopState);
       clearInterval(bannerTimer);
       authListener.subscription.unsubscribe();
@@ -739,6 +747,41 @@ export default function Home() {
       fetchPosts(); goToHome();
     }
     setLoading(false);
+  };
+
+  const fetchIntentions = async () => {
+    const { data } = await supabase.from('prayer_intentions').select('id, user_id, author_name, content, created_at')
+      .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
+    setIntentions(data || []);
+  };
+
+  const myIntention = user ? intentions.find(i => i.user_id === user.id) : undefined;
+  const visibleIntentions = intentions.filter(i => !blockedIds.has(i.user_id));
+
+  const saveIntention = async () => {
+    if (!user) { setShowAuthModal(true); return; }
+    const content = intentionInput.trim().slice(0, 100);
+    if (!content) return;
+    setIntentionSaving(true);
+    const { error } = await supabase.from('prayer_intentions').upsert(
+      { user_id: user.id, author_name: profile?.baptismal_name || '교우', content, prayer_date: todayKst() },
+      { onConflict: 'user_id,prayer_date' },
+    );
+    setIntentionSaving(false);
+    if (error) {
+      alert(error.code === '42P01' || error.code === 'PGRST205'
+        ? '기도지향 기능을 준비 중이에요. (관리자: supabase/prayer-intentions.sql 실행 필요)'
+        : '기도지향을 올리지 못했어요. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+    setIntentionInput('');
+    fetchIntentions();
+  };
+
+  const deleteIntention = async (id: string) => {
+    if (!window.confirm('오늘의 기도지향을 내릴까요?')) return;
+    await supabase.from('prayer_intentions').delete().eq('id', id);
+    fetchIntentions();
   };
 
   const fetchBgmTracks = async () => {
@@ -1344,12 +1387,12 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup));
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1406,7 +1449,7 @@ export default function Home() {
         ) : (
           <>
             <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0" onClick={goToHome}>
-              <span className="text-amber-800 text-xl font-serif">✟</span>
+              <img src="/icon-v2-192.png" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
               <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg whitespace-nowrap">가톨릭그램</h1>
             </div>
             <div className="min-w-0">
@@ -1439,9 +1482,32 @@ export default function Home() {
       {/* 1. 홈 탭 */}
       {activeTab === 'home' && (
         <>
+          {/* 오늘의 기도지향: 한 줄로 계속 흘러감, 누르면 모아 보기 */}
+          {visibleIntentions.length > 0 ? (
+            <button onClick={() => setShowIntentions(true)} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
+              <span className="shrink-0 pl-3 pr-2 py-2 text-xs font-bold bg-[#101a3f] z-10 shadow-[6px_0_8px_-4px_#101a3f]">🙏 오늘의 기도</span>
+              <span className="flex-1 overflow-hidden whitespace-nowrap py-2">
+                <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + i.content.length, 0) * 0.35)}s` }}>
+                  {[0, 1].map(copy => (
+                    <span key={copy} className="pr-8">
+                      {visibleIntentions.map(i => (
+                        <span key={`${copy}-${i.id}`} className="mr-8 text-[0.875rem]">
+                          <b className="text-white">{i.author_name || '교우'}</b> · {i.content}
+                        </span>
+                      ))}
+                    </span>
+                  ))}
+                </span>
+              </span>
+            </button>
+          ) : (
+            <button onClick={() => user ? goToProfile(user.id) : setShowAuthModal(true)} className="w-full px-3 py-2 text-left text-xs bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40">
+              🙏 오늘의 첫 기도지향을 올려주세요 <span className="text-white/60">· 내 공간에서 올릴 수 있어요</span>
+            </button>
+          )}
           {!isStandalone && !installBannerDismissed && !isKakaoInApp && (
             <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
-              <img src="/icon-192.png" alt="" className="w-8 h-8 rounded-lg" />
+              <img src="/icon-v2-192.png" alt="" className="w-8 h-8 rounded-lg" />
               <p className="flex-1 text-xs text-stone-700 leading-snug">
                 <b>가톨릭그램</b>을 홈 화면에 추가하고<br />앱처럼 바로 열어보세요
               </p>
@@ -1763,7 +1829,46 @@ export default function Home() {
               </div>
             )}
           </div>
-          
+
+          {/* 내 공간: 오늘의 기도지향 올리기 */}
+          {user && viewingUserId === user.id && (
+            <div id="my-intention" className="p-4 border-b border-stone-200 bg-gradient-to-br from-[#101a3f] to-[#1f2f66] text-white">
+              <div className="flex items-center justify-between mb-2">
+                <p className="font-bold text-[#fbe7b0]">🙏 오늘의 기도지향</p>
+                <button onClick={() => setShowIntentions(true)} className="text-xs text-white/70 underline">오늘 올라온 기도 {visibleIntentions.length}개 보기</button>
+              </div>
+              {myIntention ? (
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">{myIntention.content}</p>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setIntentionInput(myIntention.content)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
+                    <button onClick={() => deleteIntention(myIntention.id)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">내리기</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-white/70 mb-2">오늘 하루 동안 홈 맨 위에 흘러가며 교우들이 함께 기도해요. (자정에 새로 시작)</p>
+              )}
+              {(!myIntention || intentionInput) && (
+                <div className="flex flex-col gap-2 mt-2">
+                  <textarea
+                    value={intentionInput}
+                    onChange={e => setIntentionInput(e.target.value.slice(0, 100))}
+                    rows={2}
+                    maxLength={100}
+                    placeholder="예: 수술을 앞둔 어머니의 쾌유를 위하여"
+                    className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/60">{intentionInput.length}/100</span>
+                    <button onClick={saveIntention} disabled={!intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
+                      {intentionSaving ? '올리는 중...' : myIntention ? '고쳐서 올리기' : '기도지향 올리기'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-stone-100">
             {myPosts.length === 0 ? (
               <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">게시물이 없습니다.</div>
@@ -1951,6 +2056,45 @@ export default function Home() {
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined} />
       )}
 
+      {/* 오늘의 기도지향 모아 보기 */}
+      {showIntentions && (
+        <div className="fixed inset-0 bg-black/60 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowIntentions(false)}>
+          <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="p-4 bg-gradient-to-br from-[#101a3f] to-[#1f2f66] text-white flex items-center justify-between">
+              <div>
+                <h2 className="font-bold text-[#fbe7b0]">🙏 오늘의 기도지향 ({visibleIntentions.length})</h2>
+                <p className="text-xs text-white/60 mt-0.5">{new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' })} · 자정에 새로 시작돼요</p>
+              </div>
+              <button onClick={() => setShowIntentions(false)} className="text-white/70 font-bold text-lg px-1">×</button>
+            </div>
+            <div className="overflow-y-auto divide-y divide-stone-100">
+              {visibleIntentions.length === 0 ? (
+                <div className="p-10 text-center text-sm text-stone-400">아직 오늘 올라온 기도지향이 없어요.</div>
+              ) : visibleIntentions.map(i => (
+                <div key={i.id} className="p-4 flex flex-col gap-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <button onClick={() => { setShowIntentions(false); goToProfile(i.user_id); }} className="text-sm font-bold text-stone-900">{i.author_name || '교우'}</button>
+                    <span className="flex items-center gap-2">
+                      <span className="text-[0.75rem] text-stone-400">{new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
+                      {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-[0.75rem] text-red-500">삭제</button>}
+                    </span>
+                  </div>
+                  <p className="text-[0.9375rem] text-stone-800 leading-relaxed">🙏 {i.content}</p>
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t border-stone-100">
+              <button
+                onClick={() => { setShowIntentions(false); if (!user) { setShowAuthModal(true); return; } goToProfile(user.id); setTimeout(() => document.getElementById('my-intention')?.scrollIntoView({ behavior: 'smooth' }), 300); }}
+                className="w-full py-3 rounded-xl bg-[#101a3f] text-[#fbe7b0] text-sm font-bold"
+              >
+                {myIntention ? '내 기도지향 고치기' : '나도 기도지향 올리기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
         <MusicPicker tracks={bgmTracks} onClose={() => setShowMusicPicker(false)} onSelect={m => { setComposerMusic(m); setShowMusicPicker(false); }} />
@@ -2015,7 +2159,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <img src="/icon-192.png" alt="" className="w-12 h-12 rounded-xl" />
+              <img src="/icon-v2-192.png" alt="" className="w-12 h-12 rounded-xl" />
               <div>
                 <h2 className="font-bold text-stone-900">{!isIOS && installPrompt ? '가톨릭그램 앱 설치하기' : '홈 화면에 추가하기'}</h2>
                 <p className="text-xs text-stone-500">{isIOS ? '홈 화면에 추가해야 휴대폰 알림도 받을 수 있어요' : '앱처럼 아이콘을 눌러 바로 열 수 있어요'}</p>
@@ -2154,7 +2298,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAuthModal(false)}>
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200" onClick={e => e.stopPropagation()}>
             <div className="text-center">
-              <span className="text-3xl">✟</span>
+              <img src="/icon-v2-192.png" alt="" className="w-14 h-14 rounded-2xl shadow-md mx-auto" />
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
               <p className="text-xs text-stone-500 mt-1.5">카카오·구글·네이버 계정으로 간편하게 시작하세요</p>
             </div>
