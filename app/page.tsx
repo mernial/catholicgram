@@ -34,6 +34,7 @@ import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import Icon from '@/components/Icon';
+import ClampText from '@/components/ClampText';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -1928,22 +1929,24 @@ export default function Home() {
                         </div>
                       </div>
                     ) : (() => {
-                      // 사진·영상이 있는 글은 첫 줄만 보이고, 누르면 전체 글을 펼침
+                      // 사진·영상이 있는 글은 첫 줄, 글만 있는 글은 두 줄만 보이고 끝에 '... 더 보기' → 누르면 전체
                       const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
-                      const folded = hasMedia && !expandedPosts.has(post.id) && !!post.content
-                        && (post.content.includes('\n') || post.content.length > 22);
-                      const expand = () => setExpandedPosts(prev => new Set(prev).add(post.id));
                       return (
-                      <div>
-                      <p onClick={folded ? expand : undefined} className={`text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed ${folded ? 'line-clamp-1 cursor-pointer' : ''}`}>
-                        {/* 닉네임을 누르면 그 사람을 태그해 바로 댓글 쓰기 */}
-                        <button onClick={e => { e.stopPropagation(); tagUserInComments(post.id, post.user_id, post.author_name); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
-                          {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
-                        </button>
-                        {post.content && <HashtagText text={post.content} onTag={openHashtag} onMention={goToHandle} />}
-                      </p>
-                      {folded && <button onClick={expand} className="text-sm font-semibold text-stone-500 mt-0.5">... 더 보기</button>}
-                      </div>
+                      <ClampText
+                        lines={hasMedia ? 1 : 2}
+                        expanded={expandedPosts.has(post.id)}
+                        onExpand={() => setExpandedPosts(prev => new Set(prev).add(post.id))}
+                        className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"
+                        prefixText={post.author_name}
+                        prefix={
+                          /* 닉네임을 누르면 그 사람을 태그해 바로 댓글 쓰기 */
+                          <button onClick={e => { e.stopPropagation(); tagUserInComments(post.id, post.user_id, post.author_name); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
+                            {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
+                          </button>
+                        }
+                        text={post.content || ''}
+                        renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
+                      />
                       );
                     })()}
 
