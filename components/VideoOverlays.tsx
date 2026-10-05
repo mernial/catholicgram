@@ -13,6 +13,7 @@ export interface OverlayItem {
   x: number;
   y: number;
   size: number;
+  rotation?: number; // 도(°)
   color?: string;
   bg?: boolean;
 }
@@ -21,6 +22,10 @@ export interface VideoOverlays { items: OverlayItem[]; muteOriginal?: boolean }
 export const hasOverlays = (o?: VideoOverlays | null) => !!o && (o.items.length > 0 || !!o.muteOriginal);
 
 const COLORS = ['#ffffff', '#fbe7b0', '#f43f5e', '#38bdf8', '#4ade80', '#111827'];
+const SIZE_RANGE = { text: [0.03, 0.3], emoji: [0.05, 0.6] } as const;
+const clampSize = (type: OverlayItem['type'], size: number) => Math.min(SIZE_RANGE[type][1], Math.max(SIZE_RANGE[type][0], size));
+const normAngle = (deg: number) => ((deg + 540) % 360) - 180;
+
 const EMOJIS = ['🙏', '✝️', '⛪', '🕊️', '🕯️', '📿', '👼', '😇', '❤️', '💕', '🌹', '🌸', '✨', '🌈', '☀️', '🎉', '🎄', '🥰', '😊', '👍'];
 
 // 재생 화면 위에 겹쳐 보여주는 층 (보기 전용)
@@ -33,14 +38,14 @@ export function OverlayLayer({ overlays }: { overlays?: VideoOverlays | null }) 
   );
 }
 
-function OverlayView({ item, selected }: { item: OverlayItem; selected?: boolean }) {
+function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; selected?: boolean; onHandleDown?: (e: React.PointerEvent) => void }) {
   return (
     <span
       className={`absolute whitespace-pre-wrap text-center font-bold leading-tight select-none ${item.type === 'text' && item.bg ? 'px-[0.35em] py-[0.15em] rounded-[0.3em]' : ''} ${selected ? 'outline outline-2 outline-dashed outline-white/90 outline-offset-4' : ''}`}
       style={{
         left: `${item.x * 100}%`,
         top: `${item.y * 100}%`,
-        transform: 'translate(-50%, -50%)',
+        transform: `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`,
         fontSize: `${item.size * 100}cqw`,
         maxWidth: '90cqw',
         color: item.type === 'text' ? (item.bg ? (item.color === '#ffffff' ? '#111827' : '#ffffff') : item.color) : undefined,
@@ -49,6 +54,15 @@ function OverlayView({ item, selected }: { item: OverlayItem; selected?: boolean
       }}
     >
       {item.text}
+      {selected && onHandleDown && (
+        // 한 손가락으로 끌면 돌리기 + 키우기
+        <span
+          onPointerDown={onHandleDown}
+          className="absolute -right-4 -bottom-4 w-8 h-8 rounded-full bg-white text-stone-900 shadow-lg flex items-center justify-center text-base not-italic font-bold touch-none cursor-grab"
+          style={{ fontSize: 18, lineHeight: 1 }}
+          aria-label="돌리기·크기"
+        >↻</span>
+      )}
     </span>
   );
 }
@@ -74,32 +88,108 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
   const [textBg, setTextBg] = useState(false);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
+  // 손가락 위치들과 지금 하고 있는 동작 (옮기기 / 두 손가락 돌리기·키우기 / 손잡이로 돌리기·키우기)
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<
+    | { mode: 'drag'; id: string; dx: number; dy: number }
+    | { mode: 'pinch'; id: string; dist: number; angle: number; size: number; rotation: number }
+    | { mode: 'handle'; id: string; cx: number; cy: number; dist: number; angle: number; size: number; rotation: number }
+    | null
+  >(null);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   const selected = items.find(i => i.id === selectedId) || null;
   const update = (id: string, patch: Partial<OverlayItem>) => setItems(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
 
-  const posFromEvent = (e: React.PointerEvent) => {
+  const rel = (clientX: number, clientY: number) => {
     const rect = boxRef.current!.getBoundingClientRect();
-    return { x: (e.clientX - rect.left) / rect.width, y: (e.clientY - rect.top) / rect.height };
+    return { x: (clientX - rect.left) / rect.width, y: (clientY - rect.top) / rect.height };
+  };
+  const twoFingers = () => {
+    const [a, b] = Array.from(pointers.current.values());
+    return { dist: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI };
+  };
+  const startPinch = (id: string) => {
+    const item = itemsRef.current.find(i => i.id === id);
+    if (!item || pointers.current.size < 2) return;
+    const { dist, angle } = twoFingers();
+    gesture.current = { mode: 'pinch', id, dist, angle, size: item.size, rotation: item.rotation || 0 };
+  };
+  const startDrag = (id: string, clientX: number, clientY: number) => {
+    const item = itemsRef.current.find(i => i.id === id);
+    if (!item) return;
+    const p = rel(clientX, clientY);
+    gesture.current = { mode: 'drag', id, dx: item.x - p.x, dy: item.y - p.y };
   };
 
-  const onPointerDown = (e: React.PointerEvent, item: OverlayItem) => {
+  const capture = (e: React.PointerEvent) => {
+    try { boxRef.current?.setPointerCapture(e.pointerId); } catch { /* 무시 */ }
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  };
+
+  // 글자/이모티콘을 눌렀을 때
+  const onItemDown = (e: React.PointerEvent, item: OverlayItem) => {
     e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    const p = posFromEvent(e);
-    drag.current = { id: item.id, dx: item.x - p.x, dy: item.y - p.y };
+    capture(e);
     setSelectedId(item.id);
+    if (pointers.current.size >= 2) startPinch(item.id);
+    else startDrag(item.id, e.clientX, e.clientY);
   };
+
+  // 빈 곳을 눌렀을 때: 두 번째 손가락이면 고른 항목 돌리기·키우기, 아니면 선택 해제
+  const onBoxDown = (e: React.PointerEvent) => {
+    capture(e);
+    if (pointers.current.size >= 2 && selectedId) startPinch(selectedId);
+    else if (pointers.current.size === 1) { setSelectedId(null); gesture.current = null; }
+  };
+
+  // ↻ 손잡이: 항목 가운데를 기준으로 돌리고 키운다
+  const onHandleDown = (e: React.PointerEvent, item: OverlayItem) => {
+    e.stopPropagation();
+    capture(e);
+    const rect = boxRef.current!.getBoundingClientRect();
+    const cx = rect.left + item.x * rect.width;
+    const cy = rect.top + item.y * rect.height;
+    gesture.current = {
+      mode: 'handle', id: item.id, cx, cy,
+      dist: Math.max(10, Math.hypot(e.clientX - cx, e.clientY - cy)),
+      angle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
+      size: item.size, rotation: item.rotation || 0,
+    };
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const p = posFromEvent(e);
-    update(drag.current.id, {
-      x: Math.min(0.97, Math.max(0.03, p.x + drag.current.dx)),
-      y: Math.min(0.97, Math.max(0.03, p.y + drag.current.dy)),
-    });
+    if (!pointers.current.has(e.pointerId)) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = gesture.current;
+    if (!g) return;
+    const item = itemsRef.current.find(i => i.id === g.id);
+    if (!item) return;
+    if (g.mode === 'drag') {
+      const p = rel(e.clientX, e.clientY);
+      update(g.id, { x: Math.min(0.97, Math.max(0.03, p.x + g.dx)), y: Math.min(0.97, Math.max(0.03, p.y + g.dy)) });
+    } else if (g.mode === 'pinch' && pointers.current.size >= 2) {
+      const { dist, angle } = twoFingers();
+      update(g.id, { size: clampSize(item.type, g.size * dist / g.dist), rotation: normAngle(g.rotation + angle - g.angle) });
+    } else if (g.mode === 'handle') {
+      const dist = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
+      const angle = Math.atan2(e.clientY - g.cy, e.clientX - g.cx) * 180 / Math.PI;
+      update(g.id, { size: clampSize(item.type, g.size * dist / g.dist), rotation: normAngle(g.rotation + angle - g.angle) });
+    }
   };
-  const onPointerUp = () => { drag.current = null; };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    const g = gesture.current;
+    if (g?.mode === 'pinch' && pointers.current.size === 1) {
+      // 한 손가락만 남으면 다시 옮기기
+      const [rest] = Array.from(pointers.current.values());
+      startDrag(g.id, rest.x, rest.y);
+    } else if (pointers.current.size === 0) {
+      gesture.current = null;
+    }
+  };
 
   const openTextPanel = (item?: OverlayItem) => {
     setEditingTextId(item?.id || null);
@@ -144,18 +234,19 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
           className="relative w-full max-w-sm aspect-[4/5] max-h-full bg-stone-900 rounded-xl overflow-hidden [container-type:inline-size] touch-none"
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
-          onPointerDown={() => setSelectedId(null)}
+          onPointerCancel={onPointerUp}
+          onPointerDown={onBoxDown}
         >
           <video src={src} muted autoPlay loop playsInline className="absolute inset-0 w-full h-full object-cover" />
           {items.map(item => (
             <div
               key={item.id}
-              onPointerDown={e => onPointerDown(e, item)}
+              onPointerDown={e => onItemDown(e, item)}
               onDoubleClick={() => item.type === 'text' && openTextPanel(item)}
               className="absolute inset-0 pointer-events-none"
             >
               <span className="pointer-events-auto cursor-move">
-                <OverlayView item={item} selected={item.id === selectedId} />
+                <OverlayView item={item} selected={item.id === selectedId} onHandleDown={e => onHandleDown(e, item)} />
               </span>
             </div>
           ))}
@@ -164,16 +255,27 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
 
       {/* 고른 글자/이모티콘: 크기, 고치기, 지우기 */}
       {selected && panel === 'none' && (
-        <div className="px-4 py-2 flex items-center gap-3 text-white">
-          <span className="text-xs shrink-0">크기</span>
-          <input
-            type="range" min={0.04} max={selected.type === 'emoji' ? 0.4 : 0.2} step={0.005}
-            value={selected.size}
-            onChange={e => update(selected.id, { size: Number(e.target.value) })}
-            className="flex-1 accent-[#e8b85a]"
-          />
-          {selected.type === 'text' && <button onClick={() => openTextPanel(selected)} className="text-xs px-2.5 py-1.5 rounded-lg border border-white/40 shrink-0">고치기</button>}
-          <button onClick={() => { setItems(prev => prev.filter(i => i.id !== selected.id)); setSelectedId(null); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-red-300 text-red-300 shrink-0">지우기</button>
+        <div className="px-4 py-2 flex flex-col gap-2 text-white">
+          <div className="flex items-center gap-2">
+            <span className="text-xs shrink-0 w-7">크기</span>
+            <input
+              type="range" min={SIZE_RANGE[selected.type][0]} max={SIZE_RANGE[selected.type][1]} step={0.005}
+              value={selected.size}
+              onChange={e => update(selected.id, { size: Number(e.target.value) })}
+              className="flex-1 min-w-0 accent-[#e8b85a]"
+            />
+            {selected.type === 'text' && <button onClick={() => openTextPanel(selected)} className="text-xs px-2.5 py-1.5 rounded-lg border border-white/40 shrink-0">고치기</button>}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs shrink-0 w-7">회전</span>
+            <input
+              type="range" min={-180} max={180} step={1}
+              value={selected.rotation || 0}
+              onChange={e => update(selected.id, { rotation: Number(e.target.value) })}
+              className="flex-1 min-w-0 accent-[#e8b85a]"
+            />
+            <button onClick={() => { setItems(prev => prev.filter(i => i.id !== selected.id)); setSelectedId(null); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-red-300 text-red-300 shrink-0">지우기</button>
+          </div>
         </div>
       )}
 
@@ -223,7 +325,7 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
           </button>
         </div>
       )}
-      <p className="text-center text-[0.6875rem] text-white/50 pb-2">글자·이모티콘을 손가락으로 끌어서 옮기고, 눌러서 크기를 바꿔요</p>
+      <p className="text-center text-[0.6875rem] text-white/50 pb-2">끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 돌리고 키워요</p>
     </div>
   );
 }
