@@ -11,7 +11,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onEditProfile }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onEditProfile, onOpenNotices }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -22,6 +22,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onEditProfile?: () => void;
+  onOpenNotices?: () => void;
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast'>(initialView);
   const [feastInput, setFeastInput] = useState(feastDay);
@@ -95,6 +96,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
                 ))}
               </div>
             </div>
+            {onOpenNotices && (
+              <button onClick={onOpenNotices} className={row}><span>📢 공지사항{onOpenMembers && <span className="text-xs text-stone-400"> (관리자: 공지 쓰기·알림 보내기)</span>}</span><span className="text-stone-300">›</span></button>
+            )}
             {onEditProfile && (
               <button onClick={onEditProfile} className={row}><span>✏️ 닉네임·핸들·실명 수정</span><span className="text-stone-300">›</span></button>
             )}
