@@ -219,6 +219,7 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all'); // 홈 피드: 전체 / 사진·영상 / 글
+  const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
 
@@ -875,6 +876,7 @@ export default function Home() {
       if (created?.[0]?.id && extractMentions(content).length > 0) sendPush('post', created[0].id);
       setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
       if (fileInputRef.current) fileInputRef.current.value = '';
+      setShowComposer(false);
       fetchPosts(); goToHome();
     }
     setLoading(false);
@@ -1639,12 +1641,14 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
+    // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
+    if (!showMusicPicker && !showVideoEditor) setShowComposer(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1821,9 +1825,16 @@ export default function Home() {
               <button onClick={dismissFeastPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
             </div>
           )}
-          <section className="p-4 bg-white border-b border-stone-200 shadow-sm">
+          {/* 글쓰기 창: 오른쪽 아래 + 버튼을 눌렀을 때만 열림 (닫아도 쓰던 글은 남아 있음) */}
+          {showComposer && (
+          <div className="fixed inset-0 bg-black/50 z-[70] flex items-end sm:items-center justify-center" onClick={() => setShowComposer(false)}>
+          <section className="bg-white w-full sm:w-[30rem] max-w-xl max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="font-bold text-stone-900">새 나눔 쓰기</h2>
+              <button type="button" onClick={() => setShowComposer(false)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
+            </div>
             <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
-              <textarea value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그, @아이디로 교우 태그)" : '로그인 후 나눌 수 있습니다.'} rows={3} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              <textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그, @아이디로 교우 태그)" : '로그인 후 나눌 수 있습니다.'} rows={5} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
               {user && <MentionSuggest value={content} onChange={setContent} excludeId={user.id} />}
               {user && content.length > 0 && composerTagSuggestions.length > 0 && (
                 <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
@@ -1889,6 +1900,19 @@ export default function Home() {
               </div>
             </form>
           </section>
+          </div>
+          )}
+
+          {/* 글쓰기 + 버튼 */}
+          {!showComposer && (
+            <button
+              onClick={() => { if (requireProfile()) setShowComposer(true); }}
+              className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1rem,calc(50vw-18rem+1rem))] w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
+              aria-label="새 나눔 쓰기"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-7 h-7"><path d="M12 5v14M5 12h14" /></svg>
+            </button>
+          )}
 
           {/* 피드 보기 탭: 전체 / 사진·영상만 / 글만 */}
           <div className="sticky top-[calc(3.375rem+env(safe-area-inset-top))] z-10 bg-white/95 backdrop-blur border-y border-stone-200/70 px-3 py-2 flex gap-1.5">
