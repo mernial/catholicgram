@@ -1144,6 +1144,18 @@ export default function Home() {
       if (data) { setComments(prev => ({ ...prev, [postId]: data })); loadCommentBadges(data); }
     }
   };
+  // 닉네임을 누르면 댓글창을 열고 그 사람을 태그한 채로 입력칸에 커서를 둔다
+  const tagUserInComments = async (postId: string, targetUserId: string, name: string) => {
+    if (!user) { setShowAuthModal(true); return; }
+    if (targetUserId !== user.id) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name } }));
+    if (!openComments[postId]) await toggleCommentBox(postId);
+    setTimeout(() => {
+      const input = document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null;
+      input?.focus();
+      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 150);
+  };
+
   const handleAddComment = async (postId: string) => {
     if (!user) { setShowAuthModal(true); return; }
     const text = commentInputs[postId];
@@ -1450,8 +1462,14 @@ export default function Home() {
                           <button onClick={() => handleUpdatePost(post.id)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs">저장</button>
                         </div>
                       </div>
-                    ) : post.content && (
-                      <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"><HashtagText text={post.content} onTag={openHashtag} /></p>
+                    ) : (
+                      <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">
+                        {/* 닉네임을 누르면 그 사람을 태그해 바로 댓글 쓰기 */}
+                        <button onClick={() => tagUserInComments(post.id, post.user_id, post.author_name)} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
+                          {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
+                        </button>
+                        {post.content && <HashtagText text={post.content} onTag={openHashtag} />}
+                      </p>
                     )}
 
                     {!(post.images && post.images.length > 0) && parsePostMusic(post.music) && (
@@ -1487,14 +1505,14 @@ export default function Home() {
                           <div key={c.id} className={`text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5 ${c.reply_to_user_id ? 'ml-5' : ''}`}>
                             <span className="flex items-center justify-between gap-2">
                               <button
-                                onClick={() => user && c.user_id && c.user_id !== user.id && setReplyTargets(prev => ({ ...prev, [post.id]: { userId: c.user_id!, name: c.author_name } }))}
+                                onClick={() => c.user_id && tagUserInComments(post.id, c.user_id, c.author_name)}
                                 className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1 text-left"
                               >
                                 {c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}
                               </button>
                               <span className="flex items-center gap-2 shrink-0">
                                 {user && c.user_id && c.user_id !== user.id && (
-                                  <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: { userId: c.user_id!, name: c.author_name } }))} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
+                                  <button onClick={() => tagUserInComments(post.id, c.user_id!, c.author_name)} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
                                 )}
                                 {user && c.user_id !== user.id && (
                                   <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
@@ -1510,14 +1528,14 @@ export default function Home() {
                       </div>
                       {replyTargets[post.id] ? (
                         <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-lg px-2.5 py-1.5">
-                          <span className="flex-1 min-w-0 truncate">↩ <b>{replyTargets[post.id]!.name}</b>님에게 답글 쓰는 중</span>
+                          <span className="flex-1 min-w-0 truncate">🏷️ <b>@{replyTargets[post.id]!.name}</b>님을 태그했어요</span>
                           <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: null }))} className="text-blue-400 text-base leading-none px-1" aria-label="답글 취소">×</button>
                         </div>
                       ) : (
-                        <p className="text-[0.75rem] text-stone-400">💬 <b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 댓글 쓴 사람 이름을 누르면 그분에게 답글</p>
+                        <p className="text-[0.75rem] text-stone-400">💬 <b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 닉네임을 누르면 그분을 태그해요</p>
                       )}
                       <div className="flex gap-1.5">
-                        <input type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder={replyTargets[post.id] ? `${replyTargets[post.id]!.name}님에게 답글...` : '댓글을 입력하세요...'} className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
+                        <input id={`comment-input-${post.id}`} type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder={replyTargets[post.id] ? `${replyTargets[post.id]!.name}님에게 답글...` : '댓글을 입력하세요...'} className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
                         <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3 py-2 rounded-xl">등록</button>
                       </div>
                     </div>
