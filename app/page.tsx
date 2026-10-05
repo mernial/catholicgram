@@ -2268,6 +2268,7 @@ export default function Home() {
                         lines={hasMedia ? 1 : 2}
                         expanded={expandedPosts.has(post.id)}
                         onExpand={() => setExpandedPosts(prev => new Set(prev).add(post.id))}
+                        onCollapse={() => setExpandedPosts(prev => { const next = new Set(prev); next.delete(post.id); return next; })}
                         className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"
                         prefixText={`\u3000\u3000${post.author_name}`}
                         prefix={
@@ -3330,6 +3331,7 @@ export default function Home() {
                   lines={2}
                   expanded={viewerTextOpen}
                   onExpand={() => setViewerTextOpen(true)}
+                  onCollapse={() => setViewerTextOpen(false)}
                   className="text-stone-800 text-[0.9375rem] whitespace-pre-wrap leading-relaxed"
                   text={selectedPostDetail.content || ''}
                   renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
