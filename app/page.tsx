@@ -136,6 +136,9 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [notifications, setNotifications] = useState<CommentNotification[]>([]);
   const [notificationsLastSeen, setNotificationsLastSeen] = useState<string | null>(null);
+  // 알림 지우기: 이 시각 이전 알림은 모두 숨김 + 하나씩 지운 알림
+  const [notificationsClearedAt, setNotificationsClearedAt] = useState<string | null>(null);
+  const [hiddenAlerts, setHiddenAlerts] = useState<Set<string>>(new Set());
   const [showNotifications, setShowNotifications] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
@@ -964,6 +967,8 @@ export default function Home() {
   const fetchNotifications = async (userId: string) => {
     const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId);
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
+    setNotificationsClearedAt(storageGet(`notificationsClearedAt:${userId}`));
+    try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
     const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, p.content || '']));
     const [{ data: onMyPosts }, { data: replies }] = await Promise.all([
       myPosts && myPosts.length > 0
@@ -1032,6 +1037,28 @@ export default function Home() {
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
     r.created_at && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
   ).length;
+  // 지운 알림인지
+  const isAlertHidden = (key: string, at?: string) =>
+    hiddenAlerts.has(key) || (!!notificationsClearedAt && !!at && new Date(at) <= new Date(notificationsClearedAt));
+  const hideAlert = (key: string) => {
+    if (!user) return;
+    setHiddenAlerts(prev => {
+      const next = new Set(prev); next.add(key);
+      storageSet(`notificationsHidden:${user.id}`, JSON.stringify(Array.from(next).slice(-500)));
+      return next;
+    });
+  };
+  const clearSeenAlerts = () => {
+    if (!user) return;
+    const now = new Date().toISOString();
+    setNotificationsClearedAt(now);
+    storageSet(`notificationsClearedAt:${user.id}`, now);
+  };
+
+  const listedFollows = followRequests.filter(r => !blockedIds.has(r.follower.id) && !isAlertHidden(`f:${r.id}`, r.created_at));
+  const listedComments = notifications.filter(n => !isAlertHidden(`c:${n.id}`, n.created_at));
+  const feastCleared = !!notificationsClearedAt && todayKst(new Date(notificationsClearedAt)) === todayKst();
+
   // 축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
   const isMyFeastToday = !!profile?.feast_day && todayFeastKeys().includes(profile.feast_day);
   const visibleFeastFriends = feastFriends.filter(f => !blockedIds.has(f.id));
@@ -2401,6 +2428,7 @@ export default function Home() {
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
               <div className="flex items-center gap-2">
+                <button onClick={clearSeenAlerts} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">🗑 확인한 알림 지우기</button>
                 <button onClick={toggleAlertSound} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">
                   {alertSoundOn ? '🔊 소리 켜짐' : '🔇 소리 꺼짐'}
                 </button>
@@ -2422,13 +2450,13 @@ export default function Home() {
               </div>
             )}
             <div className="overflow-y-auto divide-y divide-stone-100">
-              {isMyFeastToday && (
+              {isMyFeastToday && !feastCleared && (
                 <div className="p-4 bg-amber-50/60">
                   <p className="text-[0.9375rem] text-stone-800">🎉 <b>{profile?.baptismal_name}</b>님, 오늘 축일을 축하드립니다!</p>
                   <p className="text-xs text-stone-600 mt-1">주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏</p>
                 </div>
               )}
-              {visibleFeastFriends.map(f => (
+              {!feastCleared && visibleFeastFriends.map(f => (
                 <div key={`feast-${f.id}`} className="p-4 flex items-center gap-3 bg-amber-50/60">
                   <button onClick={() => { setShowNotifications(false); goToProfile(f.id); }} className="flex-1 text-left min-w-0 text-[0.9375rem] text-stone-800">
                     🎉 오늘은 <b>{f.baptismal_name}</b>님의 축일이에요
@@ -2436,7 +2464,7 @@ export default function Home() {
                   <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
                 </div>
               ))}
-              {followRequests.filter(r => !blockedIds.has(r.follower.id)).map(r => (
+              {listedFollows.map(r => (
                 <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
@@ -2451,6 +2479,7 @@ export default function Home() {
                   {r.iFollow
                     ? <span className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-400 shrink-0">팔로잉</span>
                     : <button onClick={() => followBack(r)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500 text-white font-bold shrink-0">맞팔로우</button>}
+                  <button onClick={() => hideAlert(`f:${r.id}`)} className="text-stone-300 hover:text-stone-600 text-lg leading-none px-1 shrink-0" aria-label="이 알림 지우기">×</button>
                 </div>
               ))}
               {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
@@ -2462,11 +2491,13 @@ export default function Home() {
                   <p className="text-[0.8125rem] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
                 </button>
               ))}
-              {notifications.length === 0 && followRequests.length === 0 && unreadMessages.length === 0 && visibleFeastFriends.length === 0 && !isMyFeastToday ? (
-                <div className="p-10 text-center text-stone-400 text-sm">아직 받은 알림이 없습니다.</div>
+              {listedComments.length === 0 && listedFollows.length === 0 && unreadMessages.length === 0 && (feastCleared || (visibleFeastFriends.length === 0 && !isMyFeastToday)) ? (
+                <div className="p-10 text-center text-stone-400 text-sm">새 알림이 없습니다.</div>
               ) : (
-                notifications.map(n => (
-                  <button key={n.id} onClick={() => openNotification(n)} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
+                listedComments.map(n => (
+                  <div key={n.id} className="relative">
+                  <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
+                  <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
                       💬 <b>{n.author_name}</b>님이 {n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
                     </p>
@@ -2475,6 +2506,7 @@ export default function Home() {
                       {new Date(n.created_at).toLocaleString('ko-KR')} · {n.post_content || '사진 게시물'}
                     </p>
                   </button>
+                  </div>
                 ))
               )}
             </div>
