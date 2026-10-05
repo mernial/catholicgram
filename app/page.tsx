@@ -3195,7 +3195,7 @@ export default function Home() {
                   {peek.avatar_url ? <img src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
-                {thumb ? <img src={thumb} alt="" className="w-full max-h-[50dvh] object-cover" /> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
+                {thumb ? <div className="bg-black flex justify-center"><img src={thumb} alt="" className="aspect-[4/5] object-cover" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
               </div>
             );
           })()}
@@ -3229,7 +3229,7 @@ export default function Home() {
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
                 <div className="w-full bg-black flex items-center justify-center relative select-none" data-viewer-media>
-                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" onClick={viewerImageTap} className="max-h-[50dvh] object-contain w-full" />
+                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" onClick={viewerImageTap} className="aspect-[4/5] object-cover" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} />
                   <HeartBurst show={viewerBurst} />
                   {selectedPostDetail.images.length > 1 && (
                     <>
