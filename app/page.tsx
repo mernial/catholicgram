@@ -1998,7 +1998,16 @@ export default function Home() {
               <img src="/icon-v2-192.png" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
               <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg whitespace-nowrap">가톨릭그램</h1>
             </div>
-            <div className="min-w-0">
+            <div className="min-w-0 flex items-center gap-3">
+              {/* + : 글쓰기·보기 메뉴 (아래 가운데는 휴대폰 브라우저 버튼과 겹쳐서 위로 옮김) */}
+              <button
+                onClick={() => setFabOpen(o => !o)}
+                aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
+                aria-expanded={fabOpen}
+                className="relative z-[47] w-9 h-9 shrink-0 rounded-xl bg-stone-900 text-white flex items-center justify-center active:scale-95 transition-transform"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-6 h-6 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
+              </button>
               {user ? (
                 <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                   <button onClick={openNotifications} className="relative text-stone-600 hover:text-stone-900" aria-label="알림">
@@ -3384,17 +3393,17 @@ export default function Home() {
         </div>
       )}
 
-      {/* 하단 + 버튼 메뉴: 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 사르륵 펼쳐짐 */}
+      {/* 위쪽 + 버튼 메뉴: 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 아래로 사르륵 펼쳐짐 */}
       {fabOpen && activeTab !== 'chat' && (
         <>
           <button className="fixed inset-0 z-[39] bg-black/30 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />
-          <div className="fixed z-[46] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] flex flex-col items-center gap-2.5">
+          <div className="fixed z-[46] right-[max(0.75rem,calc(50vw-18rem+0.75rem))] top-[calc(4rem+env(safe-area-inset-top))] flex flex-col items-end gap-2.5">
             {([
               { key: 'write', label: '글쓰기', icon: 'pencil' },
               { key: 'media', label: '사진·영상 보기', icon: 'camera' },
               { key: 'all', label: '전체 보기', icon: null },
               { key: 'text', label: '글만 보기', icon: 'chat' },
-            ] as const).map((item, i, arr) => {
+            ] as const).map((item, i) => {
               const active = item.key !== 'write' && activeTab === 'home' && feedFilter === item.key;
               return (
                 <button
@@ -3406,8 +3415,8 @@ export default function Home() {
                     if (activeTab !== 'home') goToHome();
                     scrollToTop();
                   }}
-                  style={{ animationDelay: `${(arr.length - 1 - i) * 45}ms` }}
-                  className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabIn_0.28s_ease-out_both]"
+                  style={{ animationDelay: `${i * 45}ms` }}
+                  className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabDown_0.28s_ease-out_both]"
                 >
                   <span className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`}>
                     {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <span className="text-lg leading-none">☰</span>}
@@ -3474,17 +3483,6 @@ export default function Home() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
             <span className="text-[0.75rem] font-medium">탐색</span>
           </button>
-          {/* 가운데 + : 글쓰기·보기 메뉴 */}
-          <div className="flex-1 flex justify-center">
-            <button
-              onClick={() => setFabOpen(o => !o)}
-              aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
-              aria-expanded={fabOpen}
-              className="w-12 h-12 -mt-1 rounded-2xl bg-stone-900 text-white shadow-md flex items-center justify-center active:scale-95 transition-transform"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
-            </button>
-          </div>
           <button onClick={() => goToTab('anon')} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
             <span className="text-[0.75rem] font-medium">고민상담</span>
