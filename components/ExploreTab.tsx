@@ -21,6 +21,7 @@ export interface ExplorePost {
   id: string;
   content: string;
   images: string[];
+  is_video?: boolean;
   pray_count: number;
   like_count: number;
   author_name: string;
@@ -250,6 +251,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
             </div>
           )}
           {(post.images?.length || 0) > 1 && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow">❐</span>}
+          {post.is_video && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow">▶</span>}
           {followed && (
             <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/45 text-white rounded-full pl-0.5 pr-1.5 py-0.5 max-w-[90%]">
               {post.avatar_url
