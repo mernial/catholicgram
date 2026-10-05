@@ -74,6 +74,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
   const [loading, setLoading] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
   const [replyDrafts, setReplyDrafts] = useState<{ [id: string]: string }>({});
+  const [openAnsweredId, setOpenAnsweredId] = useState<string | null>(null); // 답변한 건의: 눌러서 펼친 것
 
   const fetchItems = async (mode: 'mine' | 'inbox') => {
     setLoading(true);
@@ -261,8 +262,18 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
                 {view === 'inbox' ? '답변을 기다리는 건의가 없습니다.' : view === 'answered' ? '아직 답변한 건의가 없습니다.' : '아직 보낸 건의가 없습니다.'}
               </div>
             )}
-            {shownItems.map(item => (
+            {shownItems.map(item => view === 'answered' && openAnsweredId !== item.id ? (
+              // 답변한 건의: 아이디 + 건의 내용 한 줄 (누르면 펼쳐서 답변 보기·수정)
+              <button key={item.id} onClick={() => setOpenAnsweredId(item.id)} className="w-full px-4 py-3 flex items-center gap-2 text-left hover:bg-stone-50">
+                <span className="text-[0.8125rem] font-bold text-stone-700 shrink-0 max-w-[40%] truncate">{item.author_handle ? `@${item.author_handle}` : (item.author_name || '교우')}</span>
+                <span className="flex-1 min-w-0 text-sm text-stone-600 truncate">{item.content}</span>
+                <span className="text-stone-300 shrink-0">›</span>
+              </button>
+            ) : (
               <div key={item.id} className="p-4 flex flex-col gap-2">
+                {view === 'answered' && (
+                  <button onClick={() => setOpenAnsweredId(null)} className="self-start text-xs text-stone-400">▲ 접기</button>
+                )}
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0 text-[0.8125rem]">
                     <span className="font-bold text-stone-700">{categoryLabel(item.category)}</span>
