@@ -21,7 +21,8 @@ import AdminMembers from '@/components/AdminMembers';
 import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
-import { type BgmTrack, parsePostMusic, youTubeEmbedUrl } from '@/lib/music';
+import YouTubePlayer from '@/components/YouTubePlayer';
+import { type BgmTrack, parsePostMusic } from '@/lib/music';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -647,7 +648,10 @@ export default function Home() {
     const row = { content, images: uploadedUrls, user_id: user.id, author_name: author };
     let { error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]);
     // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
-    if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) ({ error } = await supabase.from('posts').insert([row]));
+    if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) {
+      ({ error } = await supabase.from('posts').insert([row]));
+      alert('글은 올렸지만 음악은 저장하지 못했어요.\n(관리자: Supabase에서 supabase/music.sql 을 실행해야 음악이 저장됩니다)');
+    }
     if (!error) {
       setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -2000,18 +2004,7 @@ export default function Home() {
                 const music = parsePostMusic(selectedPostDetail.music);
                 if (!music) return null;
                 if (music.kind === 'youtube') {
-                  return (
-                    <div className="bg-stone-900">
-                      <iframe
-                        src={youTubeEmbedUrl(music.videoId, music.start)}
-                        title={selectedPostDetail.music_title || '음악'}
-                        allow="autoplay; encrypted-media; picture-in-picture"
-                        allowFullScreen
-                        className="w-full aspect-video"
-                      />
-                      <p className="px-4 py-2 text-xs text-white/80 truncate">🎵 {selectedPostDetail.music_title || '유튜브 음악'}</p>
-                    </div>
-                  );
+                  return <YouTubePlayer key={selectedPostDetail.id} videoId={music.videoId} start={music.start} title={selectedPostDetail.music_title} />;
                 }
                 const track = bgmTracks.find(t => t.id === music.trackId);
                 if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50">🎵 이 음악은 더 이상 제공되지 않아요</p>;
