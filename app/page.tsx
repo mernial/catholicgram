@@ -33,6 +33,7 @@ import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
 import FeastDayPicker from '@/components/FeastDayPicker';
+import Icon from '@/components/Icon';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -216,6 +217,7 @@ export default function Home() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
+  const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -777,6 +779,13 @@ export default function Home() {
     setShowSettings(false);
   };
 
+  // 내가 누른 기도·공감 (누른 버튼은 색이 채워져 보임)
+  useEffect(() => {
+    if (!user?.id) { setMyPostReactions(new Set()); return; }
+    supabase.from('post_reactions').select('post_id, reaction_type').eq('user_id', user.id).limit(2000)
+      .then(({ data }) => setMyPostReactions(new Set((data || []).map(r => `${r.post_id}:${r.reaction_type}`))));
+  }, [user?.id, posts.length]);
+
   const fetchPosts = async () => {
     const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
     if (!postsData) return;
@@ -1023,6 +1032,11 @@ export default function Home() {
       ? await supabase.from('post_reactions').delete().eq('id', existing.id)
       : await supabase.from('post_reactions').insert({ post_id: postId, user_id: user.id, reaction_type: type });
     if (error) return;
+    setMyPostReactions(prev => {
+      const next = new Set(prev);
+      if (existing) next.delete(`${postId}:${type}`); else next.add(`${postId}:${type}`);
+      return next;
+    });
     // 화면의 숫자에 ±1 하지 않고 post_reactions 테이블에서 실제 개수를 다시 세어 저장
     // (여러 사람이 동시에 눌러도 값이 어긋나지 않음)
     const { count } = await supabase.from('post_reactions').select('*', { count: 'exact', head: true }).eq('post_id', postId).eq('reaction_type', type);
@@ -1850,19 +1864,19 @@ export default function Home() {
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                      📷 사진
+                      <Icon name="camera" className="w-[1.125rem] h-[1.125rem] text-stone-700" />사진
                     </label>
                     {user && (
                       <>
                         <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
                         <label htmlFor="video-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                          🎬 영상
+                          <Icon name="film" className="w-[1.125rem] h-[1.125rem] text-stone-700" />영상
                         </label>
                       </>
                     )}
                     {user && (
                       <button type="button" onClick={() => setShowMusicPicker(true)} className="text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                        🎵 음악
+                        <Icon name="music" className="w-[1.125rem] h-[1.125rem] text-violet-700" />음악
                       </button>
                     )}
                   </div>
@@ -1935,14 +1949,32 @@ export default function Home() {
 
                     {!(post.images && post.images.length > 0) && parsePostMusic(post.music) && (
                       <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
-                        <span>🎵</span><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
+                        <Icon name="music" className="w-4 h-4" /><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
                       </button>
                     )}
 
-                    <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium">
-                      <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도 {post.pray_count > 0 && `(${post.pray_count})`}</button>
-                      <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-rose-600">❤️ 공감 {post.like_count > 0 && `(${post.like_count})`}</button>
-                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글{commentCounts[post.id] ? ` (${commentCounts[post.id]})` : ''}</button>
+                    <div className="flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
+                      {(() => {
+                        const prayed = myPostReactions.has(`${post.id}:pray`);
+                        const liked = myPostReactions.has(`${post.id}:like`);
+                        return (
+                          <>
+                            {/* 누르면 손·하트까지 색이 꽉 채워짐 */}
+                            <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-800 font-bold' : 'text-stone-600'}`}>
+                              <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-600' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-5 h-5" /></span>
+                              기도{post.pray_count > 0 && ` ${post.pray_count}`}
+                            </button>
+                            <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
+                              <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-500' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-5 h-5" /></span>
+                              공감{post.like_count > 0 && ` ${post.like_count}`}
+                            </button>
+                          </>
+                        );
+                      })()}
+                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600">
+                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-5 h-5" /></span>
+                        댓글{commentCounts[post.id] ? ` ${commentCounts[post.id]}` : ''}
+                      </button>
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
@@ -2012,11 +2044,11 @@ export default function Home() {
                               const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
                               return (
                                 <span className="flex gap-1.5 mt-1">
-                                  <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myPray ? 'bg-indigo-50 border-indigo-300 text-indigo-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    🙏 기도{r.pray > 0 && ` ${r.pray}`}
+                                  <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myPray ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
+                                    <Icon name="pray" fill={r.myPray} className={`w-3.5 h-3.5 ${r.myPray ? 'text-amber-600' : 'text-amber-700'}`} />기도{r.pray > 0 && ` ${r.pray}`}
                                   </button>
-                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    ❤️ 공감{r.like > 0 && ` ${r.like}`}
+                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`inline-flex items-center gap-1 text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
+                                    <Icon name="heart" fill={r.myLike} className={`w-3.5 h-3.5 ${r.myLike ? 'text-rose-500' : 'text-rose-600'}`} />공감{r.like > 0 && ` ${r.like}`}
                                   </button>
                                 </span>
                               );
@@ -2030,7 +2062,7 @@ export default function Home() {
                           <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: null }))} className="text-blue-400 text-base leading-none px-1" aria-label="답글 취소">×</button>
                         </div>
                       ) : (
-                        <p className="text-[0.75rem] text-stone-400">💬 <b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 닉네임을 누르면 그분을 태그해요</p>
+                        <p className="text-[0.75rem] text-stone-400"><Icon name="chat" className="inline w-3.5 h-3.5 -mt-0.5 mr-1" /><b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 닉네임을 누르면 그분을 태그해요</p>
                       )}
                       {user && <MentionSuggest value={commentInputs[post.id] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))} excludeId={user.id} />}
                       <div className="flex gap-1.5">
@@ -2065,7 +2097,7 @@ export default function Home() {
               return viewingUserId === user?.id ? (
                 <label className="relative cursor-pointer mb-3" aria-label="프로필 사진 바꾸기">
                   {avatar}
-                  <span className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-stone-900 text-white text-sm flex items-center justify-center border-2 border-white shadow">📷</span>
+                  <span className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center border-2 border-white shadow"><Icon name="camera" className="w-4 h-4" /></span>
                   <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                 </label>
               ) : <div className="mb-3">{avatar}</div>;
@@ -2088,20 +2120,20 @@ export default function Home() {
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {viewingUserId === user?.id ? (
                 <>
-                  <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                    ⚙️ 설정
+                  <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                    <Icon name="gear" className="w-4 h-4" />설정
                   </button>
                   {isAdmin && (
-                    <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors">
-                      📢 광고 관리
+                    <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5">
+                      <Icon name="storefront" className="w-4 h-4" />광고 관리
                     </button>
                   )}
-                  <button onClick={() => setShowFeedback(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                    {isAdmin ? '📮 건의함' : '📮 건의하기'}
+                  <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                    <Icon name="envelope" className="w-4 h-4" />{isAdmin ? '건의함' : '건의하기'}
                   </button>
                   {!isStandalone && (
-                    <button onClick={handleInstallClick} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                      📱 홈 화면에 추가
+                    <button onClick={handleInstallClick} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
+                      <Icon name="phone" className="w-4 h-4" />홈 화면에 추가
                     </button>
                   )}
                 </>

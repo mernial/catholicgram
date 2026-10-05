@@ -7,6 +7,7 @@ import { deleteMyAccount } from '@/lib/account';
 import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
+import { IconBadge } from '@/components/Icon';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -67,7 +68,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
     window.location.replace('/');
   };
 
-  const row = 'w-full p-4 text-sm text-left hover:bg-stone-50 border-b border-stone-100 flex items-center justify-between';
+  const row = 'w-full px-4 py-3 text-sm text-left hover:bg-stone-50 border-b border-stone-100 flex items-center justify-between';
+  const label = 'flex items-center gap-3';
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
@@ -75,14 +77,14 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           {view === 'blocks' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 차단 목록</button>}
           {view === 'feast' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 나의 축일</button>}
-          {view === 'main' && <h2 className="font-bold text-stone-900">⚙️ 설정</h2>}
+          {view === 'main' && <h2 className="font-bold text-stone-900">설정</h2>}
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
 
         {view === 'main' ? (
           <div className="overflow-y-auto">
             <div className="p-4 border-b border-stone-100">
-              <p className="text-sm mb-2.5">🔠 글씨 크기</p>
+              <p className="text-sm mb-2.5 flex items-center gap-3"><IconBadge name="text" />글씨 크기</p>
               <div className="grid grid-cols-3 gap-1.5">
                 {TEXT_SIZES.map((t, i) => (
                   <button
@@ -97,25 +99,25 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
               </div>
             </div>
             {onOpenNotices && (
-              <button onClick={onOpenNotices} className={row}><span>📢 공지사항{onOpenMembers && <span className="text-xs text-stone-400"> (관리자: 공지 쓰기·알림 보내기)</span>}</span><span className="text-stone-300">›</span></button>
+              <button onClick={onOpenNotices} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />공지사항{onOpenMembers && <span className="text-xs text-stone-400"> (관리자: 공지 쓰기·알림 보내기)</span>}</span><span className="text-stone-300">›</span></button>
             )}
             {onEditProfile && (
-              <button onClick={onEditProfile} className={row}><span>✏️ 닉네임·핸들·실명 수정</span><span className="text-stone-300">›</span></button>
+              <button onClick={onEditProfile} className={row}><span className={label}><IconBadge name="pencil" />닉네임·핸들·실명 수정</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => { setFeastInput(feastDay); setView('feast'); }} className={row}>
-              <span>🕯️ 나의 축일</span>
+              <span className={label}><IconBadge name="calendar" tone="gold" />나의 축일</span>
               <span className="text-stone-400 text-xs">{feastDay ? formatFeastDay(feastDay) : '등록하기'} <span className="text-stone-300">›</span></span>
             </button>
             {onOpenMembers && (
-              <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span>👥 회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+              <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="users" tone="sky" />회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onOpenBgm && (
-              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span>🎵 배경음악 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />배경음악 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
-            <button onClick={() => setView('blocks')} className={row}><span>🚫 차단 목록</span><span className="text-stone-300">›</span></button>
-            <a href="/terms" className={row}><span>📜 이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
-            <a href="/privacy" className={row}><span>🔒 개인정보처리방침</span><span className="text-stone-300">›</span></a>
-            <button onClick={() => supabase.auth.signOut().then(onClose)} className={row}><span>로그아웃</span></button>
+            <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
+            <a href="/terms" className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
+            <a href="/privacy" className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
+            <button onClick={() => supabase.auth.signOut().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>

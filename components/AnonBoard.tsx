@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { ReportTarget } from '@/components/ReportDialog';
+import Icon, { type IconName } from '@/components/Icon';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -35,10 +36,11 @@ interface AnonReply {
 
 type Reaction = 'pray' | 'like' | 'cheer';
 
-const REACTIONS: { key: Reaction; emoji: string; label: string; count: keyof AnonPost; hover: string }[] = [
-  { key: 'pray', emoji: '🙏', label: '기도', count: 'pray_count', hover: 'hover:text-indigo-600' },
-  { key: 'like', emoji: '❤️', label: '공감', count: 'like_count', hover: 'hover:text-rose-600' },
-  { key: 'cheer', emoji: '🤗', label: '힘내요', count: 'cheer_count', hover: 'hover:text-amber-600' },
+// 연한 동그라미 안 아이콘, 누르면 그림까지 색이 꽉 채워짐
+const REACTIONS: { key: Reaction; icon: IconName; label: string; count: keyof AnonPost; off: string; on: string; text: string }[] = [
+  { key: 'pray', icon: 'pray', label: '기도', count: 'pray_count', off: 'bg-amber-50 text-amber-700', on: 'bg-amber-100 text-amber-600', text: 'text-amber-800' },
+  { key: 'like', icon: 'heart', label: '공감', count: 'like_count', off: 'bg-rose-50 text-rose-600', on: 'bg-rose-100 text-rose-500', text: 'text-rose-700' },
+  { key: 'cheer', icon: 'cheer', label: '힘내요', count: 'cheer_count', off: 'bg-emerald-50 text-emerald-700', on: 'bg-emerald-100 text-emerald-600', text: 'text-emerald-800' },
 ];
 
 // 자동 삭제 시간 (시간 단위, 0 = 삭제 안 함)
@@ -263,18 +265,20 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
 
                 <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
-                <div className="flex items-center gap-4 text-xs font-medium pt-1 flex-wrap">
+                <div className="flex items-center gap-x-3.5 gap-y-2 text-[0.875rem] font-medium pt-1 flex-wrap">
                   {REACTIONS.map(r => {
                     const count = post[r.count] as number;
                     const active = post.my_reactions.includes(r.key);
                     return (
-                      <button key={r.key} onClick={() => handleReaction(post, r.key)} className={`flex items-center gap-1 transition-colors ${active ? 'text-violet-700 font-bold' : `text-stone-600 ${r.hover}`}`}>
-                        {r.emoji} {r.label} {count > 0 && `(${count})`}
+                      <button key={r.key} onClick={() => handleReaction(post, r.key)} aria-pressed={active} className={`flex items-center gap-1.5 ${active ? `${r.text} font-bold` : 'text-stone-600'}`}>
+                        <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${active ? r.on : r.off}`}><Icon name={r.icon} fill={active} className="w-5 h-5" /></span>
+                        {r.label}{count > 0 && ` ${count}`}
                       </button>
                     );
                   })}
-                  <button onClick={() => toggleReplies(post.id)} className="flex items-center gap-1 text-stone-600 hover:text-stone-900">
-                    💬 답글 {post.reply_count > 0 && `(${post.reply_count})`}
+                  <button onClick={() => toggleReplies(post.id)} className="flex items-center gap-1.5 text-stone-600">
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-5 h-5" /></span>
+                    답글{post.reply_count > 0 && ` ${post.reply_count}`}
                   </button>
                 </div>
 
