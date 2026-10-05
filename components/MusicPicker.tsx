@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { type BgmTrack, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl } from '@/lib/music';
+import { supabase } from '@/lib/supabase';
+import { type BgmTrack, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
+
+interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
+
+const QUICK_SEARCHES = ['가톨릭 성가', '생활성가', '묵상 음악', '떼제 성가', '그레고리오 성가', '아베 마리아'];
 
 export interface SelectedMusic { value: string; title: string }
 
@@ -11,7 +16,16 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length > 0 ? 'bgm' : 'youtube');
+  const [tab, setTab] = useState<'bgm' | 'youtube'>('youtube');
+
+  // 유튜브 검색
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<YouTubeResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState('');
+  const [searchUnavailable, setSearchUnavailable] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+  const [showLinkInput, setShowLinkInput] = useState(false);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -30,6 +44,25 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
     audio.src = track.url;
     audio.play().catch(() => {});
     setPreviewId(track.id);
+  };
+
+  const search = async (text = query) => {
+    const q = text.trim();
+    if (!q) return;
+    setQuery(q);
+    setSearching(true); setSearchError(''); setPreviewVideo(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`, {
+      headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
+    }).catch(() => null);
+    const json = res ? await res.json().catch(() => ({})) : {};
+    setSearching(false);
+    if (res?.ok) { setResults(json.results || []); return; }
+    setResults(null);
+    if (json.error === 'not_configured') { setSearchUnavailable(true); setShowLinkInput(true); return; }
+    setSearchError(json.error === 'quota'
+      ? '오늘 검색 한도를 다 썼어요. 내일 다시 시도하거나 아래에서 링크로 넣어주세요.'
+      : '검색하지 못했어요. 잠시 후 다시 시도해주세요.');
   };
 
   const checkLink = async () => {
@@ -54,8 +87,8 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
         <div className="flex border-b border-stone-100">
+          {tabBtn('youtube', '🔍 유튜브에서 찾기')}
           {tabBtn('bgm', '추천 배경음악')}
-          {tabBtn('youtube', '유튜브 링크')}
         </div>
 
         {tab === 'bgm' ? (
@@ -76,39 +109,95 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
             ))}
           </div>
         ) : (
-          <div className="overflow-y-auto p-4 flex flex-col gap-3">
-            <p className="text-sm text-stone-600 leading-relaxed">유튜브에서 듣고 싶은 곡을 찾아 <b>공유 → 링크 복사</b> 후 아래에 붙여넣어 주세요.</p>
-            <div className="flex gap-2">
-              <input
-                value={link}
-                onChange={e => { setLink(e.target.value); setFound(null); setLinkError(''); }}
-                placeholder="https://youtu.be/..."
-                inputMode="url"
-                className="flex-1 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
-              />
-              <button onClick={checkLink} disabled={!link.trim() || checking} className="px-4 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40 shrink-0">확인</button>
-            </div>
-            {linkError && <p className="text-xs text-red-600">{linkError}</p>}
-            {found && (
-              <div className="flex flex-col gap-2.5 bg-stone-50 border border-stone-200 rounded-2xl p-3">
-                <img src={`https://img.youtube.com/vi/${found.videoId}/hqdefault.jpg`} alt="" className="w-full aspect-video object-cover rounded-xl bg-stone-200" />
-                <label className="text-xs font-bold text-stone-500">곡 제목</label>
-                <input
-                  value={checking ? '제목 불러오는 중...' : ytTitle}
-                  onChange={e => setYtTitle(e.target.value)}
-                  placeholder="예: 주님의 기도 (성가)"
-                  disabled={checking}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
-                />
-                <button
-                  onClick={() => onSelect({ value: encodeYouTube(found.videoId, found.start), title: ytTitle.trim() || '유튜브 음악' })}
-                  disabled={checking}
-                  className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
-                >
-                  이 음악 추가하기
-                </button>
+          <div className="overflow-y-auto flex flex-col">
+            {!searchUnavailable && (
+              <div className="p-4 flex flex-col gap-2.5 border-b border-stone-100">
+                <form onSubmit={e => { e.preventDefault(); search(); }} className="flex gap-2">
+                  <input
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    placeholder="곡 제목, 성가 번호, 가수 검색"
+                    enterKeyHint="search"
+                    className="flex-1 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
+                  />
+                  <button type="submit" disabled={!query.trim() || searching} className="px-4 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40 shrink-0">검색</button>
+                </form>
+                {!results && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {QUICK_SEARCHES.map(q => (
+                      <button key={q} onClick={() => search(q)} className="text-xs px-2.5 py-1.5 rounded-full bg-violet-50 text-violet-800 border border-violet-100">{q}</button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
+            {searching && <div className="p-8 text-center text-sm text-stone-400">검색 중...</div>}
+            {searchError && <p className="p-4 text-sm text-red-600">{searchError}</p>}
+            {!searching && results && results.length === 0 && <div className="p-8 text-center text-sm text-stone-400">검색 결과가 없어요.</div>}
+            {!searching && results && results.length > 0 && (
+              <div className="divide-y divide-stone-100">
+                {results.map(r => (
+                  <div key={r.videoId} className="p-3 flex flex-col gap-2">
+                    <div className="flex items-center gap-3">
+                      <button onClick={() => setPreviewVideo(previewVideo === r.videoId ? null : r.videoId)} className="relative w-28 shrink-0 rounded-lg overflow-hidden bg-stone-200" aria-label="미리 듣기">
+                        <img src={r.thumbnail} alt="" className="w-full aspect-video object-cover" />
+                        <span className="absolute inset-0 flex items-center justify-center text-white text-lg bg-black/25">{previewVideo === r.videoId ? '■' : '▶'}</span>
+                        {r.duration && <span className="absolute bottom-1 right-1 text-[0.6875rem] text-white bg-black/70 rounded px-1">{r.duration}</span>}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-stone-800 line-clamp-2 leading-snug">{r.title}</p>
+                        <p className="text-xs text-stone-500 truncate mt-0.5">{r.channel}</p>
+                      </div>
+                      <button onClick={() => onSelect({ value: encodeYouTube(r.videoId), title: r.title })} className="text-xs px-3 py-2 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
+                    </div>
+                    {previewVideo === r.videoId && (
+                      <iframe src={youTubeEmbedUrl(r.videoId)} title={r.title} allow="autoplay; encrypted-media" className="w-full aspect-video rounded-lg" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="p-4 flex flex-col gap-3 border-t border-stone-100">
+              {!showLinkInput ? (
+                <button onClick={() => setShowLinkInput(true)} className="text-xs text-stone-500 underline self-center">유튜브 링크로 직접 넣기</button>
+              ) : (
+                <>
+                  <p className="text-sm text-stone-600 leading-relaxed">유튜브 앱에서 <b>공유 → 링크 복사</b> 후 붙여넣어 주세요.</p>
+                  <div className="flex gap-2">
+                    <input
+                      value={link}
+                      onChange={e => { setLink(e.target.value); setFound(null); setLinkError(''); }}
+                      placeholder="https://youtu.be/..."
+                      inputMode="url"
+                      className="flex-1 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
+                    />
+                    <button onClick={checkLink} disabled={!link.trim() || checking} className="px-4 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40 shrink-0">확인</button>
+                  </div>
+                  {linkError && <p className="text-xs text-red-600">{linkError}</p>}
+                  {found && (
+                    <div className="flex flex-col gap-2.5 bg-stone-50 border border-stone-200 rounded-2xl p-3">
+                      <img src={`https://img.youtube.com/vi/${found.videoId}/hqdefault.jpg`} alt="" className="w-full aspect-video object-cover rounded-xl bg-stone-200" />
+                      <label className="text-xs font-bold text-stone-500">곡 제목</label>
+                      <input
+                        value={checking ? '제목 불러오는 중...' : ytTitle}
+                        onChange={e => setYtTitle(e.target.value)}
+                        placeholder="예: 주님의 기도 (성가)"
+                        disabled={checking}
+                        className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      />
+                      <button
+                        onClick={() => onSelect({ value: encodeYouTube(found.videoId, found.start), title: ytTitle.trim() || '유튜브 음악' })}
+                        disabled={checking}
+                        className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
+                      >
+                        이 음악 추가하기
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
