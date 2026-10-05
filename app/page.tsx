@@ -2053,13 +2053,23 @@ export default function Home() {
       {activeTab === 'profile' && (
         <section className="flex-1 bg-white flex flex-col">
           <div className="p-8 border-b border-stone-200 flex flex-col items-center justify-center bg-stone-50/50">
-            {viewingProfile?.avatar_url ? (
-              <img src={viewingProfile.avatar_url} alt="프로필" className="w-24 h-24 rounded-full object-cover border border-stone-200 shadow-sm mb-3" />
-            ) : (
-              <div className="w-24 h-24 bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold shadow-inner mb-3">
-                {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
-              </div>
-            )}
+            {(() => {
+              const avatar = viewingProfile?.avatar_url ? (
+                <img src={viewingProfile.avatar_url} alt="프로필" className="w-24 h-24 rounded-full object-cover border border-stone-200 shadow-sm" />
+              ) : (
+                <div className="w-24 h-24 bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold shadow-inner">
+                  {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
+                </div>
+              );
+              // 내 프로필: 사진을 누르면 프로필 사진 바꾸기
+              return viewingUserId === user?.id ? (
+                <label className="relative cursor-pointer mb-3" aria-label="프로필 사진 바꾸기">
+                  {avatar}
+                  <span className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-stone-900 text-white text-sm flex items-center justify-center border-2 border-white shadow">📷</span>
+                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+                </label>
+              ) : <div className="mb-3">{avatar}</div>;
+            })()}
             <div className="flex items-center gap-1.5">
               <h2 className="text-xl font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
               <RoleBadge type={viewingProfile?.badge_type} size="md" />
@@ -2078,10 +2088,6 @@ export default function Home() {
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {viewingUserId === user?.id ? (
                 <>
-                  <label className="cursor-pointer bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-bold hover:bg-stone-800 transition-colors shadow-sm inline-flex items-center">
-                    프로필 사진 변경
-                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
-                  </label>
                   <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
                     ⚙️ 설정
                   </button>
