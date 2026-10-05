@@ -17,6 +17,7 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 import FeedbackModal from '@/components/FeedbackModal';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
+import AdminMembers from '@/components/AdminMembers';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -112,6 +113,7 @@ export default function Home() {
   const [showInstallGuide, setShowInstallGuide] = useState(false);
   // 처음 들어왔을 때 휴대폰 알림을 켜도록 안내하는 창
   const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [showAdminMembers, setShowAdminMembers] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sponsorBanners, setSponsorBanners] = useState<SponsorBannerData[]>([]);
@@ -1099,11 +1101,11 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
-    setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false);
+    setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1619,7 +1621,17 @@ export default function Home() {
       {showSettings && user && (
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} baptismalName={profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
-          initialView={settingsView} />
+          initialView={settingsView}
+          onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined} />
+      )}
+
+      {/* 관리자: 회원 관리 */}
+      {showAdminMembers && isAdmin && (
+        <AdminMembers
+          onClose={() => setShowAdminMembers(false)}
+          onMessage={m => { setShowAdminMembers(false); openChatRoom(m); }}
+          onOpenProfile={id => { setShowAdminMembers(false); goToProfile(id); }}
+        />
       )}
 
       {/* 운영자 건의함 */}
