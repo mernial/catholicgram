@@ -215,6 +215,7 @@ export default function Home() {
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [editContent, setEditContent] = useState('');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -1912,15 +1913,25 @@ export default function Home() {
                           <button onClick={() => handleUpdatePost(post.id)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs">저장</button>
                         </div>
                       </div>
-                    ) : (
-                      <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">
+                    ) : (() => {
+                      // 사진·영상이 있는 글은 첫 줄만 보이고, 누르면 전체 글을 펼침
+                      const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
+                      const folded = hasMedia && !expandedPosts.has(post.id) && !!post.content
+                        && (post.content.includes('\n') || post.content.length > 22);
+                      const expand = () => setExpandedPosts(prev => new Set(prev).add(post.id));
+                      return (
+                      <div>
+                      <p onClick={folded ? expand : undefined} className={`text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed ${folded ? 'line-clamp-1 cursor-pointer' : ''}`}>
                         {/* 닉네임을 누르면 그 사람을 태그해 바로 댓글 쓰기 */}
-                        <button onClick={() => tagUserInComments(post.id, post.user_id, post.author_name)} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
+                        <button onClick={e => { e.stopPropagation(); tagUserInComments(post.id, post.user_id, post.author_name); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
                           {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
                         </button>
                         {post.content && <HashtagText text={post.content} onTag={openHashtag} onMention={goToHandle} />}
                       </p>
-                    )}
+                      {folded && <button onClick={expand} className="text-sm font-semibold text-stone-500 mt-0.5">... 더 보기</button>}
+                      </div>
+                      );
+                    })()}
 
                     {!(post.images && post.images.length > 0) && parsePostMusic(post.music) && (
                       <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
