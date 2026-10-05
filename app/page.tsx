@@ -115,6 +115,8 @@ export default function Home() {
   const [openComments, setOpenComments] = useState<{ [key: string]: boolean }>({});
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({});
   const [badgeByUser, setBadgeByUser] = useState<{ [userId: string]: string | null }>({});
+  // 댓글 쓴 사람의 '현재' 닉네임과 핸들 (댓글에 저장된 이름이 예전 것이어도 최신으로 보여줌)
+  const [authorByUser, setAuthorByUser] = useState<{ [userId: string]: { name: string; handle?: string } }>({});
   const [commentInputs, setCommentInputs] = useState<{ [key: string]: string }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -706,12 +708,13 @@ export default function Home() {
     // 게시물 작성자의 프로필만 가져오기
     const authorIds = Array.from(new Set(postsData.map(p => p.user_id).filter(Boolean)));
     const { data: profilesData } = authorIds.length > 0
-      ? await supabase.from('profiles').select('id, avatar_url, handle, badge_type').in('id', authorIds)
+      ? await supabase.from('profiles').select('id, avatar_url, handle, badge_type, baptismal_name').in('id', authorIds)
       : { data: [] };
     if (profilesData) {
-      const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type }]));
+      const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type, name: p.baptismal_name }]));
       setPosts(postsData.map(p => ({ 
         ...p, 
+        author_name: profileMap[p.user_id]?.name || p.author_name, // 현재 닉네임
         avatar_url: profileMap[p.user_id]?.avatar_url,
         handle: profileMap[p.user_id]?.handle,
         badge_type: profileMap[p.user_id]?.badge_type
@@ -963,11 +966,18 @@ export default function Home() {
   };
 
   // 댓글 작성자들의 뱃지 정보를 불러온다
+  const authorName = (c: Comment) =>
+    (c.user_id && c.user_id === user?.id ? profile?.baptismal_name : undefined) || (c.user_id && authorByUser[c.user_id]?.name) || c.author_name;
+  const authorHandle = (c: Comment) =>
+    (c.user_id && c.user_id === user?.id ? profile?.handle : undefined) || (c.user_id ? authorByUser[c.user_id]?.handle : undefined);
+
   const loadCommentBadges = async (list: Comment[]) => {
-    const ids = Array.from(new Set(list.map(c => c.user_id).filter((id): id is string => !!id)));
+    const ids = Array.from(new Set(list.flatMap(c => [c.user_id, c.reply_to_user_id]).filter((id): id is string => !!id)));
     if (ids.length === 0) return;
-    const { data } = await supabase.from('profiles').select('id, badge_type').in('id', ids);
-    if (data) setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
+    const { data } = await supabase.from('profiles').select('id, badge_type, baptismal_name, handle').in('id', ids);
+    if (!data) return;
+    setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
+    setAuthorByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, { name: p.baptismal_name, handle: p.handle || undefined }])) }));
   };
 
   // 홈에서 해당 글로 이동해 댓글을 펼친다
@@ -1682,14 +1692,15 @@ export default function Home() {
                           <div key={c.id} className={`text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5 ${c.reply_to_user_id ? 'ml-5' : ''}`}>
                             <span className="flex items-center justify-between gap-2">
                               <button
-                                onClick={() => c.user_id && tagUserInComments(post.id, c.user_id, c.author_name)}
+                                onClick={() => c.user_id && tagUserInComments(post.id, c.user_id, authorName(c))}
                                 className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1 text-left"
                               >
-                                {c.author_name}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}
+                                {authorName(c)}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}
+                                {authorHandle(c) && <span className="font-normal text-[0.75rem] text-stone-400">@{authorHandle(c)}</span>}
                               </button>
                               <span className="flex items-center gap-2 shrink-0">
                                 {user && c.user_id && c.user_id !== user.id && (
-                                  <button onClick={() => tagUserInComments(post.id, c.user_id!, c.author_name)} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
+                                  <button onClick={() => tagUserInComments(post.id, c.user_id!, authorName(c))} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
                                 )}
                                 {user && c.user_id !== user.id && (
                                   <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
@@ -1718,7 +1729,7 @@ export default function Home() {
                               </div>
                             ) : (
                               <span>
-                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{c.reply_to_name}</span>}
+                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
                                 {c.content}
                                 {c.edited_at && <span className="text-stone-400 ml-1 text-[0.6875rem]">(수정됨)</span>}
                               </span>
