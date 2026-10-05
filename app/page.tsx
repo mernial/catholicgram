@@ -1521,8 +1521,8 @@ export default function Home() {
               </span>
             </button>
           ) : (
-            <button onClick={() => user ? goToProfile(user.id) : setShowAuthModal(true)} className="w-full px-3 py-2 text-left text-xs bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40">
-              🙏 오늘의 첫 기도지향을 올려주세요 <span className="text-white/60">· 내 공간에서 올릴 수 있어요</span>
+            <button onClick={() => setShowIntentions(true)} className="w-full px-3 py-2 text-left text-xs bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40">
+              🙏 오늘의 첫 기도지향을 올려주세요 <span className="text-white/60">· 눌러서 바로 작성</span>
             </button>
           )}
           {!isStandalone && !installBannerDismissed && !isKakaoInApp && (
@@ -1851,63 +1851,6 @@ export default function Home() {
             )}
           </div>
 
-          {/* 내 공간: 오늘의 기도지향 올리기 */}
-          {user && viewingUserId === user.id && (
-            <div id="my-intention" className="p-4 border-b border-stone-200 bg-gradient-to-br from-[#101a3f] to-[#1f2f66] text-white">
-              <div className="flex items-center justify-between mb-2">
-                <p className="font-bold text-[#fbe7b0]">🙏 오늘의 기도지향</p>
-                <button onClick={() => setShowIntentions(true)} className="text-xs text-white/70 underline">오늘 올라온 기도 {visibleIntentions.length}개 보기</button>
-              </div>
-              {myIntention ? (
-                <div className="flex flex-col gap-2">
-                  <div className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">
-                    {myIntention.title && <p className="font-bold text-[#fbe7b0] mb-1">{myIntention.title}</p>}
-                    <p>{myIntention.content}</p>
-                  </div>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => { setIntentionTitleInput(myIntention.title || ''); setIntentionInput(myIntention.content); setIntentionEditing(true); }} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
-                    <button onClick={() => deleteIntention(myIntention.id)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">내리기</button>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs text-white/70 mb-2">오늘 하루 동안 홈 맨 위에 흘러가며 교우들이 함께 기도해요. (자정에 새로 시작)</p>
-              )}
-              {(!myIntention || intentionEditing) && (
-                <div className="flex flex-col gap-2 mt-2">
-                  <label className="text-xs font-bold text-[#fbe7b0]">기도지향 <span className="font-normal text-white/60">(30자 · 홈 맨 위에 흘러가요)</span></label>
-                  <div className="relative">
-                    <input
-                      value={intentionTitleInput}
-                      onChange={e => setIntentionTitleInput(e.target.value.slice(0, 30))}
-                      maxLength={30}
-                      placeholder="예: 어머니의 쾌유를 위하여"
-                      className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{intentionTitleInput.length}/30</span>
-                  </div>
-                  <label className="text-xs font-bold text-[#fbe7b0] mt-1">기도 내용 <span className="font-normal text-white/60">(100자 · 누르면 보여요)</span></label>
-                  <textarea
-                    value={intentionInput}
-                    onChange={e => setIntentionInput(e.target.value.slice(0, 100))}
-                    rows={3}
-                    maxLength={100}
-                    placeholder="예: 다음 주 수술을 앞둔 어머니께서 두려움 없이 잘 회복하시도록 함께 기도해주세요."
-                    className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
-                  />
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/60">{intentionInput.length}/100</span>
-                    <span className="flex gap-2">
-                    {myIntention && <button onClick={() => setIntentionEditing(false)} className="text-sm px-3 py-2 rounded-xl border border-white/30">취소</button>}
-                    <button onClick={saveIntention} disabled={!intentionTitleInput.trim() || !intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
-                      {intentionSaving ? '올리는 중...' : myIntention ? '고쳐서 올리기' : '기도지향 올리기'}
-                    </button>
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           <div className="grid grid-cols-3 gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-stone-100">
             {myPosts.length === 0 ? (
               <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">게시물이 없습니다.</div>
@@ -2106,7 +2049,62 @@ export default function Home() {
               </div>
               <button onClick={() => setShowIntentions(false)} className="text-white/70 font-bold text-lg px-1">×</button>
             </div>
-            <div className="overflow-y-auto divide-y divide-stone-100">
+            <div className="overflow-y-auto">
+            {/* 내 기도지향 쓰기 */}
+            <div id="my-intention" className="px-4 pb-4 pt-1 bg-gradient-to-br from-[#16244f] to-[#1f2f66] text-white">
+              {!user ? (
+                <button onClick={() => { setShowIntentions(false); setShowAuthModal(true); }} className="w-full py-3 rounded-xl bg-[#e8b85a] text-[#101a3f] text-sm font-bold">로그인하고 기도지향 올리기</button>
+              ) : (<>
+              {myIntention && !intentionEditing ? (
+                <div className="flex flex-col gap-2">
+                  <div className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">
+                    {myIntention.title && <p className="font-bold text-[#fbe7b0] mb-1">{myIntention.title}</p>}
+                    <p>{myIntention.content}</p>
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setIntentionTitleInput(myIntention.title || ''); setIntentionInput(myIntention.content); setIntentionEditing(true); }} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
+                    <button onClick={() => deleteIntention(myIntention.id)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">내리기</button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-white/70 mb-1">오늘 하루 동안 홈 맨 위에 흘러가며 교우들이 함께 기도해요.</p>
+              )}
+              {(!myIntention || intentionEditing) && (
+                <div className="flex flex-col gap-2 mt-2">
+                  <label className="text-xs font-bold text-[#fbe7b0]">기도지향 <span className="font-normal text-white/60">(30자 · 홈 맨 위에 흘러가요)</span></label>
+                  <div className="relative">
+                    <input
+                      value={intentionTitleInput}
+                      onChange={e => setIntentionTitleInput(e.target.value.slice(0, 30))}
+                      maxLength={30}
+                      placeholder="예: 어머니의 쾌유를 위하여"
+                      className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{intentionTitleInput.length}/30</span>
+                  </div>
+                  <label className="text-xs font-bold text-[#fbe7b0] mt-1">기도 내용 <span className="font-normal text-white/60">(100자 · 누르면 보여요)</span></label>
+                  <textarea
+                    value={intentionInput}
+                    onChange={e => setIntentionInput(e.target.value.slice(0, 100))}
+                    rows={3}
+                    maxLength={100}
+                    placeholder="예: 다음 주 수술을 앞둔 어머니께서 두려움 없이 잘 회복하시도록 함께 기도해주세요."
+                    className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/60">{intentionInput.length}/100</span>
+                    <span className="flex gap-2">
+                    {myIntention && <button onClick={() => setIntentionEditing(false)} className="text-sm px-3 py-2 rounded-xl border border-white/30">취소</button>}
+                    <button onClick={saveIntention} disabled={!intentionTitleInput.trim() || !intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
+                      {intentionSaving ? '올리는 중...' : myIntention ? '고쳐서 올리기' : '기도지향 올리기'}
+                    </button>
+                    </span>
+                  </div>
+                </div>
+              )}
+              </>)}
+            </div>
+            <div className="divide-y divide-stone-100">
               {visibleIntentions.length === 0 ? (
                 <div className="p-10 text-center text-sm text-stone-400">아직 오늘 올라온 기도지향이 없어요.</div>
               ) : visibleIntentions.map(i => (
@@ -2123,13 +2121,6 @@ export default function Home() {
                 </div>
               ))}
             </div>
-            <div className="p-3 border-t border-stone-100">
-              <button
-                onClick={() => { setShowIntentions(false); if (!user) { setShowAuthModal(true); return; } goToProfile(user.id); setTimeout(() => document.getElementById('my-intention')?.scrollIntoView({ behavior: 'smooth' }), 300); }}
-                className="w-full py-3 rounded-xl bg-[#101a3f] text-[#fbe7b0] text-sm font-bold"
-              >
-                {myIntention ? '내 기도지향 고치기' : '나도 기도지향 올리기'}
-              </button>
             </div>
           </div>
         </div>
