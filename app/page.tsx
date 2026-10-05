@@ -1808,6 +1808,23 @@ export default function Home() {
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
   const mainScrollRef = useRef<HTMLElement>(null); // 앱 화면의 스크롤 영역
+  // 키보드가 올라오면 실제로 보이는 높이에 맞춤 (키보드가 화면 높이를 줄이지 않는 휴대폰 대비)
+  const [visibleHeight, setVisibleHeight] = useState<number | null>(null);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const onResize = () => {
+      const keyboardOpen = window.innerHeight - vv.height > 120;
+      setVisibleHeight(keyboardOpen ? Math.round(vv.height) : null);
+      if (keyboardOpen) window.scrollTo(0, 0);
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, []);
+  // 채팅 중 키보드가 올라오면 마지막 메시지가 보이게
+  useEffect(() => {
+    if (activeTab === 'chat') setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), 50);
+  }, [visibleHeight, activeTab]);
   const scrollToTop = () => mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
 
   // 홈·탐색을 한 번 더 누르면(두 번 누르면) 맨 위로 올라가며 새로 고침
@@ -1964,6 +1981,7 @@ export default function Home() {
     <main
       ref={mainScrollRef}
       // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
+      style={visibleHeight ? { height: visibleHeight } : undefined}
       className={`w-full max-w-xl mx-auto h-[100dvh] sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
     >
       
@@ -2610,7 +2628,7 @@ export default function Home() {
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={sendMessage} className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
-            <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>

@@ -35,6 +35,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover', // 노치가 있는 폰에서 화면 끝까지 사용 (안전 영역은 pb-safe 등으로 피함)
+  interactiveWidget: 'resizes-content', // 키보드가 올라오면 화면 높이를 줄여 입력창이 키보드 위에 보이게 (안드로이드)
   themeColor: '#FAF7F2',
 };
 
