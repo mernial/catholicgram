@@ -226,6 +226,7 @@ export default function Home() {
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('media'); // 홈 피드: 기본은 사진·영상 (전체 / 글로 바꿀 수 있음)
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
+  const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
   useEffect(() => {
     const isField = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -1749,6 +1750,9 @@ export default function Home() {
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
+  // 다른 탭으로 가면 + 메뉴 접기
+  useEffect(() => { setFabOpen(false); }, [activeTab]);
+
   // 크게 보기: 사진을 두 번 누르면 공감 (한 번 누르면 아무 일 없음)
   const [viewerBurst, setViewerBurst] = useState(0);
   const viewerDoubleTapLike = () => {
@@ -2024,32 +2028,49 @@ export default function Home() {
           </div>
           )}
 
-          {/* 글쓰기 + 버튼 */}
+          {/* + 버튼: 누르면 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 사르륵 펼쳐짐 */}
           {!showComposer && !typing && (
-            <button
-              onClick={() => { if (requireProfile()) setShowComposer(true); }}
-              className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1rem,calc(50vw-18rem+1rem))] w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
-              aria-label="새 나눔 쓰기"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className="w-7 h-7"><path d="M12 5v14M5 12h14" /></svg>
-            </button>
-          )}
-
-          {/* 피드 보기: 왼쪽 아래에 떠 있는 버튼 (사진·영상 / 전체 / 글) */}
-          {!showComposer && !typing && (
-            <div className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-[max(0.75rem,calc(50vw-18rem+0.75rem))] flex flex-col gap-1 p-1 rounded-[1.375rem] bg-white/95 backdrop-blur shadow-lg shadow-stone-900/15 border border-stone-200">
-              {([['media', '사진', 'camera'], ['all', '전체', null], ['text', '글', 'pencil']] as const).map(([key, label, icon]) => (
+            <>
+              {fabOpen && <button className="fixed inset-0 z-30 bg-black/20 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />}
+              <div className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1rem,calc(50vw-18rem+1rem))] flex flex-col items-end gap-2.5">
+                {([
+                  { key: 'write', label: '글쓰기', icon: 'pencil' },
+                  { key: 'media', label: '사진·영상 보기', icon: 'camera' },
+                  { key: 'all', label: '전체 보기', icon: null },
+                  { key: 'text', label: '글만 보기', icon: 'chat' },
+                ] as const).map((item, i, arr) => {
+                  const active = item.key !== 'write' && feedFilter === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      tabIndex={fabOpen ? 0 : -1}
+                      aria-hidden={!fabOpen}
+                      onClick={() => {
+                        setFabOpen(false);
+                        if (item.key === 'write') { if (requireProfile()) setShowComposer(true); return; }
+                        setFeedFilter(item.key); storageSet('feedFilter2', item.key);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      style={{ transitionDelay: fabOpen ? `${(arr.length - 1 - i) * 45}ms` : '0ms' }}
+                      className={`flex items-center gap-2.5 transition-all duration-300 ease-out ${fabOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-4 scale-90 pointer-events-none'}`}
+                    >
+                      <span className={`px-3 py-1.5 rounded-full text-sm font-bold shadow-md ${active ? 'bg-stone-900 text-white' : 'bg-white text-stone-800'}`}>{item.label}{active && ' ✓'}</span>
+                      <span className={`w-12 h-12 rounded-full shadow-md flex items-center justify-center ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-white text-stone-700'}`}>
+                        {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <span className="text-lg leading-none">☰</span>}
+                      </span>
+                    </button>
+                  );
+                })}
                 <button
-                  key={key}
-                  onClick={() => { setFeedFilter(key); storageSet('feedFilter2', key); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
-                  aria-pressed={feedFilter === key}
-                  aria-label={key === 'media' ? '사진·영상만 보기' : key === 'all' ? '전체 보기' : '글만 보기'}
-                  className={`w-[3.25rem] h-[3.25rem] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-bold transition-colors ${feedFilter === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
+                  onClick={() => setFabOpen(o => !o)}
+                  className="w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
+                  aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
+                  aria-expanded={fabOpen}
                 >
-                  {icon ? <Icon name={icon} className="w-5 h-5" /> : <span className="text-[0.9375rem] leading-5">☰</span>}{label}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
                 </button>
-              ))}
-            </div>
+              </div>
+            </>
           )}
 
           <section className="divide-y divide-stone-200/70 flex-1">
