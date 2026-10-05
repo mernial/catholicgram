@@ -18,6 +18,9 @@ import FeedbackModal from '@/components/FeedbackModal';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
 import AdminMembers from '@/components/AdminMembers';
+import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
+import BgmAdmin from '@/components/BgmAdmin';
+import { type BgmTrack, parsePostMusic, youTubeEmbedUrl } from '@/lib/music';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -44,6 +47,8 @@ interface Post {
   avatar_url?: string;
   handle?: string;
   badge_type?: string;
+  music?: string | null;        // 'yt:영상ID' 또는 'bgm:트랙ID' (lib/music.ts)
+  music_title?: string | null;
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; }
@@ -139,6 +144,14 @@ export default function Home() {
   
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
+  const [detailImageIndex, setDetailImageIndex] = useState(0);
+  // 배경음악: 목록, 글쓰기에서 고른 음악, 게시물 보기에서 재생 중 여부
+  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([]);
+  const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
+  const [showMusicPicker, setShowMusicPicker] = useState(false);
+  const [showBgmAdmin, setShowBgmAdmin] = useState(false);
+  const [bgmPlaying, setBgmPlaying] = useState(false);
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
 
@@ -247,6 +260,7 @@ export default function Home() {
 
     checkUser();
     fetchPosts();
+    fetchBgmTracks();
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
@@ -628,13 +642,45 @@ export default function Home() {
       }
     }
     const author = profile?.baptismal_name || '교우';
-    const { error } = await supabase.from('posts').insert([{ content, images: uploadedUrls, user_id: user.id, author_name: author }]);
+    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author };
+    let { error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]);
+    // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
+    if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) ({ error } = await supabase.from('posts').insert([row]));
     if (!error) {
-      setContent(''); setSelectedFiles([]); setPreviewUrls([]);
+      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
       fetchPosts(); goToHome();
     }
     setLoading(false);
+  };
+
+  const fetchBgmTracks = async () => {
+    const { data } = await supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').eq('active', true).order('sort').order('created_at');
+    setBgmTracks((data || []) as BgmTrack[]);
+  };
+
+  // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
+  // (휴대폰 브라우저는 사용자가 누른 순간에만 소리 재생을 허용하므로 누른 즉시 재생을 시작)
+  const openPostViewer = (post: Post, imageIndex = 0) => {
+    setSelectedPostDetail(post);
+    setDetailImageIndex(imageIndex);
+    const music = parsePostMusic(post.music);
+    if (music?.kind === 'bgm') {
+      const track = bgmTracks.find(t => t.id === music.trackId);
+      if (!track) return;
+      if (!bgmAudioRef.current) bgmAudioRef.current = new Audio();
+      const audio = bgmAudioRef.current;
+      audio.src = track.url;
+      audio.loop = true;
+      audio.play().then(() => setBgmPlaying(true)).catch(() => setBgmPlaying(false));
+    }
+  };
+
+  const toggleBgm = () => {
+    const audio = bgmAudioRef.current;
+    if (!audio) return;
+    if (audio.paused) audio.play().then(() => setBgmPlaying(true)).catch(() => {});
+    else { audio.pause(); setBgmPlaying(false); }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -926,6 +972,13 @@ export default function Home() {
     navigator.vibrate?.([150, 80, 150]);
   }, [notifications, unreadMessages, followRequests]);
 
+  // 게시물 보기를 닫으면 음악도 멈춘다
+  useEffect(() => {
+    if (selectedPostDetail) return;
+    bgmAudioRef.current?.pause();
+    setTimeout(() => setBgmPlaying(false), 0);
+  }, [selectedPostDetail]);
+
   // 축일 카드/안내를 닫았는지 (축일 카드는 하루 단위)
   useEffect(() => {
     if (!user) return;
@@ -1101,11 +1154,12 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1258,6 +1312,13 @@ export default function Home() {
                   ))}
                 </div>
               )}
+              {composerMusic && (
+                <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                  <span className="text-sm">🎵</span>
+                  <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
+                  <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
+                </div>
+              )}
               {previewUrls.length > 0 && (
                 <div className="flex gap-2 pt-1">
                   {previewUrls.map((url, idx) => (
@@ -1271,9 +1332,16 @@ export default function Home() {
               <div className="flex items-center justify-between pt-1">
                 <div>
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
-                  <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                    📷 사진첩에서 선택
-                  </label>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
+                      📷 사진첩에서 선택
+                    </label>
+                    {user && (
+                      <button type="button" onClick={() => setShowMusicPicker(true)} className="text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
+                        🎵 음악
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <button type="submit" disabled={loading || (!content.trim() && selectedFiles.length === 0)} className="bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-40">{loading ? '올리는 중...' : '나눔 올리기'}</button>
               </div>
@@ -1326,9 +1394,14 @@ export default function Home() {
                   {post.images && post.images.length > 0 && (
                     <div className={`grid gap-1 rounded-xl overflow-hidden border border-stone-100 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       {post.images.map((img, i) => (
-                        <img key={i} src={img} alt="첨부" className="w-full aspect-square object-cover cursor-pointer" onClick={() => setSelectedImage(img)} />
+                        <img key={i} src={img} alt="첨부" className="w-full aspect-square object-cover cursor-pointer" onClick={() => post.music ? openPostViewer(post, i) : setSelectedImage(img)} />
                       ))}
                     </div>
+                  )}
+                  {parsePostMusic(post.music) && (
+                    <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
+                      <span>🎵</span><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
+                    </button>
                   )}
 
                   <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium pt-1">
@@ -1448,9 +1521,10 @@ export default function Home() {
               myPosts.map((post) => (
                 <div 
                   key={post.id} 
-                  onClick={() => setSelectedPostDetail(post)} 
+                  onClick={() => openPostViewer(post)} 
                   className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
                 >
+                  {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">🎵</span>}
                   {post.images && post.images.length > 0 ? (
                     <img src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
@@ -1471,7 +1545,7 @@ export default function Home() {
           blockedIds={blockedIds}
           initialQuery={exploreQuery}
           onOpenProfile={goToProfile}
-          onOpenPost={openPostComments}
+          onOpenPost={id => { const p = posts.find(x => x.id === id); if (p?.music) openPostViewer(p); else openPostComments(id); }}
           onRequireLogin={() => setShowAuthModal(true)}
         />
       )}
@@ -1622,7 +1696,18 @@ export default function Home() {
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} baptismalName={profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
           initialView={settingsView}
-          onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined} />
+          onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
+          onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined} />
+      )}
+
+      {/* 글쓰기: 음악 고르기 */}
+      {showMusicPicker && (
+        <MusicPicker tracks={bgmTracks} onClose={() => setShowMusicPicker(false)} onSelect={m => { setComposerMusic(m); setShowMusicPicker(false); }} />
+      )}
+
+      {/* 관리자: 배경음악 관리 */}
+      {showBgmAdmin && isAdmin && (
+        <BgmAdmin onClose={() => setShowBgmAdmin(false)} onChanged={fetchBgmTracks} />
       )}
 
       {/* 관리자: 회원 관리 */}
@@ -1905,10 +1990,46 @@ export default function Home() {
             
             <div className="overflow-y-auto flex-1 flex flex-col">
               {selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
-                <div className="w-full bg-black flex items-center justify-center">
-                  <img src={selectedPostDetail.images[0]} alt="게시물 사진" className="max-h-[50dvh] object-contain w-full" />
+                <div className="w-full bg-black flex items-center justify-center relative">
+                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" className="max-h-[50dvh] object-contain w-full" />
+                  {selectedPostDetail.images.length > 1 && (
+                    <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
+                      {selectedPostDetail.images.map((_, i) => (
+                        <button key={i} onClick={() => setDetailImageIndex(i)} className={`w-2.5 h-2.5 rounded-full ${i === detailImageIndex ? 'bg-white' : 'bg-white/40'}`} aria-label={`${i + 1}번째 사진`} />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
+              {(() => {
+                const music = parsePostMusic(selectedPostDetail.music);
+                if (!music) return null;
+                if (music.kind === 'youtube') {
+                  return (
+                    <div className="bg-stone-900">
+                      <iframe
+                        src={youTubeEmbedUrl(music.videoId, music.start)}
+                        title={selectedPostDetail.music_title || '음악'}
+                        allow="autoplay; encrypted-media; picture-in-picture"
+                        allowFullScreen
+                        className="w-full aspect-video"
+                      />
+                      <p className="px-4 py-2 text-xs text-white/80 truncate">🎵 {selectedPostDetail.music_title || '유튜브 음악'}</p>
+                    </div>
+                  );
+                }
+                const track = bgmTracks.find(t => t.id === music.trackId);
+                if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50">🎵 이 음악은 더 이상 제공되지 않아요</p>;
+                return (
+                  <button onClick={toggleBgm} className="flex items-center gap-3 px-4 py-2.5 bg-violet-50 border-b border-violet-100 text-left">
+                    <span className="w-9 h-9 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0">{bgmPlaying ? '❚❚' : '▶'}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-bold text-stone-800 truncate">{selectedPostDetail.music_title || track.title}</span>
+                      <span className="block text-xs text-stone-500">{bgmPlaying ? '재생 중' : '눌러서 듣기'}</span>
+                    </span>
+                  </button>
+                );
+              })()}
               <div className="p-5 flex flex-col gap-2">
                 <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} /></p>
                 <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>

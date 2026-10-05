@@ -59,7 +59,7 @@ export default function PrivacyPage() {
             <tr><td>Supabase Inc.</td><td>회원 인증, 데이터베이스 및 사진 저장</td></tr>
             <tr><td>Vercel Inc.</td><td>웹사이트 호스팅</td></tr>
             <tr><td>Kakao Corp.</td><td>카카오 로그인</td></tr>
-            <tr><td>Google LLC</td><td>구글 로그인</td></tr>
+            <tr><td>Google LLC</td><td>구글 로그인, 게시물 음악(유튜브) 재생</td></tr>
             <tr><td>Google LLC, Apple Inc., Mozilla 등</td><td>푸시 알림 전달 (기기 브라우저에 따라)</td></tr>
           </tbody>
         </table>
