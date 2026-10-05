@@ -37,6 +37,8 @@ import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import Icon from '@/components/Icon';
 import ClampText from '@/components/ClampText';
+import AdminStats from '@/components/AdminStats';
+import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -227,6 +229,9 @@ export default function Home() {
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('media'); // 홈 피드: 기본은 사진·영상 (전체 / 글로 바꿀 수 있음)
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
+  const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
+  // 접속 통계 기록 (앱 열기·나가기)
+  useEffect(() => startVisitTracking(), []);
   const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
   useEffect(() => {
     const isField = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
@@ -1716,7 +1721,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -1726,6 +1731,7 @@ export default function Home() {
     if (!showMusicPicker && !showVideoEditor) setShowComposer(false);
     if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
     setFollowList(null);
+    setShowAdminStats(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2389,6 +2395,11 @@ export default function Home() {
                     <Icon name="gear" className="w-4 h-4" />설정
                   </button>
                   {isAdmin && (
+                    <button onClick={() => setShowAdminStats(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-sky-300 bg-sky-50 text-sky-900 shadow-sm hover:bg-sky-100 transition-colors inline-flex items-center gap-1.5">
+                      📊 접속 통계
+                    </button>
+                  )}
+                  {isAdmin && (
                     <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5">
                       <Icon name="storefront" className="w-4 h-4" />광고 관리
                     </button>
@@ -2636,7 +2647,8 @@ export default function Home() {
           onOpenNotices={() => { setShowSettings(false); setNoticeOpenId(null); setShowNotices(true); }}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
-          onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined} />
+          onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
+          onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined} />
       )}
 
       {/* 오늘의 기도지향 모아 보기 */}
@@ -2742,6 +2754,8 @@ export default function Home() {
       )}
 
       {/* 숏폼 영상 꾸미기 */}
+      {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
+
       {/* 팔로워·팔로잉 목록 */}
       {followList && (
         <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center" onClick={() => setFollowList(null)}>
