@@ -20,6 +20,7 @@ import SettingsModal from '@/components/SettingsModal';
 import AdminMembers from '@/components/AdminMembers';
 import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
+import PostPhotos from '@/components/PostPhotos';
 import { type BgmTrack, parsePostMusic, youTubeEmbedUrl } from '@/lib/music';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -145,6 +146,7 @@ export default function Home() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [detailImageIndex, setDetailImageIndex] = useState(0);
+  const [postMenuId, setPostMenuId] = useState<string | null>(null);
   // 배경음악: 목록, 글쓰기에서 고른 음악, 게시물 보기에서 재생 중 여부
   const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([]);
   const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
@@ -1230,15 +1232,10 @@ export default function Home() {
                   </button>
                   <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity min-w-0">
                     {profile?.avatar_url ? (
-                      <img src={profile.avatar_url} alt="내 프로필" className="w-6 h-6 rounded-full object-cover border border-stone-200" />
+                      <img src={profile.avatar_url} alt="내 프로필" className="w-7 h-7 rounded-full object-cover border border-stone-200" />
                     ) : (
-                      <div className="w-6 h-6 bg-stone-200 rounded-full flex items-center justify-center text-[0.75rem] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
+                      <div className="w-7 h-7 bg-stone-200 rounded-full flex items-center justify-center text-[0.75rem] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
                     )}
-                    {/* 좁은 화면에서는 이름을 숨기고 사진만 */}
-                    <span className="text-xs font-medium text-stone-700 hidden min-[380px]:flex items-center gap-1 min-w-0">
-                      <span className="truncate max-w-[7rem] sm:max-w-[10rem]">{profile?.baptismal_name}</span>
-                      <RoleBadge type={profile?.badge_type} size="xs" showLabel={false} />
-                    </span>
                   </button>
                   {/* 휴대폰에서는 내 공간 → 설정에서 로그아웃 */}
                   <button onClick={() => supabase.auth.signOut()} className="hidden sm:inline text-[0.8125rem] text-stone-400 hover:text-stone-700 whitespace-nowrap">로그아웃</button>
@@ -1356,59 +1353,56 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                <article id={`post-${post.id}`} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <button onClick={() => handleAvatarClick({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity text-left min-w-0 flex-1">
-                      {post.avatar_url ? (
-                        <img src={post.avatar_url} alt="프로필" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
-                      ) : (
-                        <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{(post.author_name || '교')[0]}</div>
-                      )}
-                      <div className="flex flex-col min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-xs font-bold text-stone-800 truncate">{post.author_name}</span>
-                          <RoleBadge type={post.badge_type} />
-                        </div>
-                        <span className="text-[0.8125rem] text-stone-400 truncate">@{post.handle || 'user'} • {new Date(post.created_at).toLocaleDateString('ko-KR')}</span>
-                      </div>
-                    </button>
-                    <div className="flex items-center gap-0.5 shrink-0 whitespace-nowrap">
-                      {user?.id === post.user_id && <button onClick={() => { setEditingPostId(post.id); setEditContent(post.content); }} className="text-[0.8125rem] text-stone-400 hover:text-stone-700 px-2 py-1">수정</button>}
-                      {canDelete && <button onClick={() => handleDeletePost(post.id)} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-2 py-1">삭제</button>}
-                      {user && user.id !== post.user_id && <button onClick={() => setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content })} className="text-[0.8125rem] text-stone-400 hover:text-red-500 px-2 py-1">신고</button>}
-                    </div>
-                  </div>
-                  
-                  {editingPostId === post.id ? (
-                    <div className="flex flex-col gap-2">
-                      <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full p-3 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none" rows={3} />
-                      <div className="flex justify-end gap-2">
-                        <button onClick={() => setEditingPostId(null)} className="px-3 py-1.5 rounded-lg border text-xs">취소</button>
-                        <button onClick={() => handleUpdatePost(post.id)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs">저장</button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"><HashtagText text={post.content} onTag={openHashtag} /></p>
-                  )}
-                  
+                <article id={`post-${post.id}`} className="bg-white flex flex-col gap-3 pb-4 sm:pb-5">
+                  {/* 사진이 먼저, 크게 (여러 장이면 옆으로 넘김) — 사진을 누르면 작성자·음악과 함께 크게 보기 */}
                   {post.images && post.images.length > 0 && (
-                    <div className={`grid gap-1 rounded-xl overflow-hidden border border-stone-100 ${post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                      {post.images.map((img, i) => (
-                        <img key={i} src={img} alt="첨부" className="w-full aspect-square object-cover cursor-pointer" onClick={() => post.music ? openPostViewer(post, i) : setSelectedImage(img)} />
-                      ))}
-                    </div>
-                  )}
-                  {parsePostMusic(post.music) && (
-                    <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
-                      <span>🎵</span><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
-                    </button>
+                    <PostPhotos
+                      images={post.images}
+                      onOpen={i => openPostViewer(post, i)}
+                      musicTitle={post.music_title}
+                      onMusic={parsePostMusic(post.music) ? () => openPostViewer(post) : undefined}
+                    />
                   )}
 
-                  <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium pt-1">
-                    <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
-                    <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
-                    <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글</button>
-                  </div>
+                  <div className="px-4 sm:px-5 flex flex-col gap-3">
+                    {!(post.images && post.images.length > 0) && <div className="pt-4 sm:pt-5" />}
+                    {editingPostId === post.id ? (
+                      <div className="flex flex-col gap-2">
+                        <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full p-3 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none" rows={3} />
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setEditingPostId(null)} className="px-3 py-1.5 rounded-lg border text-xs">취소</button>
+                          <button onClick={() => handleUpdatePost(post.id)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-xs">저장</button>
+                        </div>
+                      </div>
+                    ) : post.content && (
+                      <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"><HashtagText text={post.content} onTag={openHashtag} /></p>
+                    )}
+
+                    {!(post.images && post.images.length > 0) && parsePostMusic(post.music) && (
+                      <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
+                        <span>🎵</span><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
+                      </button>
+                    )}
+
+                    <div className="flex items-center gap-x-4 gap-y-2 flex-wrap text-xs font-medium">
+                      <button onClick={() => handleReaction(post.id, 'pray')} className="flex items-center gap-1.5 text-stone-600 hover:text-indigo-600">🙏 기도할게요 {post.pray_count > 0 && `(${post.pray_count})`}</button>
+                      <button onClick={() => handleReaction(post.id, 'like')} className="flex items-center gap-1.5 text-stone-600 hover:text-purple-600">🍇 공감해요 {post.like_count > 0 && `(${post.like_count})`}</button>
+                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600 hover:text-stone-900">💬 댓글</button>
+                      <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
+                        {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
+                        {(canDelete || user) && (
+                          <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="px-1.5 text-base leading-none text-stone-400 hover:text-stone-700" aria-label="더보기">⋯</button>
+                        )}
+                      </span>
+                    </div>
+                    {postMenuId === post.id && (
+                      <div className="flex justify-end gap-1 -mt-1">
+                        <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">작성자 보기</button>
+                        {user?.id === post.user_id && <button onClick={() => { setPostMenuId(null); setEditingPostId(post.id); setEditContent(post.content); }} className="text-[0.8125rem] text-stone-500 border border-stone-200 rounded-lg px-2.5 py-1">수정</button>}
+                        {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">삭제</button>}
+                        {user && user.id !== post.user_id && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className="text-[0.8125rem] text-red-500 border border-red-200 rounded-lg px-2.5 py-1">신고</button>}
+                      </div>
+                    )}
 
                   {openComments[post.id] && (
                     <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
@@ -1431,6 +1425,7 @@ export default function Home() {
                       </div>
                     </div>
                   )}
+                  </div>
                 </article>
                 {inlineBanner && <SponsorBanner banner={inlineBanner} variant="feed" />}
                 </Fragment>
@@ -1974,7 +1969,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
           <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+              <button onClick={() => { const d = selectedPostDetail; setSelectedPostDetail(null); handleAvatarClick({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 {selectedPostDetail.avatar_url ? (
                   <img src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
@@ -1984,7 +1979,7 @@ export default function Home() {
                   <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
                   <span className="text-[0.75rem] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
                 </div>
-              </div>
+              </button>
               <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 font-bold text-lg">×</button>
             </div>
             
