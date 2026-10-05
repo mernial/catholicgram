@@ -57,13 +57,48 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
   }, [expanded, text, lines, prefixText]);
 
   const folded = !expanded && cut !== null;
+
+  // 아이폰 사파리는 글 사이 단추의 click 이 오지 않는 경우가 있어 손가락을 뗄 때 바로 처리한다
+  // (조금이라도 밀었으면 화면 넘김으로 보고 무시, 처리했으면 뒤따르는 click 은 막음)
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const tap = (fn: () => void, ignoreInner = false) => ({
+    onTouchStart: (e: React.TouchEvent) => { const t = e.touches[0]; touchStart.current = { x: t.clientX, y: t.clientY }; },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const s = touchStart.current; touchStart.current = null;
+      if (!s) return;
+      // 글 안의 닉네임·#태그·@이름 단추는 그것대로 동작하게 둔다
+      if (ignoreInner && (e.target as Element).closest?.('button, a')) return;
+      const t = e.changedTouches[0];
+      if (Math.abs(t.clientX - s.x) > 10 || Math.abs(t.clientY - s.y) > 10) return;
+      e.preventDefault();
+      e.stopPropagation();
+      fn();
+    },
+    onClick: (e: React.MouseEvent) => {
+      if (ignoreInner && (e.target as Element).closest?.('button, a')) return;
+      e.stopPropagation();
+      fn();
+    },
+  });
+  const collapse = () => {
+    onCollapse?.();
+    // 접은 글이 화면 위로 올라가 있으면 보이는 곳으로 (앱은 main 안에서 스크롤됨)
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      const scroller = el?.closest('main');
+      if (!el || !scroller) return;
+      const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      if (top < 0) scroller.scrollTop += top - 80;
+    });
+  };
+
   return (
-    <p ref={ref} onClick={folded ? onExpand : undefined} className={`${className} ${folded ? 'cursor-pointer' : ''}`}>
+    <p ref={ref} {...(folded ? tap(onExpand, true) : {})} className={`${className} ${folded ? 'cursor-pointer' : ''} [touch-action:manipulation]`}>
       {prefix}
       {folded ? (
         <>
           {renderText(text.slice(0, cut).trimEnd())}{' '}
-          <button onClick={e => { e.stopPropagation(); onExpand(); }} className="font-semibold text-stone-500 whitespace-nowrap">… 더 보기</button>
+          <button type="button" {...tap(onExpand)} className="font-semibold text-stone-500 whitespace-nowrap py-1">… 더 보기</button>
         </>
       ) : (
         <>
@@ -71,7 +106,7 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
           {expanded && long && onCollapse && (
             <>
               {' '}
-              <button onClick={e => { e.stopPropagation(); onCollapse(); requestAnimationFrame(() => ref.current?.scrollIntoView({ block: 'nearest' })); }} className="font-semibold text-stone-500 whitespace-nowrap">간략히 보기</button>
+              <button type="button" {...tap(collapse)} className="font-semibold text-stone-500 whitespace-nowrap py-1">간략히 보기</button>
             </>
           )}
         </>
