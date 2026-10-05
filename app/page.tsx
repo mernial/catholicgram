@@ -1814,6 +1814,25 @@ export default function Home() {
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
+  // 홈·탐색을 한 번 더 누르면(두 번 누르면) 맨 위로 올라가며 새로 고침
+  const [refreshState, setRefreshState] = useState<'' | 'loading' | 'done'>('');
+  const lastTabTap = useRef<{ tab: string; at: number }>({ tab: '', at: 0 });
+  const refreshFeed = async () => {
+    if (refreshState === 'loading') return;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setRefreshState('loading');
+    await Promise.all([fetchPosts(), fetchIntentions(), fetchNotices()]).catch(() => {});
+    setRefreshState('done');
+    setTimeout(() => setRefreshState(''), 1200);
+  };
+  const tapTab = (tab: 'home' | 'explore', go: () => void) => {
+    const now = Date.now();
+    const again = activeTab === tab || (lastTabTap.current.tab === tab && now - lastTabTap.current.at < 450);
+    lastTabTap.current = { tab, at: now };
+    if (activeTab !== tab) go();
+    if (again) refreshFeed();
+  };
+
   // 다른 탭으로 가면 + 메뉴 접기
   useEffect(() => { setFabOpen(false); }, [activeTab]);
 
@@ -3407,14 +3426,23 @@ export default function Home() {
         </div>
       )}
 
+      {/* 새로 고침 표시 */}
+      {refreshState && (
+        <div className="fixed left-1/2 -translate-x-1/2 top-[calc(4rem+env(safe-area-inset-top))] z-50 px-4 py-2 rounded-full bg-stone-900/85 text-white text-sm font-semibold shadow-lg flex items-center gap-2 pointer-events-none">
+          {refreshState === 'loading'
+            ? <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />새로 고치는 중...</>
+            : <>✓ 새로 고쳤어요</>}
+        </div>
+      )}
+
       {/* 하단 네비게이션 */}
       {activeTab !== 'chat' && (
         <nav className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto bg-white border-t border-stone-200 flex items-center justify-around z-40 pb-safe">
-          <button onClick={() => { goToHome(); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => tapTab('home', goToHome)} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
             <span className="text-[0.75rem] font-medium">홈</span>
           </button>
-          <button onClick={() => { setExploreQuery(''); goToTab('explore'); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'explore' ? 'text-stone-900' : 'text-stone-400'}`}>
+          <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'explore' ? 'text-stone-900' : 'text-stone-400'}`}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
             <span className="text-[0.75rem] font-medium">탐색</span>
           </button>
