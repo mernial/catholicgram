@@ -210,6 +210,8 @@ export default function Home() {
   const [showNotices, setShowNotices] = useState(false);
   const [noticeOpenId, setNoticeOpenId] = useState<string | null>(null);
   const [hiddenNotices, setHiddenNotices] = useState<string[]>([]);
+  const [noticeAdminMode, setNoticeAdminMode] = useState(false); // 관리자 공간에서 연 공지 (쓰기·관리 가능)
+  const [popupClosed, setPopupClosed] = useState<string[]>([]); // 이번에 '닫기'만 누른 팝업 공지 (다음에 들어오면 다시 뜸)
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -981,9 +983,11 @@ export default function Home() {
   };
 
   const fetchNotices = async () => {
-    const { data } = await supabase.from('announcements').select('id, title, content, pinned, pushed_at, created_at')
-      .order('created_at', { ascending: false }).limit(50);
-    setNotices((data || []) as Notice[]);
+    const query = (cols: string) => supabase.from('announcements').select(cols).order('created_at', { ascending: false }).limit(50);
+    let { data, error } = await query('id, title, content, pinned, popup, pushed_at, created_at');
+    // 팝업 칸이 아직 없으면(announcement-popup.sql 실행 전) 예전 방식으로
+    if (error) ({ data, error } = await query('id, title, content, pinned, pushed_at, created_at'));
+    setNotices((data || []) as unknown as Notice[]);
   };
   const hideNotice = (id: string) => {
     const next = [...hiddenNotices, id].slice(-100);
@@ -991,6 +995,9 @@ export default function Home() {
     storageSet('noticeHidden', JSON.stringify(next));
   };
   const homeNotice = notices.find(n => n.pinned && !hiddenNotices.includes(n.id));
+  // 앱에 들어오면 띄우는 팝업 공지: 가장 최근 것 하나, '다시 보지 않기' 전까지 들어올 때마다
+  const popupNotice = notices.find(n => n.popup && !hiddenNotices.includes(n.id) && !popupClosed.includes(n.id));
+  const closePopup = (id: string) => setPopupClosed(prev => [...prev, id]);
 
   const fetchIntentions = async () => {
     const query = (cols: string) => supabase.from('prayer_intentions').select(cols)
@@ -1538,7 +1545,7 @@ export default function Home() {
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
     // 공지 알림은 로그인 없이도 열린다
-    if (deepLink?.notice) { setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
+    if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
     if (deepLink.post) {
@@ -1789,9 +1796,13 @@ export default function Home() {
   const feedBanners = liveBanners.filter(b => b.placement !== 'top');
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
-  const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
+  const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen);
+  // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
+  const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
+  const anyModalOpen = otherModalOpen || showPopupNotice;
   const closeAllModals = () => {
+    if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -2087,7 +2098,7 @@ export default function Home() {
           {/* 관리자 공지 (홈 맨 위) */}
           {homeNotice && (
             <div className="flex items-center bg-amber-50 border-b border-amber-200">
-              <button onClick={() => { setNoticeOpenId(homeNotice.id); setShowNotices(true); }} className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 text-left">
+              <button onClick={() => { setNoticeAdminMode(false); setNoticeOpenId(homeNotice.id); setShowNotices(true); }} className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 text-left">
                 <span className="shrink-0 text-xs font-bold text-white bg-amber-600 rounded-full px-2 py-0.5"><Icon name="megaphone" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />공지</span>
                 <span className="text-sm font-bold text-stone-800 truncate">{homeNotice.title}</span>
               </button>
@@ -2486,6 +2497,11 @@ export default function Home() {
                     </button>
                   )}
                   {isAdmin && (
+                    <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-4 py-2 rounded-xl text-xs font-bold border border-violet-300 bg-violet-50 text-violet-900 shadow-sm hover:bg-violet-100 transition-colors inline-flex items-center gap-1.5">
+                      <Icon name="megaphone" className="w-4 h-4" />전체 공지
+                    </button>
+                  )}
+                  {isAdmin && (
                     <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5">
                       <Icon name="storefront" className="w-4 h-4" />광고 관리
                     </button>
@@ -2731,7 +2747,7 @@ export default function Home() {
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} baptismalName={myRealName || profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={openProfileEdit}
-          onOpenNotices={() => { setShowSettings(false); setNoticeOpenId(null); setShowNotices(true); }}
+          onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
@@ -2838,12 +2854,34 @@ export default function Home() {
         </div>
       )}
 
+      {/* 팝업 공지: 앱에 들어오면 한 번 뜸. 닫기 = 다음에 또, 다시 보지 않기 = 이 공지는 그만 */}
+      {showPopupNotice && popupNotice && (
+        <div className="fixed inset-0 z-[88] bg-black/55 flex items-center justify-center p-5 animate-fade-in" onClick={() => closePopup(popupNotice.id)}>
+          <div className="w-full max-w-sm max-h-[80dvh] bg-[#fdfaf5] rounded-3xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} role="dialog" aria-label="공지">
+            <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 border-b border-[#eadfcb]">
+              <IconBadge name="megaphone" tone="gold" />
+              <div className="min-w-0">
+                <p className="text-[0.75rem] font-bold text-amber-700">공지</p>
+                <h2 className="text-[1.0625rem] font-bold text-stone-900 leading-snug">{popupNotice.title}</h2>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
+              <p className="text-[1rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{popupNotice.content}</p>
+            </div>
+            <div className="flex border-t border-[#eadfcb]">
+              <button onClick={() => hideNotice(popupNotice.id)} className="flex-1 py-4 text-[0.9375rem] font-bold text-stone-500 border-r border-[#eadfcb]">다시 보지 않기</button>
+              <button onClick={() => closePopup(popupNotice.id)} className="flex-1 py-4 text-[0.9375rem] font-bold text-stone-900">닫기</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 공지사항 */}
       {showNotices && (
         <NoticeBoard
-          key={noticeOpenId || 'list'}
+          key={`${noticeOpenId || 'list'}-${noticeAdminMode}`}
           notices={notices}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin && noticeAdminMode}
           initialOpenId={noticeOpenId}
           hiddenIds={hiddenNotices}
           onHide={id => { hideNotice(id); setShowNotices(false); }}
