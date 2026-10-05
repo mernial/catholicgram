@@ -31,6 +31,9 @@ export async function POST(request: Request) {
     const { data: avatars } = await admin.storage.from('avatars').list('', { search: uid, limit: 100 });
     const avatarFiles = (avatars || []).map(f => f.name).filter(name => name.startsWith(uid));
     if (avatarFiles.length > 0) await admin.storage.from('avatars').remove(avatarFiles);
+    const { data: videos } = await admin.storage.from('post-videos').list(uid, { limit: 1000 });
+    const videoFiles = (videos || []).map(f => `${uid}/${f.name}`);
+    if (videoFiles.length > 0) await admin.storage.from('post-videos').remove(videoFiles);
   } catch { /* 파일 정리 실패는 무시 */ }
 
   // 작성한 데이터 삭제 (없는 테이블은 건너뜀)

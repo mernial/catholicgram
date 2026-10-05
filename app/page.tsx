@@ -22,6 +22,8 @@ import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
+import PostVideo from '@/components/PostVideo';
+import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, parsePostMusic } from '@/lib/music';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -60,6 +62,8 @@ interface Post {
   handle?: string;
   badge_type?: string;
   music?: string | null;        // 'yt:영상ID' 또는 'bgm:트랙ID' (lib/music.ts)
+  video_url?: string | null;    // 숏폼 영상 (1분 이하)
+  video_poster?: string | null; // 영상 미리보기 이미지
   music_title?: string | null;
 }
 
@@ -110,6 +114,11 @@ export default function Home() {
   const [content, setContent] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+  // 숏폼 영상 (사진 대신 1개)
+  const [selectedVideo, setSelectedVideo] = useState<Blob | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
+  const [videoStatus, setVideoStatus] = useState('');
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   
   const [openComments, setOpenComments] = useState<{ [key: string]: boolean }>({});
@@ -726,7 +735,7 @@ export default function Home() {
     e.preventDefault();
     if (!user) { setShowAuthModal(true); return; }
     if (needsProfileSetup) return;
-    if (!content.trim() && selectedFiles.length === 0) return;
+    if (!content.trim() && selectedFiles.length === 0 && !selectedVideo) return;
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
@@ -738,16 +747,47 @@ export default function Home() {
         uploadedUrls.push(publicUrl);
       }
     }
+    // 숏폼 영상: 미리보기 이미지 + 영상 올리기 (영상은 내 폴더에)
+    let videoFields: { video_url: string; video_poster: string | null } | null = null;
+    if (selectedVideo) {
+      setVideoStatus('영상 올리는 중...');
+      const poster = await makeVideoPoster(selectedVideo);
+      let posterUrl: string | null = null;
+      if (poster) {
+        const posterName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_poster.jpg`;
+        const { error: posterError } = await supabase.storage.from('community-images').upload(posterName, poster, { contentType: 'image/jpeg' });
+        if (!posterError) posterUrl = supabase.storage.from('community-images').getPublicUrl(posterName).data.publicUrl;
+      }
+      const ext = selectedVideo.type.includes('webm') ? 'webm' : selectedVideo.type.includes('quicktime') ? 'mov' : 'mp4';
+      const videoName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
+      const { error: videoError } = await supabase.storage.from('post-videos').upload(videoName, selectedVideo, { contentType: selectedVideo.type || 'video/mp4' });
+      setVideoStatus('');
+      if (videoError) {
+        alert(/bucket|not found/i.test(videoError.message)
+          ? '영상 기능을 준비 중이에요. (관리자: supabase/videos.sql 실행 필요)'
+          : /size|large|exceed/i.test(videoError.message)
+            ? `영상이 너무 커요. ${MAX_VIDEO_MB}MB 이하로 줄여서 올려주세요.`
+            : '영상을 올리지 못했어요. 잠시 후 다시 시도해주세요.');
+        setLoading(false);
+        return;
+      }
+      videoFields = { video_url: supabase.storage.from('post-videos').getPublicUrl(videoName).data.publicUrl, video_poster: posterUrl };
+    }
     const author = profile?.baptismal_name || '교우';
-    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author };
+    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}) };
     let { error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]);
     // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
     if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) {
       ({ error } = await supabase.from('posts').insert([row]));
       alert('글은 올렸지만 음악은 저장하지 못했어요.\n(관리자: Supabase에서 supabase/music.sql 을 실행해야 음악이 저장됩니다)');
     }
+    if (error && videoFields && (error.code === 'PGRST204' || error.code === '42703')) {
+      alert('영상 기능을 준비 중이에요. (관리자: supabase/videos.sql 실행 필요)');
+      setLoading(false);
+      return;
+    }
     if (!error) {
-      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null);
+      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
       if (fileInputRef.current) fileInputRef.current.value = '';
       fetchPosts(); goToHome();
     }
@@ -826,9 +866,43 @@ export default function Home() {
     else { audio.pause(); setBgmPlaying(false); }
   };
 
+  const clearVideo = () => {
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideo(null); setVideoPreviewUrl(null); setVideoStatus('');
+    if (videoInputRef.current) videoInputRef.current.value = '';
+  };
+
+  // 숏폼 영상 고르기: 1분 이하인지 확인하고, 너무 크면 화질을 줄여 본다
+  const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const info = await getVideoInfo(file).catch(() => null);
+    if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); return; }
+    if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`1분 이하의 영상만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); return; }
+    let video: Blob = file;
+    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+      setVideoStatus('영상 용량을 줄이는 중... 0%');
+      const shrunk = await shrinkVideo(file, r => setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`));
+      setVideoStatus('');
+      if (!shrunk || shrunk.size > MAX_VIDEO_MB * 1024 * 1024) {
+        alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n휴대폰 카메라 설정에서 화질을 낮추거나(예: 720p), 더 짧게 찍어서 올려주세요.`);
+        return;
+      }
+      video = shrunk;
+    }
+    // 영상은 사진·음악 대신 하나만
+    setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideo(video);
+    setVideoPreviewUrl(URL.createObjectURL(video));
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     const files = Array.from(e.target.files).slice(0, 3);
+    if (files.length > 0) clearVideo();
     setSelectedFiles(files); setPreviewUrls(files.map(f => URL.createObjectURL(f)));
   };
   const removeFile = (idx: number) => {
@@ -837,8 +911,11 @@ export default function Home() {
   };
   const handleDeletePost = async (postId: string) => {
     if (!window.confirm('정말로 삭제하시겠습니까?')) return;
+    const target = posts.find(p => p.id === postId);
     setPosts(posts.filter(p => p.id !== postId));
     await supabase.from('posts').delete().eq('id', postId);
+    const videoPath = target?.video_url?.split('/post-videos/')[1];
+    if (videoPath) await supabase.storage.from('post-videos').remove([decodeURIComponent(videoPath)]);
   };
   const handleUpdatePost = async (postId: string) => {
     setPosts(posts.map(p => p.id === postId ? { ...p, content: editContent } : p));
@@ -1591,6 +1668,14 @@ export default function Home() {
                   <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
                 </div>
               )}
+              {videoStatus && <p className="text-xs text-violet-700 font-bold">🎬 {videoStatus}</p>}
+              {videoPreviewUrl && (
+                <div className="relative w-32 rounded-xl overflow-hidden shadow-sm bg-black">
+                  <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full aspect-[4/5] object-cover" />
+                  <span className="absolute bottom-1 left-1 text-[0.6875rem] text-white bg-black/50 rounded px-1">🎬 숏폼</span>
+                  <button type="button" onClick={clearVideo} className="absolute top-1 right-1 bg-black/60 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">×</button>
+                </div>
+              )}
               {previewUrls.length > 0 && (
                 <div className="flex gap-2 pt-1">
                   {previewUrls.map((url, idx) => (
@@ -1606,16 +1691,24 @@ export default function Home() {
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                      📷 사진첩에서 선택
+                      📷 사진
                     </label>
                     {user && (
+                      <>
+                        <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
+                        <label htmlFor="video-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
+                          🎬 영상
+                        </label>
+                      </>
+                    )}
+                    {user && !selectedVideo && (
                       <button type="button" onClick={() => setShowMusicPicker(true)} className="text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
                         🎵 음악
                       </button>
                     )}
                   </div>
                 </div>
-                <button type="submit" disabled={loading || (!content.trim() && selectedFiles.length === 0)} className="bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-40">{loading ? '올리는 중...' : '나눔 올리기'}</button>
+                <button type="submit" disabled={loading || !!videoStatus || (!content.trim() && selectedFiles.length === 0 && !selectedVideo)} className="bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-40 whitespace-nowrap shrink-0">{loading ? (videoStatus || '올리는 중...') : '나눔 올리기'}</button>
               </div>
             </form>
           </section>
@@ -1630,7 +1723,10 @@ export default function Home() {
                 <Fragment key={post.id}>
                 <article id={`post-${post.id}`} className="bg-white flex flex-col gap-3 pb-4 sm:pb-5">
                   {/* 사진이 먼저, 크게 (여러 장이면 옆으로 넘김) — 사진을 누르면 작성자·음악과 함께 크게 보기 */}
-                  {post.images && post.images.length > 0 && (
+                  {post.video_url && (
+                    <PostVideo src={post.video_url} poster={post.video_poster} onOpen={() => openPostViewer(post)} />
+                  )}
+                  {!post.video_url && post.images && post.images.length > 0 && (
                     <PostPhotos
                       images={post.images}
                       onOpen={i => openPostViewer(post, i)}
@@ -1640,7 +1736,7 @@ export default function Home() {
                   )}
 
                   <div className="px-4 sm:px-5 flex flex-col gap-3">
-                    {!(post.images && post.images.length > 0) && <div className="pt-4 sm:pt-5" />}
+                    {!(post.images && post.images.length > 0) && !post.video_url && <div className="pt-4 sm:pt-5" />}
                     {editingPostId === post.id ? (
                       <div className="flex flex-col gap-2">
                         <textarea value={editContent} onChange={(e) => setEditContent(e.target.value)} className="w-full p-3 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none" rows={3} />
@@ -1862,7 +1958,12 @@ export default function Home() {
                   className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
                 >
                   {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">🎵</span>}
-                  {post.images && post.images.length > 0 ? (
+                  {post.video_url && <span className="absolute bottom-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">▶</span>}
+                  {post.video_url ? (
+                    post.video_poster
+                      ? <img src={post.video_poster} alt="영상" className="w-full h-full object-cover" />
+                      : <video src={`${post.video_url}#t=0.5`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                  ) : post.images && post.images.length > 0 ? (
                     <img src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full p-2 text-[0.75rem] text-stone-600 flex items-center justify-center text-center">{post.content}</div>
@@ -1878,7 +1979,7 @@ export default function Home() {
       {activeTab === 'explore' && (
         <ExploreTab
           user={user}
-          posts={posts}
+          posts={posts.map(p => p.video_url && !(p.images && p.images.length) ? { ...p, images: p.video_poster ? [p.video_poster] : [], is_video: true } : p)}
           blockedIds={blockedIds}
           initialQuery={exploreQuery}
           onOpenProfile={goToProfile}
@@ -2422,7 +2523,10 @@ export default function Home() {
             </div>
             
             <div className="overflow-y-auto flex-1 flex flex-col">
-              {selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
+              {selectedPostDetail.video_url && (
+                <video src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster || undefined} controls autoPlay loop playsInline className="w-full max-h-[60dvh] bg-black" />
+              )}
+              {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
                 <div className="w-full bg-black flex items-center justify-center relative">
                   <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" className="max-h-[50dvh] object-contain w-full" />
                   {selectedPostDetail.images.length > 1 && (
