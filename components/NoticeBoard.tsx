@@ -4,9 +4,9 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 
-export interface Notice { id: string; title: string; content: string; pinned: boolean; pushed_at: string | null; created_at: string }
+export interface Notice { id: string; title: string; content: string; pinned: boolean; popup?: boolean; pushed_at: string | null; created_at: string }
 
-// 공지사항: 모두 읽기, 관리자는 쓰기·고치기·지우기·홈 고정·휴대폰 알림 보내기
+// 공지사항: 모두 읽기. 관리자 공간에서 열면(isAdmin) 쓰기·고치기·지우기·홈 고정·팝업·휴대폰 알림 보내기
 export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds = [], onHide, onClose, onChanged }: {
   notices: Notice[];
   isAdmin: boolean;
@@ -21,6 +21,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [pinned, setPinned] = useState(true);
+  const [popup, setPopup] = useState(true);
   const [sendPush, setSendPush] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -29,6 +30,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
     setTitle(n?.title || '');
     setContent(n?.content || '');
     setPinned(n ? n.pinned : true);
+    setPopup(n ? !!n.popup : true);
     setSendPush(!n);
   };
 
@@ -48,7 +50,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
   const save = async () => {
     if (!title.trim() || !content.trim()) return;
     setSaving(true);
-    const row = { title: title.trim().slice(0, 60), content: content.trim().slice(0, 2000), pinned };
+    const row = { title: title.trim().slice(0, 60), content: content.trim().slice(0, 2000), pinned, popup };
     const { data, error } = editing === 'new'
       ? await supabase.from('announcements').insert(row).select('id').single()
       : await supabase.from('announcements').update(row).eq('id', (editing as Notice).id).select('id').single();
@@ -56,7 +58,9 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
     if (error || !data) {
       alert(error?.code === '42P01' || error?.code === 'PGRST205'
         ? '공지 기능을 준비 중이에요. (supabase/announcements.sql 실행 필요)'
-        : '공지를 저장하지 못했어요.');
+        : error?.code === '42703' || error?.code === 'PGRST204'
+          ? '팝업 공지 기능을 준비 중이에요. (supabase/announcement-popup.sql 실행 필요)'
+          : '공지를 저장하지 못했어요.');
       return;
     }
     setEditing(null);
@@ -68,6 +72,12 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
     if (!window.confirm(`'${n.title}' 공지를 지울까요?`)) return;
     await supabase.from('announcements').delete().eq('id', n.id);
     setOpenId(null);
+    onChanged();
+  };
+
+  const togglePopup = async (n: Notice) => {
+    const { error } = await supabase.from('announcements').update({ popup: !n.popup }).eq('id', n.id);
+    if (error) { alert('팝업 공지 기능을 준비 중이에요. (supabase/announcement-popup.sql 실행 필요)'); return; }
     onChanged();
   };
 
@@ -92,6 +102,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
             <input value={title} onChange={e => setTitle(e.target.value.slice(0, 60))} placeholder="공지 제목 (예: 10월 성지순례 안내)" className="w-full px-3.5 py-3 text-sm font-bold border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
             <textarea value={content} onChange={e => setContent(e.target.value.slice(0, 2000))} rows={10} placeholder="공지 내용" className="w-full p-3.5 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
             <p className="text-right text-xs text-stone-400 -mt-2">{content.length}/2000</p>
+            <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={popup} onChange={e => setPopup(e.target.checked)} className="w-5 h-5" /> <span>앱에 들어오면 팝업으로 띄우기 <span className="text-xs text-stone-400">(다시 보지 않기 전까지)</span></span></label>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="w-5 h-5" /> 홈 화면 맨 위에 보이기</label>
             {(editing === 'new' || !(editing as Notice).pushed_at) && (
               <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={sendPush} onChange={e => setSendPush(e.target.checked)} className="w-5 h-5"  /> <Icon name="bell" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모든 회원에게 휴대폰 알림 보내기</label>
@@ -107,15 +118,17 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
             {notices.map(n => openId === n.id ? (
               <div key={n.id} className="p-4 flex flex-col gap-2 bg-amber-50/40">
                 <button onClick={() => setOpenId(null)} className="self-start text-xs text-stone-400">▲ 접기</button>
+                {isAdmin && n.popup && <span className="self-start text-[0.75rem] font-bold text-violet-800 bg-violet-50 rounded-full px-2 py-0.5">팝업 공지</span>}
                 <p className="font-bold text-stone-900 text-base">{n.pinned && <Icon name="pin" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />}{n.title}</p>
                 <p className="text-xs text-stone-400">{new Date(n.created_at).toLocaleString('ko-KR')}</p>
                 <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{n.content}</p>
-                {n.pinned && onHide && !hiddenIds.includes(n.id) && (
+                {(n.pinned || n.popup) && onHide && !hiddenIds.includes(n.id) && (
                   <button onClick={() => onHide(n.id)} className="self-start mt-2 text-sm px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold"><Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인했어요 · 다시 안 보기</button>
                 )}
                 {isAdmin && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <button onClick={() => startWrite(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">고치기</button>
+                    <button onClick={() => togglePopup(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">{n.popup ? '팝업 끄기' : '팝업으로 띄우기'}</button>
                     <button onClick={() => togglePin(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">{n.pinned ? '홈에서 내리기' : '홈에 올리기'}</button>
                     {!n.pushed_at && <button onClick={() => pushNotice(n.id)} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold"><Icon name="bell" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />알림 보내기</button>}
                     <button onClick={() => remove(n)} className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600">지우기</button>
