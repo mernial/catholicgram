@@ -1147,21 +1147,32 @@ export default function Home() {
     }
   };
   // 내 댓글 수정 / 삭제 (관리자는 삭제 가능)
+  const callCommentApi = async (body: object) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: '로그인이 필요합니다.' };
+    const res = await fetch('/api/comments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    if (!res) return { error: '네트워크 오류가 발생했어요.' };
+    const json = await res.json().catch(() => ({}));
+    return res.ok ? json : { error: json.error || '처리하지 못했어요.' };
+  };
+
   const saveCommentEdit = async (c: Comment) => {
     const text = editCommentText.trim();
     if (!text) return;
-    const editedAt = new Date().toISOString();
-    let { data, error } = await supabase.from('comments').update({ content: text, edited_at: editedAt }).eq('id', c.id).select('id');
-    if (error && (error.code === 'PGRST204' || error.code === '42703')) ({ data, error } = await supabase.from('comments').update({ content: text }).eq('id', c.id).select('id'));
-    if (error || !data || data.length === 0) { alert('댓글을 수정하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
-    setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).map(x => x.id === c.id ? { ...x, content: text, edited_at: editedAt } : x) }));
+    const result = await callCommentApi({ action: 'edit', id: c.id, content: text });
+    if (result.error) { alert(result.error); return; }
+    setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).map(x => x.id === c.id ? { ...x, content: result.content, edited_at: result.edited_at } : x) }));
     setEditingCommentId(null);
   };
 
   const deleteComment = async (c: Comment) => {
     if (!window.confirm('이 댓글을 삭제할까요?')) return;
-    const { data, error } = await supabase.from('comments').delete().eq('id', c.id).select('id');
-    if (error || !data || data.length === 0) { alert('댓글을 삭제하지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
+    const result = await callCommentApi({ action: 'delete', id: c.id });
+    if (result.error) { alert(result.error); return; }
     setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).filter(x => x.id !== c.id) }));
   };
 
