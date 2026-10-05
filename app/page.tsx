@@ -220,6 +220,15 @@ export default function Home() {
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all'); // 홈 피드: 전체 / 사진·영상 / 글
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
+  const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
+  useEffect(() => {
+    const isField = (t: EventTarget | null) => t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+    const onIn = (e: FocusEvent) => { if (isField(e.target)) setTyping(true); };
+    const onOut = (e: FocusEvent) => { if (isField(e.target)) setTyping(false); };
+    document.addEventListener('focusin', onIn);
+    document.addEventListener('focusout', onOut);
+    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut); };
+  }, []);
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
   const [editContent, setEditContent] = useState('');
 
@@ -1904,7 +1913,7 @@ export default function Home() {
           )}
 
           {/* 글쓰기 + 버튼 */}
-          {!showComposer && (
+          {!showComposer && !typing && (
             <button
               onClick={() => { if (requireProfile()) setShowComposer(true); }}
               className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] right-[max(1rem,calc(50vw-18rem+1rem))] w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
@@ -2010,21 +2019,21 @@ export default function Home() {
                         const liked = myPostReactions.has(`${post.id}:like`);
                         return (
                           <>
-                            {/* 누르면 손·하트까지 색이 꽉 채워짐 */}
-                            <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-800 font-bold' : 'text-stone-600'}`}>
-                              <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-600' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-5 h-5" /></span>
-                              기도{post.pray_count > 0 && ` ${post.pray_count}`}
+                            {/* 글자 없이 그림만. 누르면 손·하트가 진한 색으로 꽉 채워짐 */}
+                            <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} aria-label={`기도 ${post.pray_count || 0}`} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-900 font-bold' : 'text-stone-600'}`}>
+                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-[1.375rem] h-[1.375rem]" /></span>
+                              {post.pray_count > 0 && post.pray_count}
                             </button>
-                            <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
-                              <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-500' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-5 h-5" /></span>
-                              공감{post.like_count > 0 && ` ${post.like_count}`}
+                            <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} aria-label={`공감 ${post.like_count || 0}`} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
+                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-600' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-[1.375rem] h-[1.375rem]" /></span>
+                              {post.like_count > 0 && post.like_count}
                             </button>
                           </>
                         );
                       })()}
-                      <button onClick={() => toggleCommentBox(post.id)} className="flex items-center gap-1.5 text-stone-600">
-                        <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-5 h-5" /></span>
-                        댓글{commentCounts[post.id] ? ` ${commentCounts[post.id]}` : ''}
+                      <button onClick={() => toggleCommentBox(post.id)} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
+                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
+                        {commentCounts[post.id] ? commentCounts[post.id] : null}
                       </button>
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
