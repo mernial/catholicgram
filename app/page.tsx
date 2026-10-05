@@ -1112,13 +1112,25 @@ export default function Home() {
     setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
     setPreviewUrls(previewUrls.filter((_, i) => i !== idx));
   };
+  // 글 고치기·지우기는 서버(/api/posts)에서 본인 확인 후 처리
+  const callPostApi = async (body: object): Promise<{ error?: string; ok?: boolean }> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return { error: '로그인이 필요합니다.' };
+    const res = await fetch('/api/posts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(body),
+    }).catch(() => null);
+    if (!res) return { error: '인터넷 연결을 확인해 주세요.' };
+    const json = await res.json().catch(() => ({}));
+    return res.ok ? json : { error: json.error || '처리하지 못했어요.' };
+  };
   const handleDeletePost = async (postId: string) => {
-    if (!window.confirm('정말로 삭제하시겠습니까?')) return;
-    const target = posts.find(p => p.id === postId);
-    setPosts(posts.filter(p => p.id !== postId));
-    await supabase.from('posts').delete().eq('id', postId);
-    const videoPath = target?.video_url?.split('/post-videos/')[1];
-    if (videoPath) await supabase.storage.from('post-videos').remove([decodeURIComponent(videoPath)]);
+    if (!window.confirm('이 글을 지울까요?\n사진·영상과 댓글도 함께 지워지고 되돌릴 수 없어요.')) return;
+    const result = await callPostApi({ action: 'delete', id: postId });
+    if (result.error) { alert(result.error); return; }
+    setPosts(prev => prev.filter(p => p.id !== postId));
+    setSelectedPostDetail(prev => prev?.id === postId ? null : prev);
   };
   const startEditPost = (post: Post) => {
     setEditingPostId(post.id);
@@ -1128,8 +1140,8 @@ export default function Home() {
   };
   // 공개 범위만 바로 바꾸기 (크게 보기·내 공간에서)
   const changePostVisibility = async (postId: string, visibility: Visibility) => {
-    const { error } = await supabase.from('posts').update({ visibility }).eq('id', postId);
-    if (error) { alert(/visibility/.test(error.message) ? VISIBILITY_SQL_HINT : '공개 범위를 바꾸지 못했어요.'); return; }
+    const result = await callPostApi({ action: 'update', id: postId, changes: { visibility } });
+    if (result.error) { alert(result.error); return; }
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, visibility } : p));
     setSelectedPostDetail(prev => prev && prev.id === postId ? { ...prev, visibility } : prev);
   };
@@ -1140,9 +1152,9 @@ export default function Home() {
     if (target.video_url) changes.video_overlays = hasOverlays(editOverlays) ? editOverlays : null;
     if (editVisibility !== (target.visibility || 'public')) changes.visibility = editVisibility;
     setSavingEdit(true);
-    const { error } = await supabase.from('posts').update(changes).eq('id', postId);
+    const result = await callPostApi({ action: 'update', id: postId, changes });
     setSavingEdit(false);
-    if (error) { alert(/visibility/.test(error.message) ? VISIBILITY_SQL_HINT : `고치지 못했어요. 잠시 후 다시 해 주세요.\n(${error.message})`); return; }
+    if (result.error) { alert(result.error); return; }
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...changes } : p));
     setEditingPostId(null);
   };
@@ -2274,7 +2286,7 @@ export default function Home() {
                         {post.visibility && post.visibility !== 'public' && <span className="text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5">{VISIBILITY[post.visibility].icon} {VISIBILITY[post.visibility].label}</span>}
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
-                          <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="px-1.5 text-base leading-none text-stone-400 hover:text-stone-700" aria-label="더보기">⋯</button>
+                          <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-lg leading-none text-stone-500 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">⋯</button>
                         )}
                       </span>
                     </div>
@@ -3276,7 +3288,13 @@ export default function Home() {
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
                 {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
                 {user?.id === selectedPostDetail.user_id && (
-                  <div className="mb-1"><VisibilityPicker value={selectedPostDetail.visibility || 'public'} onChange={v => changePostVisibility(selectedPostDetail.id, v)} /></div>
+                  <div className="mb-1 flex flex-col gap-2">
+                    <VisibilityPicker value={selectedPostDetail.visibility || 'public'} onChange={v => changePostVisibility(selectedPostDetail.id, v)} />
+                    <div className="flex gap-1.5">
+                      <button onClick={() => { const p = posts.find(x => x.id === selectedPostDetail.id) || selectedPostDetail; setSelectedPostDetail(null); startEditPost(p); }} className="flex-1 py-2 rounded-xl border border-stone-300 text-[0.8125rem] font-bold text-stone-700">✏️ 글 고치기</button>
+                      <button onClick={() => handleDeletePost(selectedPostDetail.id)} className="flex-1 py-2 rounded-xl border border-red-200 text-[0.8125rem] font-bold text-red-600">🗑 지우기</button>
+                    </div>
+                  </div>
                 )}
                 {/* 글은 처음엔 두 줄만, 누르면 전체 */}
                 <ClampText
