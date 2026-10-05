@@ -18,3 +18,6 @@ with check (bucket_id = 'post-videos' and (storage.foldername(name))[1] = auth.u
 drop policy if exists "post videos delete own or admin" on storage.objects;
 create policy "post videos delete own or admin" on storage.objects for delete to authenticated
 using (bucket_id = 'post-videos' and ((storage.foldername(name))[1] = auth.uid()::text or (auth.jwt() ->> 'email') = 'yunho-jo@casuwon.or.kr'));
+
+-- 영상 꾸미기: 영상 위 글자·이모티콘 위치 정보, 원래 소리 끄기
+alter table public.posts add column if not exists video_overlays jsonb;

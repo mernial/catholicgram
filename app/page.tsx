@@ -22,7 +22,8 @@ import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
-import PostVideo from '@/components/PostVideo';
+import PostVideo, { VideoViewer } from '@/components/PostVideo';
+import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, parsePostMusic } from '@/lib/music';
 import SponsorBanner from '@/components/SponsorBanner';
@@ -64,6 +65,7 @@ interface Post {
   music?: string | null;        // 'yt:영상ID' 또는 'bgm:트랙ID' (lib/music.ts)
   video_url?: string | null;    // 숏폼 영상 (1분 이하)
   video_poster?: string | null; // 영상 미리보기 이미지
+  video_overlays?: VideoOverlays | null; // 영상 위 글자·이모티콘
   music_title?: string | null;
 }
 
@@ -119,6 +121,8 @@ export default function Home() {
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   const [videoStatus, setVideoStatus] = useState('');
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const [composerOverlays, setComposerOverlays] = useState<VideoOverlays | null>(null);
+  const [showVideoEditor, setShowVideoEditor] = useState(false);
   const [loading, setLoading] = useState(false);
   
   const [openComments, setOpenComments] = useState<{ [key: string]: boolean }>({});
@@ -748,7 +752,7 @@ export default function Home() {
       }
     }
     // 숏폼 영상: 미리보기 이미지 + 영상 올리기 (영상은 내 폴더에)
-    let videoFields: { video_url: string; video_poster: string | null } | null = null;
+    let videoFields: { video_url: string; video_poster: string | null; video_overlays?: VideoOverlays | null } | null = null;
     if (selectedVideo) {
       setVideoStatus('영상 올리는 중...');
       const poster = await makeVideoPoster(selectedVideo);
@@ -771,7 +775,11 @@ export default function Home() {
         setLoading(false);
         return;
       }
-      videoFields = { video_url: supabase.storage.from('post-videos').getPublicUrl(videoName).data.publicUrl, video_poster: posterUrl };
+      videoFields = {
+        video_url: supabase.storage.from('post-videos').getPublicUrl(videoName).data.publicUrl,
+        video_poster: posterUrl,
+        ...(hasOverlays(composerOverlays) ? { video_overlays: composerOverlays } : {}),
+      };
     }
     const author = profile?.baptismal_name || '교우';
     const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}) };
@@ -868,7 +876,7 @@ export default function Home() {
 
   const clearVideo = () => {
     if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-    setSelectedVideo(null); setVideoPreviewUrl(null); setVideoStatus('');
+    setSelectedVideo(null); setVideoPreviewUrl(null); setVideoStatus(''); setComposerOverlays(null); setShowVideoEditor(false);
     if (videoInputRef.current) videoInputRef.current.value = '';
   };
 
@@ -891,12 +899,14 @@ export default function Home() {
       }
       video = shrunk;
     }
-    // 영상은 사진·음악 대신 하나만
-    setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null);
+    // 영상은 사진 대신 하나만 (배경음악은 함께 넣을 수 있음)
+    setSelectedFiles([]); setPreviewUrls([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
     setSelectedVideo(video);
     setVideoPreviewUrl(URL.createObjectURL(video));
+    setComposerOverlays(null);
+    setShowVideoEditor(true); // 고르자마자 꾸미기 화면
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1484,12 +1494,12 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const anyModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor);
   const closeAllModals = () => {
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -1670,10 +1680,14 @@ export default function Home() {
               )}
               {videoStatus && <p className="text-xs text-violet-700 font-bold">🎬 {videoStatus}</p>}
               {videoPreviewUrl && (
-                <div className="relative w-32 rounded-xl overflow-hidden shadow-sm bg-black">
+                <div className="flex items-end gap-2">
+                <div className="relative w-32 rounded-xl overflow-hidden shadow-sm bg-black [container-type:inline-size]">
                   <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full aspect-[4/5] object-cover" />
+                  <OverlayLayer overlays={composerOverlays} />
                   <span className="absolute bottom-1 left-1 text-[0.6875rem] text-white bg-black/50 rounded px-1">🎬 숏폼</span>
                   <button type="button" onClick={clearVideo} className="absolute top-1 right-1 bg-black/60 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">×</button>
+                </div>
+                <button type="button" onClick={() => setShowVideoEditor(true)} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100">✨ 꾸미기</button>
                 </div>
               )}
               {previewUrls.length > 0 && (
@@ -1701,7 +1715,7 @@ export default function Home() {
                         </label>
                       </>
                     )}
-                    {user && !selectedVideo && (
+                    {user && (
                       <button type="button" onClick={() => setShowMusicPicker(true)} className="text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
                         🎵 음악
                       </button>
@@ -1724,7 +1738,14 @@ export default function Home() {
                 <article id={`post-${post.id}`} className="bg-white flex flex-col gap-3 pb-4 sm:pb-5">
                   {/* 사진이 먼저, 크게 (여러 장이면 옆으로 넘김) — 사진을 누르면 작성자·음악과 함께 크게 보기 */}
                   {post.video_url && (
-                    <PostVideo src={post.video_url} poster={post.video_poster} onOpen={() => openPostViewer(post)} />
+                    <PostVideo
+                      src={post.video_url}
+                      poster={post.video_poster}
+                      overlays={post.video_overlays}
+                      hasMusic={!!parsePostMusic(post.music)}
+                      musicTitle={post.music_title}
+                      onOpen={() => openPostViewer(post)}
+                    />
                   )}
                   {!post.video_url && post.images && post.images.length > 0 && (
                     <PostPhotos
@@ -2227,6 +2248,19 @@ export default function Home() {
         </div>
       )}
 
+      {/* 숏폼 영상 꾸미기 */}
+      {showVideoEditor && videoPreviewUrl && (
+        <VideoEditor
+          src={videoPreviewUrl}
+          initial={composerOverlays}
+          musicTitle={composerMusic?.title}
+          onOpenMusic={() => setShowMusicPicker(true)}
+          onRemoveMusic={() => setComposerMusic(null)}
+          onDone={o => { setComposerOverlays(o); setShowVideoEditor(false); }}
+          onCancel={() => setShowVideoEditor(false)}
+        />
+      )}
+
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
         <MusicPicker tracks={bgmTracks} onClose={() => setShowMusicPicker(false)} onSelect={m => { setComposerMusic(m); setShowMusicPicker(false); }} />
@@ -2524,7 +2558,7 @@ export default function Home() {
             
             <div className="overflow-y-auto flex-1 flex flex-col">
               {selectedPostDetail.video_url && (
-                <video src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster || undefined} controls autoPlay loop playsInline className="w-full max-h-[60dvh] bg-black" />
+                <div className="bg-black"><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} /></div>
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
                 <div className="w-full bg-black flex items-center justify-center relative">
