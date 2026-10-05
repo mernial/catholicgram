@@ -1807,12 +1807,15 @@ export default function Home() {
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
+  const mainScrollRef = useRef<HTMLElement>(null); // 앱 화면의 스크롤 영역
+  const scrollToTop = () => mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+
   // 홈·탐색을 한 번 더 누르면(두 번 누르면) 맨 위로 올라가며 새로 고침
   const [refreshState, setRefreshState] = useState<'' | 'loading' | 'done'>('');
   const lastTabTap = useRef<{ tab: string; at: number }>({ tab: '', at: 0 });
   const refreshFeed = async () => {
     if (refreshState === 'loading') return;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    scrollToTop();
     setRefreshState('loading');
     await Promise.all([fetchPosts(), fetchIntentions(), fetchNotices()]).catch(() => {});
     setRefreshState('done');
@@ -1826,13 +1829,15 @@ export default function Home() {
     if (again) refreshFeed();
   };
 
-  // 아래로 많이 내려가면 + 버튼 바로 위에 '맨 위로' 버튼
+  // 아래로 많이 내려가면 + 버튼 바로 위에 '맨 위로' 버튼 (앱 안쪽 스크롤 기준)
   const [showToTop, setShowToTop] = useState(false);
   useEffect(() => {
-    const onScroll = () => setShowToTop(window.scrollY > 900);
+    const el = mainScrollRef.current;
+    if (!el) return;
+    const onScroll = () => setShowToTop(el.scrollTop > 900);
     onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
   // 다른 탭으로 가면 + 메뉴 접기
@@ -1956,7 +1961,11 @@ export default function Home() {
   );
 
   return (
-    <main className={`w-full max-w-xl mx-auto sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
+    <main
+      ref={mainScrollRef}
+      // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
+      className={`w-full max-w-xl mx-auto h-[100dvh] sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
+    >
       
       {/* 헤더 */}
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-3 sm:px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between gap-2 z-20">
@@ -3395,7 +3404,7 @@ export default function Home() {
                     if (item.key === 'write') { if (requireProfile()) { if (activeTab !== 'home') goToHome(); setShowComposer(true); } return; }
                     setFeedFilter(item.key); storageSet('feedFilter2', item.key);
                     if (activeTab !== 'home') goToHome();
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                    scrollToTop();
                   }}
                   style={{ animationDelay: `${(arr.length - 1 - i) * 45}ms` }}
                   className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabIn_0.28s_ease-out_both]"
@@ -3436,7 +3445,7 @@ export default function Home() {
       {/* 맨 위로: 하단 가운데 + 버튼 바로 위 */}
       {showToTop && !fabOpen && activeTab !== 'chat' && (
         <button
-          onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+          onClick={() => scrollToTop()}
           className="fixed z-[38] left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex items-center gap-1 pl-3 pr-4 py-2 rounded-full bg-white/95 backdrop-blur border border-stone-200 shadow-lg text-sm font-bold text-stone-700 animate-fade-in"
           aria-label="맨 위로"
         >

@@ -265,9 +265,9 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       {items.map(({ post, followed }) => (
         <button key={post.id} onClick={() => openPost(post)} className="relative aspect-square overflow-hidden bg-white text-left">
           {post.images?.[0] ? (
-            <img src={post.images[0]} alt="" className="w-full h-full object-cover" loading="lazy" />
+            <img src={post.images[0]} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
           ) : (
-            <div className="w-full h-full p-2.5 bg-gradient-to-br from-stone-50 to-stone-100 flex">
+            <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-stone-50 to-stone-100 flex">
               <p className="text-[0.8125rem] text-stone-700 leading-snug line-clamp-5 break-words"><HashtagText text={post.content} /></p>
             </div>
           )}
