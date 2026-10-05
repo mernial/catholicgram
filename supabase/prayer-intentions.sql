@@ -29,3 +29,9 @@ using (user_id = auth.uid()) with check (user_id = auth.uid());
 drop policy if exists "intentions delete own or admin" on public.prayer_intentions;
 create policy "intentions delete own or admin" on public.prayer_intentions for delete to authenticated
 using (user_id = auth.uid() or (auth.jwt() ->> 'email') = 'yunho-jo@casuwon.or.kr');
+
+-- 기도지향(짧은 제목, 30자) — 홈 맨 위에 흐르는 글. content 는 기도 내용(100자)
+alter table public.prayer_intentions add column if not exists title text;
+alter table public.prayer_intentions drop constraint if exists prayer_intentions_title_len;
+alter table public.prayer_intentions add constraint prayer_intentions_title_len
+  check (title is null or char_length(title) between 1 and 30);

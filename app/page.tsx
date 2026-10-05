@@ -158,9 +158,11 @@ export default function Home() {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
   // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
-  const [intentions, setIntentions] = useState<{ id: string; user_id: string; author_name: string | null; content: string; created_at: string }[]>([]);
+  const [intentions, setIntentions] = useState<{ id: string; user_id: string; author_name: string | null; title?: string | null; content: string; created_at: string }[]>([]);
   const [showIntentions, setShowIntentions] = useState(false);
-  const [intentionInput, setIntentionInput] = useState('');
+  const [intentionTitleInput, setIntentionTitleInput] = useState(''); // 기도지향 (30자)
+  const [intentionInput, setIntentionInput] = useState('');            // 기도 내용 (100자)
+  const [intentionEditing, setIntentionEditing] = useState(false);
   const [intentionSaving, setIntentionSaving] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
@@ -750,9 +752,12 @@ export default function Home() {
   };
 
   const fetchIntentions = async () => {
-    const { data } = await supabase.from('prayer_intentions').select('id, user_id, author_name, content, created_at')
+    const query = (cols: string) => supabase.from('prayer_intentions').select(cols)
       .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
-    setIntentions(data || []);
+    let { data, error } = await query('id, user_id, author_name, title, content, created_at');
+    // title 칼럼이 아직 없으면(SQL 실행 전) 예전 칼럼만
+    if (error) ({ data } = await query('id, user_id, author_name, content, created_at'));
+    setIntentions((data || []) as unknown as typeof intentions);
   };
 
   const myIntention = user ? intentions.find(i => i.user_id === user.id) : undefined;
@@ -760,13 +765,16 @@ export default function Home() {
 
   const saveIntention = async () => {
     if (!user) { setShowAuthModal(true); return; }
+    const title = intentionTitleInput.trim().slice(0, 30);
     const content = intentionInput.trim().slice(0, 100);
-    if (!content) return;
+    if (!title || !content) return;
     setIntentionSaving(true);
-    const { error } = await supabase.from('prayer_intentions').upsert(
-      { user_id: user.id, author_name: profile?.baptismal_name || '교우', content, prayer_date: todayKst() },
-      { onConflict: 'user_id,prayer_date' },
-    );
+    const row = { user_id: user.id, author_name: profile?.baptismal_name || '교우', prayer_date: todayKst() };
+    let { error } = await supabase.from('prayer_intentions').upsert({ ...row, title, content }, { onConflict: 'user_id,prayer_date' });
+    // title 칼럼이 없으면 내용 앞에 기도지향을 붙여 저장
+    if (error?.code === 'PGRST204' || error?.code === '42703') {
+      ({ error } = await supabase.from('prayer_intentions').upsert({ ...row, content: `${title} — ${content}`.slice(0, 100) }, { onConflict: 'user_id,prayer_date' }));
+    }
     setIntentionSaving(false);
     if (error) {
       alert(error.code === '42P01' || error.code === 'PGRST205'
@@ -775,6 +783,8 @@ export default function Home() {
       return;
     }
     setIntentionInput('');
+    setIntentionTitleInput('');
+    setIntentionEditing(false);
     fetchIntentions();
   };
 
@@ -1487,12 +1497,12 @@ export default function Home() {
             <button onClick={() => setShowIntentions(true)} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
               <span className="shrink-0 pl-3 pr-2 py-2 text-xs font-bold bg-[#101a3f] z-10 shadow-[6px_0_8px_-4px_#101a3f]">🙏 오늘의 기도</span>
               <span className="flex-1 overflow-hidden whitespace-nowrap py-2">
-                <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + i.content.length, 0) * 0.35)}s` }}>
+                <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + (i.title || i.content).length + (i.author_name || '').length, 0) * 0.4)}s` }}>
                   {[0, 1].map(copy => (
                     <span key={copy} className="pr-8">
                       {visibleIntentions.map(i => (
                         <span key={`${copy}-${i.id}`} className="mr-8 text-[0.875rem]">
-                          <b className="text-white">{i.author_name || '교우'}</b> · {i.content}
+                          <b className="text-white">{i.author_name || '교우'}</b> · {i.title || i.content}
                         </span>
                       ))}
                     </span>
@@ -1839,30 +1849,48 @@ export default function Home() {
               </div>
               {myIntention ? (
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">{myIntention.content}</p>
+                  <div className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">
+                    {myIntention.title && <p className="font-bold text-[#fbe7b0] mb-1">{myIntention.title}</p>}
+                    <p>{myIntention.content}</p>
+                  </div>
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => setIntentionInput(myIntention.content)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
+                    <button onClick={() => { setIntentionTitleInput(myIntention.title || ''); setIntentionInput(myIntention.content); setIntentionEditing(true); }} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
                     <button onClick={() => deleteIntention(myIntention.id)} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">내리기</button>
                   </div>
                 </div>
               ) : (
                 <p className="text-xs text-white/70 mb-2">오늘 하루 동안 홈 맨 위에 흘러가며 교우들이 함께 기도해요. (자정에 새로 시작)</p>
               )}
-              {(!myIntention || intentionInput) && (
+              {(!myIntention || intentionEditing) && (
                 <div className="flex flex-col gap-2 mt-2">
+                  <label className="text-xs font-bold text-[#fbe7b0]">기도지향 <span className="font-normal text-white/60">(30자 · 홈 맨 위에 흘러가요)</span></label>
+                  <div className="relative">
+                    <input
+                      value={intentionTitleInput}
+                      onChange={e => setIntentionTitleInput(e.target.value.slice(0, 30))}
+                      maxLength={30}
+                      placeholder="예: 어머니의 쾌유를 위하여"
+                      className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{intentionTitleInput.length}/30</span>
+                  </div>
+                  <label className="text-xs font-bold text-[#fbe7b0] mt-1">기도 내용 <span className="font-normal text-white/60">(100자 · 누르면 보여요)</span></label>
                   <textarea
                     value={intentionInput}
                     onChange={e => setIntentionInput(e.target.value.slice(0, 100))}
-                    rows={2}
+                    rows={3}
                     maxLength={100}
-                    placeholder="예: 수술을 앞둔 어머니의 쾌유를 위하여"
+                    placeholder="예: 다음 주 수술을 앞둔 어머니께서 두려움 없이 잘 회복하시도록 함께 기도해주세요."
                     className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                   />
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-white/60">{intentionInput.length}/100</span>
-                    <button onClick={saveIntention} disabled={!intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
+                    <span className="flex gap-2">
+                    {myIntention && <button onClick={() => setIntentionEditing(false)} className="text-sm px-3 py-2 rounded-xl border border-white/30">취소</button>}
+                    <button onClick={saveIntention} disabled={!intentionTitleInput.trim() || !intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
                       {intentionSaving ? '올리는 중...' : myIntention ? '고쳐서 올리기' : '기도지향 올리기'}
                     </button>
+                    </span>
                   </div>
                 </div>
               )}
@@ -2079,7 +2107,8 @@ export default function Home() {
                       {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-[0.75rem] text-red-500">삭제</button>}
                     </span>
                   </div>
-                  <p className="text-[0.9375rem] text-stone-800 leading-relaxed">🙏 {i.content}</p>
+                  {i.title && <p className="text-[0.9375rem] font-bold text-[#1f2f66]">🙏 {i.title}</p>}
+                  <p className={`text-[0.9375rem] text-stone-800 leading-relaxed ${i.title ? 'bg-stone-50 rounded-xl px-3 py-2' : ''}`}>{i.title ? i.content : `🙏 ${i.content}`}</p>
                 </div>
               ))}
             </div>
