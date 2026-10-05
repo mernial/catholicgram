@@ -35,7 +35,7 @@ import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
 import FeastDayPicker from '@/components/FeastDayPicker';
-import Icon from '@/components/Icon';
+import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
 import { startVisitTracking } from '@/lib/visit';
@@ -125,10 +125,10 @@ const MAX_PHOTOS = 5; // 한 글에 올릴 수 있는 사진 수
 
 // 글 공개 범위
 type Visibility = 'public' | 'followers' | 'private';
-const VISIBILITY: Record<Visibility, { icon: string; label: string; hint: string }> = {
-  public: { icon: '🌍', label: '전체 공개', hint: '모든 교우가 볼 수 있어요' },
-  followers: { icon: '👥', label: '팔로워만', hint: '나를 팔로우하는 교우만 볼 수 있어요' },
-  private: { icon: '🔒', label: '나만 보기', hint: '나만 볼 수 있어요' },
+const VISIBILITY: Record<Visibility, { icon: IconName; label: string; hint: string }> = {
+  public: { icon: 'globe', label: '전체 공개', hint: '모든 교우가 볼 수 있어요' },
+  followers: { icon: 'users', label: '팔로워만', hint: '나를 팔로우하는 교우만 볼 수 있어요' },
+  private: { icon: 'lock', label: '나만 보기', hint: '나만 볼 수 있어요' },
 };
 const VISIBILITY_SQL_HINT = '공개 범위 기능을 준비 중이에요. (관리자: supabase/post-visibility.sql 실행 필요)';
 
@@ -140,7 +140,7 @@ function VisibilityPicker({ value, onChange }: { value: Visibility; onChange: (v
         {(Object.keys(VISIBILITY) as Visibility[]).map(v => (
           <button key={v} type="button" onClick={() => onChange(v)} aria-pressed={value === v}
             className={`flex-1 py-2 rounded-xl text-[0.8125rem] font-bold border transition-colors ${value === v ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-600 border-stone-200'}`}>
-            {VISIBILITY[v].icon} {VISIBILITY[v].label}
+            <Icon name={VISIBILITY[v].icon} className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{VISIBILITY[v].label}
           </button>
         ))}
       </div>
@@ -225,6 +225,7 @@ export default function Home() {
   // 게시물별 댓글 수, 댓글별 🙏/❤️ (mine: 내가 누른 것)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
+  const [openIntentionId, setOpenIntentionId] = useState<string | null>(null); // 기도지향 목록에서 펼쳐 본 것
   // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
   const [intentions, setIntentions] = useState<{ id: string; user_id: string; author_name: string | null; title?: string | null; content: string; created_at: string }[]>([]);
   const [showIntentions, setShowIntentions] = useState(false);
@@ -266,6 +267,8 @@ export default function Home() {
   const [showEditVideoEditor, setShowEditVideoEditor] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editVisibility, setEditVisibility] = useState<Visibility>('public');
+  const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
+  const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [exploreQuery, setExploreQuery] = useState('');
@@ -1128,6 +1131,7 @@ export default function Home() {
     setEditContent(post.content || '');
     setEditOverlays(post.video_overlays || null);
     setEditVisibility(post.visibility || 'public');
+    setEditMusic(post.music ? { value: post.music, title: post.music_title || '음악' } : null);
   };
   // 공개 범위만 바로 바꾸기 (크게 보기·내 공간에서)
   const changePostVisibility = async (postId: string, visibility: Visibility) => {
@@ -1142,6 +1146,10 @@ export default function Home() {
     const changes: Partial<Post> = { content: editContent.trim() };
     if (target.video_url) changes.video_overlays = hasOverlays(editOverlays) ? editOverlays : null;
     if (editVisibility !== (target.visibility || 'public')) changes.visibility = editVisibility;
+    if ((editMusic?.value || null) !== (target.music || null)) {
+      changes.music = editMusic?.value || null;
+      changes.music_title = editMusic?.title || null;
+    }
     setSavingEdit(true);
     const result = await callPostApi({ action: 'update', id: postId, changes });
     setSavingEdit(false);
@@ -2048,7 +2056,7 @@ export default function Home() {
         <>
           {user && needsProfileSetup && setupDismissed && (
             <button onClick={() => setSetupDismissed(false)} className="w-full px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-left">
-              <span className="text-lg">👀</span>
+              <Icon name="eye" className="w-5 h-5 shrink-0" />
               <span className="flex-1 text-xs text-stone-700 leading-snug"><b>둘러보는 중이에요.</b> 프로필을 만들면 글·댓글·기도지향을 쓸 수 있어요.</span>
               <span className="text-xs font-bold bg-stone-900 text-white rounded-lg px-3 py-1.5 shrink-0">만들기</span>
             </button>
@@ -2057,7 +2065,7 @@ export default function Home() {
           {homeNotice && (
             <div className="flex items-center bg-amber-50 border-b border-amber-200">
               <button onClick={() => { setNoticeOpenId(homeNotice.id); setShowNotices(true); }} className="flex-1 min-w-0 flex items-center gap-2 px-3 py-2.5 text-left">
-                <span className="shrink-0 text-xs font-bold text-white bg-amber-600 rounded-full px-2 py-0.5">📢 공지</span>
+                <span className="shrink-0 text-xs font-bold text-white bg-amber-600 rounded-full px-2 py-0.5"><Icon name="megaphone" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />공지</span>
                 <span className="text-sm font-bold text-stone-800 truncate">{homeNotice.title}</span>
               </button>
               <button onClick={() => hideNotice(homeNotice.id)} className="shrink-0 flex items-center gap-1 text-xs font-bold text-stone-500 hover:text-stone-800 px-3 py-2.5" aria-label="공지 다시 안 보기">다시 안 보기 <span className="text-lg leading-none">×</span></button>
@@ -2065,14 +2073,14 @@ export default function Home() {
           )}
           {/* 오늘의 기도지향: 한 줄로 계속 흘러감, 누르면 모아 보기 */}
           {visibleIntentions.length > 0 ? (
-            <button onClick={() => setShowIntentions(true)} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
-              <span className="shrink-0 pl-3 pr-2 py-2 text-xs font-bold bg-[#101a3f] z-10 shadow-[6px_0_8px_-4px_#101a3f]">🙏 오늘의 기도</span>
+            <button onClick={() => { setShowIntentions(true); }} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
+              <span className="shrink-0 pl-3 pr-2 py-2 text-xs font-bold bg-[#101a3f] z-10 shadow-[6px_0_8px_-4px_#101a3f]"><Icon name="pray" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-[#fbe7b0]" />오늘의 기도</span>
               <span className="flex-1 overflow-hidden whitespace-nowrap py-2">
                 <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + (i.title || i.content).length + (i.author_name || '').length, 0) * 0.4)}s` }}>
                   {[0, 1].map(copy => (
                     <span key={copy} className="pr-8">
                       {visibleIntentions.map(i => (
-                        <span key={`${copy}-${i.id}`} className="mr-8 text-[0.875rem]">
+                        <span key={`${copy}-${i.id}`} onClick={() => setOpenIntentionId(i.id)} className="mr-8 text-[0.875rem]">
                           <b className="text-white">{i.author_name || '교우'}</b> · {i.title || i.content}
                         </span>
                       ))}
@@ -2102,14 +2110,14 @@ export default function Home() {
               <button onClick={dismissFeastCard} className="absolute top-2 right-3 text-stone-400 hover:text-stone-700 text-lg leading-none" aria-label="닫기">×</button>
               {isMyFeastToday && (
                 <div className="text-center pr-4">
-                  <p className="text-2xl">🎉🕯️</p>
+                  <div className="flex justify-center"><IconBadge name="candle" tone="gold" size="lg" /></div>
                   <p className="font-serif font-bold text-stone-900 mt-1">{profile?.baptismal_name}님, 축일을 축하드립니다!</p>
                   <p className="text-sm text-stone-600 mt-1 leading-relaxed">주님의 은총과 주보성인의 전구가<br />늘 함께하시길 기도합니다 🙏</p>
                 </div>
               )}
               {visibleFeastFriends.length > 0 && (
                 <div className={`flex flex-col gap-2 ${isMyFeastToday ? 'mt-3 pt-3 border-t border-amber-200' : ''}`}>
-                  <p className="text-sm font-bold text-stone-800 pr-4">🎉 오늘 축일인 교우</p>
+                  <p className="text-sm font-bold text-stone-800 pr-4"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />오늘 축일인 교우</p>
                   {visibleFeastFriends.map(f => (
                     <div key={f.id} className="flex items-center gap-2.5">
                       <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
@@ -2127,7 +2135,7 @@ export default function Home() {
           )}
           {user && profile && !profile.feast_day && feastPromptDismissed === false && (
             <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-white border border-stone-200 flex items-center gap-3">
-              <span className="text-xl">🕯️</span>
+              <IconBadge name="candle" tone="gold" />
               <p className="flex-1 text-xs text-stone-700 leading-snug"><b>축일을 등록해보세요</b><br />축일에 축하 인사를 받고, 팔로워에게도 알려드려요</p>
               <button onClick={() => { setSettingsView('feast'); setShowSettings(true); }} className="bg-stone-900 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0">등록</button>
               <button onClick={dismissFeastPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
@@ -2154,22 +2162,22 @@ export default function Home() {
               )}
               {composerMusic && (
                 <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                  <span className="text-sm">🎵</span>
+                  <Icon name="music" className="w-4 h-4 text-violet-700" />
                   <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
                   {(() => { const m = parsePostMusic(composerMusic.value); return m?.kind === 'youtube' && m.clip ? <span className="text-[0.75rem] text-violet-700 shrink-0">{`${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초`}</span> : null; })()}
                   <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
                 </div>
               )}
-              {videoStatus && <p className="text-xs text-violet-700 font-bold">🎬 {videoStatus}</p>}
+              {videoStatus && <p className="text-xs text-violet-700 font-bold"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{videoStatus}</p>}
               {videoPreviewUrl && (
                 <div className="flex items-end gap-2">
                 <div className="relative w-32 rounded-xl overflow-hidden shadow-sm bg-black [container-type:inline-size]">
                   <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full aspect-[4/5] object-cover" />
                   <OverlayLayer overlays={composerOverlays} />
-                  <span className="absolute bottom-1 left-1 text-[0.6875rem] text-white bg-black/50 rounded px-1">🎬 숏폼</span>
+                  <span className="absolute bottom-1 left-1 text-[0.6875rem] text-white bg-black/50 rounded px-1"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />숏폼</span>
                   <button type="button" onClick={clearVideo} className="absolute top-1 right-1 bg-black/60 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">×</button>
                 </div>
-                <button type="button" onClick={() => setShowVideoEditor(true)} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100">✨ 꾸미기</button>
+                <button type="button" onClick={() => setShowVideoEditor(true)} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100"><Icon name="sparkle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />꾸미기</button>
                 </div>
               )}
               {previewUrls.length > 0 && (
@@ -2212,7 +2220,7 @@ export default function Home() {
           </div>
           )}
 
-          <section className="divide-y divide-stone-200/70 flex-1">
+          <section className="flex-1 flex flex-col gap-2 bg-[#efe6d6]">
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
               const shown = posts.filter(post => !blockedIds.has(post.user_id)
@@ -2227,7 +2235,7 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                <article id={`post-${post.id}`} className="bg-white flex flex-col gap-3 pb-4 sm:pb-5">
+                <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col gap-3 pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
                   {/* 사진이 먼저, 크게 (여러 장이면 옆으로 넘김) — 사진을 누르면 작성자·음악과 함께 크게 보기 */}
                   {post.video_url && (
                     <PostVideo
@@ -2286,7 +2294,7 @@ export default function Home() {
                     <div className="flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
                       {reactionButtons(post, () => toggleCommentBox(post.id))}
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
-                        {post.visibility && post.visibility !== 'public' && <span className="text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5">{VISIBILITY[post.visibility].icon} {VISIBILITY[post.visibility].label}</span>}
+                        {post.visibility && post.visibility !== 'public' && <span className="text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5 inline-flex items-center gap-1"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" />{VISIBILITY[post.visibility].label}</span>}
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
                           <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-lg leading-none text-stone-500 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">⋯</button>
@@ -2361,7 +2369,7 @@ export default function Home() {
                       </div>
                       {replyTargets[post.id] ? (
                         <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-lg px-2.5 py-1.5">
-                          <span className="flex-1 min-w-0 truncate">🏷️ <b>@{replyTargets[post.id]!.name}</b>님을 태그했어요</span>
+                          <span className="flex-1 min-w-0 truncate"><Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" /><b>@{replyTargets[post.id]!.name}</b>님을 태그했어요</span>
                           <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: null }))} className="text-blue-400 text-base leading-none px-1" aria-label="답글 취소">×</button>
                         </div>
                       ) : (
@@ -2426,10 +2434,10 @@ export default function Home() {
             ) : viewingBio ? (
               <p onClick={viewingUserId === user?.id ? () => setBioDraft(viewingBio) : undefined} className={`mt-2.5 max-w-xs text-sm text-stone-700 text-center whitespace-pre-wrap leading-relaxed ${viewingUserId === user?.id ? 'cursor-pointer' : ''}`}>{viewingBio}</p>
             ) : viewingUserId === user?.id && (
-              <button onClick={() => setBioDraft('')} className="mt-2.5 text-xs text-stone-500 border border-dashed border-stone-300 rounded-full px-3 py-1.5">✏️ 나를 소개하는 한 마디 쓰기</button>
+              <button onClick={() => setBioDraft('')} className="mt-2.5 text-xs text-stone-500 border border-dashed border-stone-300 rounded-full px-3 py-1.5"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
             )}
             {isAdmin && viewingRealName && (
-              <p className="text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5">🔒 실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
+              <p className="text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
             )}
             
             <div className="flex gap-6 mt-4 text-center">
@@ -2450,7 +2458,7 @@ export default function Home() {
                   </button>
                   {isAdmin && (
                     <button onClick={() => setShowAdminStats(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-sky-300 bg-sky-50 text-sky-900 shadow-sm hover:bg-sky-100 transition-colors inline-flex items-center gap-1.5">
-                      📊 접속 통계
+                      <Icon name="chart" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />접속 통계
                     </button>
                   )}
                   {isAdmin && (
@@ -2481,7 +2489,7 @@ export default function Home() {
 
             {isAdmin && viewingProfile && (
               <div className="mt-4 flex items-center gap-2 text-xs bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-sm">
-                <span className="font-bold text-stone-600">👑 관리자 · 인증 뱃지</span>
+                <span className="font-bold text-stone-600"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />관리자 · 인증 뱃지</span>
                 <select
                   value={viewingProfile.badge_type || ''}
                   onChange={(e) => handleSetBadge(viewingProfile.id, e.target.value)}
@@ -2516,8 +2524,8 @@ export default function Home() {
                   onClick={() => openPostViewer(post)} 
                   className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
                 >
-                  {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5">{VISIBILITY[post.visibility].icon}</span>}
-                  {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">🎵</span>}
+                  {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" /></span>}
+                  {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
                   {post.video_url && <span className="absolute bottom-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">▶</span>}
                   {post.video_url ? (
                     post.video_poster
@@ -2656,24 +2664,24 @@ export default function Home() {
             </div>
             <div className="flex flex-col">
               <button onClick={() => goToProfile(actionModalUser.id)} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                👤 프로필(공간) 보러가기
+                <Icon name="user" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />프로필(공간) 보러가기
               </button>
               <button onClick={() => { toggleFollow(actionModalUser.id, actionUserFollowStatus); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                {actionUserFollowStatus === 'none' ? '➕ 팔로우하기' : '✖ 팔로우 취소'}
+                {actionUserFollowStatus === 'none' ? <><Icon name="userPlus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />팔로우하기</> : <><Icon name="userMinus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />팔로우 취소</>}
               </button>
               <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 border-b border-stone-100 transition-colors">
-                💬 개인 메시지(DM) 보내기
+                <Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />개인 메시지(DM) 보내기
               </button>
               <button onClick={() => { const u = actionModalUser; setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                🚨 신고하기
+                <Icon name="siren" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고하기
               </button>
               {blockedIds.has(actionModalUser.id) ? (
                 <button onClick={() => { unblockUser(actionModalUser.id); setActionModalUser(null); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 transition-colors">
-                  ✅ 차단 해제
+                  <Icon name="unlock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />차단 해제
                 </button>
               ) : (
                 <button onClick={() => confirmBlock(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-red-600 hover:bg-red-50 transition-colors">
-                  🚫 차단하기
+                  <Icon name="prohibit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />차단하기
                 </button>
               )}
               <button onClick={() => setActionModalUser(null)} className="w-full p-4 text-sm font-bold text-center text-stone-400 hover:bg-stone-50 transition-colors bg-stone-50/50 mt-2">
@@ -2712,7 +2720,7 @@ export default function Home() {
           <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
             <div className="p-4 bg-gradient-to-br from-[#101a3f] to-[#1f2f66] text-white flex items-center justify-between">
               <div>
-                <h2 className="font-bold text-[#fbe7b0]">🙏 오늘의 기도지향 ({visibleIntentions.length})</h2>
+                <h2 className="font-bold text-[#fbe7b0]"><Icon name="pray" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />오늘의 기도지향 ({visibleIntentions.length})</h2>
                 <p className="text-xs text-white/60 mt-0.5">{new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' })} · 자정에 새로 시작돼요</p>
               </div>
               <button onClick={() => setShowIntentions(false)} className="text-white/70 font-bold text-lg px-1">×</button>
@@ -2775,19 +2783,31 @@ export default function Home() {
             <div className="divide-y divide-stone-100">
               {visibleIntentions.length === 0 ? (
                 <div className="p-10 text-center text-sm text-stone-400">아직 오늘 올라온 기도지향이 없어요.</div>
-              ) : visibleIntentions.map(i => (
-                <div key={i.id} className="p-4 flex flex-col gap-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <button onClick={() => { setShowIntentions(false); goToProfile(i.user_id); }} className="text-sm font-bold text-stone-900">{i.author_name || '교우'}</button>
-                    <span className="flex items-center gap-2">
-                      <span className="text-[0.75rem] text-stone-400">{new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
-                      {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-[0.75rem] text-red-500">삭제</button>}
+              ) : visibleIntentions.map(i => {
+                // 목록에는 제목만, 누르면 기도 내용이 펼쳐짐
+                const open = openIntentionId === i.id;
+                return (
+                <div key={i.id} className={`flex flex-col ${open ? 'bg-amber-50/50' : ''}`}>
+                  <button onClick={() => setOpenIntentionId(open ? null : i.id)} aria-expanded={open} className="w-full px-4 py-3.5 flex items-center gap-3 text-left">
+                    <span className="w-9 h-9 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0"><Icon name="pray" fill={open} className="w-5 h-5" /></span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[0.9375rem] font-bold text-[#1f2f66] truncate">{i.title || i.content}</span>
+                      <span className="block text-xs text-stone-500 mt-0.5">{i.author_name || '교우'} · {new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
                     </span>
-                  </div>
-                  {i.title && <p className="text-[0.9375rem] font-bold text-[#1f2f66]">🙏 {i.title}</p>}
-                  <p className={`text-[0.9375rem] text-stone-800 leading-relaxed ${i.title ? 'bg-stone-50 rounded-xl px-3 py-2' : ''}`}>{i.title ? i.content : `🙏 ${i.content}`}</p>
+                    <span className={`text-stone-400 text-sm transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+                  </button>
+                  {open && (
+                    <div className="px-4 pb-4 flex flex-col gap-2">
+                      <p className="text-[1rem] text-stone-800 leading-relaxed whitespace-pre-wrap bg-white border border-amber-100 rounded-xl px-3.5 py-3">{i.content}</p>
+                      <div className="flex items-center justify-between">
+                        <button onClick={() => { setShowIntentions(false); goToProfile(i.user_id); }} className="text-xs font-bold text-stone-600">👤 {i.author_name || '교우'}님 공간 가기</button>
+                        {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-xs text-red-500">삭제</button>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
             </div>
           </div>
@@ -2860,6 +2880,19 @@ export default function Home() {
                 ))}
               </div>
               <VisibilityPicker value={editVisibility} onChange={setEditVisibility} />
+              {/* 음악 넣기·바꾸기·빼기 */}
+              {editMusic ? (
+                <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
+                  <span className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-[1.125rem] h-[1.125rem]" /></span>
+                  <span className="flex-1 min-w-0 text-sm font-bold text-stone-700 truncate">{editMusic.title}</span>
+                  <button type="button" onClick={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 font-bold">바꾸기</button>
+                  <button type="button" onClick={() => setEditMusic(null)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-500">빼기</button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="self-start inline-flex items-center gap-2 text-sm font-semibold text-violet-800 bg-violet-50 border border-violet-100 px-3.5 py-2.5 rounded-xl">
+                  <Icon name="music" className="w-[1.125rem] h-[1.125rem]" />음악 넣기
+                </button>
+              )}
               {target.video_url && (
                 <button type="button" onClick={() => setShowEditVideoEditor(true)} className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2.5 rounded-xl">
                   <Icon name="film" className="w-[1.125rem] h-[1.125rem]" />영상 위 글자·이모티콘 고치기{hasOverlays(editOverlays) && ' ✓'}
@@ -2880,9 +2913,9 @@ export default function Home() {
           <VideoEditor
             src={target.video_url}
             initial={editOverlays}
-            musicTitle={target.music_title}
-            onOpenMusic={() => alert('배경음악은 새 글을 쓸 때만 고를 수 있어요.')}
-            onRemoveMusic={() => alert('배경음악은 새 글을 쓸 때만 바꿀 수 있어요.')}
+            musicTitle={editMusic?.title}
+            onOpenMusic={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }}
+            onRemoveMusic={() => setEditMusic(null)}
             onDone={o => { setEditOverlays(o); setShowEditVideoEditor(false); }}
             onCancel={() => setShowEditVideoEditor(false)}
           />
@@ -2903,7 +2936,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks} onClose={() => setShowMusicPicker(false)} onSelect={m => { setComposerMusic(m); setShowMusicPicker(false); }} />
+        <MusicPicker tracks={bgmTracks} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
@@ -2946,7 +2979,7 @@ export default function Home() {
       {showPushPrompt && !showInstallGuide && (
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPushPrompt(false)}>
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe text-center" onClick={e => e.stopPropagation()}>
-            <span className="text-4xl">🔔</span>
+            <IconBadge name="bell" tone="gold" size="lg" />
             <h2 className="font-bold text-lg text-stone-900">휴대폰 알림을 켜주세요</h2>
             <p className="text-sm text-stone-600 leading-relaxed">
               내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
@@ -3018,16 +3051,16 @@ export default function Home() {
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
               <div className="flex items-center gap-2">
-                <button onClick={clearSeenAlerts} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">🗑 확인한 알림 지우기</button>
+                <button onClick={clearSeenAlerts} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인한 알림 지우기</button>
                 <button onClick={toggleAlertSound} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">
-                  {alertSoundOn ? '🔊 소리 켜짐' : '🔇 소리 꺼짐'}
+                  {alertSoundOn ? <><Icon name="speaker" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 켜짐</> : <><Icon name="mute" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 꺼짐</>}
                 </button>
                 <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
               </div>
             </div>
             {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (
               <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
-                <span className="text-xl">📲</span>
+                <IconBadge name="phone" tone="sky" />
                 <div className="flex-1 text-xs text-stone-700 leading-snug">
                   {pushStatus === 'on' && <><b>휴대폰 알림 켜짐</b><br />앱을 닫아도 댓글·메시지 알림이 와요</>}
                   {pushStatus === 'off' && <><b>휴대폰 알림 받기</b><br />앱을 닫아도 댓글·메시지 알림을 받아요</>}
@@ -3063,7 +3096,7 @@ export default function Home() {
                       <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
                     )}
                     <p className="text-[0.9375rem] text-stone-800 min-w-0">
-                      👤 <b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 회원님을 팔로우하기 시작했어요
+                      <Icon name="userPlus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /><b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 회원님을 팔로우하기 시작했어요
                     </p>
                   </button>
                   {r.iFollow
@@ -3075,7 +3108,7 @@ export default function Home() {
               {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
                 <button key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
                   <p className="text-[0.9375rem] text-stone-800">
-                    ✉️ <b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[0.75rem] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
+                    <Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-600" /><b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[0.75rem] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
                   </p>
                   <p className="text-xs text-stone-600 line-clamp-1">&ldquo;{u.lastMessage}&rdquo;</p>
                   <p className="text-[0.8125rem] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
@@ -3089,7 +3122,7 @@ export default function Home() {
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
-                      {n.mention ? '🏷️' : '💬'} <b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
+                      {n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}<b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
@@ -3260,10 +3293,10 @@ export default function Home() {
                   return <YouTubePlayer key={selectedPostDetail.id} videoId={music.videoId} start={music.start} clip={music.clip} title={selectedPostDetail.music_title} />;
                 }
                 const track = bgmTracks.find(t => t.id === music.trackId);
-                if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50">🎵 이 음악은 더 이상 제공되지 않아요</p>;
+                if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />이 음악은 더 이상 제공되지 않아요</p>;
                 return (
                   <button onClick={toggleBgm} className="flex items-center gap-3 px-4 py-2.5 bg-violet-50 border-b border-violet-100 text-left">
-                    <span className="w-9 h-9 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0">{bgmPlaying ? '❚❚' : '▶'}</span>
+                    <span className="w-9 h-9 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={bgmPlaying ? 'pause' : 'play'} fill className="w-4 h-4" /></span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-stone-800 truncate">{selectedPostDetail.music_title || track.title}</span>
                       <span className="block text-xs text-stone-500">{bgmPlaying ? '재생 중' : '눌러서 듣기'}</span>
@@ -3286,8 +3319,8 @@ export default function Home() {
                   <div className="mb-1 flex flex-col gap-2">
                     <VisibilityPicker value={selectedPostDetail.visibility || 'public'} onChange={v => changePostVisibility(selectedPostDetail.id, v)} />
                     <div className="flex gap-1.5">
-                      <button onClick={() => { const p = posts.find(x => x.id === selectedPostDetail.id) || selectedPostDetail; setSelectedPostDetail(null); startEditPost(p); }} className="flex-1 py-2 rounded-xl border border-stone-300 text-[0.8125rem] font-bold text-stone-700">✏️ 글 고치기</button>
-                      <button onClick={() => handleDeletePost(selectedPostDetail.id)} className="flex-1 py-2 rounded-xl border border-red-200 text-[0.8125rem] font-bold text-red-600">🗑 지우기</button>
+                      <button onClick={() => { const p = posts.find(x => x.id === selectedPostDetail.id) || selectedPostDetail; setSelectedPostDetail(null); startEditPost(p); }} className="flex-1 py-2 rounded-xl border border-stone-300 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center justify-center"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />글 고치기</button>
+                      <button onClick={() => handleDeletePost(selectedPostDetail.id)} className="flex-1 py-2 rounded-xl border border-red-200 text-[0.8125rem] font-bold text-red-600 inline-flex items-center justify-center"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />지우기</button>
                     </div>
                   </div>
                 )}
@@ -3330,7 +3363,7 @@ export default function Home() {
               <button type="button" onClick={() => setSetupDismissed(true)} className="absolute top-3 right-4 text-stone-400 hover:text-stone-700 text-2xl leading-none" aria-label="닫고 둘러보기">×</button>
             )}
             <div className="text-center">
-              <span className="text-2xl">🕊️</span>
+              <IconBadge name="dove" tone="violet" size="lg" />
               <h2 className="font-serif font-bold text-lg text-stone-900 mt-2">{profileEditMode ? '프로필 정보 수정' : profile?.handle ? '닉네임을 정해주세요' : '환영합니다!'}</h2>
               <p className="text-xs text-stone-500 mt-1.5 leading-relaxed">
                 다른 교우에게는 <b>닉네임</b>과 <b>@핸들</b>만 보여요.<br />이름과 세례명은 <b>관리자만</b> 볼 수 있어요.
@@ -3365,7 +3398,7 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명 <span className="font-normal text-stone-400">(🔒 관리자만 봐요)</span></label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">이름 + 세례명 <span className="font-normal text-stone-400">(<Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 mr-0.5" />관리자만 봐요)</span></label>
                 <input
                   type="text"
                   placeholder="예: 홍길동 미카엘"
@@ -3377,7 +3410,7 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🕯️ 나의 축일 <span className="font-normal text-stone-400">(선택)</span></label>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나의 축일 <span className="font-normal text-stone-400">(선택)</span></label>
                 <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 팔로워에게도 알려드려요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
@@ -3439,7 +3472,7 @@ export default function Home() {
                   className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabIn_0.28s_ease-out_both]"
                 >
                   <span className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`}>
-                    {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <span className="text-lg leading-none">☰</span>}
+                    {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <Icon name="list" className="w-[1.375rem] h-[1.375rem]" />}
                   </span>
                   <span className={`text-[0.9375rem] font-bold ${active ? 'text-stone-900' : 'text-stone-700'}`}>{item.label}{active && ' ✓'}</span>
                 </button>
@@ -3460,11 +3493,11 @@ export default function Home() {
           <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setPostMenuId(null)}>
             <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
               <p className="pt-4 pb-2 text-center text-xs text-stone-400">{post.author_name}님의 글</p>
-              {mine && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className={`${item} text-stone-800`}>✏️ 글 고치기 · 공개 범위</button>}
-              {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className={`${item} text-red-600`}>🗑 지우기</button>}
-              <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className={`${item} text-stone-700`}>🔍 크게 보기</button>
-              {!mine && <button onClick={() => { setPostMenuId(null); goToProfile(post.user_id); }} className={`${item} text-stone-700`}>👤 {post.author_name}님 공간 가기</button>}
-              {user && !mine && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${item} text-red-500`}>🚨 신고하기</button>}
+              {mine && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className={`${item} text-stone-800`}><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />글 고치기 · 공개 범위</button>}
+              {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className={`${item} text-red-600`}><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />지우기</button>}
+              <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className={`${item} text-stone-700`}><Icon name="expand" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />크게 보기</button>
+              {!mine && <button onClick={() => { setPostMenuId(null); goToProfile(post.user_id); }} className={`${item} text-stone-700`}><Icon name="user" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{post.author_name}님 공간 가기</button>}
+              {user && !mine && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${item} text-red-500`}><Icon name="siren" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고하기</button>}
               <button onClick={() => setPostMenuId(null)} className="w-full py-4 text-[1rem] font-bold text-stone-500 bg-stone-50">취소</button>
             </div>
           </div>

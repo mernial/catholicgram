@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { ReportTarget } from '@/components/ReportDialog';
-import Icon, { type IconName } from '@/components/Icon';
+import Icon, { IconBadge, type IconName } from '@/components/Icon';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -75,7 +75,7 @@ const timeLeft = (iso: string) => {
 function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean; isMine?: boolean }) {
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center text-[0.8125rem]">🕊️</span>
+      <span className="w-7 h-7 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center "><Icon name="dove" className="w-4 h-4" /></span>
       <span className="text-xs font-bold text-stone-800">익명 #{code}</span>
       {isAuthor && <span className="text-[0.75rem] bg-violet-600 text-white px-1.5 py-px rounded-full font-bold">작성자</span>}
       {isMine && <span className="text-[0.75rem] text-stone-400">(나)</span>}
@@ -191,11 +191,16 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   return (
     <section className="flex-1 flex flex-col bg-stone-50/30">
       <div className="px-4 pt-4 pb-3 bg-violet-50/60 border-b border-violet-100">
-        <h2 className="font-bold text-stone-900 flex items-center gap-1.5">🕊️ 익명 고민상담</h2>
-        <p className="text-[0.8125rem] text-stone-600 mt-1 leading-relaxed">
-          글과 답글은 <b>익명 코드</b>로만 표시되고, 누가 썼는지는 아무에게도 보이지 않아요.<br />
-          서로의 아픔을 존중하며 따뜻하게 답해주세요.
-        </p>
+        <h2 className="text-lg font-bold text-stone-900 flex items-center gap-1.5"><IconBadge name="dove" tone="violet" size="sm" />익명 고민상담</h2>
+        {/* 핵심만 크게 */}
+        <div className="mt-2 flex flex-col gap-1.5">
+          <p className="text-[1.0625rem] font-bold text-violet-900 flex items-center gap-2">
+            <Icon name="lock" className="w-5 h-5 shrink-0" />누가 썼는지 아무도 몰라요
+          </p>
+          <p className="text-[1rem] text-stone-700 flex items-center gap-2">
+            <Icon name="heart" className="w-5 h-5 shrink-0 text-rose-500" />서로 존중하며 따뜻하게 답해 주세요
+          </p>
+        </div>
       </div>
 
       {!user ? (

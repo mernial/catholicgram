@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Icon from '@/components/Icon';
 
 export interface Notice { id: string; title: string; content: string; pinned: boolean; pushed_at: string | null; created_at: string }
 
@@ -79,9 +80,9 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
     <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
-          <h2 className="font-bold text-stone-900">📢 공지사항</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="megaphone" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />공지사항</h2>
           <div className="flex items-center gap-2">
-            {isAdmin && !editing && <button onClick={() => startWrite()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold">✏️ 공지 쓰기</button>}
+            {isAdmin && !editing && <button onClick={() => startWrite()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />공지 쓰기</button>}
             <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
           </div>
         </div>
@@ -93,7 +94,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
             <p className="text-right text-xs text-stone-400 -mt-2">{content.length}/2000</p>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="w-5 h-5" /> 홈 화면 맨 위에 보이기</label>
             {(editing === 'new' || !(editing as Notice).pushed_at) && (
-              <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={sendPush} onChange={e => setSendPush(e.target.checked)} className="w-5 h-5" /> 📲 모든 회원에게 휴대폰 알림 보내기</label>
+              <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={sendPush} onChange={e => setSendPush(e.target.checked)} className="w-5 h-5"  /> <Icon name="bell" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모든 회원에게 휴대폰 알림 보내기</label>
             )}
             <div className="flex gap-2 mt-1">
               <button onClick={() => setEditing(null)} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm text-stone-600">취소</button>
@@ -106,17 +107,17 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
             {notices.map(n => openId === n.id ? (
               <div key={n.id} className="p-4 flex flex-col gap-2 bg-amber-50/40">
                 <button onClick={() => setOpenId(null)} className="self-start text-xs text-stone-400">▲ 접기</button>
-                <p className="font-bold text-stone-900 text-base">{n.pinned && '📌 '}{n.title}</p>
+                <p className="font-bold text-stone-900 text-base">{n.pinned && <Icon name="pin" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />}{n.title}</p>
                 <p className="text-xs text-stone-400">{new Date(n.created_at).toLocaleString('ko-KR')}</p>
                 <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{n.content}</p>
                 {n.pinned && onHide && !hiddenIds.includes(n.id) && (
-                  <button onClick={() => onHide(n.id)} className="self-start mt-2 text-sm px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold">✓ 확인했어요 · 다시 안 보기</button>
+                  <button onClick={() => onHide(n.id)} className="self-start mt-2 text-sm px-4 py-2.5 rounded-xl bg-stone-900 text-white font-bold"><Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인했어요 · 다시 안 보기</button>
                 )}
                 {isAdmin && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <button onClick={() => startWrite(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">고치기</button>
                     <button onClick={() => togglePin(n)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">{n.pinned ? '홈에서 내리기' : '홈에 올리기'}</button>
-                    {!n.pushed_at && <button onClick={() => pushNotice(n.id)} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold">📲 알림 보내기</button>}
+                    {!n.pushed_at && <button onClick={() => pushNotice(n.id)} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold"><Icon name="bell" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />알림 보내기</button>}
                     <button onClick={() => remove(n)} className="text-xs px-3 py-1.5 rounded-lg border border-red-200 text-red-600">지우기</button>
                   </div>
                 )}
@@ -124,7 +125,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
             ) : (
               <button key={n.id} onClick={() => setOpenId(n.id)} className="w-full px-4 py-3.5 text-left hover:bg-stone-50 flex items-center gap-2">
                 <span className="flex-1 min-w-0">
-                  <span className="block text-sm font-bold text-stone-900 truncate">{n.pinned && '📌 '}{n.title}</span>
+                  <span className="block text-sm font-bold text-stone-900 truncate">{n.pinned && <Icon name="pin" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />}{n.title}</span>
                   <span className="block text-xs text-stone-500 truncate mt-0.5">{n.content}</span>
                 </span>
                 <span className="text-[0.75rem] text-stone-400 shrink-0">{new Date(n.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}</span>

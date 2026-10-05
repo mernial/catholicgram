@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Icon from '@/components/Icon';
 
 // 관리자 전용 접속 통계: 지금 접속 중, 오늘 들어온·나간 횟수, 방문자 수, 머문 시간, 최근 14일
 interface Day { day: string; visitors: number; members: number; entries: number; exits: number; avgStayMin: number }
@@ -46,7 +47,7 @@ export default function AdminStats({ onClose }: { onClose: () => void }) {
       <div className="bg-stone-50 w-full sm:w-[30rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 bg-white border-b border-stone-100 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="font-bold text-stone-900">📊 접속 통계</h2>
+            <h2 className="font-bold text-stone-900"><Icon name="chart" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />접속 통계</h2>
             {updatedAt && <p className="text-[0.75rem] text-stone-400">{updatedAt} 기준 · 30초마다 새로 고침</p>}
           </div>
           <div className="flex items-center gap-1">

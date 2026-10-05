@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import Icon from '@/components/Icon';
 
 // 부적절한 콘텐츠/사용자 신고 (supabase/report-block.sql 의 reports 테이블)
 
@@ -65,7 +66,7 @@ export default function ReportDialog({ target, onClose, onBlock, onSent }: {
     <div className="fixed inset-0 bg-black/60 z-[88] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-5 flex flex-col gap-4 pb-safe" onClick={e => e.stopPropagation()}>
         <div>
-          <h2 className="font-bold text-stone-900">🚨 {TYPE_LABEL[target.type]} 신고</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="siren" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-red-500" />{TYPE_LABEL[target.type]} 신고</h2>
           {target.preview && <p className="text-xs text-stone-500 mt-1 line-clamp-2">&ldquo;{target.preview}&rdquo;</p>}
         </div>
         <div className="flex flex-col gap-1.5">

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { OverlayLayer, type VideoOverlays } from '@/components/VideoOverlays';
 import { useDoubleTap } from '@/lib/double-tap';
 import HeartBurst from '@/components/HeartBurst';
+import Icon from '@/components/Icon';
 
 // 지금 영상 말고 화면의 다른 영상은 모두 소리를 끈다 (소리가 두 번 겹쳐 들리는 것 방지)
 const silenceOthers = (keep: HTMLVideoElement, pause = false) => {
@@ -70,17 +71,17 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
       <OverlayLayer overlays={overlays} />
       <HeartBurst show={burst} />
       <button onClick={onTap} className="absolute bottom-2.5 right-2.5 w-9 h-9 rounded-full bg-black/55 text-white text-base flex items-center justify-center" aria-label="소리">
-        {hasMusic ? '🎵' : soundless ? '▶' : muted ? '🔇' : '🔊'}
+        <Icon name={hasMusic ? 'music' : soundless ? 'play' : muted ? 'mute' : 'speaker'} fill={soundless && !hasMusic} className="w-4 h-4" />
       </button>
       {hasMusic && musicTitle ? (
         <button onClick={onOpen} className="absolute top-2.5 left-2.5 flex items-center gap-1.5 max-w-[75%] text-xs font-bold text-white bg-black/45 backdrop-blur-sm rounded-full px-3 py-1.5">
-          <span>🎵</span><span className="truncate">{musicTitle}</span>
+          <Icon name="music" className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{musicTitle}</span>
         </button>
       ) : (
-        <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5">🎬 숏폼</span>
+        <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />숏폼</span>
       )}
       {onOpen && (
-        <button onClick={onOpen} className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/45 text-white text-sm flex items-center justify-center" aria-label="크게 보기">⛶</button>
+        <button onClick={onOpen} className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/45 text-white text-sm flex items-center justify-center" aria-label="크게 보기"><Icon name="expand" className="w-4 h-4" /></button>
       )}
     </div>
   );
@@ -116,7 +117,7 @@ export function VideoViewer({ src, poster, overlays, onDoubleTap }: { src: strin
     <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size]" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} onClick={tap}>
       <video ref={ref} src={src} poster={poster || undefined} loop playsInline className="absolute inset-0 w-full h-full object-cover" />
       <OverlayLayer overlays={overlays} />
-      {paused && <span className="absolute inset-0 flex items-center justify-center text-white text-5xl bg-black/20">▶</span>}
+      {paused && <span className="absolute inset-0 flex items-center justify-center text-white text-5xl bg-black/20"><Icon name="play" fill className="w-14 h-14 drop-shadow" /></span>}
       <HeartBurst show={burst} />
     </div>
   );

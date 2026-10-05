@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
+import Icon from '@/components/Icon';
 
 // 숏폼 영상 꾸미기: 영상 위에 글자·이모티콘을 올려 손가락으로 옮긴다.
 // 영상 파일은 그대로 두고 위치 정보만 posts.video_overlays 에 저장해, 재생할 때 영상 위에 겹쳐 보여준다.
@@ -224,7 +225,7 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
     <div className="fixed inset-0 z-[84] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-2 text-white">
         <button onClick={onCancel} className="text-sm text-white/80">취소</button>
-        <p className="font-bold">✨ 영상 꾸미기</p>
+        <p className="font-bold"><Icon name="sparkle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-[#fbe7b0]" />영상 꾸미기</p>
         <button onClick={() => onDone({ items, muteOriginal })} className="text-sm font-bold text-[#fbe7b0]">완료</button>
       </div>
 
@@ -310,7 +311,7 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
 
       {musicTitle && panel === 'none' && (
         <div className="mx-4 mb-1 flex items-center gap-2 text-xs text-white bg-white/10 rounded-full px-3 py-1.5">
-          <span>🎵</span><span className="flex-1 min-w-0 truncate">{musicTitle}</span>
+          <Icon name="music" className="w-4 h-4 shrink-0" /><span className="flex-1 min-w-0 truncate">{musicTitle}</span>
           <button onClick={onRemoveMusic} className="text-white/60 px-1" aria-label="음악 빼기">×</button>
         </div>
       )}
@@ -318,10 +319,10 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
       {panel === 'none' && (
         <div className="flex items-center justify-around px-2 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-white/10">
           <button onClick={() => openTextPanel()} className={tool}><span className="text-2xl leading-none">Aa</span>글자</button>
-          <button onClick={() => setPanel('emoji')} className={tool}><span className="text-2xl leading-none">😊</span>이모티콘</button>
-          <button onClick={onOpenMusic} className={tool}><span className="text-2xl leading-none">🎵</span>배경음악</button>
+          <button onClick={() => setPanel('emoji')} className={tool}><Icon name="smiley" className="w-6 h-6" />이모티콘</button>
+          <button onClick={onOpenMusic} className={tool}><Icon name="music" className="w-6 h-6" />배경음악</button>
           <button onClick={() => setMuteOriginal(v => !v)} className={tool}>
-            <span className="text-2xl leading-none">{muteOriginal ? '🔇' : '🔊'}</span>{muteOriginal ? '원래 소리 끔' : '원래 소리 켬'}
+            <Icon name={muteOriginal ? 'mute' : 'speaker'} className="w-6 h-6" />{muteOriginal ? '원래 소리 끔' : '원래 소리 켬'}
           </button>
         </div>
       )}
