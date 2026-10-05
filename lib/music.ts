@@ -1,12 +1,12 @@
 // 게시물 배경음악
 // posts.music 에 다음 형식으로 저장한다.
-//   'yt:<영상ID>' 또는 'yt:<영상ID>@<시작초>'  → 유튜브
+//   'yt:<영상ID>', 'yt:<영상ID>@<시작초>', 'yt:<영상ID>@<시작초>+<구간초>' → 유튜브
 //   'bgm:<트랙ID>'                              → 앱 배경음악 목록 (bgm_tracks)
 
 export interface BgmTrack { id: string; title: string; artist?: string | null; url: string; active?: boolean; sort?: number }
 
 export type PostMusic =
-  | { kind: 'youtube'; videoId: string; start: number }
+  | { kind: 'youtube'; videoId: string; start: number; clip?: number }
   | { kind: 'bgm'; trackId: string };
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -38,13 +38,17 @@ export const parseYouTubeUrl = (input: string): { videoId: string; start: number
   return { videoId: id, start: parseStart(url.searchParams.get('t') || url.searchParams.get('start')) };
 };
 
-export const encodeYouTube = (videoId: string, start = 0) => `yt:${videoId}${start > 0 ? `@${start}` : ''}`;
+export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
+  `yt:${videoId}${start > 0 || clip ? `@${start}` : ''}${clip ? `+${clip}` : ''}`;
+
+export const CLIP_SECONDS = 30;
 
 export const parsePostMusic = (value?: string | null): PostMusic | null => {
   if (!value) return null;
   if (value.startsWith('yt:')) {
-    const [videoId, start] = value.slice(3).split('@');
-    return YT_ID.test(videoId) ? { kind: 'youtube', videoId, start: Number(start) || 0 } : null;
+    const [videoId, range = ''] = value.slice(3).split('@');
+    const [start, clip] = range.split('+');
+    return YT_ID.test(videoId) ? { kind: 'youtube', videoId, start: Number(start) || 0, clip: Number(clip) || undefined } : null;
   }
   if (value.startsWith('bgm:')) return { kind: 'bgm', trackId: value.slice(4) };
   return null;
