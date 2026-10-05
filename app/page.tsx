@@ -26,6 +26,8 @@ import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
+import HeartBurst from '@/components/HeartBurst';
+import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, parsePostMusic } from '@/lib/music';
@@ -115,6 +117,8 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
     canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.9);
   });
 }
+
+const MAX_PHOTOS = 5; // 한 글에 올릴 수 있는 사진 수
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -220,7 +224,7 @@ export default function Home() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
-  const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all'); // 홈 피드: 전체 / 사진·영상 / 글
+  const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('media'); // 홈 피드: 기본은 사진·영상 (전체 / 글로 바꿀 수 있음)
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [typing, setTyping] = useState(false); // 댓글 등 입력 중이면 + 버튼을 숨겨 '등록' 버튼을 가리지 않게
   useEffect(() => {
@@ -362,8 +366,8 @@ export default function Home() {
     fetchIntentions();
     fetchNotices();
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
-    const savedFilter = storageGet('feedFilter');
-    if (savedFilter === 'media' || savedFilter === 'text') setFeedFilter(savedFilter);
+    const savedFilter = storageGet('feedFilter2');
+    if (savedFilter === 'all' || savedFilter === 'text') setFeedFilter(savedFilter);
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
 
     // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
@@ -688,6 +692,7 @@ export default function Home() {
 
   const openChatRoom = (partner: UserProfile) => {
     if (!user) { setShowAuthModal(true); return; }
+    setSelectedPostDetail(null); // 크게 보기에서 메시지를 누른 경우 닫기
     if (!requireProfile()) return;
     if (partner.id === user.id) return;
     if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
@@ -1015,9 +1020,16 @@ export default function Home() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    const files = Array.from(e.target.files).slice(0, 3);
-    if (files.length > 0) clearVideo();
-    setSelectedFiles(files); setPreviewUrls(files.map(f => URL.createObjectURL(f)));
+    // 사진은 최대 5장: 여러 번 나눠 골라도 이어서 추가됨
+    const picked = Array.from(e.target.files);
+    e.target.value = '';
+    if (picked.length === 0) return;
+    clearVideo();
+    const room = MAX_PHOTOS - selectedFiles.length;
+    if (picked.length > room) alert(`사진은 한 번에 ${MAX_PHOTOS}장까지 올릴 수 있어요.`);
+    const added = picked.slice(0, Math.max(0, room));
+    setSelectedFiles(prev => [...prev, ...added]);
+    setPreviewUrls(prev => [...prev, ...added.map(f => URL.createObjectURL(f))]);
   };
   const removeFile = (idx: number) => {
     setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
@@ -1689,6 +1701,52 @@ export default function Home() {
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
 
+  // 크게 보기: 사진을 두 번 누르면 공감 (한 번 누르면 아무 일 없음)
+  const [viewerBurst, setViewerBurst] = useState(0);
+  const viewerDoubleTapLike = () => {
+    if (!selectedPostDetail) return;
+    setViewerBurst(Date.now());
+    likeByDoubleTap(selectedPostDetail.id);
+  };
+  const viewerImageTap = useDoubleTap(() => {}, viewerDoubleTapLike);
+
+  // 기도·공감·댓글·메시지 버튼 (피드와 크게 보기에서 같이 씀)
+  const reactionButtons = (post: Post, onComment: () => void) => (
+    <>
+      {(() => {
+        const prayed = myPostReactions.has(`${post.id}:pray`);
+        const liked = myPostReactions.has(`${post.id}:like`);
+        return (
+          <>
+            {/* 글자 없이 그림만. 누르면 손·하트가 진한 색으로 꽉 채워짐 */}
+            <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} aria-label={`기도 ${post.pray_count || 0}`} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-900 font-bold' : 'text-stone-600'}`}>
+              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-[1.375rem] h-[1.375rem]" /></span>
+              {post.pray_count > 0 && post.pray_count}
+            </button>
+            <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} aria-label={`공감 ${post.like_count || 0}`} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
+              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-600' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-[1.375rem] h-[1.375rem]" /></span>
+              {post.like_count > 0 && post.like_count}
+            </button>
+          </>
+        );
+      })()}
+      <button onClick={onComment} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
+        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
+        {commentCounts[post.id] ? commentCounts[post.id] : null}
+      </button>
+      {/* 글쓴이에게 바로 메시지 */}
+      {user?.id !== post.user_id && (
+        <button
+          onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })}
+          aria-label={`${post.author_name}님에게 메시지 보내기`}
+          className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-50 text-emerald-700"
+        >
+          <Icon name="send" className="w-[1.25rem] h-[1.25rem]" />
+        </button>
+      )}
+    </>
+  );
+
   return (
     <main className={`w-full max-w-xl mx-auto sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'h-[100dvh] overflow-hidden' : 'min-h-[100dvh] pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}>
       
@@ -1929,19 +1987,22 @@ export default function Home() {
             </button>
           )}
 
-          {/* 피드 보기 탭: 전체 / 사진·영상만 / 글만 */}
-          <div className="sticky top-[calc(3.375rem+env(safe-area-inset-top))] z-10 bg-white/95 backdrop-blur border-y border-stone-200/70 px-3 py-2 flex gap-1.5">
-            {([['all', '전체', null], ['media', '사진·영상', 'camera'], ['text', '글', 'pencil']] as const).map(([key, label, icon]) => (
-              <button
-                key={key}
-                onClick={() => { setFeedFilter(key); storageSet('feedFilter', key); }}
-                aria-pressed={feedFilter === key}
-                className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-full text-[0.875rem] font-bold transition-colors ${feedFilter === key ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}
-              >
-                {icon && <Icon name={icon} className="w-4 h-4" />}{label}
-              </button>
-            ))}
-          </div>
+          {/* 피드 보기: 왼쪽 아래에 떠 있는 버튼 (사진·영상 / 전체 / 글) */}
+          {!showComposer && !typing && (
+            <div className="fixed z-30 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-[max(0.75rem,calc(50vw-18rem+0.75rem))] flex flex-col gap-1 p-1 rounded-[1.375rem] bg-white/95 backdrop-blur shadow-lg shadow-stone-900/15 border border-stone-200">
+              {([['media', '사진', 'camera'], ['all', '전체', null], ['text', '글', 'pencil']] as const).map(([key, label, icon]) => (
+                <button
+                  key={key}
+                  onClick={() => { setFeedFilter(key); storageSet('feedFilter2', key); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
+                  aria-pressed={feedFilter === key}
+                  aria-label={key === 'media' ? '사진·영상만 보기' : key === 'all' ? '전체 보기' : '글만 보기'}
+                  className={`w-[3.25rem] h-[3.25rem] rounded-2xl flex flex-col items-center justify-center gap-0.5 text-[0.6875rem] font-bold transition-colors ${feedFilter === key ? 'bg-stone-900 text-white' : 'text-stone-600'}`}
+                >
+                  {icon ? <Icon name={icon} className="w-5 h-5" /> : <span className="text-[0.9375rem] leading-5">☰</span>}{label}
+                </button>
+              ))}
+            </div>
+          )}
 
           <section className="divide-y divide-stone-200/70 flex-1">
             {(() => {
@@ -2000,11 +2061,14 @@ export default function Home() {
                         expanded={expandedPosts.has(post.id)}
                         onExpand={() => setExpandedPosts(prev => new Set(prev).add(post.id))}
                         className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"
-                        prefixText={post.author_name}
+                        prefixText={`\u3000\u3000${post.author_name}`}
                         prefix={
-                          /* 닉네임을 누르면 그 사람을 태그해 바로 댓글 쓰기 */
-                          <button onClick={e => { e.stopPropagation(); tagUserInComments(post.id, post.user_id, post.author_name); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-0.5 align-baseline">
-                            {post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} />
+                          /* 프로필 사진·닉네임을 누르면 그 사람의 공간으로 */
+                          <button onClick={e => { e.stopPropagation(); goToProfile(post.user_id); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-1.5 align-bottom">
+                            {post.avatar_url
+                              ? <img src={post.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-200 shrink-0" />
+                              : <span className="w-7 h-7 rounded-full bg-stone-200 text-stone-600 text-xs font-serif font-bold flex items-center justify-center shrink-0">{post.author_name?.[0] || '교'}</span>}
+                            <span className="inline-flex items-center gap-0.5">{post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} /></span>
                           </button>
                         }
                         text={post.content || ''}
@@ -2020,27 +2084,7 @@ export default function Home() {
                     )}
 
                     <div className="flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
-                      {(() => {
-                        const prayed = myPostReactions.has(`${post.id}:pray`);
-                        const liked = myPostReactions.has(`${post.id}:like`);
-                        return (
-                          <>
-                            {/* 글자 없이 그림만. 누르면 손·하트가 진한 색으로 꽉 채워짐 */}
-                            <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} aria-label={`기도 ${post.pray_count || 0}`} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-900 font-bold' : 'text-stone-600'}`}>
-                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-[1.375rem] h-[1.375rem]" /></span>
-                              {post.pray_count > 0 && post.pray_count}
-                            </button>
-                            <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} aria-label={`공감 ${post.like_count || 0}`} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
-                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-600' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-[1.375rem] h-[1.375rem]" /></span>
-                              {post.like_count > 0 && post.like_count}
-                            </button>
-                          </>
-                        );
-                      })()}
-                      <button onClick={() => toggleCommentBox(post.id)} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
-                        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
-                        {commentCounts[post.id] ? commentCounts[post.id] : null}
-                      </button>
+                      {reactionButtons(post, () => toggleCommentBox(post.id))}
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
@@ -2849,11 +2893,18 @@ export default function Home() {
             
             <div className="overflow-y-auto flex-1 flex flex-col">
               {selectedPostDetail.video_url && (
-                <div className="bg-black"><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} /></div>
+                <div className="bg-black"><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} onDoubleTap={() => likeByDoubleTap(selectedPostDetail.id)} /></div>
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
-                <div className="w-full bg-black flex items-center justify-center relative">
-                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" className="max-h-[50dvh] object-contain w-full" />
+                <div className="w-full bg-black flex items-center justify-center relative select-none">
+                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" onClick={viewerImageTap} className="max-h-[50dvh] object-contain w-full" />
+                  <HeartBurst show={viewerBurst} />
+                  {selectedPostDetail.images.length > 1 && (
+                    <>
+                      {detailImageIndex > 0 && <button onClick={() => setDetailImageIndex(i => i - 1)} className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/45 text-white text-2xl leading-none flex items-center justify-center" aria-label="이전 사진">‹</button>}
+                      {detailImageIndex < selectedPostDetail.images.length - 1 && <button onClick={() => setDetailImageIndex(i => i + 1)} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/45 text-white text-2xl leading-none flex items-center justify-center" aria-label="다음 사진">›</button>}
+                    </>
+                  )}
                   {selectedPostDetail.images.length > 1 && (
                     <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-1.5">
                       {selectedPostDetail.images.map((_, i) => (
@@ -2881,7 +2932,16 @@ export default function Home() {
                   </button>
                 );
               })()}
-              <div className="p-5 flex flex-col gap-2">
+              {/* 크게 보기에서도 바로 기도·공감·댓글·메시지 */}
+              {(() => {
+                const live = posts.find(p => p.id === selectedPostDetail.id) || selectedPostDetail;
+                return (
+                  <div className="px-4 pt-3 flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
+                    {reactionButtons(live, () => { setSelectedPostDetail(null); openPostComments(live.id); })}
+                  </div>
+                );
+              })()}
+              <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
                 <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} /></p>
                 <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
               </div>

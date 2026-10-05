@@ -76,9 +76,10 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
 }
 
 // 크게 보기: 꾸민 글자·이모티콘과 함께 재생, 누르면 멈춤/재생
-export function VideoViewer({ src, poster, overlays }: { src: string; poster?: string | null; overlays?: VideoOverlays | null }) {
+export function VideoViewer({ src, poster, overlays, onDoubleTap }: { src: string; poster?: string | null; overlays?: VideoOverlays | null; onDoubleTap?: () => void }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [paused, setPaused] = useState(false);
+  const [burst, setBurst] = useState(0);
   const soundless = !!overlays?.muteOriginal;
 
   useEffect(() => {
@@ -96,11 +97,15 @@ export function VideoViewer({ src, poster, overlays }: { src: string; poster?: s
     else { video.pause(); setPaused(true); }
   };
 
+  // 한 번 누르면 멈춤/재생, 두 번 누르면 공감
+  const tap = useDoubleTap(toggle, () => { if (onDoubleTap) { setBurst(Date.now()); onDoubleTap(); } else toggle(); });
+
   return (
-    <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size]" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} onClick={toggle}>
+    <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size]" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} onClick={tap}>
       <video ref={ref} src={src} poster={poster || undefined} loop playsInline className="absolute inset-0 w-full h-full object-cover" />
       <OverlayLayer overlays={overlays} />
       {paused && <span className="absolute inset-0 flex items-center justify-center text-white text-5xl bg-black/20">▶</span>}
+      <HeartBurst show={burst} />
     </div>
   );
 }
