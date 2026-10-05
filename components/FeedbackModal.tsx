@@ -65,7 +65,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
   onClose: () => void;
   sendPush: (type: 'feedback' | 'feedback_reply', id: string) => void;
 }) {
-  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'reports'>(isAdmin ? 'inbox' : 'write');
+  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'answered' | 'reports'>(isAdmin ? 'inbox' : 'write');
   const [reports, setReports] = useState<Report[]>([]);
   const [category, setCategory] = useState<Feedback['category']>('suggestion');
   const [content, setContent] = useState('');
@@ -120,7 +120,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
 
   useEffect(() => {
     if (view === 'reports') fetchReports();
-    else if (view !== 'write') fetchItems(view);
+    else if (view !== 'write') fetchItems(view === 'answered' ? 'inbox' : view);
   }, [view]);
 
   const handleSend = async (e: React.FormEvent) => {
@@ -157,6 +157,7 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
     setItems(prev => prev.map(f => f.id === item.id ? { ...f, admin_reply: reply, replied_at, status } : f));
     setReplyDrafts(prev => { const next = { ...prev }; delete next[item.id]; return next; });
     sendPush('feedback_reply', item.id);
+    if (!item.admin_reply) alert('답변을 보냈어요. ✅ 답변한 건의 목록으로 옮겨졌어요.');
   };
 
   const deleteItem = async (item: Feedback) => {
@@ -166,10 +167,23 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
     setItems(prev => prev.filter(f => f.id !== item.id));
   };
 
+  // 관리자: 답변 전 건의는 '받은 건의함', 답변한 건의는 '답변한 건의'에 따로 모아 보기
+  const isAdminList = view === 'inbox' || view === 'answered';
+  const shownItems = view === 'inbox'
+    ? items.filter(f => !f.admin_reply)
+    : view === 'answered'
+      ? items.filter(f => !!f.admin_reply).sort((a, b) => (b.replied_at || '').localeCompare(a.replied_at || ''))
+      : items;
+  const pendingCount = items.filter(f => !f.admin_reply).length;
+
   const tabs: { key: typeof view; label: string }[] = [
     { key: 'write', label: '건의하기' },
     { key: 'mine', label: '내 건의' },
-    ...(isAdmin ? [{ key: 'inbox' as const, label: '👑 받은 건의함' }, { key: 'reports' as const, label: '🚨 신고' }] : []),
+    ...(isAdmin ? [
+      { key: 'inbox' as const, label: `👑 받은 건의함${pendingCount ? ` (${pendingCount})` : ''}` },
+      { key: 'answered' as const, label: '✅ 답변한 건의' },
+      { key: 'reports' as const, label: '🚨 신고' },
+    ] : []),
   ];
 
   return (
@@ -179,9 +193,9 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
           <h2 className="font-bold text-stone-900">📮 운영자에게 건의하기</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
-        <div className="flex gap-1 px-4 pt-3">
+        <div className="flex gap-1 px-4 pt-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {tabs.map(t => (
-            <button key={t.key} onClick={() => setView(t.key)} className={`text-xs px-3 py-1.5 rounded-full border ${view === t.key ? 'bg-stone-900 text-white border-stone-900 font-bold' : 'bg-white text-stone-600 border-stone-200'}`}>
+            <button key={t.key} onClick={() => setView(t.key)} className={`shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-full border ${view === t.key ? 'bg-stone-900 text-white border-stone-900 font-bold' : 'bg-white text-stone-600 border-stone-200'}`}>
               {t.label}
             </button>
           ))}
@@ -242,15 +256,17 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
         ) : (
           <div className="overflow-y-auto divide-y divide-stone-100 mt-2">
             {loading && items.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">불러오는 중...</div>}
-            {!loading && items.length === 0 && (
-              <div className="p-10 text-center text-stone-400 text-sm">{view === 'inbox' ? '받은 건의가 없습니다.' : '아직 보낸 건의가 없습니다.'}</div>
+            {!loading && shownItems.length === 0 && (
+              <div className="p-10 text-center text-stone-400 text-sm">
+                {view === 'inbox' ? '답변을 기다리는 건의가 없습니다.' : view === 'answered' ? '아직 답변한 건의가 없습니다.' : '아직 보낸 건의가 없습니다.'}
+              </div>
             )}
-            {items.map(item => (
+            {shownItems.map(item => (
               <div key={item.id} className="p-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0 text-[0.8125rem]">
                     <span className="font-bold text-stone-700">{categoryLabel(item.category)}</span>
-                    {view === 'inbox' && <span className="text-stone-500 truncate">· {item.author_name || '교우'}{item.author_handle && ` @${item.author_handle}`}</span>}
+                    {isAdminList && <span className="text-stone-500 truncate">· {item.author_name || '교우'}{item.author_handle && ` @${item.author_handle}`}</span>}
                     <span className="text-stone-400 shrink-0">· {new Date(item.created_at).toLocaleDateString('ko-KR')}</span>
                   </div>
                   <span className={`text-[0.75rem] px-2 py-0.5 rounded-full border font-bold shrink-0 ${STATUS[item.status].className}`}>{STATUS[item.status].label}</span>
@@ -269,7 +285,13 @@ export default function FeedbackModal({ user, isAdmin, onClose, sendPush }: {
                   </div>
                 )}
 
-                {view === 'inbox' && (
+                {view === 'answered' && item.admin_reply && (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1">📮 보낸 답변{item.replied_at && <span className="font-normal text-blue-500"> · {new Date(item.replied_at).toLocaleString('ko-KR')}</span>}</p>
+                    <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
+                  </div>
+                )}
+                {isAdminList && (
                   <div className="flex flex-col gap-2 bg-stone-50 rounded-xl p-2.5">
                     <div className="flex items-center gap-1.5">
                       <span className="text-[0.8125rem] text-stone-500">상태</span>
