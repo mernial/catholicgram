@@ -46,32 +46,33 @@ self.addEventListener('message', (event) => {
   })());
 });
 
-// 열려 있는 화면에 '이 주소로 이동'을 알리고, 응답이 없으면(예전 화면) 새로 불러온다
+// 열려 있는 창을 '먼저' 앞으로 가져오고(휴대폰은 알림을 누른 직후에만 허용), 그다음 해당 화면으로 이동시킨다.
+// 앞으로 가져오지 못하면 새로 연다.
 const openInClient = async (client, url) => {
+  let focused = null;
+  try { focused = 'focus' in client ? await client.focus() : null; } catch { focused = null; }
+  if (!focused) return self.clients.openWindow(url);
   const handled = await new Promise((resolve) => {
     const channel = new MessageChannel();
-    const timer = setTimeout(() => resolve(false), 1000);
+    const timer = setTimeout(() => resolve(false), 1500);
     channel.port1.onmessage = () => { clearTimeout(timer); resolve(true); };
-    try { client.postMessage({ type: 'open-url', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
+    try { focused.postMessage({ type: 'open-url', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
   });
-  if (!handled && 'navigate' in client) await client.navigate(url).catch(() => {});
-  if ('focus' in client) return client.focus();
+  if (!handled && 'navigate' in focused) await focused.navigate(url).catch(() => {});
+  return focused;
 };
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
   event.waitUntil((async () => {
-    const meta = await readMeta();
     const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
       .filter((c) => new URL(c.url).origin === self.location.origin);
-    // 1) 이미 열려 있는 앱 창
+    const meta = await readMeta();
+    // 1) 이미 열려 있는 앱 창 → 2) 앱이 설치된 휴대폰이면 앱을 새로 → 3) 열린 탭 → 4) 새 창
     const appWindow = windows.find((c) => meta.standalone.includes(c.id));
     if (appWindow) return openInClient(appWindow, url);
-    // 2) 앱을 설치한 휴대폰이면 앱을 새로 연다 (브라우저 탭 대신)
-    if (meta.hasApp) return self.clients.openWindow(url);
-    // 3) 앱이 없으면 열려 있는 탭, 없으면 새 창
-    if (windows[0]) return openInClient(windows[0], url);
-    return self.clients.openWindow(url);
-  })());
+    if (meta.hasApp || windows.length === 0) return self.clients.openWindow(url);
+    return openInClient(windows[0], url);
+  })().catch(() => self.clients.openWindow(url)));
 });
