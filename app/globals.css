@@ -53,3 +53,13 @@ input, textarea, select {
   100% { transform: scale(1.1); opacity: 0; }
 }
 .heart-burst { animation: heartBurst 0.9s ease-out forwards; }
+
+/* 크게 보기에서 다음/이전 추천 글로 넘어갈 때 */
+@keyframes viewerUp {
+  from { transform: translateY(40px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}
+@keyframes viewerDown {
+  from { transform: translateY(-40px); opacity: 0.4; }
+  to { transform: translateY(0); opacity: 1; }
+}

@@ -1431,7 +1431,7 @@ export default function Home() {
   useEffect(() => {
     if (selectedPostDetail) return;
     bgmAudioRef.current?.pause();
-    setTimeout(() => setBgmPlaying(false), 0);
+    setTimeout(() => { setBgmPlaying(false); setViewerQueue(null); }, 0);
   }, [selectedPostDetail]);
 
   // 축일 카드/안내를 닫았는지 (축일 카드는 하루 단위)
@@ -1752,6 +1752,51 @@ export default function Home() {
 
   // 다른 탭으로 가면 + 메뉴 접기
   useEffect(() => { setFabOpen(false); }, [activeTab]);
+
+  // 크게 보기 손가락 밀기: 사진 좌우로 밀면 다음 사진, (탐색에서 열었으면) 위로 밀면 다음 추천 글
+  const [viewerQueue, setViewerQueue] = useState<string[] | null>(null);
+  const viewerScrollRef = useRef<HTMLDivElement>(null);
+  const viewerTouch = useRef<{ x: number; y: number; atTop: boolean; atBottom: boolean; onImage: boolean } | null>(null);
+  const [viewerSlide, setViewerSlide] = useState<'up' | 'down' | null>(null); // 다음 글로 넘어갈 때 살짝 움직이는 효과
+  const viewerStep = (dir: 1 | -1) => {
+    if (!viewerQueue || !selectedPostDetail) return false;
+    const queue = viewerQueue.filter(id => posts.some(p => p.id === id));
+    const next = posts.find(p => p.id === queue[queue.indexOf(selectedPostDetail.id) + dir]);
+    if (!next) return false;
+    bgmAudioRef.current?.pause();
+    setBgmPlaying(false);
+    setViewerSlide(dir === 1 ? 'up' : 'down');
+    setTimeout(() => setViewerSlide(null), 320);
+    openPostViewer(next);
+    viewerScrollRef.current?.scrollTo({ top: 0 });
+    return true;
+  };
+  const onViewerTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    const el = viewerScrollRef.current;
+    viewerTouch.current = {
+      x: t.clientX, y: t.clientY,
+      atTop: !el || el.scrollTop <= 2,
+      atBottom: !el || el.scrollTop + el.clientHeight >= el.scrollHeight - 2,
+      onImage: !!(e.target as HTMLElement).closest?.('[data-viewer-media]'),
+    };
+  };
+  const onViewerTouchEnd = (e: React.TouchEvent) => {
+    const start = viewerTouch.current;
+    viewerTouch.current = null;
+    if (!start || !selectedPostDetail) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x, dy = t.clientY - start.y;
+    const images = selectedPostDetail.images || [];
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.2 && start.onImage && images.length > 1 && !selectedPostDetail.video_url) {
+      setDetailImageIndex(i => Math.max(0, Math.min(images.length - 1, i + (dx < 0 ? 1 : -1))));
+      return;
+    }
+    if (Math.abs(dy) > 70 && Math.abs(dy) > Math.abs(dx) * 1.2) {
+      if (dy < 0 && start.atBottom) viewerStep(1);
+      else if (dy > 0 && start.atTop) viewerStep(-1);
+    }
+  };
 
   // 크게 보기: 사진을 두 번 누르면 공감 (한 번 누르면 아무 일 없음)
   const [viewerBurst, setViewerBurst] = useState(0);
@@ -2406,7 +2451,7 @@ export default function Home() {
           blockedIds={blockedIds}
           initialQuery={exploreQuery}
           onOpenProfile={goToProfile}
-          onOpenPost={id => { const p = posts.find(x => x.id === id); if (p?.music) openPostViewer(p); else openPostComments(id); }}
+          onOpenPost={(id, queue) => { const p = posts.find(x => x.id === id); if (p) { openPostViewer(p); setViewerQueue(queue); } }}
           onRequireLogin={() => setShowAuthModal(true)}
         />
       )}
@@ -3043,7 +3088,12 @@ export default function Home() {
       {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
-          <div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh]" onClick={e => e.stopPropagation()}>
+          <div
+            className={`bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh] transition-transform duration-300 ${viewerSlide === 'up' ? 'animate-[viewerUp_0.3s_ease-out]' : viewerSlide === 'down' ? 'animate-[viewerDown_0.3s_ease-out]' : ''}`}
+            onClick={e => e.stopPropagation()}
+            onTouchStart={onViewerTouchStart}
+            onTouchEnd={onViewerTouchEnd}
+          >
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <button onClick={() => { const d = selectedPostDetail; setSelectedPostDetail(null); handleAvatarClick({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 {selectedPostDetail.avatar_url ? (
@@ -3059,12 +3109,12 @@ export default function Home() {
               <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 font-bold text-lg">×</button>
             </div>
             
-            <div className="overflow-y-auto flex-1 flex flex-col">
+            <div ref={viewerScrollRef} className="overflow-y-auto overscroll-contain flex-1 flex flex-col">
               {selectedPostDetail.video_url && (
-                <div className="bg-black"><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} onDoubleTap={() => likeByDoubleTap(selectedPostDetail.id)} /></div>
+                <div className="bg-black" data-viewer-media><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} onDoubleTap={() => likeByDoubleTap(selectedPostDetail.id)} /></div>
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
-                <div className="w-full bg-black flex items-center justify-center relative select-none">
+                <div className="w-full bg-black flex items-center justify-center relative select-none" data-viewer-media>
                   <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" onClick={viewerImageTap} className="max-h-[50dvh] object-contain w-full" />
                   <HeartBurst show={viewerBurst} />
                   {selectedPostDetail.images.length > 1 && (
@@ -3112,6 +3162,18 @@ export default function Home() {
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
                 <p className="text-stone-800 text-sm whitespace-pre-wrap leading-relaxed"><HashtagText text={selectedPostDetail.content} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} /></p>
                 <span className="text-[0.8125rem] text-stone-400 mt-2">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
+                {/* 탐색에서 열었을 때: 다음 추천 (위로 밀어도 됨) */}
+                {viewerQueue && (() => {
+                  const queue = viewerQueue.filter(id => posts.some(p => p.id === id));
+                  const idx = queue.indexOf(selectedPostDetail.id);
+                  return (
+                    <div className="mt-3 flex gap-2">
+                      {idx > 0 && <button onClick={() => viewerStep(-1)} className="flex-1 py-2.5 rounded-xl border border-stone-300 text-sm text-stone-600">↑ 이전</button>}
+                      {idx < queue.length - 1 && <button onClick={() => viewerStep(1)} className="flex-[2] py-2.5 rounded-xl bg-stone-900 text-white text-sm font-bold">다음 추천 보기 ↓</button>}
+                    </div>
+                  );
+                })()}
+                {viewerQueue && <p className="text-center text-[0.75rem] text-stone-400">화면을 위로 밀면 다음 추천 글이 나와요</p>}
               </div>
             </div>
           </div>
