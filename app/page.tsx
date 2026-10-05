@@ -346,6 +346,27 @@ export default function Home() {
     fetchNotices();
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
+
+    // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
+    let hiddenAt = 0;
+    const onAppResume = async () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      if (!hiddenAt || Date.now() - hiddenAt < 15 * 1000) return; // 아주 잠깐이면 그대로
+      hiddenAt = 0;
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        const { version } = await res.json();
+        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION) {
+          window.location.reload();
+          return;
+        }
+      } catch { /* 인터넷이 잠깐 끊겨도 아래는 진행 */ }
+      navigator.serviceWorker?.getRegistration('/sw.js').then(reg => reg?.update()).catch(() => {});
+      fetchPosts();
+      fetchIntentions();
+      fetchNotices();
+    };
+    document.addEventListener('visibilitychange', onAppResume);
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
@@ -365,6 +386,7 @@ export default function Home() {
     return () => {
       clearTimeout(historyTimer);
       clearInterval(intentionTimer);
+      document.removeEventListener('visibilitychange', onAppResume);
       window.removeEventListener('popstate', onPopState);
       clearInterval(bannerTimer);
       authListener.subscription.unsubscribe();
