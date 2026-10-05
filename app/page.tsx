@@ -79,6 +79,7 @@ interface Post {
   video_poster?: string | null; // 영상 미리보기 이미지
   video_overlays?: VideoOverlays | null; // 영상 위 글자·이모티콘
   music_title?: string | null;
+  visibility?: Visibility | null; // 공개 범위 (없으면 전체 공개)
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; edited_at?: string | null; }
@@ -123,11 +124,38 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
 
 const MAX_PHOTOS = 5; // 한 글에 올릴 수 있는 사진 수
 
+// 글 공개 범위
+type Visibility = 'public' | 'followers' | 'private';
+const VISIBILITY: Record<Visibility, { icon: string; label: string; hint: string }> = {
+  public: { icon: '🌍', label: '전체 공개', hint: '모든 교우가 볼 수 있어요' },
+  followers: { icon: '👥', label: '팔로워만', hint: '나를 팔로우하는 교우만 볼 수 있어요' },
+  private: { icon: '🔒', label: '나만 보기', hint: '나만 볼 수 있어요' },
+};
+const VISIBILITY_SQL_HINT = '공개 범위 기능을 준비 중이에요. (관리자: supabase/post-visibility.sql 실행 필요)';
+
+// 공개 범위 고르기 (글쓰기·고치기·크게 보기에서 같이 씀)
+function VisibilityPicker({ value, onChange }: { value: Visibility; onChange: (v: Visibility) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex gap-1.5">
+        {(Object.keys(VISIBILITY) as Visibility[]).map(v => (
+          <button key={v} type="button" onClick={() => onChange(v)} aria-pressed={value === v}
+            className={`flex-1 py-2 rounded-xl text-[0.8125rem] font-bold border transition-colors ${value === v ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-600 border-stone-200'}`}>
+            {VISIBILITY[v].icon} {VISIBILITY[v].label}
+          </button>
+        ))}
+      </div>
+      <p className="text-[0.75rem] text-stone-400 pl-1">{VISIBILITY[value].hint}</p>
+    </div>
+  );
+}
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState('');
+  const [composerVisibility, setComposerVisibility] = useState<Visibility>('public'); // 새 글 공개 범위 (마지막 선택 기억)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   // 숏폼 영상 (사진 대신 1개)
@@ -248,6 +276,7 @@ export default function Home() {
   const [editOverlays, setEditOverlays] = useState<VideoOverlays | null>(null); // 영상 글 고치기: 글자·이모티콘
   const [showEditVideoEditor, setShowEditVideoEditor] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [editVisibility, setEditVisibility] = useState<Visibility>('public');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [exploreQuery, setExploreQuery] = useState('');
@@ -381,6 +410,8 @@ export default function Home() {
     fetchIntentions();
     fetchNotices();
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
+    const savedVisibility = storageGet('postVisibility');
+    if (savedVisibility === 'followers' || savedVisibility === 'private') setComposerVisibility(savedVisibility);
     const savedFilter = storageGet('feedFilter2');
     if (savedFilter === 'all' || savedFilter === 'text') setFeedFilter(savedFilter);
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
@@ -917,12 +948,17 @@ export default function Home() {
       };
     }
     const author = profile?.baptismal_name || '교우';
-    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}) };
+    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}), ...(composerVisibility !== 'public' ? { visibility: composerVisibility } : {}) };
     let { data: created, error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]).select('id');
     // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
     if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) {
       ({ data: created, error } = await supabase.from('posts').insert([row]).select('id'));
       alert('글은 올렸지만 음악은 저장하지 못했어요.\n(관리자: Supabase에서 supabase/music.sql 을 실행해야 음악이 저장됩니다)');
+    }
+    if (error && composerVisibility !== 'public' && (error.code === 'PGRST204' || error.code === '42703') && /visibility/.test(error.message)) {
+      alert(VISIBILITY_SQL_HINT);
+      setLoading(false);
+      return;
     }
     if (error && videoFields && (error.code === 'PGRST204' || error.code === '42703')) {
       alert('영상 기능을 준비 중이에요. (관리자: supabase/videos.sql 실행 필요)');
@@ -1090,16 +1126,25 @@ export default function Home() {
     setEditingPostId(post.id);
     setEditContent(post.content || '');
     setEditOverlays(post.video_overlays || null);
+    setEditVisibility(post.visibility || 'public');
+  };
+  // 공개 범위만 바로 바꾸기 (크게 보기·내 공간에서)
+  const changePostVisibility = async (postId: string, visibility: Visibility) => {
+    const { error } = await supabase.from('posts').update({ visibility }).eq('id', postId);
+    if (error) { alert(/visibility/.test(error.message) ? VISIBILITY_SQL_HINT : '공개 범위를 바꾸지 못했어요.'); return; }
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, visibility } : p));
+    setSelectedPostDetail(prev => prev && prev.id === postId ? { ...prev, visibility } : prev);
   };
   const handleUpdatePost = async (postId: string) => {
     const target = posts.find(p => p.id === postId);
     if (!target) return;
     const changes: Partial<Post> = { content: editContent.trim() };
     if (target.video_url) changes.video_overlays = hasOverlays(editOverlays) ? editOverlays : null;
+    if (editVisibility !== (target.visibility || 'public')) changes.visibility = editVisibility;
     setSavingEdit(true);
     const { error } = await supabase.from('posts').update(changes).eq('id', postId);
     setSavingEdit(false);
-    if (error) { alert(`고치지 못했어요. 잠시 후 다시 해 주세요.\n(${error.message})`); return; }
+    if (error) { alert(/visibility/.test(error.message) ? VISIBILITY_SQL_HINT : `고치지 못했어요. 잠시 후 다시 해 주세요.\n(${error.message})`); return; }
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...changes } : p));
     setEditingPostId(null);
   };
@@ -2080,6 +2125,7 @@ export default function Home() {
                   ))}
                 </div>
               )}
+              {user && <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />}
               <div className="flex items-center justify-between pt-1">
                 <div>
                   <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
@@ -2228,6 +2274,7 @@ export default function Home() {
                     <div className="flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
                       {reactionButtons(post, () => toggleCommentBox(post.id))}
                       <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
+                        {post.visibility && post.visibility !== 'public' && <span className="text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5">{VISIBILITY[post.visibility].icon} {VISIBILITY[post.visibility].label}</span>}
                         {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
                         {(canDelete || user) && (
                           <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="px-1.5 text-base leading-none text-stone-400 hover:text-stone-700" aria-label="더보기">⋯</button>
@@ -2465,6 +2512,7 @@ export default function Home() {
                   onClick={() => openPostViewer(post)} 
                   className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
                 >
+                  {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5">{VISIBILITY[post.visibility].icon}</span>}
                   {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">🎵</span>}
                   {post.video_url && <span className="absolute bottom-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">▶</span>}
                   {post.video_url ? (
@@ -2809,6 +2857,7 @@ export default function Home() {
                   <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-10 h-10 rounded-xl bg-stone-100 text-xl">{e}</button>
                 ))}
               </div>
+              <VisibilityPicker value={editVisibility} onChange={setEditVisibility} />
               {target.video_url && (
                 <button type="button" onClick={() => setShowEditVideoEditor(true)} className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2.5 rounded-xl">
                   <Icon name="film" className="w-[1.125rem] h-[1.125rem]" />영상 위 글자·이모티콘 고치기{hasOverlays(editOverlays) && ' ✓'}
@@ -3230,6 +3279,10 @@ export default function Home() {
                 );
               })()}
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
+                {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
+                {user?.id === selectedPostDetail.user_id && (
+                  <div className="mb-1"><VisibilityPicker value={selectedPostDetail.visibility || 'public'} onChange={v => changePostVisibility(selectedPostDetail.id, v)} /></div>
+                )}
                 {/* 글은 처음엔 두 줄만, 누르면 전체 */}
                 <ClampText
                   key={selectedPostDetail.id}
