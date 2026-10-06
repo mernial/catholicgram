@@ -1894,6 +1894,52 @@ export default function Home() {
     setRefreshState('done');
     setTimeout(() => setRefreshState(''), 1200);
   };
+  // 위에서 아래로 당겨 새로고침 (앱 화면 맨 위에서만). 보고 있는 탭에 맞는 것도 함께 새로 불러온다
+  const [anonKey, setAnonKey] = useState(0);
+  const [pull, setPull] = useState(0); // 당긴 거리(px, 끌림 줄인 값)
+  const PULL_TRIGGER = 70;
+  const pullRefresh = () => {
+    if (activeTab === 'anon') setAnonKey(k => k + 1);
+    if (activeTab === 'profile' && viewingUserId) { fetchViewingProfile(viewingUserId); fetchFollowData(viewingUserId); }
+    if (activeTab === 'messages') { fetchChatPartners(); if (user) fetchUnreadMessages(user.id); }
+    refreshFeed();
+  };
+  const pullCtx = useRef({ blocked: false, refresh: pullRefresh });
+  pullCtx.current = { blocked: anyModalOpen || activeTab === 'chat' || refreshState === 'loading', refresh: pullRefresh };
+  useEffect(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+    let start: { x: number; y: number } | null = null;
+    let dist = 0;
+    const onStart = (e: TouchEvent) => {
+      start = null; dist = 0;
+      if (pullCtx.current.blocked || el.scrollTop > 0 || e.touches.length !== 1) return;
+      start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    };
+    const onMove = (e: TouchEvent) => {
+      if (!start) return;
+      const dx = e.touches[0].clientX - start.x, dy = e.touches[0].clientY - start.y;
+      if (el.scrollTop > 0 || (dist === 0 && Math.abs(dx) > Math.abs(dy))) { start = null; dist = 0; setPull(0); return; }
+      dist = dy > 0 ? Math.min(110, dy * 0.5) : 0;
+      setPull(dist);
+    };
+    const onEnd = () => {
+      if (start && dist >= PULL_TRIGGER) pullCtx.current.refresh();
+      start = null; dist = 0;
+      setPull(0);
+    };
+    el.addEventListener('touchstart', onStart, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchend', onEnd);
+    el.addEventListener('touchcancel', onEnd);
+    return () => {
+      el.removeEventListener('touchstart', onStart);
+      el.removeEventListener('touchmove', onMove);
+      el.removeEventListener('touchend', onEnd);
+      el.removeEventListener('touchcancel', onEnd);
+    };
+  }, []);
+
   const tapTab = (tab: 'home' | 'explore', go: () => void) => {
     const now = Date.now();
     const again = activeTab === tab || (lastTabTap.current.tab === tab && now - lastTabTap.current.at < 450);
@@ -2615,7 +2661,7 @@ export default function Home() {
 
       {/* 익명 고민상담 탭 */}
       {activeTab === 'anon' && (
-        <AnonBoard user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} />
+        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} />
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -3607,6 +3653,15 @@ export default function Home() {
       )}
 
       {/* 새로 고침 표시 */}
+      {/* 당겨서 새로고침 표시 */}
+      {pull > 0 && (
+        <div className="fixed left-1/2 z-50 pointer-events-none flex flex-col items-center gap-1" style={{ top: 'calc(3.5rem + env(safe-area-inset-top))', transform: `translate(-50%, ${pull - 20}px)` }}>
+          <span className={`w-10 h-10 rounded-full shadow-lg flex items-center justify-center transition-colors ${pull >= PULL_TRIGGER ? 'bg-stone-900 text-white' : 'bg-white text-stone-600'}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5" style={{ transform: `rotate(${Math.min(1, pull / PULL_TRIGGER) * 180}deg)` }}><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          </span>
+          <span className="text-[0.75rem] font-bold text-stone-600 bg-white/90 rounded-full px-2 py-0.5 shadow">{pull >= PULL_TRIGGER ? '놓으면 새로고침' : '당겨서 새로고침'}</span>
+        </div>
+      )}
       {refreshState && (
         <div className="fixed left-1/2 -translate-x-1/2 top-[calc(4rem+env(safe-area-inset-top))] z-50 px-4 py-2 rounded-full bg-stone-900/85 text-white text-sm font-semibold shadow-lg flex items-center gap-2 pointer-events-none">
           {refreshState === 'loading'
