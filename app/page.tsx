@@ -176,11 +176,11 @@ export default function Home() {
   const [showVideoEditor, setShowVideoEditor] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  const [openComments, setOpenComments] = useState<{ [key: string]: boolean }>({});
+  const [commentSheetId, setCommentSheetId] = useState<string | null>(null); // 아래에서 올라오는 댓글 창의 글
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({});
   const [badgeByUser, setBadgeByUser] = useState<{ [userId: string]: string | null }>({});
   // 댓글 쓴 사람의 '현재' 닉네임과 핸들 (댓글에 저장된 이름이 예전 것이어도 최신으로 보여줌)
-  const [authorByUser, setAuthorByUser] = useState<{ [userId: string]: { name: string; handle?: string } }>({});
+  const [authorByUser, setAuthorByUser] = useState<{ [userId: string]: { name: string; handle?: string; avatar?: string } }>({});
   const [commentInputs, setCommentInputs] = useState<{ [key: string]: string }>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1378,18 +1378,16 @@ export default function Home() {
   const loadCommentBadges = async (list: Comment[]) => {
     const ids = Array.from(new Set(list.flatMap(c => [c.user_id, c.reply_to_user_id]).filter((id): id is string => !!id)));
     if (ids.length === 0) return;
-    const { data } = await supabase.from('profiles').select('id, badge_type, baptismal_name, handle').in('id', ids);
+    const { data } = await supabase.from('profiles').select('id, badge_type, baptismal_name, handle, avatar_url').in('id', ids);
     if (!data) return;
     setBadgeByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, p.badge_type])) }));
-    setAuthorByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, { name: p.baptismal_name, handle: p.handle || undefined }])) }));
+    setAuthorByUser(prev => ({ ...prev, ...Object.fromEntries(data.map(p => [p.id, { name: p.baptismal_name, handle: p.handle || undefined, avatar: p.avatar_url || undefined }])) }));
   };
 
   // 홈에서 해당 글로 이동해 댓글을 펼친다
   const openPostComments = async (postId: string) => {
-    goToHome();
-    setOpenComments(prev => ({ ...prev, [postId]: true }));
+    setCommentSheetId(postId);
     await loadCommentsFor(postId);
-    setTimeout(() => document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
 
   const openNotification = (n: CommentNotification) => {
@@ -1682,10 +1680,10 @@ export default function Home() {
     }
   };
 
+  // 댓글 창 열기 (인스타그램처럼 아래에서 올라옴). 열 때마다 새로 불러온다
   const toggleCommentBox = async (postId: string) => {
-    const nextState = !openComments[postId];
-    setOpenComments({ ...openComments, [postId]: nextState });
-    if (nextState && !comments[postId]) await loadCommentsFor(postId);
+    setCommentSheetId(postId);
+    await loadCommentsFor(postId);
   };
   // 내 댓글 수정 / 삭제 (관리자는 삭제 가능)
   const callCommentApi = async (body: object) => {
@@ -1723,12 +1721,8 @@ export default function Home() {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
     if (targetUserId !== user.id) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name } }));
-    if (!openComments[postId]) await toggleCommentBox(postId);
-    setTimeout(() => {
-      const input = document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null;
-      input?.focus();
-      input?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
+    if (commentSheetId !== postId) await toggleCommentBox(postId);
+    setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null)?.focus(), 150);
   };
 
   const handleAddComment = async (postId: string) => {
@@ -1821,7 +1815,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -1838,6 +1832,7 @@ export default function Home() {
     setShowAdminStats(false);
     setPostMenuId(null);
     setFabOpen(false);
+    setCommentSheetId(null);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2415,91 +2410,11 @@ export default function Home() {
                     })()}
 
 
-                    {!openComments[post.id] && (commentCounts[post.id] || 0) > 0 && (
+                    {(commentCounts[post.id] || 0) > 0 && (
                       <button onClick={() => toggleCommentBox(post.id)} className="self-start text-[0.9375rem] text-stone-500">댓글 {commentCounts[post.id]}개 모두 보기</button>
                     )}
                     <p className="text-[0.75rem] text-stone-400">{timeAgo(post.created_at)}</p>
 
-                  {openComments[post.id] && (
-                    <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
-                      <div className="flex flex-col gap-1.5">
-                        {(comments[post.id] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).map((c) => (
-                          <div key={c.id} className={`text-xs bg-stone-100/70 p-2.5 rounded-xl text-stone-800 flex flex-col gap-0.5 ${c.reply_to_user_id ? 'ml-5' : ''}`}>
-                            <span className="flex items-center justify-between gap-2">
-                              <button
-                                onClick={() => c.user_id && tagUserInComments(post.id, c.user_id, authorName(c))}
-                                className="font-bold text-[0.8125rem] text-stone-700 inline-flex items-center gap-1 text-left"
-                              >
-                                {authorName(c)}{c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" />}
-                                {authorHandle(c) && <span className="font-normal text-[0.75rem] text-stone-400">@{authorHandle(c)}</span>}
-                              </button>
-                              <span className="flex items-center gap-2 shrink-0">
-                                {user && c.user_id && c.user_id !== user.id && (
-                                  <button onClick={() => tagUserInComments(post.id, c.user_id!, authorName(c))} className="text-[0.75rem] text-blue-600 font-bold">↩ 답글</button>
-                                )}
-                                {user && c.user_id !== user.id && (
-                                  <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-[0.75rem] text-stone-400 hover:text-red-500">신고</button>
-                                )}
-                                {user && c.user_id === user.id && editingCommentId !== c.id && (
-                                  <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }} className="text-[0.75rem] text-stone-500 font-bold">수정</button>
-                                )}
-                                {user && (c.user_id === user.id || isAdmin) && editingCommentId !== c.id && (
-                                  <button onClick={() => deleteComment(c)} className="text-[0.75rem] text-red-500 font-bold">삭제</button>
-                                )}
-                              </span>
-                            </span>
-                            {editingCommentId === c.id ? (
-                              <div className="flex flex-col gap-1.5 mt-1">
-                                <textarea
-                                  value={editCommentText}
-                                  onChange={e => setEditCommentText(e.target.value)}
-                                  rows={2}
-                                  autoFocus
-                                  className="w-full text-xs border border-stone-300 rounded-lg px-2.5 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-stone-400"
-                                />
-                                <div className="flex justify-end gap-1.5">
-                                  <button onClick={() => setEditingCommentId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
-                                  <button onClick={() => saveCommentEdit(c)} disabled={!editCommentText.trim()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold disabled:opacity-40">저장</button>
-                                </div>
-                              </div>
-                            ) : (
-                              <span>
-                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
-                                <HashtagText text={c.content} onTag={openHashtag} onMention={goToHandle} />
-                                {c.edited_at && <span className="text-stone-400 ml-1 text-[0.6875rem]">(수정됨)</span>}
-                              </span>
-                            )}
-                            {editingCommentId !== c.id && (() => {
-                              const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
-                              return (
-                                <span className="flex gap-1.5 mt-1">
-                                  <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myPray ? 'bg-amber-50 border-amber-300 text-amber-800 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    <Icon name="pray" fill={r.myPray} className={`w-3.5 h-3.5 ${r.myPray ? 'text-amber-600' : 'text-amber-700'}`} />기도{r.pray > 0 && ` ${r.pray}`}
-                                  </button>
-                                  <button onClick={() => toggleCommentReaction(c.id, 'like')} className={`inline-flex items-center gap-1 text-[0.75rem] px-2 py-0.5 rounded-full border ${r.myLike ? 'bg-rose-50 border-rose-300 text-rose-700 font-bold' : 'border-stone-200 text-stone-500 bg-white'}`}>
-                                    <Icon name="heart" fill={r.myLike} className={`w-3.5 h-3.5 ${r.myLike ? 'text-rose-500' : 'text-rose-600'}`} />공감{r.like > 0 && ` ${r.like}`}
-                                  </button>
-                                </span>
-                              );
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                      {replyTargets[post.id] ? (
-                        <div className="flex items-center gap-2 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-lg px-2.5 py-1.5">
-                          <span className="flex-1 min-w-0 truncate"><Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" /><b>@{replyTargets[post.id]!.name}</b>님을 태그했어요</span>
-                          <button onClick={() => setReplyTargets(prev => ({ ...prev, [post.id]: null }))} className="text-blue-400 text-base leading-none px-1" aria-label="답글 취소">×</button>
-                        </div>
-                      ) : (
-                        <p className="text-[0.75rem] text-stone-400"><Icon name="chat" className="inline w-3.5 h-3.5 -mt-0.5 mr-1" /><b className="text-stone-500">{post.author_name}</b>님 글에 댓글을 남겨요 · 닉네임을 누르면 그분을 태그해요</p>
-                      )}
-                      {user && <MentionSuggest value={commentInputs[post.id] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [post.id]: v }))} excludeId={user.id} />}
-                      <div className="flex gap-1.5">
-                        <input id={`comment-input-${post.id}`} type="text" value={commentInputs[post.id] || ''} onChange={(e) => setCommentInputs({ ...commentInputs, [post.id]: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && handleAddComment(post.id)} placeholder={replyTargets[post.id] ? `${replyTargets[post.id]!.name}님에게 답글...` : '댓글을 입력하세요...'} className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none" />
-                        <button onClick={() => handleAddComment(post.id)} className="bg-stone-800 text-white text-xs px-3 py-2 rounded-xl">등록</button>
-                      </div>
-                    </div>
-                  )}
                   </div>
                 </article>
                 {inlineBanner && <SponsorBanner banner={inlineBanner} variant="feed" />}
@@ -2936,6 +2851,104 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 댓글 창: 인스타그램처럼 아래에서 올라옴 */}
+      {commentSheetId && (() => {
+        const sid = commentSheetId;
+        const sheetPost = posts.find(p => p.id === sid);
+        const list = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id));
+        const avatarOf = (uid?: string | null, name?: string) => {
+          const url = uid ? (uid === user?.id ? profile?.avatar_url : authorByUser[uid]?.avatar) : undefined;
+          return url
+            ? <img src={url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+            : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{name?.[0] || '교'}</span>;
+        };
+        return (
+          <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
+            <div className="w-full max-w-xl h-[78dvh] bg-[#fdfaf5] rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
+              <div className="shrink-0 pt-2.5 pb-3 border-b border-[#eadfcb] relative">
+                <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
+                <p className="text-center font-bold text-stone-900 mt-2">댓글</p>
+                <button onClick={() => setCommentSheetId(null)} className="absolute right-3 top-3 w-10 h-10 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 flex flex-col gap-4">
+                {list.length === 0 && (
+                  <div className="py-16 text-center">
+                    <p className="font-bold text-stone-800 text-lg">아직 댓글이 없어요</p>
+                    <p className="text-sm text-stone-500 mt-1">첫 댓글을 남겨 보세요</p>
+                  </div>
+                )}
+                {list.map(c => {
+                  const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
+                  return (
+                    <div key={c.id} className={`flex gap-3 ${c.reply_to_user_id ? 'ml-11' : ''}`}>
+                      <button onClick={() => { if (c.user_id) { setCommentSheetId(null); goToProfile(c.user_id); } }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 공간`}>{avatarOf(c.user_id, authorName(c))}</button>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
+                          <b className="text-stone-900">{authorName(c)}</b>
+                          {c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" showLabel={false} />}
+                          <span className="text-stone-400">{timeAgo(c.created_at)}{c.edited_at && ' · 수정됨'}</span>
+                        </p>
+                        {editingCommentId === c.id ? (
+                          <div className="flex flex-col gap-1.5 mt-1">
+                            <textarea value={editCommentText} onChange={e => setEditCommentText(e.target.value)} rows={2} autoFocus className="w-full text-[0.9375rem] border border-stone-300 rounded-lg px-2.5 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                            <div className="flex justify-end gap-1.5">
+                              <button onClick={() => setEditingCommentId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
+                              <button onClick={() => saveCommentEdit(c)} disabled={!editCommentText.trim()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold disabled:opacity-40">저장</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[0.9375rem] text-stone-800 leading-relaxed whitespace-pre-wrap break-words">
+                            {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
+                            <HashtagText text={c.content} onTag={t => { setCommentSheetId(null); openHashtag(t); }} onMention={h => { setCommentSheetId(null); goToHandle(h); }} />
+                          </p>
+                        )}
+                        {editingCommentId !== c.id && (
+                          <div className="mt-1 flex items-center gap-3 text-[0.8125rem] font-semibold text-stone-500">
+                            {user && c.user_id && c.user_id !== user.id && <button onClick={() => tagUserInComments(sid, c.user_id!, authorName(c))}>답글 달기</button>}
+                            <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 ${r.myPray ? 'text-amber-700' : ''}`}><Icon name="pray" fill={r.myPray} className="w-4 h-4" />기도{r.pray > 0 && ` ${r.pray}`}</button>
+                            {user && c.user_id === user.id && <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}>수정</button>}
+                            {user && (c.user_id === user.id || isAdmin) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
+                            {user && c.user_id !== user.id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-stone-400">신고</button>}
+                          </div>
+                        )}
+                      </div>
+                      {/* 오른쪽 하트 (공감) */}
+                      <button onClick={() => toggleCommentReaction(c.id, 'like')} className="shrink-0 self-start pt-1 w-8 flex flex-col items-center text-[0.75rem] text-stone-500" aria-label={`공감 ${r.like}`}>
+                        <Icon name="heart" fill={r.myLike} className={`w-[1.125rem] h-[1.125rem] ${r.myLike ? 'text-rose-500' : 'text-stone-400'}`} />
+                        {r.like > 0 && r.like}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* 입력칸 */}
+              <div className="shrink-0 border-t border-[#eadfcb] px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-[#fdfaf5] flex flex-col gap-1.5">
+                {replyTargets[sid] && (
+                  <div className="flex items-center gap-2 text-[0.8125rem] bg-stone-100 text-stone-600 rounded-lg px-3 py-1.5">
+                    <span className="flex-1 min-w-0 truncate"><b className="text-stone-800">{replyTargets[sid]!.name}</b>님에게 답글 남기는 중</span>
+                    <button onClick={() => setReplyTargets(prev => ({ ...prev, [sid]: null }))} className="text-stone-400 text-lg leading-none px-1" aria-label="답글 취소">×</button>
+                  </div>
+                )}
+                {user && <MentionSuggest value={commentInputs[sid] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [sid]: v }))} excludeId={user.id} />}
+                <div className="flex items-center gap-2">
+                  {user && avatarOf(user.id, profile?.baptismal_name)}
+                  <input
+                    id={`comment-input-${sid}`}
+                    type="text"
+                    value={commentInputs[sid] || ''}
+                    onChange={e => setCommentInputs(prev => ({ ...prev, [sid]: e.target.value }))}
+                    onKeyDown={e => e.key === 'Enter' && handleAddComment(sid)}
+                    placeholder={replyTargets[sid] ? `${replyTargets[sid]!.name}님에게 답글...` : sheetPost ? `${sheetPost.author_name}님에게 댓글 남기기...` : '댓글 달기...'}
+                    className="flex-1 min-w-0 text-[0.9375rem] border border-stone-300 rounded-full px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-stone-300"
+                  />
+                  <button onClick={() => handleAddComment(sid)} disabled={!(commentInputs[sid] || '').trim()} className="shrink-0 px-3 py-2 text-[0.9375rem] font-bold text-blue-600 disabled:text-blue-300">게시</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 팝업 공지: 앱에 들어오면 한 번 뜸. 닫기 = 다음에 또, 다시 보지 않기 = 이 공지는 그만 */}
       {showPopupNotice && popupNotice && (
