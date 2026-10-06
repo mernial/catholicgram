@@ -11,8 +11,9 @@ const EDGE_PAD = 24;            // 막대 양 끝 여백 (손잡이가 잘리지
 const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
 // 음악 구간 고르기: 곡 전체 막대 위에 보라색 상자가 고른 구간.
-// 상자의 왼쪽·오른쪽 손잡이를 끌면 시작·끝이 바뀌고(5~30초), 상자 가운데를 끌면 구간이 통째로 움직인다.
-// 막대 바깥을 밀면 곡의 다른 부분을 볼 수 있다. 손을 떼면 고른 구간을 바로 들려준다.
+// 상자의 왼쪽·오른쪽 손잡이를 끌면 시작·끝이 바뀌고(5~30초), 상자 가운데를 끌면 구간이 통째로 움직인다
+// (끌다가 막대 끝에 닿으면 막대가 저절로 넘어감). 막대의 다른 곳을 누르면 구간이 그리로 옮겨 가고,
+// ◀ ▶ 단추로 조금씩 옮길 수도 있다. 손을 떼면 고른 구간을 바로 들려준다.
 export default function MusicSegmentPicker({ videoId, title, initialStart = 0, initialClip = CLIP_SECONDS, onConfirm, onBack }: {
   videoId: string;
   title: string;
@@ -27,7 +28,8 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
   const [duration, setDuration] = useState(0);
   const [range, setRange] = useState(() => ({ start: initialStart, clip: Math.min(CLIP_SECONDS, Math.max(MIN_CLIP, initialClip)) }));
   const rangeRef = useRef(range);
-  const drag = useRef<{ kind: 'start' | 'end' | 'move'; x: number; start: number; clip: number } | null>(null);
+  const drag = useRef<{ kind: 'start' | 'end' | 'move'; x: number; scroll: number; start: number; clip: number; lastX: number } | null>(null);
+  const autoScroll = useRef<number | null>(null);
   const [dragging, setDragging] = useState<'start' | 'end' | 'move' | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -98,13 +100,25 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
     e.preventDefault();
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { kind, x: e.clientX, ...rangeRef.current };
+    drag.current = { kind, x: e.clientX, scroll: stripRef.current?.scrollLeft || 0, lastX: e.clientX, ...rangeRef.current };
     setDragging(kind);
+    // 손가락이 막대 양 끝 가까이에 머무르면 막대를 저절로 넘긴다
+    const tick = () => {
+      const d = drag.current, el = stripRef.current;
+      if (!d || !el) { autoScroll.current = null; return; }
+      const r = el.getBoundingClientRect();
+      const edge = 36;
+      const speed = d.lastX < r.left + edge ? -6 : d.lastX > r.right - edge ? 6 : 0;
+      if (speed) { el.scrollLeft += speed; applyDrag(d.lastX); }
+      autoScroll.current = requestAnimationFrame(tick);
+    };
+    if (autoScroll.current === null) autoScroll.current = requestAnimationFrame(tick);
   };
-  const onMove = (e: React.PointerEvent) => {
+  const applyDrag = (clientX: number) => {
     const d = drag.current;
     if (!d) return;
-    const dt = Math.round((e.clientX - d.x) / PX_PER_SEC);
+    const scrolled = (stripRef.current?.scrollLeft || 0) - d.scroll;
+    const dt = Math.round((clientX - d.x + scrolled) / PX_PER_SEC);
     const end = d.start + d.clip;
     let next = rangeRef.current;
     if (d.kind === 'start') {
@@ -119,11 +133,44 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
     }
     if (next.start !== rangeRef.current.start || next.clip !== rangeRef.current.clip) update(next);
   };
+  const onMove = (e: React.PointerEvent) => {
+    if (!drag.current) return;
+    drag.current.lastX = e.clientX;
+    applyDrag(e.clientX);
+  };
   const onUp = () => {
     if (!drag.current) return;
     drag.current = null;
     setDragging(null);
+    if (autoScroll.current !== null) cancelAnimationFrame(autoScroll.current);
+    autoScroll.current = null;
+    revealRange();
     playFromStart();
+  };
+  useEffect(() => () => { if (autoScroll.current !== null) cancelAnimationFrame(autoScroll.current); }, []);
+
+  // 고른 구간 상자가 막대 화면 안에 보이도록 넘김
+  const revealRange = () => {
+    const el = stripRef.current;
+    if (!el) return;
+    const { start: s, clip: c } = rangeRef.current;
+    const left = EDGE_PAD + s * PX_PER_SEC, right = left + c * PX_PER_SEC;
+    if (left < el.scrollLeft + 8) el.scrollTo({ left: left - 40, behavior: 'smooth' });
+    else if (right > el.scrollLeft + el.clientWidth - 8) el.scrollTo({ left: right - el.clientWidth + 40, behavior: 'smooth' });
+  };
+
+  // 구간을 통째로 옮기기 (◀ ▶ 단추, 막대 누르기) → 상자가 보이게 막대도 맞춰 넘김
+  const moveTo = (s: number) => {
+    const c = rangeRef.current.clip;
+    update({ start: Math.max(0, Math.min(duration - c, Math.round(s))), clip: c });
+    revealRange();
+    playFromStart();
+  };
+  // 막대의 상자 바깥을 누르면 그 자리를 가운데로 구간을 옮김 (밀어서 넘길 때는 click 이 오지 않음)
+  const onStripClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if ((e.target as Element).closest('[data-range]')) return;
+    const x = e.clientX - e.currentTarget.getBoundingClientRect().left - EDGE_PAD;
+    moveTo(x / PX_PER_SEC - rangeRef.current.clip / 2);
   };
   const dragProps = (kind: 'start' | 'end' | 'move') => ({
     onPointerDown: onDown(kind), onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp,
@@ -177,7 +224,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
             ref={stripRef}
             className="overflow-x-auto overflow-y-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-xl bg-stone-100 touch-pan-x py-2"
           >
-            <div className="relative flex items-center h-20" style={{ width: duration * PX_PER_SEC + EDGE_PAD * 2, paddingLeft: EDGE_PAD, paddingRight: EDGE_PAD }}>
+            <div onClick={onStripClick} className="relative flex items-center h-20 cursor-pointer" style={{ width: duration * PX_PER_SEC + EDGE_PAD * 2, paddingLeft: EDGE_PAD, paddingRight: EDGE_PAD }}>
               {bars.map((h, i) => (
                 <span
                   key={i}
@@ -187,6 +234,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
               ))}
               {/* 고른 구간: 가운데를 끌면 통째로 이동, 양 끝 손잡이로 시작·끝 조절 */}
               <div
+                data-range
                 {...dragProps('move')}
                 aria-label="고른 구간 옮기기"
                 className={`absolute top-0 bottom-0 rounded-xl border-[3px] touch-none cursor-grab ${dragging === 'move' ? 'border-violet-800 bg-violet-600/10' : 'border-violet-600'}`}
@@ -197,9 +245,16 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
               </div>
             </div>
           </div>
+          {/* 구간 옮기기 단추 */}
+          <div className="flex items-center justify-center gap-1.5">
+            <button type="button" onClick={() => moveTo(start - 5)} disabled={start <= 0} className="px-3 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-800 text-sm font-bold disabled:opacity-35" aria-label="5초 앞으로">◀◀ 5초</button>
+            <button type="button" onClick={() => moveTo(start - 1)} disabled={start <= 0} className="px-3 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-800 text-sm font-bold disabled:opacity-35" aria-label="1초 앞으로">◀ 1초</button>
+            <button type="button" onClick={() => moveTo(start + 1)} disabled={start + clip >= duration} className="px-3 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-800 text-sm font-bold disabled:opacity-35" aria-label="1초 뒤로">1초 ▶</button>
+            <button type="button" onClick={() => moveTo(start + 5)} disabled={start + clip >= duration} className="px-3 py-2 rounded-xl border border-violet-200 bg-violet-50 text-violet-800 text-sm font-bold disabled:opacity-35" aria-label="5초 뒤로">5초 ▶▶</button>
+          </div>
           <p className="text-center text-xs text-stone-500 leading-relaxed">
-            보라색 <b>양쪽 손잡이</b>를 끌어서 <b>시작과 끝</b>을 정하세요 (5~30초)<br />
-            상자 <b>가운데</b>를 끌면 구간이 통째로 움직여요 · 막대를 밀면 곡의 다른 부분이 보여요
+            <b>양쪽 손잡이</b>로 시작과 끝을 정하고 (5~30초)<br />
+            <b>상자를 끌거나</b>, <b>막대의 원하는 곳을 누르거나</b>, ◀ ▶ 단추로 구간을 옮기세요
           </p>
           <button onClick={playFromStart} className="self-center text-xs px-3 py-1.5 rounded-full border border-stone-300 text-stone-600">▶ 이 구간 다시 듣기</button>
         </>

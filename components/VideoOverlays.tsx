@@ -71,11 +71,13 @@ function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; sele
 const newId = () => Math.random().toString(36).slice(2, 9);
 
 // 꾸미기 화면
-export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onRemoveMusic, onDone, onCancel }: {
+export default function VideoEditor({ src, initial, musicTitle, musicRange, onOpenMusic, onAdjustMusic, onRemoveMusic, onDone, onCancel }: {
   src: string;
   initial?: VideoOverlays | null;
   musicTitle?: string | null;
   onOpenMusic: () => void;
+  musicRange?: string | null;      // 고른 구간 (예: 0:25부터 15초)
+  onAdjustMusic?: () => void;      // 구간 조절 (유튜브 음악일 때)
   onRemoveMusic: () => void;
   onDone: (overlays: VideoOverlays) => void;
   onCancel: () => void;
@@ -312,6 +314,7 @@ export default function VideoEditor({ src, initial, musicTitle, onOpenMusic, onR
       {musicTitle && panel === 'none' && (
         <div className="mx-4 mb-1 flex items-center gap-2 text-xs text-white bg-white/10 rounded-full px-3 py-1.5">
           <Icon name="music" className="w-4 h-4 shrink-0" /><span className="flex-1 min-w-0 truncate">{musicTitle}</span>
+          {onAdjustMusic && <button onClick={onAdjustMusic} className="shrink-0 text-[0.75rem] font-bold text-[#1c1917] bg-[#fbe7b0] rounded-full px-2.5 py-1">{musicRange ? `${musicRange} · ` : ''}구간 조절</button>}
           <button onClick={onRemoveMusic} className="text-white/60 px-1" aria-label="음악 빼기">×</button>
         </div>
       )}
