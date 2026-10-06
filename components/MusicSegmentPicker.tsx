@@ -4,17 +4,20 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadYouTubeApi, YT_ENDED, type YTPlayer } from '@/lib/youtube-api';
 import { CLIP_SECONDS } from '@/lib/music';
 
-const PX_PER_SEC = 8;           // 음악 막대 1초당 너비
+const PX_PER_SEC = 10;          // 음악 막대 1초당 너비
+const MIN_CLIP = 5;             // 가장 짧게 고를 수 있는 길이(초)
 const BAR_EVERY = 1;            // 1초마다 막대 하나
 
 const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
 
-// 올리는 사람이 음악 막대를 옆으로 밀어서 30초 구간을 고른다.
-// 왼쪽의 테두리 상자가 고른 30초이고, 밀기를 멈추면 그 구간을 바로 들려준다.
-export default function MusicSegmentPicker({ videoId, title, initialStart = 0, onConfirm, onBack }: {
+// 올리는 사람이 음악 막대를 옆으로 밀어서 시작 위치를 고르고,
+// 왼쪽 테두리 상자의 오른쪽 손잡이를 끌어 길이를 5~30초 사이로 줄이거나 늘린다.
+// 밀기·끌기를 멈추면 그 구간을 바로 들려준다.
+export default function MusicSegmentPicker({ videoId, title, initialStart = 0, initialClip = CLIP_SECONDS, onConfirm, onBack }: {
   videoId: string;
   title: string;
   initialStart?: number;
+  initialClip?: number;
   onConfirm: (start: number, clip?: number) => void;
   onBack: () => void;
 }) {
@@ -25,6 +28,9 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
   const settleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [duration, setDuration] = useState(0);
   const [start, setStart] = useState(initialStart);
+  const [clip, setClip] = useState(Math.min(CLIP_SECONDS, Math.max(MIN_CLIP, initialClip)));
+  const clipRef = useRef(clip);
+  const handleDrag = useRef<{ x: number; clip: number } | null>(null);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -52,7 +58,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
               const p = playerRef.current;
               if (!p) return;
               const t = p.getCurrentTime();
-              if (t > startRef.current + CLIP_SECONDS || t < startRef.current - 1) p.seekTo(startRef.current, true);
+              if (t > startRef.current + clipRef.current || t < startRef.current - 1) p.seekTo(startRef.current, true);
             }, 400);
           },
           onStateChange: e => { if (e.data === YT_ENDED) { e.target.seekTo(startRef.current, true); e.target.playVideo(); } },
@@ -74,8 +80,33 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
     if (ready && stripRef.current) stripRef.current.scrollLeft = initialStart * PX_PER_SEC;
   }, [ready, initialStart]);
 
-  const maxStart = Math.max(0, duration - CLIP_SECONDS);
-  const tooShort = ready && duration > 0 && duration <= CLIP_SECONDS;
+  const maxClip = duration > 0 ? Math.min(CLIP_SECONDS, duration) : CLIP_SECONDS;
+  const maxStart = Math.max(0, duration - clip);
+  const tooShort = ready && duration > 0 && duration <= MIN_CLIP;
+
+  const playFromStart = () => {
+    playerRef.current?.seekTo(startRef.current, true);
+    playerRef.current?.playVideo();
+  };
+
+  // 오른쪽 손잡이 끌기: 1초 = PX_PER_SEC 만큼
+  const onHandleDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    handleDrag.current = { x: e.clientX, clip: clipRef.current };
+  };
+  const onHandleMove = (e: React.PointerEvent) => {
+    const d = handleDrag.current;
+    if (!d) return;
+    const room = Math.max(MIN_CLIP, duration - startRef.current); // 곡 끝을 넘지 않게
+    const next = Math.round(Math.min(maxClip, room, Math.max(MIN_CLIP, d.clip + (e.clientX - d.x) / PX_PER_SEC)));
+    if (next !== clipRef.current) { clipRef.current = next; setClip(next); }
+  };
+  const onHandleUp = () => {
+    if (!handleDrag.current) return;
+    handleDrag.current = null;
+    playFromStart();
+  };
 
   const onScroll = () => {
     const el = stripRef.current;
@@ -84,15 +115,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
     startRef.current = s;
     setStart(s);
     clearTimeout(settleTimer.current);
-    settleTimer.current = setTimeout(() => {
-      playerRef.current?.seekTo(s, true);
-      playerRef.current?.playVideo();
-    }, 300);
-  };
-
-  const replay = () => {
-    playerRef.current?.seekTo(startRef.current, true);
-    playerRef.current?.playVideo();
+    settleTimer.current = setTimeout(playFromStart, 300);
   };
 
   // 음악 막대 모양 (영상마다 같은 모양이 나오도록 영상 ID로 높이를 정함)
@@ -102,7 +125,8 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
     return Array.from({ length: Math.ceil(duration / BAR_EVERY) }, () => 0.25 + rand() * 0.75);
   }, [videoId, duration]);
 
-  const windowWidth = CLIP_SECONDS * PX_PER_SEC;
+  const windowWidth = clip * PX_PER_SEC;
+  const padWidth = CLIP_SECONDS * PX_PER_SEC; // 끝 부분까지 밀 수 있게 남겨 두는 자리
 
   return (
     <div className="flex flex-col gap-3 p-4">
@@ -119,11 +143,12 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
       {!ready ? (
         <p className="text-center text-sm text-stone-400 py-6">음악 불러오는 중...</p>
       ) : tooShort ? (
-        <p className="text-center text-sm text-stone-500 py-4">30초보다 짧은 곡이라 전체가 재생돼요.</p>
+        <p className="text-center text-sm text-stone-500 py-4">아주 짧은 곡이라 전체가 재생돼요.</p>
       ) : (
         <>
           <p className="text-center text-sm text-stone-700">
-            <b className="text-violet-700 text-base">{fmt(start)} ~ {fmt(Math.min(duration, start + CLIP_SECONDS))}</b>
+            <b className="text-violet-700 text-base">{fmt(start)} ~ {fmt(Math.min(duration, start + clip))}</b>
+            <b className="ml-1.5 text-white bg-violet-600 rounded-full px-2 py-0.5 text-[0.8125rem]">{clip}초</b>
             <span className="text-stone-400"> / 전체 {fmt(duration)}</span>
           </p>
           <div className="relative">
@@ -132,26 +157,43 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, o
               onScroll={onScroll}
               className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden rounded-xl bg-stone-100 touch-pan-x"
             >
-              <div className="flex items-center h-20" style={{ width: duration * PX_PER_SEC + windowWidth, paddingRight: windowWidth }}>
+              <div className="flex items-center h-20" style={{ width: duration * PX_PER_SEC + padWidth, paddingRight: padWidth }}>
                 {bars.map((h, i) => (
                   <span
                     key={i}
-                    className={`shrink-0 rounded-full mx-[2px] ${i >= start && i < start + CLIP_SECONDS ? 'bg-violet-600' : 'bg-stone-300'}`}
+                    className={`shrink-0 rounded-full mx-[2px] ${i >= start && i < start + clip ? 'bg-violet-600' : 'bg-stone-300'}`}
                     style={{ width: PX_PER_SEC * BAR_EVERY - 4, height: `${Math.round(h * 100)}%` }}
                   />
                 ))}
               </div>
             </div>
-            {/* 고른 30초 테두리 (왼쪽 고정) */}
+            {/* 고른 구간 테두리 (왼쪽 고정) + 오른쪽 손잡이로 길이 조절 */}
             <div className="pointer-events-none absolute top-0 bottom-0 left-0 rounded-xl border-[3px] border-violet-600" style={{ width: windowWidth }} />
+            <div
+              role="slider"
+              aria-label="음악 길이"
+              aria-valuemin={MIN_CLIP}
+              aria-valuemax={maxClip}
+              aria-valuenow={clip}
+              onPointerDown={onHandleDown}
+              onPointerMove={onHandleMove}
+              onPointerUp={onHandleUp}
+              onPointerCancel={onHandleUp}
+              className="absolute -top-2 -bottom-2 w-11 -ml-[1.375rem] flex items-center justify-center touch-none cursor-ew-resize"
+              style={{ left: windowWidth }}
+            >
+              <span className="w-5 h-14 rounded-full bg-violet-600 shadow-md flex items-center justify-center gap-[3px]">
+                <span className="w-[2px] h-6 rounded-full bg-white/80" /><span className="w-[2px] h-6 rounded-full bg-white/80" />
+              </span>
+            </div>
           </div>
-          <p className="text-center text-xs text-stone-500">👈 음악 막대를 손가락으로 밀어서 들려줄 30초를 고르세요</p>
-          <button onClick={replay} className="self-center text-xs px-3 py-1.5 rounded-full border border-stone-300 text-stone-600">▶ 이 구간 다시 듣기</button>
+          <p className="text-center text-xs text-stone-500 leading-relaxed">음악 막대를 옆으로 밀어서 <b>시작 위치</b>를 고르고,<br />보라색 <b>손잡이</b>를 끌어서 <b>길이</b>를 줄이거나 늘리세요 (5~30초)</p>
+          <button onClick={playFromStart} className="self-center text-xs px-3 py-1.5 rounded-full border border-stone-300 text-stone-600">▶ 이 구간 다시 듣기</button>
         </>
       )}
 
       <button
-        onClick={() => onConfirm(tooShort ? 0 : start, tooShort ? undefined : CLIP_SECONDS)}
+        onClick={() => onConfirm(tooShort ? 0 : start, tooShort ? undefined : clip)}
         disabled={!ready || failed}
         className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
       >
