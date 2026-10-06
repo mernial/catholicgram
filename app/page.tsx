@@ -55,6 +55,16 @@ const deepLinkFromSearch = (search: string) => {
   return post || chat || alerts || feedback || notice || reports ? { post, chat, alerts, feedback, notice, reports } : null;
 };
 
+// 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
+const timeAgo = (iso: string) => {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return '방금 전';
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}일 전`;
+  return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+};
+
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
 const isStorageAvailable = () => {
@@ -2043,7 +2053,8 @@ export default function Home() {
   const viewerImageTap = useDoubleTap(() => {}, viewerDoubleTapLike);
 
   // 기도·공감·댓글·메시지 버튼 (피드와 크게 보기에서 같이 씀)
-  const reactionButtons = (post: Post, onComment: () => void) => (
+  // showCounts=false: 피드처럼 숫자는 버튼 아래 줄에 따로 보여 줄 때
+  const reactionButtons = (post: Post, onComment: () => void, showCounts = true) => (
     <>
       {(() => {
         const prayed = myPostReactions.has(`${post.id}:pray`);
@@ -2053,18 +2064,18 @@ export default function Home() {
             {/* 글자 없이 그림만. 누르면 손·하트가 진한 색으로 꽉 채워짐 */}
             <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} aria-label={`기도 ${post.pray_count || 0}`} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-900 font-bold' : 'text-stone-600'}`}>
               <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-[1.375rem] h-[1.375rem]" /></span>
-              {post.pray_count > 0 && post.pray_count}
+              {showCounts && post.pray_count > 0 && post.pray_count}
             </button>
             <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} aria-label={`공감 ${post.like_count || 0}`} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
               <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-600' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-[1.375rem] h-[1.375rem]" /></span>
-              {post.like_count > 0 && post.like_count}
+              {showCounts && post.like_count > 0 && post.like_count}
             </button>
           </>
         );
       })()}
       <button onClick={onComment} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
         <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
-        {commentCounts[post.id] ? commentCounts[post.id] : null}
+        {showCounts && commentCounts[post.id] ? commentCounts[post.id] : null}
       </button>
       {/* 글쓴이에게 바로 메시지 */}
       {user?.id !== post.user_id && (
@@ -2331,8 +2342,27 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col gap-3 pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
-                  {/* 사진이 먼저, 크게 (여러 장이면 옆으로 넘김) — 사진을 누르면 작성자·음악과 함께 크게 보기 */}
+                <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
+                  {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
+                  <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
+                    <button onClick={() => goToProfile(post.user_id)} className="shrink-0" aria-label={`${post.author_name}님 공간`}>
+                      {post.avatar_url
+                        ? <img src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
+                        : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
+                    </button>
+                    <div className="min-w-0 flex-1 flex flex-col items-start">
+                      <button onClick={() => goToProfile(post.user_id)} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
+                      {/* 음악: 누르면 크게 보기에서 재생 */}
+                      {parsePostMusic(post.music) && (
+                        <button onClick={() => openPostViewer(post)} className="max-w-full flex items-center gap-1 text-[0.75rem] text-stone-500"><Icon name="music" className="w-3 h-3 shrink-0" /><span className="truncate">{post.music_title || '음악'}</span></button>
+                      )}
+                    </div>
+                    {post.visibility && post.visibility !== 'public' && <span className="shrink-0 text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5 inline-flex items-center gap-1"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" />{VISIBILITY[post.visibility].label}</span>}
+                    {(canDelete || user) && (
+                      <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-10 h-10 -mr-2 shrink-0 flex items-center justify-center rounded-full text-xl leading-none text-stone-600 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">⋯</button>
+                    )}
+                  </div>
+                  {/* 사진·영상 크게 (여러 장이면 옆으로 넘김) — 누르면 크게 보기 */}
                   {post.video_url && (
                     <PostVideo
                       src={post.video_url}
@@ -2350,12 +2380,19 @@ export default function Home() {
                       onOpen={i => openPostViewer(post, i)}
                       onDoubleTap={() => likeByDoubleTap(post.id)}
                       musicTitle={post.music_title}
-                      onMusic={parsePostMusic(post.music) ? () => openPostViewer(post) : undefined}
                     />
                   )}
 
-                  <div className="px-4 sm:px-5 flex flex-col gap-3">
-                    {!(post.images && post.images.length > 0) && !post.video_url && <div className="pt-4 sm:pt-5" />}
+                  <div className="px-3 sm:px-4 flex flex-col gap-1.5">
+                    {/* 기도·공감·댓글·메시지 버튼 (숫자는 아래 줄에) */}
+                    <div className={`flex items-center gap-x-2.5 ${(post.images && post.images.length > 0) || post.video_url ? 'pt-2' : ''}`}>
+                      {reactionButtons(post, () => toggleCommentBox(post.id), false)}
+                    </div>
+                    {(post.pray_count > 0 || post.like_count > 0) && (
+                      <p className="text-[0.875rem] font-bold text-stone-900">
+                        {[post.pray_count > 0 && `기도 ${post.pray_count}명`, post.like_count > 0 && `공감 ${post.like_count}명`].filter(Boolean).join(' · ')}
+                      </p>
+                    )}
                     {(() => {
                       // 사진·영상이 있는 글은 첫 줄, 글만 있는 글은 두 줄만 보이고 끝에 '... 더 보기' → 누르면 전체
                       const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
@@ -2366,15 +2403,10 @@ export default function Home() {
                         onExpand={() => setExpandedPosts(prev => new Set(prev).add(post.id))}
                         onCollapse={() => setExpandedPosts(prev => { const next = new Set(prev); next.delete(post.id); return next; })}
                         className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed"
-                        prefixText={`\u3000\u3000${post.author_name}`}
+                        prefixText={post.author_name}
                         prefix={
-                          /* 프로필 사진·닉네임을 누르면 그 사람의 공간으로 */
-                          <button onClick={e => { e.stopPropagation(); goToProfile(post.user_id); }} className="font-bold text-stone-900 mr-1.5 inline-flex items-center gap-1.5 align-bottom">
-                            {post.avatar_url
-                              ? <img src={post.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover border border-stone-200 shrink-0" />
-                              : <span className="w-7 h-7 rounded-full bg-stone-200 text-stone-600 text-xs font-serif font-bold flex items-center justify-center shrink-0">{post.author_name?.[0] || '교'}</span>}
-                            <span className="inline-flex items-center gap-0.5">{post.author_name}<RoleBadge type={post.badge_type} size="xs" showLabel={false} /></span>
-                          </button>
+                          /* 글 앞에 굵은 이름: 누르면 그 사람의 공간으로 */
+                          <button onClick={e => { e.stopPropagation(); goToProfile(post.user_id); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
                         }
                         text={post.content || ''}
                         renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
@@ -2382,22 +2414,11 @@ export default function Home() {
                       );
                     })()}
 
-                    {!(post.images && post.images.length > 0) && parsePostMusic(post.music) && (
-                      <button onClick={() => openPostViewer(post)} className="self-start flex items-center gap-1.5 max-w-full text-xs font-bold text-violet-800 bg-violet-50 border border-violet-100 rounded-full px-3 py-1.5">
-                        <Icon name="music" className="w-4 h-4" /><span className="truncate">{post.music_title || '음악'}</span><span className="text-violet-500 shrink-0">▶ 듣기</span>
-                      </button>
-                    )}
 
-                    <div className="flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
-                      {reactionButtons(post, () => toggleCommentBox(post.id))}
-                      <span className="ml-auto flex items-center gap-1 text-[0.8125rem] text-stone-400">
-                        {post.visibility && post.visibility !== 'public' && <span className="text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5 inline-flex items-center gap-1"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" />{VISIBILITY[post.visibility].label}</span>}
-                        {new Date(post.created_at).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' })}
-                        {(canDelete || user) && (
-                          <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-9 h-9 -mr-1.5 flex items-center justify-center rounded-full text-lg leading-none text-stone-500 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">⋯</button>
-                        )}
-                      </span>
-                    </div>
+                    {!openComments[post.id] && (commentCounts[post.id] || 0) > 0 && (
+                      <button onClick={() => toggleCommentBox(post.id)} className="self-start text-[0.9375rem] text-stone-500">댓글 {commentCounts[post.id]}개 모두 보기</button>
+                    )}
+                    <p className="text-[0.75rem] text-stone-400">{timeAgo(post.created_at)}</p>
 
                   {openComments[post.id] && (
                     <div className="mt-2 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
