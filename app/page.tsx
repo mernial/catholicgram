@@ -2998,7 +2998,9 @@ export default function Home() {
             src={target.video_url}
             initial={editOverlays}
             musicTitle={editMusic?.title}
-            onOpenMusic={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }}
+            musicRange={editMusic ? musicRangeLabel(editMusic.value) : null}
+            onAdjustMusic={editMusic && parsePostMusic(editMusic.value)?.kind === 'youtube' ? () => openMusicSegment('edit', editMusic) : undefined}
+            onOpenMusic={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }}
             onRemoveMusic={() => setEditMusic(null)}
             onDone={o => { setEditOverlays(o); setShowEditVideoEditor(false); }}
             onCancel={() => setShowEditVideoEditor(false)}
@@ -3011,7 +3013,9 @@ export default function Home() {
           src={videoPreviewUrl}
           initial={composerOverlays}
           musicTitle={composerMusic?.title}
-          onOpenMusic={() => setShowMusicPicker(true)}
+          musicRange={composerMusic ? musicRangeLabel(composerMusic.value) : null}
+          onAdjustMusic={composerMusic && parsePostMusic(composerMusic.value)?.kind === 'youtube' ? () => openMusicSegment('composer', composerMusic) : undefined}
+          onOpenMusic={() => { setMusicSegment(null); setShowMusicPicker(true); }}
           onRemoveMusic={() => setComposerMusic(null)}
           onDone={o => { setComposerOverlays(o); setShowVideoEditor(false); }}
           onCancel={() => setShowVideoEditor(false)}
