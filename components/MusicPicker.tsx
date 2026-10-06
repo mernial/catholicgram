@@ -13,8 +13,9 @@ const QUICK_SEARCHES = ['가톨릭 성가', '생활성가', '묵상 음악', '�
 export interface SelectedMusic { value: string; title: string }
 
 // 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 유튜브 링크)
-export default function MusicPicker({ tracks, onSelect, onClose }: {
+export default function MusicPicker({ tracks, initialSegment, onSelect, onClose }: {
   tracks: BgmTrack[];
+  initialSegment?: { videoId: string; title: string; start: number; clip?: number } | null; // 이미 고른 곡의 구간만 다시 고치기
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
 }) {
@@ -28,8 +29,8 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
   const [searchUnavailable, setSearchUnavailable] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
-  // 유튜브 곡을 고른 뒤 30초 구간 고르기
-  const [segmentFor, setSegmentFor] = useState<{ videoId: string; title: string; start: number } | null>(null);
+  // 유튜브 곡을 고른 뒤 구간 고르기
+  const [segmentFor, setSegmentFor] = useState<{ videoId: string; title: string; start: number; clip?: number } | null>(initialSegment || null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -96,6 +97,7 @@ export default function MusicPicker({ tracks, onSelect, onClose }: {
               videoId={segmentFor.videoId}
               title={segmentFor.title}
               initialStart={segmentFor.start}
+              initialClip={segmentFor.clip}
               onBack={() => setSegmentFor(null)}
               onConfirm={(start, clip) => onSelect({ value: encodeYouTube(segmentFor.videoId, start, clip), title: segmentFor.title })}
             />

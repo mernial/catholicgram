@@ -270,6 +270,7 @@ export default function Home() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editVisibility, setEditVisibility] = useState<Visibility>('public');
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
+  const [musicSegment, setMusicSegment] = useState<{ videoId: string; title: string; start: number; clip?: number } | null>(null); // 고른 곡의 구간만 다시 고치기
   const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -980,6 +981,19 @@ export default function Home() {
       fetchPosts(); goToHome();
     }
     setLoading(false);
+  };
+
+  // 고른 유튜브 음악의 구간 표시·다시 고치기 (글쓰기·글 고치기)
+  const musicRangeLabel = (value: string) => {
+    const m = parsePostMusic(value);
+    return m?.kind === 'youtube' && m.clip ? `${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초` : null;
+  };
+  const openMusicSegment = (target: 'composer' | 'edit', music: { value: string; title: string }) => {
+    const m = parsePostMusic(music.value);
+    if (m?.kind !== 'youtube') return;
+    setMusicSegment({ videoId: m.videoId, title: music.title, start: m.start, clip: m.clip });
+    setMusicPickerFor(target);
+    setShowMusicPicker(true);
   };
 
   const fetchNotices = async () => {
@@ -2198,7 +2212,9 @@ export default function Home() {
                 <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
                   <Icon name="music" className="w-4 h-4 text-violet-700" />
                   <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
-                  {(() => { const m = parsePostMusic(composerMusic.value); return m?.kind === 'youtube' && m.clip ? <span className="text-[0.75rem] text-violet-700 shrink-0">{`${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초`}</span> : null; })()}
+                  {parsePostMusic(composerMusic.value)?.kind === 'youtube' && (
+                    <button type="button" onClick={() => openMusicSegment('composer', composerMusic)} className="shrink-0 text-[0.75rem] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1">{musicRangeLabel(composerMusic.value) || '구간'} · 조절</button>
+                  )}
                   <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
                 </div>
               )}
@@ -2946,8 +2962,14 @@ export default function Home() {
               {editMusic ? (
                 <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
                   <span className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-[1.125rem] h-[1.125rem]" /></span>
-                  <span className="flex-1 min-w-0 text-sm font-bold text-stone-700 truncate">{editMusic.title}</span>
-                  <button type="button" onClick={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 font-bold">바꾸기</button>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-sm font-bold text-stone-700 truncate">{editMusic.title}</span>
+                    {musicRangeLabel(editMusic.value) && <span className="block text-[0.75rem] text-violet-700">{musicRangeLabel(editMusic.value)}</span>}
+                  </span>
+                  {parsePostMusic(editMusic.value)?.kind === 'youtube' && (
+                    <button type="button" onClick={() => openMusicSegment('edit', editMusic)} className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-600 text-white font-bold">구간 조절</button>
+                  )}
+                  <button type="button" onClick={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 font-bold">바꾸기</button>
                   <button type="button" onClick={() => setEditMusic(null)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-500">빼기</button>
                 </div>
               ) : (
@@ -2998,7 +3020,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); }} />
+        <MusicPicker tracks={bgmTracks} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
