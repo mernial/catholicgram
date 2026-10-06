@@ -64,3 +64,11 @@ input, textarea, select {
   from { opacity: 0; transform: translateY(-14px) scale(0.92); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+
+/* 영상(릴스): 소리 켜기/끄기 표시가 잠깐 보였다 사라짐 */
+@keyframes fadeOut {
+  0% { opacity: 0; transform: scale(0.8); }
+  20% { opacity: 1; transform: scale(1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
