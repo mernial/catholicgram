@@ -295,7 +295,7 @@ export default function Home() {
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
   const [bioDraft, setBioDraft] = useState<string | null>(null); // 소개 고치는 중이면 글자
-  const [profileTab, setProfileTab] = useState<'posts' | 'tagged'>('posts');
+  const [profileTab, setProfileTab] = useState<'posts' | 'videos' | 'tagged'>('posts');
   const [followList, setFollowList] = useState<{ mode: 'followers' | 'following'; items: UserProfile[] | null } | null>(null);
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
 
@@ -2456,104 +2456,100 @@ export default function Home() {
       {/* 2. 프로필 탭 */}
       {activeTab === 'profile' && (
         <section className="flex-1 bg-white flex flex-col">
-          <div className="p-8 border-b border-stone-200 flex flex-col items-center justify-center bg-stone-50/50">
-            {(() => {
-              const avatar = viewingProfile?.avatar_url ? (
-                <img src={viewingProfile.avatar_url} alt="프로필" className="w-24 h-24 rounded-full object-cover border border-stone-200 shadow-sm" />
-              ) : (
-                <div className="w-24 h-24 bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold shadow-inner">
-                  {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
-                </div>
-              );
-              // 내 프로필: 사진을 누르면 프로필 사진 바꾸기
-              return viewingUserId === user?.id ? (
-                <label className="relative cursor-pointer mb-3" aria-label="프로필 사진 바꾸기">
-                  {avatar}
-                  <span className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-stone-900 text-white flex items-center justify-center border-2 border-white shadow"><Icon name="camera" className="w-4 h-4" /></span>
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
-                </label>
-              ) : <div className="mb-3">{avatar}</div>;
-            })()}
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-xl font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
-              <RoleBadge type={viewingProfile?.badge_type} size="md" />
-            </div>
-            <p className="text-xs text-stone-400 mt-0.5">@{viewingProfile?.handle || 'user'}</p>
-            {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
-            {bioDraft !== null ? (
-              <div className="mt-3 w-full max-w-xs flex flex-col gap-1.5">
-                <textarea autoFocus value={bioDraft} onChange={e => setBioDraft(e.target.value.slice(0, 80))} rows={2} placeholder="예: 수원교구 ○○성당 / 매일 묵주기도 함께해요 🙏" className="w-full p-2.5 text-sm text-center bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-stone-400">{bioDraft.length}/80</span>
-                  <span className="flex gap-1.5">
-                    <button onClick={() => setBioDraft(null)} className="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
-                    <button onClick={saveBio} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold">저장</button>
-                  </span>
-                </div>
+          {/* 인스타그램처럼: 왼쪽 사진 + 오른쪽 숫자 → 이름·소개 → 버튼 → 아이콘 탭 → 3칸 바둑판 */}
+          <div className="px-4 pt-5 pb-3 bg-white">
+            <div className="flex items-center gap-5">
+              {(() => {
+                const avatar = viewingProfile?.avatar_url ? (
+                  <img src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
+                ) : (
+                  <div className="w-[5.5rem] h-[5.5rem] bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold">
+                    {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
+                  </div>
+                );
+                // 내 프로필: 사진을 누르면 프로필 사진 바꾸기
+                return viewingUserId === user?.id ? (
+                  <label className="relative cursor-pointer shrink-0" aria-label="프로필 사진 바꾸기">
+                    {avatar}
+                    <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center border-2 border-white shadow"><Icon name="plus" className="w-4 h-4" /></span>
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
+                  </label>
+                ) : <div className="shrink-0">{avatar}</div>;
+              })()}
+              <div className="flex-1 grid grid-cols-3 text-center">
+                <div><p className="text-lg font-bold text-stone-900">{myPosts.length}</p><p className="text-[0.8125rem] text-stone-600">게시물</p></div>
+                <button onClick={() => openFollowList('followers')}><p className="text-lg font-bold text-stone-900">{followData.followers}</p><p className="text-[0.8125rem] text-stone-600">팔로워</p></button>
+                <button onClick={() => openFollowList('following')}><p className="text-lg font-bold text-stone-900">{followData.following}</p><p className="text-[0.8125rem] text-stone-600">팔로잉</p></button>
               </div>
-            ) : viewingBio ? (
-              <p onClick={viewingUserId === user?.id ? () => setBioDraft(viewingBio) : undefined} className={`mt-2.5 max-w-xs text-sm text-stone-700 text-center whitespace-pre-wrap leading-relaxed ${viewingUserId === user?.id ? 'cursor-pointer' : ''}`}>{viewingBio}</p>
-            ) : viewingUserId === user?.id && (
-              <button onClick={() => setBioDraft('')} className="mt-2.5 text-xs text-stone-500 border border-dashed border-stone-300 rounded-full px-3 py-1.5"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
-            )}
-            {isAdmin && viewingRealName && (
-              <p className="text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
-            )}
-            
-            <div className="flex gap-6 mt-4 text-center">
-              <div><p className="text-lg font-bold text-stone-800">{myPosts.length}</p><p className="text-xs text-stone-500 font-medium">게시물</p></div>
-              <button onClick={() => openFollowList('followers')}><p className="text-lg font-bold text-stone-800">{followData.followers}</p><p className="text-xs text-stone-500 font-medium">팔로워</p></button>
-              <button onClick={() => openFollowList('following')}><p className="text-lg font-bold text-stone-800">{followData.following}</p><p className="text-xs text-stone-500 font-medium">팔로잉</p></button>
             </div>
 
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {viewingUserId === user?.id ? (
-                <>
-                  <button onClick={() => goToTab('messages')} className="relative inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-stone-900 text-white shadow-sm hover:bg-stone-800 transition-colors">
-                    <Icon name="send" className="w-4 h-4" />메시지
-                    {unreadMessageCount > 0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>}
-                  </button>
-                  <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                    <Icon name="gear" className="w-4 h-4" />설정
-                  </button>
-                  {isAdmin && (
-                    <button onClick={() => setShowAdminStats(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-sky-300 bg-sky-50 text-sky-900 shadow-sm hover:bg-sky-100 transition-colors inline-flex items-center gap-1.5">
-                      <Icon name="chart" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />접속 통계
-                    </button>
-                  )}
-                  {isAdmin && (
-                    <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-4 py-2 rounded-xl text-xs font-bold border border-violet-300 bg-violet-50 text-violet-900 shadow-sm hover:bg-violet-100 transition-colors inline-flex items-center gap-1.5">
-                      <Icon name="megaphone" className="w-4 h-4" />전체 공지
-                    </button>
-                  )}
-                  {isAdmin && (
-                    <button onClick={() => setShowSponsorAdmin(true)} className="px-4 py-2 rounded-xl text-xs font-bold border border-amber-300 bg-amber-50 text-amber-800 shadow-sm hover:bg-amber-100 transition-colors inline-flex items-center gap-1.5">
-                      <Icon name="storefront" className="w-4 h-4" />광고 관리
-                    </button>
-                  )}
-                  <button onClick={() => setShowFeedback(true)} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                    <Icon name="envelope" className="w-4 h-4" />{isAdmin ? '건의함' : '건의하기'}
-                  </button>
-                  {!isStandalone && (
-                    <button onClick={handleInstallClick} className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                      <Icon name="phone" className="w-4 h-4" />홈 화면에 추가
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button onClick={() => toggleFollow(viewingUserId!, followData.status)} className={`px-6 py-2 rounded-xl text-xs font-bold shadow-sm transition-colors ${followData.status === 'none' ? 'bg-blue-500 text-white hover:bg-blue-600' : 'bg-stone-200 text-stone-800'}`}>
-                    {followData.status === 'none' ? '팔로우' : '팔로잉'}
-                  </button>
-                  <button onClick={() => viewingProfile && openChatRoom(viewingProfile)} disabled={!viewingProfile} className="px-6 py-2 rounded-xl text-xs font-bold border border-stone-300 bg-white text-stone-800 shadow-sm hover:bg-stone-50 transition-colors">
-                    메시지
-                  </button>
-                </>
+            <div className="mt-3">
+              <div className="flex items-center gap-1">
+                <h2 className="text-[1rem] font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
+                <RoleBadge type={viewingProfile?.badge_type} size="md" />
+              </div>
+              <p className="text-[0.8125rem] text-stone-400">@{viewingProfile?.handle || 'user'}</p>
+              {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
+              {bioDraft !== null ? (
+                <div className="mt-2 flex flex-col gap-1.5">
+                  <textarea autoFocus value={bioDraft} onChange={e => setBioDraft(e.target.value.slice(0, 80))} rows={2} placeholder="예: 수원교구 ○○성당 / 매일 묵주기도 함께해요 🙏" className="w-full p-2.5 text-sm bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-stone-400">{bioDraft.length}/80</span>
+                    <span className="flex gap-1.5">
+                      <button onClick={() => setBioDraft(null)} className="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
+                      <button onClick={saveBio} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold">저장</button>
+                    </span>
+                  </div>
+                </div>
+              ) : viewingBio ? (
+                <p onClick={viewingUserId === user?.id ? () => setBioDraft(viewingBio) : undefined} className={`mt-1 text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed ${viewingUserId === user?.id ? 'cursor-pointer' : ''}`}>{viewingBio}</p>
+              ) : viewingUserId === user?.id && (
+                <button onClick={() => setBioDraft('')} className="mt-1 text-[0.8125rem] text-stone-500"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
+              )}
+              {isAdmin && viewingRealName && (
+                <p className="inline-block text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
               )}
             </div>
 
+            {/* 버튼: 회색 넓은 단추 */}
+            {(() => {
+              const btn = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-stone-100 text-stone-900 hover:bg-stone-200 transition-colors inline-flex items-center justify-center gap-1.5';
+              return viewingUserId === user?.id ? (
+                <>
+                  <div className="mt-3 flex gap-1.5">
+                    <button onClick={openProfileEdit} className={btn}>프로필 편집</button>
+                    <button onClick={() => goToTab('messages')} className={`${btn} relative`}>
+                      메시지
+                      {unreadMessageCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>}
+                    </button>
+                    <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="w-10 shrink-0 rounded-lg bg-stone-100 text-stone-900 hover:bg-stone-200 flex items-center justify-center" aria-label="설정"><Icon name="gear" className="w-5 h-5" /></button>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {isAdmin && (
+                      <>
+                        <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
+                        <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
+                        <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
+                      </>
+                    )}
+                    <button onClick={() => setShowFeedback(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="envelope" className="w-3.5 h-3.5" />{isAdmin ? '건의함' : '건의하기'}</button>
+                    {!isStandalone && (
+                      <button onClick={handleInstallClick} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5" />홈 화면에 추가</button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 flex gap-1.5">
+                  <button onClick={() => toggleFollow(viewingUserId!, followData.status)} className={followData.status === 'none' ? 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-blue-500 text-white hover:bg-blue-600' : btn}>
+                    {followData.status === 'none' ? '팔로우' : '팔로잉 ▾'}
+                  </button>
+                  <button onClick={() => viewingProfile && openChatRoom(viewingProfile)} disabled={!viewingProfile} className={btn}>메시지</button>
+                </div>
+              );
+            })()}
+
             {isAdmin && viewingProfile && (
-              <div className="mt-4 flex items-center gap-2 text-xs bg-white border border-stone-200 rounded-xl px-3 py-2 shadow-sm">
+              <div className="mt-3 flex items-center gap-2 text-xs bg-white border border-stone-200 rounded-xl px-3 py-2">
                 <span className="font-bold text-stone-600"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />관리자 · 인증 뱃지</span>
                 <select
                   value={viewingProfile.badge_type || ''}
@@ -2567,31 +2563,35 @@ export default function Home() {
             )}
           </div>
 
-          {/* 게시물 / 태그됨 (나를 @태그한 글 모아 보기) */}
-          <div className="flex border-b border-stone-200 bg-white">
-            {([['posts', '게시물', 'camera'], ['tagged', '태그됨', 'pin']] as const).map(([key, label, icon]) => (
-              <button key={key} onClick={() => setProfileTab(key)} className={`flex-1 py-3 inline-flex items-center justify-center gap-1.5 text-sm font-bold border-b-2 ${profileTab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>
-                <Icon name={icon} className="w-4 h-4" />{label}
+          {/* 아이콘 탭: 게시물 / 영상 / 태그됨 */}
+          <div className="flex border-t border-stone-200 bg-white">
+            {([['posts', '게시물', 'stack'], ['videos', '영상', 'film'], ['tagged', '태그됨', 'user']] as const).map(([key, label, icon]) => (
+              <button key={key} onClick={() => setProfileTab(key)} aria-label={label} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-[0.75rem] font-bold border-t-2 -mt-px ${profileTab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>
+                <Icon name={icon} className="w-6 h-6" />{label}
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-stone-100">
+          <div className="grid grid-cols-3 gap-0.5 bg-white">
             {(() => {
               const gridPosts = profileTab === 'posts'
                 ? myPosts
+                : profileTab === 'videos'
+                ? myPosts.filter(p => p.video_url)
                 : posts.filter(p => p.user_id !== viewingUserId && !blockedIds.has(p.user_id) && mentionsHandle(p.content, viewingProfile?.handle));
               return gridPosts.length === 0 ? (
-              <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">{profileTab === 'posts' ? '게시물이 없습니다.' : '아직 태그된 글이 없어요.'}</div>
+              <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">{profileTab === 'posts' ? '게시물이 없습니다.' : profileTab === 'videos' ? '아직 올린 영상이 없어요.' : '아직 태그된 글이 없어요.'}</div>
             ) : (
               gridPosts.map((post) => (
                 <div 
                   key={post.id} 
                   onClick={() => openPostViewer(post)} 
-                  className="aspect-square bg-white relative group overflow-hidden border border-stone-100 cursor-pointer hover:opacity-90 transition-opacity"
+                  className="aspect-square bg-stone-100 relative group overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                 >
                   {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" /></span>}
                   {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
-                  {post.video_url && <span className="absolute bottom-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center">▶</span>}
+                  {post.video_url
+                    ? <span className="absolute bottom-1.5 right-1.5 z-10 text-white drop-shadow"><Icon name="play" fill className="w-5 h-5" /></span>
+                    : (post.images?.length || 0) > 1 && <span className="absolute bottom-1.5 right-1.5 z-10 text-white drop-shadow"><Icon name="stack" fill className="w-5 h-5" /></span>}
                   {post.video_url ? (
                     post.video_poster
                       ? <img src={post.video_poster} alt="영상" className="w-full h-full object-cover" />
