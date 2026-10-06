@@ -1043,6 +1043,43 @@ export default function Home() {
     // title 칼럼이 아직 없으면(SQL 실행 전) 예전 칼럼만
     if (error) ({ data } = await query('id, user_id, author_name, content, created_at'));
     setIntentions((data || []) as unknown as typeof intentions);
+    loadIntentionPrayers(((data || []) as unknown as { id: string }[]).map(i => i.id));
+  };
+
+  // 기도지향 "함께 기도합니다" 횟수와 내가 눌렀는지
+  const [intentionPrayers, setIntentionPrayers] = useState<Record<string, { count: number; mine: boolean }>>({});
+  const loadIntentionPrayers = async (ids: string[]) => {
+    if (ids.length === 0) { setIntentionPrayers({}); return; }
+    const { data, error } = await supabase.from('intention_prayers').select('intention_id, user_id').in('intention_id', ids);
+    if (error) return; // SQL 실행 전이면 조용히 넘어감
+    const next: Record<string, { count: number; mine: boolean }> = {};
+    ids.forEach(id => { next[id] = { count: 0, mine: false }; });
+    (data || []).forEach(r => {
+      const e = next[r.intention_id];
+      if (!e) return;
+      e.count += 1;
+      if (r.user_id === userIdRef.current) e.mine = true;
+    });
+    setIntentionPrayers(next);
+  };
+  const userIdRef = useRef<string | null>(null);
+  userIdRef.current = user?.id ?? null;
+  // 로그인 정보가 늦게 오면 '내가 눌렀는지'를 다시 계산
+  useEffect(() => { if (user && intentions.length) loadIntentionPrayers(intentions.map(i => i.id)); }, [user?.id]);
+  const toggleIntentionPrayer = async (intentionId: string) => {
+    if (!user) { setShowAuthModal(true); return; }
+    const cur = intentionPrayers[intentionId] || { count: 0, mine: false };
+    const next = { count: Math.max(0, cur.count + (cur.mine ? -1 : 1)), mine: !cur.mine };
+    setIntentionPrayers(prev => ({ ...prev, [intentionId]: next })); // 바로 보이게
+    const { error } = cur.mine
+      ? await supabase.from('intention_prayers').delete().eq('intention_id', intentionId).eq('user_id', user.id)
+      : await supabase.from('intention_prayers').insert({ intention_id: intentionId, user_id: user.id });
+    if (error && error.code !== '23505') {
+      setIntentionPrayers(prev => ({ ...prev, [intentionId]: cur }));
+      alert(error.code === '42P01' || error.code === 'PGRST205'
+        ? '함께 기도하기 기능을 준비 중이에요. (관리자: supabase/intention-prayers.sql 실행 필요)'
+        : '처리하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    }
   };
 
   const myIntention = user ? intentions.find(i => i.user_id === user.id) : undefined;
@@ -2944,11 +2981,31 @@ export default function Home() {
                       <span className="block text-[0.9375rem] font-bold text-[#1f2f66] truncate">{i.title || i.content}</span>
                       <span className="block text-xs text-stone-500 mt-0.5">{i.author_name || '교우'} · {new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
                     </span>
+                    {(intentionPrayers[i.id]?.count || 0) > 0 && (
+                      <span className={`shrink-0 inline-flex items-center gap-1 text-[0.8125rem] font-bold ${intentionPrayers[i.id]?.mine ? 'text-amber-700' : 'text-stone-500'}`}>
+                        <Icon name="pray" fill={intentionPrayers[i.id]?.mine} className="w-4 h-4" />{intentionPrayers[i.id].count}
+                      </span>
+                    )}
                     <span className={`text-stone-400 text-sm transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
                   </button>
                   {open && (
                     <div className="px-4 pb-4 flex flex-col gap-2">
                       <p className="text-[1rem] text-stone-800 leading-relaxed whitespace-pre-wrap bg-white border border-amber-100 rounded-xl px-3.5 py-3">{i.content}</p>
+                      {/* 읽고 나서 "함께 기도합니다" (한 번 더 누르면 취소) */}
+                      {(() => {
+                        const pr = intentionPrayers[i.id] || { count: 0, mine: false };
+                        return (
+                          <button
+                            onClick={() => toggleIntentionPrayer(i.id)}
+                            aria-pressed={pr.mine}
+                            className={`w-full py-3 rounded-xl flex items-center justify-center gap-2 text-[1rem] font-bold transition-colors ${pr.mine ? 'bg-amber-600 text-white' : 'bg-white border-2 border-amber-300 text-amber-800'}`}
+                          >
+                            <Icon name="pray" fill={pr.mine} className="w-6 h-6" />
+                            {pr.mine ? '함께 기도했어요' : '함께 기도합니다'}
+                            {pr.count > 0 && <span className={`ml-1 min-w-[1.75rem] px-2 py-0.5 rounded-full text-[0.875rem] ${pr.mine ? 'bg-white/25' : 'bg-amber-100'}`}>{pr.count}</span>}
+                          </button>
+                        );
+                      })()}
                       <div className="flex items-center justify-between">
                         <button onClick={() => { setShowIntentions(false); goToProfile(i.user_id); }} className="text-xs font-bold text-stone-600">👤 {i.author_name || '교우'}님 공간 가기</button>
                         {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-xs text-red-500">삭제</button>}
