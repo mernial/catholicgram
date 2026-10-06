@@ -27,6 +27,7 @@ import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
 import ReelVideo from '@/components/ReelVideo';
+import Stories from '@/components/Stories';
 import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
@@ -269,7 +270,8 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter] = useState<'all' | 'media' | 'text'>('all');
-  const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통) // 홈 피드: 인스타그램처럼 전체
+  const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
+  const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기 // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
@@ -1825,7 +1827,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -1843,6 +1845,7 @@ export default function Home() {
     setPostMenuId(null);
     setFabOpen(false);
     setCommentSheetId(null);
+    setStoryViewerOpen(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2168,6 +2171,19 @@ export default function Home() {
       {/* 1. 홈 탭 */}
       {activeTab === 'home' && (
         <>
+          {/* 스토리 동그라미 줄 (인스타그램처럼 맨 위) */}
+          <Stories
+            me={user && profile ? { id: user.id, name: profile.baptismal_name, avatar: profile.avatar_url } : null}
+            followingIds={followingIds}
+            blockedIds={blockedIds}
+            isAdmin={isAdmin}
+            viewerOpen={storyViewerOpen}
+            setViewerOpen={setStoryViewerOpen}
+            onOpenProfile={goToProfile}
+            onMessage={u => openChatRoom(u)}
+            onNeedLogin={() => setShowAuthModal(true)}
+            canPost={requireProfile}
+          />
           {user && needsProfileSetup && setupDismissed && (
             <button onClick={() => setSetupDismissed(false)} className="w-full px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-2 text-left">
               <Icon name="eye" className="w-5 h-5 shrink-0" />
