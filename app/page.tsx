@@ -271,7 +271,8 @@ export default function Home() {
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter] = useState<'all' | 'media' | 'text'>('all');
   const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
-  const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기 // 홈 피드: 인스타그램처럼 전체
+  const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기
+  const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null); // 프로필 사진 크게 보기 // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
@@ -1827,7 +1828,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -1846,6 +1847,7 @@ export default function Home() {
     setFabOpen(false);
     setCommentSheetId(null);
     setStoryViewerOpen(false);
+    setAvatarPreview(null);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2115,7 +2117,9 @@ export default function Home() {
             </button>
             <div className="flex items-center gap-2 min-w-0">
               {currentChatUser?.avatar_url ? (
-                <img src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
+                <button onClick={() => setAvatarPreview({ url: currentChatUser.avatar_url!, name: currentChatUser.baptismal_name })} className="shrink-0" aria-label="프로필 사진 크게 보기">
+                  <img src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                </button>
               ) : (
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{currentChatUser?.baptismal_name?.[0]}</div>
               )}
@@ -2490,6 +2494,8 @@ export default function Home() {
                     <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center border-2 border-white shadow"><Icon name="plus" className="w-4 h-4" /></span>
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarSelect} />
                   </label>
+                ) : viewingProfile?.avatar_url ? (
+                  <button onClick={() => setAvatarPreview({ url: viewingProfile.avatar_url!, name: viewingProfile.baptismal_name })} className="shrink-0" aria-label="프로필 사진 크게 보기">{avatar}</button>
                 ) : <div className="shrink-0">{avatar}</div>;
               })()}
               <div className="flex-1 grid grid-cols-3 text-center">
@@ -3621,6 +3627,15 @@ export default function Home() {
               위로 밀면 다음 추천
             </div>
           )}
+        </div>
+      )}
+
+      {/* 프로필 사진 크게 보기 (인스타그램처럼 동그랗게 크게) */}
+      {avatarPreview && (
+        <div className="fixed inset-0 z-[95] bg-black/85 flex flex-col items-center justify-center gap-5 p-6 animate-fade-in" onClick={() => setAvatarPreview(null)} role="dialog" aria-label="프로필 사진">
+          <img src={avatarPreview.url} alt={`${avatarPreview.name}님 프로필 사진`} className="w-[min(80vw,22rem)] aspect-square rounded-full object-cover shadow-2xl border-4 border-white/20" />
+          <p className="text-white text-xl font-bold">{avatarPreview.name}</p>
+          <button onClick={() => setAvatarPreview(null)} className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
         </div>
       )}
 
