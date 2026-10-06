@@ -661,6 +661,14 @@ export default function Home() {
     return true;
   };
 
+  // 내가 팔로우하는 교우 (홈 피드에서 그분들 글을 먼저)
+  const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const loadFollowing = async (userId: string) => {
+    const { data } = await supabase.from('follows').select('following_id').eq('follower_id', userId).eq('status', 'accepted').limit(2000);
+    setFollowingIds(new Set((data || []).map(f => f.following_id)));
+  };
+  useEffect(() => { if (user) loadFollowing(user.id); else setFollowingIds(new Set()); }, [user?.id]);
+
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
@@ -680,6 +688,7 @@ export default function Home() {
       if (error) { alert(`처리하지 못했습니다.\n(${error.message})`); return; }
     }
     const next: FollowStatus = currentStatus === 'none' ? 'accepted' : 'none';
+    loadFollowing(user.id);
     if (activeTab === 'profile' && viewingUserId === targetId) fetchFollowData(targetId);
     if (actionModalUser && actionModalUser.id === targetId) setActionUserFollowStatus(next);
   };
@@ -2325,11 +2334,17 @@ export default function Home() {
           <section className="flex-1 flex flex-col gap-2 bg-[#efe6d6]">
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
-              const shown = posts.filter(post => !blockedIds.has(post.user_id)
+              const filtered = posts.filter(post => !blockedIds.has(post.user_id)
                 && (feedFilter === 'all' || (feedFilter === 'media' ? hasMedia(post) : !hasMedia(post))));
-              if (shown.length === 0 && posts.length > 0) {
+              if (filtered.length === 0 && posts.length > 0) {
                 return <div className="py-16 text-center text-sm text-stone-400">{feedFilter === 'media' ? '아직 사진·영상 글이 없어요.' : '아직 글만 쓴 나눔이 없어요.'}</div>;
               }
+              // 인스타그램처럼: 내가 팔로우하는 교우(와 나)의 최근 7일 글을 먼저, 그다음 추천 글 (각각 최신순)
+              const recentFollowed = (p: Post) => (followingIds.has(p.user_id) || p.user_id === user?.id)
+                && Date.now() - new Date(p.created_at).getTime() < 7 * 86400e3;
+              const followedPosts = followingIds.size > 0 ? filtered.filter(recentFollowed) : [];
+              const shown = followedPosts.length > 0 ? [...followedPosts, ...filtered.filter(p => !recentFollowed(p))] : filtered;
+              const suggestStart = followedPosts.length > 0 && followedPosts.length < shown.length ? followedPosts.length : -1;
               return shown.map((post, postIndex) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
               // 게시글 FEED_BANNER_EVERY 개마다 후원 배너를 번갈아 끼움
@@ -2337,6 +2352,13 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
+                {postIndex === suggestStart && (
+                  <div className="bg-[#fdfaf5] px-4 py-6 flex flex-col items-center text-center gap-1.5">
+                    <IconBadge name="check" tone="green" size="lg" />
+                    <p className="font-bold text-stone-900">팔로우한 교우의 새 글을 모두 봤어요</p>
+                    <p className="text-sm text-stone-500">아래는 다른 교우들의 추천 글이에요</p>
+                  </div>
+                )}
                 <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
