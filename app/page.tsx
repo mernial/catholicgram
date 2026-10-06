@@ -26,6 +26,7 @@ import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
+import ReelVideo from '@/components/ReelVideo';
 import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
@@ -98,7 +99,7 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 type FollowStatus = 'none' | 'pending' | 'accepted';
-type Tab = 'home' | 'explore' | 'profile' | 'messages' | 'chat' | 'anon';
+type Tab = 'home' | 'explore' | 'reels' | 'profile' | 'messages' | 'chat' | 'anon';
 // 뒤로가기(쓸어 넘기기)를 위해 휴대폰 이동 기록(history)에 남기는 화면 정보
 interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null }
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
@@ -267,7 +268,8 @@ export default function Home() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
-  const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('media'); // 홈 피드: 기본은 사진·영상 (전체 / 글로 바꿀 수 있음)
+  const [feedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통) // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
@@ -393,6 +395,7 @@ export default function Home() {
     else if (savedTab === 'profile' && savedUserId) startScreen = { screen: true, tab: 'profile', viewingUserId: savedUserId };
     else if (savedTab === 'anon') startScreen = { screen: true, tab: 'anon' };
     else if (savedTab === 'explore') startScreen = { screen: true, tab: 'explore' };
+    else if (savedTab === 'reels') startScreen = { screen: true, tab: 'reels' };
     applyScreen(startScreen);
     // 뒤로가기용 기록은 [종료 확인용 표시] → (지금 화면) 두 칸만 둔다. 이전 화면은 뒤로가기 때 앱이 직접 정한다.
     // 크롬·삼성 인터넷은 사람이 화면을 만지기 전에 쌓은 기록을 뒤로가기 때 건너뛰어 앱이 바로 꺼지므로
@@ -427,8 +430,6 @@ export default function Home() {
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
     const savedVisibility = storageGet('postVisibility');
     if (savedVisibility === 'followers' || savedVisibility === 'private') setComposerVisibility(savedVisibility);
-    const savedFilter = storageGet('feedFilter2');
-    if (savedFilter === 'all' || savedFilter === 'text') setFeedFilter(savedFilter);
     const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
 
     // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
@@ -1919,7 +1920,7 @@ export default function Home() {
     refreshFeed();
   };
   const pullCtx = useRef({ blocked: false, refresh: pullRefresh });
-  pullCtx.current = { blocked: anyModalOpen || activeTab === 'chat' || refreshState === 'loading', refresh: pullRefresh };
+  pullCtx.current = { blocked: anyModalOpen || activeTab === 'chat' || activeTab === 'reels' || refreshState === 'loading', refresh: pullRefresh };
   useEffect(() => {
     const el = mainScrollRef.current;
     if (!el) return;
@@ -2135,18 +2136,22 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               {user ? (
-                <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
-                  <button onClick={openNotifications} className="relative text-stone-600 hover:text-stone-900" aria-label="알림">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                <div className="flex items-center gap-4 min-w-0">
+                  {/* 고민상담 (익명 게시판) */}
+                  <button onClick={() => goToTab('anon')} className={`${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-700'} hover:text-stone-900`} aria-label="고민상담">
+                    <Icon name="dove" className="w-6 h-6" />
+                  </button>
+                  <button onClick={openNotifications} className="relative text-stone-700 hover:text-stone-900" aria-label="알림">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
                     {unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
                     )}
                   </button>
-                  <button onClick={() => goToProfile(user.id)} className="flex items-center gap-1.5 hover:opacity-80 transition-opacity min-w-0">
-                    {profile?.avatar_url ? (
-                      <img src={profile.avatar_url} alt="내 프로필" className="w-7 h-7 rounded-full object-cover border border-stone-200" />
-                    ) : (
-                      <div className="w-7 h-7 bg-stone-200 rounded-full flex items-center justify-center text-[0.75rem] font-bold text-stone-600">{profile?.baptismal_name?.[0] || '교'}</div>
+                  {/* 메시지 (인스타그램처럼 오른쪽 위) */}
+                  <button onClick={() => goToTab('messages')} className="relative text-stone-700 hover:text-stone-900" aria-label="메시지">
+                    <Icon name="send" className="w-6 h-6" />
+                    {unreadMessageCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
                     )}
                   </button>
                   {/* 휴대폰에서는 내 공간 → 설정에서 로그아웃 */}
@@ -2618,6 +2623,69 @@ export default function Home() {
       )}
 
       {/* 익명 고민상담 탭 */}
+      {/* 영상(릴스): 영상 글만 화면 가득, 위로 밀면 다음 영상 */}
+      {activeTab === 'reels' && (() => {
+        const reels = posts.filter(p => p.video_url && !blockedIds.has(p.user_id));
+        return (
+          <div className="fixed inset-x-0 top-0 max-w-xl mx-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 bg-black">
+            <p className="absolute top-0 left-0 z-10 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] text-white text-xl font-bold drop-shadow pointer-events-none">영상</p>
+            {reels.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center gap-2 text-white/80 text-center px-6">
+                <Icon name="film" className="w-12 h-12" />
+                <p className="font-bold text-lg">아직 올라온 영상이 없어요</p>
+                <p className="text-sm text-white/60">아래 ＋ 를 눌러 첫 영상을 올려 보세요</p>
+              </div>
+            ) : (
+              <div className="h-full overflow-y-auto snap-y snap-mandatory overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {reels.map(post => {
+                  const prayed = myPostReactions.has(`${post.id}:pray`);
+                  const liked = myPostReactions.has(`${post.id}:like`);
+                  const music = parsePostMusic(post.music);
+                  const side = 'flex flex-col items-center gap-1 text-white text-[0.8125rem] font-semibold drop-shadow';
+                  return (
+                    <section key={post.id} className="relative h-full snap-start snap-always overflow-hidden">
+                      <ReelVideo
+                        src={post.video_url!}
+                        poster={post.video_poster}
+                        overlays={post.video_overlays}
+                        muted={reelsMuted}
+                        onToggleMute={() => setReelsMuted(m => !m)}
+                        onDoubleTap={() => likeByDoubleTap(post.id)}
+                      />
+                      {/* 오른쪽 버튼 */}
+                      <div className="absolute right-2 bottom-28 flex flex-col items-center gap-5 z-10">
+                        <button onClick={() => handleReaction(post.id, 'pray')} className={side} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{post.pray_count || 0}</button>
+                        <button onClick={() => handleReaction(post.id, 'like')} className={side} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{post.like_count || 0}</button>
+                        <button onClick={() => toggleCommentBox(post.id)} className={side} aria-label="댓글"><Icon name="chat" className="w-8 h-8" />{commentCounts[post.id] || 0}</button>
+                        {user?.id !== post.user_id && (
+                          <button onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className={side} aria-label="메시지"><Icon name="send" className="w-7 h-7" /></button>
+                        )}
+                        {user && <button onClick={() => setPostMenuId(post.id)} className={`${side} text-2xl leading-none`} aria-label="더보기 (고치기·지우기)">⋯</button>}
+                      </div>
+                      {/* 아래: 작성자·글·음악 */}
+                      <div className="absolute left-0 right-14 bottom-0 z-10 px-4 pb-4 pt-16 bg-gradient-to-t from-black/75 via-black/30 to-transparent text-white flex flex-col gap-2">
+                        <button onClick={() => goToProfile(post.user_id)} className="self-start flex items-center gap-2">
+                          {post.avatar_url
+                            ? <img src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
+                            : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
+                          <span className="font-bold text-[0.9375rem]">{post.author_name}</span>
+                        </button>
+                        {post.content && (
+                          <button onClick={() => openPostViewer(post)} className="text-left text-[0.9375rem] leading-snug line-clamp-2 whitespace-pre-wrap">{post.content}</button>
+                        )}
+                        {music && (
+                          <button onClick={() => openPostViewer(post)} className="self-start max-w-full flex items-center gap-1.5 text-[0.8125rem] bg-white/15 backdrop-blur-sm rounded-full px-3 py-1"><Icon name="music" className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{post.music_title || '음악'} · 듣기</span></button>
+                        )}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {activeTab === 'anon' && (
         <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} />
       )}
@@ -3626,54 +3694,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* 왼쪽 아래 떠 있는 + : 누르면 글쓰기와 보기(사진·영상 / 전체 / 글) 버튼이 위로 사르륵 펼쳐짐
-          (아래 가운데는 삼성 인터넷의 '맨 위로' 버튼 자리, 오른쪽은 ⋯·더 보기 자리라 왼쪽에 둠)
-          고민상담·내 공간(메시지 포함)에서는 화면을 가리지 않게 숨김 */}
-      {(activeTab === 'home' || activeTab === 'explore') && (
-        <button
-          onClick={() => setFabOpen(o => !o)}
-          aria-label={fabOpen ? '닫기' : '글쓰기·보기 메뉴 열기'}
-          aria-expanded={fabOpen}
-          className="fixed z-[46] left-[max(0.75rem,calc(50vw-18rem+0.75rem))] bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-14 h-14 rounded-full bg-stone-900 text-white shadow-lg shadow-stone-900/30 flex items-center justify-center active:scale-95 transition-transform"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" className={`w-7 h-7 transition-transform duration-300 ${fabOpen ? 'rotate-45' : ''}`}><path d="M12 5v14M5 12h14" /></svg>
-        </button>
-      )}
-      {fabOpen && (activeTab === 'home' || activeTab === 'explore') && (
-        <>
-          <button className="fixed inset-0 z-[39] bg-black/30 animate-fade-in" onClick={() => setFabOpen(false)} aria-label="닫기" />
-          <div className="fixed z-[46] left-[max(0.75rem,calc(50vw-18rem+0.75rem))] bottom-[calc(9.5rem+env(safe-area-inset-bottom))] flex flex-col-reverse items-start gap-2.5">
-            {([
-              { key: 'write', label: '글쓰기', icon: 'pencil' },
-              { key: 'media', label: '사진·영상 보기', icon: 'camera' },
-              { key: 'all', label: '전체 보기', icon: null },
-              { key: 'text', label: '글만 보기', icon: 'chat' },
-            ] as const).map((item, i) => {
-              const active = item.key !== 'write' && activeTab === 'home' && feedFilter === item.key;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => {
-                    setFabOpen(false);
-                    if (item.key === 'write') { if (requireProfile()) { if (activeTab !== 'home') goToHome(); setShowComposer(true); } return; }
-                    setFeedFilter(item.key); storageSet('feedFilter2', item.key);
-                    if (activeTab !== 'home') goToHome();
-                    scrollToTop();
-                  }}
-                  style={{ animationDelay: `${i * 45}ms` }}
-                  className="w-56 flex items-center gap-3 pl-2 pr-4 py-2 rounded-full shadow-lg bg-white animate-[fabIn_0.28s_ease-out_both]"
-                >
-                  <span className={`w-11 h-11 rounded-full flex items-center justify-center shrink-0 ${item.key === 'write' ? 'bg-amber-600 text-white' : active ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`}>
-                    {item.icon ? <Icon name={item.icon} className="w-[1.375rem] h-[1.375rem]" /> : <Icon name="list" className="w-[1.375rem] h-[1.375rem]" />}
-                  </span>
-                  <span className={`text-[0.9375rem] font-bold ${active ? 'text-stone-900' : 'text-stone-700'}`}>{item.label}{active && ' ✓'}</span>
-                </button>
-              );
-            })}
-          </div>
-        </>
-      )}
-
       {/* 게시글 ⋯ 메뉴: 아래에서 올라오는 큰 버튼 */}
       {postMenuId && (() => {
         const post = posts.find(p => p.id === postMenuId);
@@ -3697,7 +3717,7 @@ export default function Home() {
       })()}
 
       {/* 맨 위로: 하단 가운데 + 버튼 바로 위 */}
-      {showToTop && !fabOpen && activeTab !== 'chat' && (
+      {showToTop && !fabOpen && activeTab !== 'chat' && activeTab !== 'reels' && (
         <button
           onClick={() => scrollToTop()}
           className="fixed z-[38] left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex items-center gap-1 pl-3 pr-4 py-2 rounded-full bg-white/95 backdrop-blur border border-stone-200 shadow-lg text-sm font-bold text-stone-700 animate-fade-in"
@@ -3728,29 +3748,42 @@ export default function Home() {
 
       {/* 하단 네비게이션 */}
       {activeTab !== 'chat' && (
-        <nav className="fixed bottom-0 left-0 right-0 max-w-xl mx-auto bg-white border-t border-stone-200 flex items-center justify-around z-40 pb-safe">
-          <button onClick={() => tapTab('home', goToHome)} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'home' ? 'text-stone-900' : 'text-stone-400'}`}>
-            <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
-            <span className="text-[0.75rem] font-medium">홈</span>
-          </button>
-          <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'explore' ? 'text-stone-900' : 'text-stone-400'}`}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
-            <span className="text-[0.75rem] font-medium">탐색</span>
-          </button>
-          <button onClick={() => goToTab('anon')} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-400'}`}>
-            <svg viewBox="0 0 24 24" fill={activeTab === 'anon' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-6.5-4.35-9-8.5C1.5 9.5 3 6 6.5 6c2 0 3.5 1.2 4.3 2.5h2.4C14 7.2 15.5 6 17.5 6 21 6 22.5 9.5 21 12.5 18.5 16.65 12 21 12 21z" /></svg>
-            <span className="text-[0.75rem] font-medium">고민상담</span>
-          </button>
-          <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`flex-1 py-3.5 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' || activeTab === 'messages' ? 'text-stone-900' : 'text-stone-400'}`}>
-            {/* 메시지는 내 공간 안으로 옮김: 안 읽은 메시지가 있으면 여기에 숫자 표시 */}
-            <span className="relative">
-              <svg viewBox="0 0 24 24" fill={activeTab === 'profile' || activeTab === 'messages' ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-              {unreadMessageCount > 0 && (
-                <span className="absolute -top-1.5 -right-2 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
-              )}
-            </span>
-            <span className="text-[0.75rem] font-medium">내 공간</span>
-          </button>
+        <nav className={`fixed bottom-0 left-0 right-0 max-w-xl mx-auto border-t flex items-center justify-around z-40 pb-safe ${activeTab === 'reels' ? 'bg-black border-white/10' : 'bg-white border-stone-200'}`}>
+          {(() => {
+            // 인스타그램처럼: 홈 · 탐색 · 만들기 · 영상 · 내 공간
+            const dark = activeTab === 'reels';
+            const tone = (on: boolean) => on ? (dark ? 'text-white' : 'text-stone-900') : (dark ? 'text-white/55' : 'text-stone-400');
+            const cls = 'flex-1 py-3 flex flex-col items-center gap-0.5 transition-colors';
+            const meOn = (activeTab === 'profile' && viewingUserId === user?.id) || activeTab === 'messages';
+            return (
+              <>
+                <button onClick={() => tapTab('home', goToHome)} className={`${cls} ${tone(activeTab === 'home')}`}>
+                  <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                  <span className="text-[0.75rem] font-medium">홈</span>
+                </button>
+                <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`${cls} ${tone(activeTab === 'explore')}`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
+                  <span className="text-[0.75rem] font-medium">탐색</span>
+                </button>
+                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } if (!requireProfile()) return; if (activeTab !== 'home') goToHome(); setShowComposer(true); }} className={cls} aria-label="새 글 만들기">
+                  <span className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center ${dark ? 'border-white text-white' : 'border-stone-800 text-stone-800'}`}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" className="w-4 h-4"><path d="M12 5v14M5 12h14" /></svg>
+                  </span>
+                  <span className={`text-[0.75rem] font-medium ${dark ? 'text-white' : 'text-stone-800'}`}>만들기</span>
+                </button>
+                <button onClick={() => goToTab('reels')} className={`${cls} ${tone(activeTab === 'reels')}`}>
+                  <Icon name="film" fill={activeTab === 'reels'} className="w-7 h-7" />
+                  <span className="text-[0.75rem] font-medium">영상</span>
+                </button>
+                <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`${cls} ${tone(meOn)}`}>
+                  {profile?.avatar_url
+                    ? <img src={profile.avatar_url} alt="" className={`w-7 h-7 rounded-full object-cover ${meOn ? (dark ? 'ring-2 ring-white' : 'ring-2 ring-stone-900') : ''}`} />
+                    : <svg viewBox="0 0 24 24" fill={meOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+                  <span className="text-[0.75rem] font-medium">내 공간</span>
+                </button>
+              </>
+            );
+          })()}
         </nav>
       )}
     </main>
