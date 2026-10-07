@@ -3,7 +3,7 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 댓글 수정 / 삭제 (서버에서 본인 확인)
 // POST { action: 'edit', id, content } → 본인 댓글만
-// POST { action: 'delete', id }        → 본인 또는 관리자
+// POST { action: 'delete', id }        → 본인, 글(스토리) 주인, 또는 관리자
 
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const { action, id, content } = ((await request.json().catch(() => ({}))) ?? {}) as { action?: string; id?: string; content?: string };
   if (!id || (action !== 'edit' && action !== 'delete')) return Response.json({ error: 'bad request' }, { status: 400 });
 
-  const { data: comment } = await admin.from('comments').select('id, user_id').eq('id', id).maybeSingle();
+  const { data: comment } = await admin.from('comments').select('id, user_id, post_id').eq('id', id).maybeSingle();
   if (!comment) return Response.json({ error: '댓글을 찾을 수 없어요.' }, { status: 404 });
   const isOwner = comment.user_id === user.id;
   const isAdmin = !!user.email && ADMIN_EMAILS.includes(user.email);
@@ -36,7 +36,13 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, content: text, edited_at: editedAt });
   }
 
-  if (!isOwner && !isAdmin) return Response.json({ error: '내 댓글만 삭제할 수 있어요.' }, { status: 403 });
+  // 인스타그램처럼 내 글(스토리)에 달린 댓글은 글 주인도 지울 수 있음
+  let isPostOwner = false;
+  if (!isOwner && !isAdmin && comment.post_id) {
+    const { data: post } = await admin.from('posts').select('user_id').eq('id', comment.post_id).maybeSingle();
+    isPostOwner = post?.user_id === user.id;
+  }
+  if (!isOwner && !isAdmin && !isPostOwner) return Response.json({ error: '내 댓글이나 내 글에 달린 댓글만 삭제할 수 있어요.' }, { status: 403 });
   await admin.from('comment_reactions').delete().eq('comment_id', id); // 표가 없어도 무시
   const { error } = await admin.from('comments').delete().eq('id', id);
   if (error) return Response.json({ error: '삭제하지 못했어요.' }, { status: 500 });

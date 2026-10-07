@@ -3158,7 +3158,7 @@ export default function Home() {
                             {user && c.user_id && c.user_id !== user.id && <button onClick={() => tagUserInComments(sid, c.user_id!, authorName(c))}>답글 달기</button>}
                             <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 ${r.myPray ? 'text-amber-700' : ''}`}><Icon name="pray" fill={r.myPray} className="w-4 h-4" />기도{r.pray > 0 && ` ${r.pray}`}</button>
                             {user && c.user_id === user.id && <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}>수정</button>}
-                            {user && (c.user_id === user.id || isAdmin) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
+                            {user && (c.user_id === user.id || isAdmin || sheetPost?.user_id === user.id) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
                             {user && c.user_id !== user.id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-stone-400">신고</button>}
                           </div>
                         )}
