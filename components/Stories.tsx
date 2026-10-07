@@ -6,9 +6,11 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
+// 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
 // 홈 맨 위에 동그라미 줄(내 스토리 → 팔로우한 교우 → 다른 교우), 누르면 화면 가득 보기.
 
-interface Story { id: string; user_id: string; image_url: string; caption: string | null; created_at: string }
+export interface StoryPost { id: string; user_id: string; images?: string[] | null; content?: string | null; created_at: string; pray_count?: number; like_count?: number }
+interface Story { id: string; user_id: string; image_url: string; caption: string | null; created_at: string; pray: number; like: number }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }
 export interface StoryUser { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string }
 
@@ -21,7 +23,9 @@ const ago = (iso: string) => {
   return m < 1 ? '방금' : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간`;
 };
 
-export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost }: {
+export default function Stories({ posts, unavailable, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
+  posts: StoryPost[];                   // 24시간 안의 스토리 (화면이 불러옴)
+  unavailable: boolean;                 // SQL 실행 전
   me: { id: string; name: string; avatar?: string | null } | null;
   followingIds: Set<string>;
   blockedIds: Set<string>;
@@ -32,11 +36,19 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
   onMessage: (u: StoryUser) => void;
   onNeedLogin: () => void;
   canPost: () => boolean;               // 프로필을 다 만들었는지 확인 (아니면 안내)
+  onPosted: () => Promise<void>;        // 올린 뒤 다시 불러오기
+  onDelete: (id: string) => Promise<boolean>;
+  myReactions: Set<string>;             // `${id}:pray` / `${id}:like`
+  commentCounts: Record<string, number>;
+  onReact: (id: string, type: 'pray' | 'like') => void;
+  onComment: (id: string) => void;
 }) {
-  const [stories, setStories] = useState<Story[]>([]);
+  const stories: Story[] = useMemo(() => posts
+    .filter(p => p.images && p.images.length > 0)
+    .map(p => ({ id: p.id, user_id: p.user_id, image_url: p.images![0], caption: p.content || null, created_at: p.created_at, pray: p.pray_count || 0, like: p.like_count || 0 })), [posts]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
-  const [unavailable, setUnavailable] = useState(false);
   const [seen, setSeen] = useState<string[]>([]);
+  const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
   // 올리기
   const [draft, setDraft] = useState<{ file: File; url: string } | null>(null);
   const [caption, setCaption] = useState('');
@@ -47,19 +59,15 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
 
-  const load = async () => {
-    const since = new Date(Date.now() - 24 * 3600e3).toISOString();
-    const { data, error } = await supabase.from('stories').select('id, user_id, image_url, caption, created_at').gt('created_at', since).order('created_at', { ascending: true }).limit(300);
-    if (error) { setUnavailable(true); return; }
-    setUnavailable(false);
-    setStories(data || []);
-    const ids = Array.from(new Set((data || []).map(s => s.user_id)));
-    if (ids.length) {
-      const { data: profs } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', ids);
-      setAuthors(Object.fromEntries((profs || []).map(p => [p.id, p])));
-    }
-  };
-  useEffect(() => { setSeen(loadSeen()); load(); const t = setInterval(load, 5 * 60e3); return () => clearInterval(t); }, []);
+  useEffect(() => { setSeen(loadSeen()); }, []);
+  // 작성자 이름·사진
+  const authorIds = Array.from(new Set(stories.map(st => st.user_id))).sort().join(',');
+  useEffect(() => {
+    const ids = authorIds ? authorIds.split(',') : [];
+    if (ids.length === 0) return;
+    supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', ids)
+      .then(({ data }) => setAuthors(prev => ({ ...prev, ...Object.fromEntries((data || []).map(p => [p.id, p])) })));
+  }, [authorIds]);
 
   // 사람별로 묶기: 나 → 안 본 스토리가 있는 사람(팔로우 먼저) → 다 본 사람
   const groups = useMemo(() => {
@@ -72,6 +80,15 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
   const myGroupIndex = groups.findIndex(g => g.userId === me?.id);
 
   const current = groups[pos.user]?.items[pos.item];
+
+  // 방금 올린 내 스토리를 바로 보여 줌
+  useEffect(() => {
+    if (!openMineAfterPost || myGroupIndex < 0) return;
+    setOpenMineAfterPost(false);
+    setPos({ user: myGroupIndex, item: groups[myGroupIndex].items.length - 1 });
+    setPaused(false);
+    setViewerOpen(true);
+  }, [openMineAfterPost, myGroupIndex]);
 
   // 보는 중인 스토리는 '봤음'으로
   useEffect(() => {
@@ -144,14 +161,15 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
       const { error: upErr } = await supabase.storage.from('community-images').upload(name, compressed);
       if (upErr) throw upErr;
       const url = supabase.storage.from('community-images').getPublicUrl(name).data.publicUrl;
-      const { error } = await supabase.from('stories').insert({ user_id: me.id, image_url: url, caption: caption.trim().slice(0, 100) || null });
+      const { error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true });
       if (error) {
-        alert(error.code === '42P01' || error.code === 'PGRST205' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
+        alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
         return;
       }
       URL.revokeObjectURL(draft.url);
       setDraft(null);
-      await load();
+      await onPosted();
+      setOpenMineAfterPost(true);
     } catch {
       alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
@@ -161,10 +179,9 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
   const remove = async (s: Story) => {
     if (!window.confirm('이 스토리를 지울까요?')) return;
     setPaused(true);
-    const { error } = await supabase.from('stories').delete().eq('id', s.id);
-    if (error) { alert('지우지 못했어요.'); setPaused(false); return; }
+    const ok = await onDelete(s.id);
+    if (!ok) { setPaused(false); return; }
     setViewerOpen(false);
-    load();
   };
 
   const avatarOf = (a: { avatar_url?: string | null; baptismal_name?: string } | undefined, size: string) => a?.avatar_url
@@ -256,12 +273,24 @@ export default function Stories({ me, followingIds, blockedIds, isAdmin, viewerO
               {/* 아래: 한마디 + 메시지 */}
               <div className="absolute bottom-0 inset-x-0 z-10 px-4 pt-10 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/70 to-transparent flex flex-col gap-3">
                 {current.caption && <p className="text-white text-[1.0625rem] text-center leading-snug whitespace-pre-wrap drop-shadow">{current.caption}</p>}
-                {!mine && me && a && (
-                  <button onClick={() => { setViewerOpen(false); onMessage({ id: g.userId, baptismal_name: a.baptismal_name, avatar_url: a.avatar_url || undefined, handle: (a as Author).handle || undefined, badge_type: (a as Author).badge_type || undefined }); }}
-                    className="w-full py-3 rounded-full border border-white/60 text-white text-[0.9375rem] text-left px-5 inline-flex items-center gap-2">
-                    <Icon name="send" className="w-5 h-5" />{a.baptismal_name}님에게 메시지 보내기
-                  </button>
-                )}
+                {/* 기도 · 공감 · 댓글 · 메시지 (다른 게시글과 같음) */}
+                {(() => {
+                  const prayed = myReactions.has(`${current.id}:pray`);
+                  const liked = myReactions.has(`${current.id}:like`);
+                  const item = 'flex flex-col items-center gap-0.5 text-white text-[0.8125rem] font-semibold min-w-[3.5rem]';
+                  return (
+                    <div className="flex items-end justify-around" onPointerDown={e => e.stopPropagation()}>
+                      <button onClick={() => onReact(current.id, 'pray')} className={item} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{current.pray}</button>
+                      <button onClick={() => onReact(current.id, 'like')} className={item} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{current.like}</button>
+                      <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={item} aria-label="댓글"><Icon name="chat" className="w-8 h-8" />{commentCounts[current.id] || 0}</button>
+                      {!mine && me && a && (
+                        <button onClick={() => { setViewerOpen(false); onMessage({ id: g.userId, baptismal_name: a.baptismal_name, avatar_url: a.avatar_url || undefined, handle: (a as Author).handle || undefined, badge_type: (a as Author).badge_type || undefined }); }} className={item} aria-label="메시지">
+                          <Icon name="send" className="w-7 h-7" />메시지
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </div>

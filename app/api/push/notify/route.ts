@@ -58,7 +58,7 @@ export async function POST(request: Request) {
     const { data: post } = await admin.from('posts').select('user_id').eq('id', comment.post_id).single();
     const replyTo = comment.reply_to_user_id as string | null | undefined;
     const body = `${comment.author_name}님: ${truncate(comment.content || '')}`;
-    const url = `/?post=${comment.post_id}`;
+    const url = `/?post=${comment.post_id}&comment=${comment.id}`; // 그 글의 댓글 창을 열고 이 댓글로
     const notified = new Set<string>([user.id]);
     if (post && !notified.has(post.user_id)) {
       list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: `comment-${comment.post_id}` } });
@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     if (!post || post.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(post.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     for (const pid of await mentionedIds(post.content, new Set([user.id]))) {
-      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(post.content || '')}`, url: `/?post=${post.id}`, tag: `mention-${post.id}` } });
+      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(post.content || '')}`, url: `/?view=${post.id}`, tag: `mention-${post.id}` } });
     }
     if (list.length === 0) return Response.json({ skipped: 'no mentions' });
   } else if (type === 'feedback') {
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
     payload = {
       title: '👤 새 팔로워',
       body: `${follower?.baptismal_name || '교우'}님이 회원님을 팔로우하기 시작했어요`,
-      url: '/?alerts=1',
+      url: `/?profile=${user.id}`, // 팔로우한 교우의 공간으로
       tag: `follow-${user.id}`,
     };
   } else {
