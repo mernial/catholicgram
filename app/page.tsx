@@ -21,7 +21,7 @@ import FeedbackModal from '@/components/FeedbackModal';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
 import AdminMembers from '@/components/AdminMembers';
-import MusicPicker, { type SelectedMusic } from '@/components/MusicPicker';
+import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import YouTubePlayer from '@/components/YouTubePlayer';
@@ -288,7 +288,7 @@ export default function Home() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editVisibility, setEditVisibility] = useState<Visibility>('public');
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
-  const [musicSegment, setMusicSegment] = useState<{ videoId: string; title: string; start: number; clip?: number } | null>(null); // 고른 곡의 구간만 다시 고치기
+  const [musicSegment, setMusicSegment] = useState<MusicSegmentTarget | null>(null); // 고른 곡의 구간만 다시 고치기
   const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
@@ -1029,15 +1029,25 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 고른 유튜브 음악의 구간 표시·다시 고치기 (글쓰기·글 고치기)
+  // 고른 음악(유튜브·배경음악)의 구간 표시·다시 고치기 (글쓰기·글 고치기·영상 꾸미기)
   const musicRangeLabel = (value: string) => {
     const m = parsePostMusic(value);
-    return m?.kind === 'youtube' && m.clip ? `${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초` : null;
+    return m && m.clip ? `${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초` : null;
+  };
+  // 구간을 고칠 수 있는 음악인지 (배경음악은 목록에 아직 있어야 함)
+  const canAdjustMusic = (value: string) => {
+    const m = parsePostMusic(value);
+    return m?.kind === 'youtube' || (m?.kind === 'bgm' && bgmTracks.some(t => t.id === m.trackId));
   };
   const openMusicSegment = (target: 'composer' | 'edit', music: { value: string; title: string }) => {
     const m = parsePostMusic(music.value);
-    if (m?.kind !== 'youtube') return;
-    setMusicSegment({ videoId: m.videoId, title: music.title, start: m.start, clip: m.clip });
+    if (!m) return;
+    if (m.kind === 'youtube') setMusicSegment({ videoId: m.videoId, title: music.title, start: m.start, clip: m.clip });
+    else {
+      const track = bgmTracks.find(t => t.id === m.trackId);
+      if (!track) return;
+      setMusicSegment({ trackId: track.id, audioUrl: track.url, title: music.title, start: m.start, clip: m.clip });
+    }
     setMusicPickerFor(target);
     setShowMusicPicker(true);
   };
@@ -1157,11 +1167,19 @@ export default function Home() {
       if (!track) return;
       if (!bgmAudioRef.current) bgmAudioRef.current = new Audio();
       const audio = bgmAudioRef.current;
+      bgmRangeRef.current = { start: music.start, clip: music.clip };
       audio.src = track.url;
       audio.loop = true;
+      // 고른 구간이 있으면 그 부분만 반복 (시작 위치는 곡 정보를 읽은 뒤 맞춤)
+      audio.onloadedmetadata = () => { if (music.start) audio.currentTime = music.start; };
+      audio.ontimeupdate = () => {
+        const r = bgmRangeRef.current;
+        if (r?.clip && (audio.currentTime > r.start + r.clip || audio.currentTime < r.start - 1)) audio.currentTime = r.start;
+      };
       audio.play().then(() => setBgmPlaying(true)).catch(() => setBgmPlaying(false));
     }
   };
+  const bgmRangeRef = useRef<{ start: number; clip?: number } | null>(null);
 
   const toggleBgm = () => {
     const audio = bgmAudioRef.current;
@@ -2397,7 +2415,7 @@ export default function Home() {
                 <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
                   <Icon name="music" className="w-4 h-4 text-violet-700" />
                   <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
-                  {parsePostMusic(composerMusic.value)?.kind === 'youtube' && (
+                  {canAdjustMusic(composerMusic.value) && (
                     <button type="button" onClick={() => openMusicSegment('composer', composerMusic)} className="shrink-0 text-[0.75rem] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1">{musicRangeLabel(composerMusic.value) || '구간'} · 조절</button>
                   )}
                   <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
@@ -3277,7 +3295,7 @@ export default function Home() {
                     <span className="block text-sm font-bold text-stone-700 truncate">{editMusic.title}</span>
                     {musicRangeLabel(editMusic.value) && <span className="block text-[0.75rem] text-violet-700">{musicRangeLabel(editMusic.value)}</span>}
                   </span>
-                  {parsePostMusic(editMusic.value)?.kind === 'youtube' && (
+                  {canAdjustMusic(editMusic.value) && (
                     <button type="button" onClick={() => openMusicSegment('edit', editMusic)} className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-600 text-white font-bold">구간 조절</button>
                   )}
                   <button type="button" onClick={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 font-bold">바꾸기</button>
@@ -3310,7 +3328,7 @@ export default function Home() {
             initial={editOverlays}
             musicTitle={editMusic?.title}
             musicRange={editMusic ? musicRangeLabel(editMusic.value) : null}
-            onAdjustMusic={editMusic && parsePostMusic(editMusic.value)?.kind === 'youtube' ? () => openMusicSegment('edit', editMusic) : undefined}
+            onAdjustMusic={editMusic && canAdjustMusic(editMusic.value) ? () => openMusicSegment('edit', editMusic) : undefined}
             onOpenMusic={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }}
             onRemoveMusic={() => setEditMusic(null)}
             onDone={o => { setEditOverlays(o); setShowEditVideoEditor(false); }}
@@ -3325,7 +3343,7 @@ export default function Home() {
           initial={composerOverlays}
           musicTitle={composerMusic?.title}
           musicRange={composerMusic ? musicRangeLabel(composerMusic.value) : null}
-          onAdjustMusic={composerMusic && parsePostMusic(composerMusic.value)?.kind === 'youtube' ? () => openMusicSegment('composer', composerMusic) : undefined}
+          onAdjustMusic={composerMusic && canAdjustMusic(composerMusic.value) ? () => openMusicSegment('composer', composerMusic) : undefined}
           onOpenMusic={() => { setMusicSegment(null); setShowMusicPicker(true); }}
           onRemoveMusic={() => setComposerMusic(null)}
           onDone={o => { setComposerOverlays(o); setShowVideoEditor(false); }}
@@ -3698,7 +3716,7 @@ export default function Home() {
                     <span className="w-9 h-9 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={bgmPlaying ? 'pause' : 'play'} fill className="w-4 h-4" /></span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-stone-800 truncate">{selectedPostDetail.music_title || track.title}</span>
-                      <span className="block text-xs text-stone-500">{bgmPlaying ? '재생 중' : '눌러서 듣기'}</span>
+                      <span className="block text-xs text-stone-500">{bgmPlaying ? '재생 중' : '눌러서 듣기'}{music.clip ? ` · ${Math.floor(music.start / 60)}:${String(music.start % 60).padStart(2, '0')}부터 ${music.clip}초` : ''}</span>
                     </span>
                   </button>
                 );
