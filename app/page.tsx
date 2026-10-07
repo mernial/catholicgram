@@ -54,7 +54,10 @@ const deepLinkFromSearch = (search: string) => {
   const feedback = params.get('feedback') === '1';
   const notice = params.get('notice') || undefined;
   const reports = params.get('reports') === '1';
-  return post || chat || alerts || feedback || notice || reports ? { post, chat, alerts, feedback, notice, reports } : null;
+  const comment = params.get('comment') || undefined; // post 와 함께: 그 댓글로
+  const view = params.get('view') || undefined;       // 글 크게 보기 (글에서 언급됐을 때)
+  const profile = params.get('profile') || undefined; // 그 교우의 공간 (새 팔로워)
+  return post || chat || alerts || feedback || notice || reports || view || profile ? { post, chat, alerts, feedback, notice, reports, comment, view, profile } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -215,7 +218,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | null>(null); // 신고 알림으로 열면 신고 목록부터
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -911,8 +914,10 @@ export default function Home() {
   }, [user?.id, posts.length]);
 
   const fetchPosts = async () => {
-    const { data: postsData } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-    if (!postsData) return;
+    const { data: allPosts } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
+    fetchStories();
+    if (!allPosts) return;
+    const postsData = allPosts.filter(p => !p.is_story); // 스토리는 피드·내 공간에 안 나옴
     fetchCommentCounts(postsData.map(p => p.id));
     // 게시물 작성자의 프로필만 가져오기
     const authorIds = Array.from(new Set(postsData.map(p => p.user_id).filter(Boolean)));
@@ -929,6 +934,24 @@ export default function Home() {
         badge_type: profileMap[p.user_id]?.badge_type
       })));
     }
+  };
+
+  // 스토리 (24시간 안, 게시글에 is_story 표시)
+  const [storyPosts, setStoryPosts] = useState<Post[]>([]);
+  const [storiesUnavailable, setStoriesUnavailable] = useState(false);
+  const fetchStories = async () => {
+    const since = new Date(Date.now() - 24 * 3600e3).toISOString();
+    const { data, error } = await supabase.from('posts').select('*').eq('is_story', true).gt('created_at', since).order('created_at', { ascending: true }).limit(300);
+    if (error) { setStoriesUnavailable(true); return; }
+    setStoriesUnavailable(false);
+    setStoryPosts((data || []) as Post[]);
+    fetchCommentCounts((data || []).map(p => p.id));
+  };
+  const deleteStory = async (id: string) => {
+    const result = await callPostApi({ action: 'delete', id });
+    if (result.error) { alert(result.error); return false; }
+    setStoryPosts(prev => prev.filter(p => p.id !== id));
+    return true;
   };
 
   const handleCreatePost = async (e: React.FormEvent) => {
@@ -1256,7 +1279,7 @@ export default function Home() {
   const handleReaction = async (postId: string, type: 'pray' | 'like', onlyAdd = false) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    if (!posts.some((p) => p.id === postId)) return;
+    if (!posts.some((p) => p.id === postId) && !storyPosts.some(p => p.id === postId)) return;
     const { data: existing } = await supabase.from('post_reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('reaction_type', type).maybeSingle();
     if (existing && onlyAdd) return;
     const { error } = existing
@@ -1275,6 +1298,7 @@ export default function Home() {
     const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
     await supabase.from('posts').update(updateField).eq('id', postId);
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
+    setStoryPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };
   const fetchNotifications = async (userId: string) => {
     const myHandle = myHandleRef.current;
@@ -1435,14 +1459,30 @@ export default function Home() {
   };
 
   // 홈에서 해당 글로 이동해 댓글을 펼친다
-  const openPostComments = async (postId: string) => {
+  // 알림에서: 그 글의 댓글 창을 열고, 댓글이 정해져 있으면 그 댓글로 옮겨 잠깐 강조
+  const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
+  const openPostComments = async (postId: string, commentId?: string) => {
     setCommentSheetId(postId);
+    setHighlightCommentId(commentId || null);
     await loadCommentsFor(postId);
+    if (commentId) {
+      setTimeout(() => document.getElementById(`comment-${commentId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 250);
+      setTimeout(() => setHighlightCommentId(prev => (prev === commentId ? null : prev)), 3500);
+    }
+  };
+  // 알림에서: 글 자체를 크게 보기 (피드에 없으면 불러와서)
+  const openPostById = async (postId: string) => {
+    const known = posts.find(p => p.id === postId) || storyPosts.find(p => p.id === postId);
+    if (known) { openPostViewer(known); return; }
+    const { data } = await supabase.from('posts').select('*').eq('id', postId).maybeSingle();
+    if (data) openPostViewer(data as Post); else openPostComments(postId);
   };
 
+  // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글의 댓글 창에서 그 댓글로
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
-    openPostComments(n.post_id);
+    if (n.mention === 'post') openPostById(n.post_id);
+    else openPostComments(n.post_id, n.id);
   };
 
   // --- 휴대폰 푸시 알림 ---
@@ -1564,14 +1604,14 @@ export default function Home() {
     type Candidate = { key: string; icon: string; title: string; body: string; action: () => void };
     const fresh: Candidate[] = [];
     followRequests.forEach(r => {
-      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '새 팔로워', body: `${r.follower.baptismal_name}님이 회원님을 팔로우하기 시작했어요`, action: () => openNotifications() });
+      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '새 팔로워', body: `${r.follower.baptismal_name}님이 회원님을 팔로우하기 시작했어요`, action: () => goToProfile(r.follower.id) });
     });
     unreadMessages.forEach(u => {
       const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
       if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner) });
     });
     notifications.forEach(n => {
-      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openPostComments(n.post_id) });
+      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n) });
     });
     if (fresh.length === 0) return;
     const latest = fresh[0];
@@ -1621,7 +1661,11 @@ export default function Home() {
     if (!deepLink || !user) return;
     setDeepLink(null);
     if (deepLink.post) {
-      openPostComments(deepLink.post);
+      openPostComments(deepLink.post, deepLink.comment);
+    } else if (deepLink.view) {
+      openPostById(deepLink.view);
+    } else if (deepLink.profile) {
+      goToProfile(deepLink.profile);
     } else if (deepLink.chat) {
       supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).single()
         // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다
@@ -1684,9 +1728,9 @@ export default function Home() {
   const fetchCommentCounts = async (postIds: string[]) => {
     if (postIds.length === 0) return;
     const { data } = await supabase.from('comments').select('post_id').in('post_id', postIds);
-    const counts: Record<string, number> = {};
+    const counts: Record<string, number> = Object.fromEntries(postIds.map(id => [id, 0]));
     (data || []).forEach(c => { counts[c.post_id] = (counts[c.post_id] || 0) + 1; });
-    setCommentCounts(counts);
+    setCommentCounts(prev => ({ ...prev, ...counts }));
   };
 
   // 댓글을 불러오며 댓글별 기도/공감 수도 함께
@@ -2214,6 +2258,14 @@ export default function Home() {
         <>
           {/* 스토리 동그라미 줄 (인스타그램처럼 맨 위) */}
           <Stories
+            posts={storyPosts}
+            unavailable={storiesUnavailable}
+            onPosted={fetchStories}
+            onDelete={deleteStory}
+            myReactions={myPostReactions}
+            commentCounts={commentCounts}
+            onReact={(id, type) => handleReaction(id, type)}
+            onComment={id => toggleCommentBox(id)}
             me={user && profile ? { id: user.id, name: profile.baptismal_name, avatar: profile.avatar_url } : null}
             followingIds={followingIds}
             blockedIds={blockedIds}
@@ -3024,7 +3076,7 @@ export default function Home() {
       {/* 댓글 창: 인스타그램처럼 아래에서 올라옴 */}
       {commentSheetId && (() => {
         const sid = commentSheetId;
-        const sheetPost = posts.find(p => p.id === sid);
+        const sheetPost = posts.find(p => p.id === sid) || storyPosts.find(p => p.id === sid);
         const list = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id));
         const avatarOf = (uid?: string | null, name?: string) => {
           const url = uid ? (uid === user?.id ? profile?.avatar_url : authorByUser[uid]?.avatar) : undefined;
@@ -3050,7 +3102,7 @@ export default function Home() {
                 {list.map(c => {
                   const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
                   return (
-                    <div key={c.id} className={`flex gap-3 ${c.reply_to_user_id ? 'ml-11' : ''}`}>
+                    <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c.reply_to_user_id ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
                       <button onClick={() => { if (c.user_id) { setCommentSheetId(null); goToProfile(c.user_id); } }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 공간`}>{avatarOf(c.user_id, authorName(c))}</button>
                       <div className="flex-1 min-w-0">
                         <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
