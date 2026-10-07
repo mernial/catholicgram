@@ -5,6 +5,7 @@
 /* ---- 모든 휴대폰 화면 크기 대응 ---- */
 html {
   -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;        /* 앱 화면 전체가 끌려 내려가 멈춰 보이는 현상 방지 (아이패드) */
 }
 body {
   background-color: #F3EEE6;       /* 화면 바깥(태블릿) 배경: 따뜻한 모래색 */
@@ -14,6 +15,7 @@ body {
   word-break: keep-all;             /* 한글은 단어 단위로 줄바꿈 */
   overflow-wrap: anywhere;          /* 긴 링크·영문은 화면 안에서 줄바꿈 */
   -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 img, video {
   max-width: 100%;
