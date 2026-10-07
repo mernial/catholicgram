@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import MusicSegmentPicker from '@/components/MusicSegmentPicker';
-import { type BgmTrack, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
+import { type BgmTrack, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
 import Icon from '@/components/Icon';
 
 interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
@@ -11,15 +11,18 @@ interface YouTubeResult { videoId: string; title: string; channel: string; thumb
 const QUICK_SEARCHES = ['가톨릭 성가', '생활성가', '묵상 음악', '떼제 성가', '그레고리오 성가', '아베 마리아'];
 
 export interface SelectedMusic { value: string; title: string }
+// 구간 고르기 대상: 유튜브 곡(videoId) 또는 앱 배경음악(trackId + audioUrl)
+export interface MusicSegmentTarget { videoId?: string; trackId?: string; audioUrl?: string; title: string; start: number; clip?: number }
 
 // 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 유튜브 링크)
 export default function MusicPicker({ tracks, initialSegment, onSelect, onClose }: {
   tracks: BgmTrack[];
-  initialSegment?: { videoId: string; title: string; start: number; clip?: number } | null; // 이미 고른 곡의 구간만 다시 고치기
+  initialSegment?: MusicSegmentTarget | null; // 이미 고른 곡의 구간만 다시 고치기
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<'bgm' | 'youtube'>('youtube');
+  // 저작권 걱정 없는 배경음악이 있으면 그것부터
+  const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length > 0 ? 'bgm' : 'youtube');
 
   // 유튜브 검색
   const [query, setQuery] = useState('');
@@ -30,7 +33,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
   // 유튜브 곡을 고른 뒤 구간 고르기
-  const [segmentFor, setSegmentFor] = useState<{ videoId: string; title: string; start: number; clip?: number } | null>(initialSegment || null);
+  const [segmentFor, setSegmentFor] = useState<MusicSegmentTarget | null>(initialSegment || null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -94,24 +97,29 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
         {segmentFor ? (
           <div className="overflow-y-auto">
             <MusicSegmentPicker
+              key={segmentFor.trackId || segmentFor.videoId}
               videoId={segmentFor.videoId}
+              audioUrl={segmentFor.audioUrl}
               title={segmentFor.title}
               initialStart={segmentFor.start}
               initialClip={segmentFor.clip}
               onBack={() => setSegmentFor(null)}
-              onConfirm={(start, clip) => onSelect({ value: encodeYouTube(segmentFor.videoId, start, clip), title: segmentFor.title })}
+              onConfirm={(start, clip) => onSelect({
+                value: segmentFor.trackId ? encodeBgm(segmentFor.trackId, start, clip) : encodeYouTube(segmentFor.videoId!, start, clip),
+                title: segmentFor.title,
+              })}
             />
           </div>
         ) : (<>
         <div className="flex border-b border-stone-100">
+          {tabBtn('bgm', '저작권 걱정 없는 음악')}
           {tabBtn('youtube', '유튜브에서 찾기')}
-          {tabBtn('bgm', '추천 배경음악')}
         </div>
 
         {tab === 'bgm' ? (
           <div className="overflow-y-auto divide-y divide-stone-100">
             {tracks.length === 0 ? (
-              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />유튜브 링크로 음악을 추가해보세요.</div>
+              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 배경음악 관리에서 추가)<br />유튜브에서 찾아 넣을 수도 있어요.</div>
             ) : tracks.map(t => (
               <div key={t.id} className="p-3.5 flex items-center gap-3">
                 <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">
@@ -121,7 +129,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                   <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
                   {t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
                 </div>
-                <button onClick={() => onSelect({ value: `bgm:${t.id}`, title: t.title })} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
+                <button onClick={() => { audioRef.current?.pause(); setPreviewId(null); setSegmentFor({ trackId: t.id, audioUrl: t.url, title: t.title, start: 0 }); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
               </div>
             ))}
           </div>

@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { loadYouTubeApi, YT_ENDED, type YTPlayer } from '@/lib/youtube-api';
-import { CLIP_SECONDS } from '@/lib/music';
+import { CLIP_SECONDS, DEFAULT_CLIP } from '@/lib/music';
+
+// 유튜브 재생기와 앱 배경음악(오디오 파일)을 같은 방식으로 다루기 위한 최소한의 재생기
+type ClipPlayer = Pick<YTPlayer, 'seekTo' | 'playVideo' | 'getCurrentTime' | 'destroy'>;
 
 const PX_PER_SEC = 10;          // 음악 막대 1초당 너비
 const MIN_CLIP = 5;             // 가장 짧게 고를 수 있는 길이(초)
@@ -14,8 +17,9 @@ const fmt = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 
 // 상자의 왼쪽·오른쪽 손잡이를 끌면 시작·끝이 바뀌고(5~30초), 상자 가운데를 끌면 구간이 통째로 움직인다
 // (끌다가 막대 끝에 닿으면 막대가 저절로 넘어감). 막대의 다른 곳을 누르면 구간이 그리로 옮겨 가고,
 // ◀ ▶ 단추로 조금씩 옮길 수도 있다. 손을 떼면 고른 구간을 바로 들려준다.
-export default function MusicSegmentPicker({ videoId, title, initialStart = 0, initialClip = CLIP_SECONDS, onConfirm, onBack }: {
-  videoId: string;
+export default function MusicSegmentPicker({ videoId, audioUrl, title, initialStart = 0, initialClip = DEFAULT_CLIP, onConfirm, onBack }: {
+  videoId?: string;    // 유튜브 곡
+  audioUrl?: string;   // 또는 앱 배경음악 파일 (저작권 걱정 없는 곡)
   title: string;
   initialStart?: number;
   initialClip?: number;
@@ -23,7 +27,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
   onBack: () => void;
 }) {
   const holderRef = useRef<HTMLDivElement>(null);
-  const playerRef = useRef<YTPlayer | null>(null);
+  const playerRef = useRef<ClipPlayer | null>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const [duration, setDuration] = useState(0);
   const [range, setRange] = useState(() => ({ start: initialStart, clip: Math.min(CLIP_SECONDS, Math.max(MIN_CLIP, initialClip)) }));
@@ -41,6 +45,52 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
   useEffect(() => {
     let cancelled = false;
     let loopTimer: ReturnType<typeof setInterval> | undefined;
+    // 고른 구간 안에서만 반복
+    const startLoop = () => {
+      loopTimer = setInterval(() => {
+        const p = playerRef.current;
+        if (!p) return;
+        const t = p.getCurrentTime();
+        const r = rangeRef.current;
+        if (t > r.start + r.clip || t < r.start - 1) p.seekTo(r.start, true);
+      }, 300);
+    };
+    const fitRange = (d: number) => {
+      setDuration(d);
+      // 예전에 고른 구간이 곡 길이를 넘으면 맞춰 줌
+      if (d > 0) {
+        const c = Math.min(rangeRef.current.clip, Math.max(MIN_CLIP, d));
+        update({ start: Math.max(0, Math.min(rangeRef.current.start, d - c)), clip: c });
+      }
+      setReady(true);
+    };
+    if (audioUrl) {
+      const audio = new Audio();
+      audio.preload = 'auto';
+      audio.src = audioUrl;
+      audio.loop = true;
+      audio.onloadedmetadata = () => {
+        if (cancelled) return;
+        fitRange(Math.floor(audio.duration || 0));
+        audio.currentTime = rangeRef.current.start;
+        audio.play().catch(() => {}); // 막히면 '이 구간 다시 듣기'를 누르면 됨
+        startLoop();
+      };
+      audio.onerror = () => setFailed(true);
+      playerRef.current = {
+        seekTo: t => { audio.currentTime = t; },
+        playVideo: () => { audio.play().catch(() => {}); },
+        getCurrentTime: () => audio.currentTime,
+        destroy: () => { audio.pause(); audio.src = ''; },
+      };
+      return () => {
+        cancelled = true;
+        clearInterval(loopTimer);
+        playerRef.current?.destroy();
+        playerRef.current = null;
+      };
+    }
+    if (!videoId) return;
     loadYouTubeApi().then(YT => {
       if (cancelled || !holderRef.current) return;
       const el = document.createElement('div');
@@ -51,24 +101,10 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
         playerVars: { playsinline: 1, rel: 0, controls: 0, start: initialStart },
         events: {
           onReady: e => {
-            const d = Math.floor(e.target.getDuration() || 0);
-            setDuration(d);
-            // 예전에 고른 구간이 곡 길이를 넘으면 맞춰 줌
-            if (d > 0) {
-              const c = Math.min(rangeRef.current.clip, Math.max(MIN_CLIP, d));
-              update({ start: Math.max(0, Math.min(rangeRef.current.start, d - c)), clip: c });
-            }
-            setReady(true);
+            fitRange(Math.floor(e.target.getDuration() || 0));
             e.target.seekTo(rangeRef.current.start, true);
             e.target.playVideo();
-            // 고른 구간 안에서만 반복
-            loopTimer = setInterval(() => {
-              const p = playerRef.current;
-              if (!p) return;
-              const t = p.getCurrentTime();
-              const r = rangeRef.current;
-              if (t > r.start + r.clip || t < r.start - 1) p.seekTo(r.start, true);
-            }, 400);
+            startLoop();
           },
           onStateChange: e => { if (e.data === YT_ENDED) { e.target.seekTo(rangeRef.current.start, true); e.target.playVideo(); } },
           onError: () => setFailed(true),
@@ -81,7 +117,7 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
       try { playerRef.current?.destroy(); } catch { /* 이미 정리됨 */ }
       playerRef.current = null;
     };
-  }, [videoId, initialStart]);
+  }, [videoId, audioUrl, initialStart]);
 
   // 처음 열 때 고른 구간이 보이도록 막대를 옮겨 둔다
   useEffect(() => {
@@ -178,10 +214,10 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
 
   // 음악 막대 모양 (영상마다 같은 모양이 나오도록 영상 ID로 높이를 정함)
   const bars = useMemo(() => {
-    let seed = Array.from(videoId).reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
+    let seed = Array.from(videoId || audioUrl || title).reduce((a, c) => a * 31 + c.charCodeAt(0), 7) >>> 0;
     const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 2 ** 32; };
     return Array.from({ length: Math.ceil(duration) }, () => 0.25 + rand() * 0.75);
-  }, [videoId, duration]);
+  }, [videoId, audioUrl, title, duration]);
 
   const handle = (side: 'start' | 'end') => (
     <div
@@ -204,10 +240,18 @@ export default function MusicSegmentPicker({ videoId, title, initialStart = 0, i
         <p className="flex-1 min-w-0 text-sm font-bold text-stone-800 truncate text-right">{title}</p>
       </div>
 
+      {audioUrl ? (
+        <div className="relative w-full rounded-xl bg-gradient-to-br from-violet-700 to-[#1f2f66] text-white px-4 py-5 flex items-center gap-3">
+          <span className="w-12 h-12 rounded-full bg-white/15 flex items-center justify-center shrink-0"><svg viewBox="0 0 256 256" fill="currentColor" className="w-6 h-6"><path d="M212.92,17.69a8,8,0,0,0-6.86-1.45l-128,32A8,8,0,0,0,72,56V166.08A36,36,0,1,0,88,196V102.25l112-28v51.83A36,36,0,1,0,216,156V24A8,8,0,0,0,212.92,17.69Z" /></svg></span>
+          <span className="min-w-0"><span className="block text-xs text-white/70">저작권 걱정 없는 배경음악</span><span className="block font-bold truncate">{title}</span></span>
+          {failed && <span className="absolute inset-0 rounded-xl bg-black/70 flex items-center justify-center text-sm">이 음악을 불러오지 못했어요.</span>}
+        </div>
+      ) : (
       <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-stone-900">
         <div ref={holderRef} className="absolute inset-0 [&>iframe]:w-full [&>iframe]:h-full" />
         {failed && <div className="absolute inset-0 flex items-center justify-center text-white text-sm p-4 text-center">이 영상은 앱에서 재생할 수 없어요.<br />다른 곡을 골라주세요.</div>}
       </div>
+      )}
 
       {!ready ? (
         <p className="text-center text-sm text-stone-400 py-6">음악 불러오는 중...</p>
