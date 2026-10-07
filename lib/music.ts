@@ -42,7 +42,7 @@ export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
   `yt:${videoId}${start > 0 || clip ? `@${start}` : ''}${clip ? `+${clip}` : ''}`;
 
 // 앱에 기본으로 들어 있는 배경음악 (public/bgm). 모두 공유 저작물(저작권이 끝난 곡: 그루버·바흐·파헬벨·제네바 시편가·
-// 뉴브리튼 곡조·베토벤)이나 직접 만든 곡을
+// 뉴브리튼 곡조·베토벤·사티)이나 직접 만든 곡을
 // scripts/bgm-synth.py 로 새로 연주·녹음한 것이라 저작권 걱정 없이 쓸 수 있다.
 export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-silent-night', title: '고요한 밤 (오르골)', artist: '그루버 곡 · 가톨릭그램 연주', url: '/bgm/silent-night.mp3' },
@@ -55,6 +55,11 @@ export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-dawn-harp', title: '새벽 묵상 (하프)', artist: '가톨릭그램', url: '/bgm/dawn-harp.mp3' },
   { id: 'builtin-morning-piano', title: '성당의 아침 (피아노)', artist: '가톨릭그램', url: '/bgm/morning-piano.mp3' },
   { id: 'builtin-candle-strings', title: '촛불 (현악)', artist: '가톨릭그램', url: '/bgm/candle-strings.mp3' },
+  { id: 'builtin-gymnopedie', title: '짐노페디 1번 (피아노)', artist: '사티 곡 · 가톨릭그램 연주', url: '/bgm/gymnopedie.mp3' },
+  { id: 'builtin-fur-elise', title: '엘리제를 위하여 (피아노)', artist: '베토벤 곡 · 가톨릭그램 연주', url: '/bgm/fur-elise.mp3' },
+  { id: 'builtin-peace-guitar', title: '평화의 강 (기타)', artist: '가톨릭그램', url: '/bgm/peace-guitar.mp3' },
+  { id: 'builtin-christmas-bells', title: '성탄 종소리 (벨)', artist: '가톨릭그램', url: '/bgm/christmas-bells.mp3' },
+  { id: 'builtin-rosary-musicbox', title: '묵주 기도 (오르골)', artist: '가톨릭그램', url: '/bgm/rosary-musicbox.mp3' },
 ];
 
 export const CLIP_SECONDS = 30;  // 고를 수 있는 가장 긴 구간

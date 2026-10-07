@@ -1,6 +1,6 @@
 # 앱 기본 배경음악(public/bgm/*.mp3)을 만드는 스크립트.
 # 공유 저작물(저작권이 끝난 곡: 그루버 '고요한 밤', 바흐 전주곡 C장조, 파헬벨 캐논, 제네바 시편가 100편 곡조,
-# 뉴브리튼 곡조 'Amazing Grace', 베토벤 '환희의 송가')과
+# 뉴브리튼 곡조 'Amazing Grace', 베토벤 '환희의 송가'·'엘리제를 위하여', 사티 '짐노페디 1번')과
 # 직접 지은 곡을 이 스크립트가 새로 연주·녹음하므로 녹음 저작권도 없음.
 # 사용: pip install numpy && python3 scripts/bgm-synth.py <폴더> [곡 함수 이름 ...]
 #       → <폴더>/*.wav 를 ffmpeg 로 mp3 변환:
@@ -310,6 +310,118 @@ def candle_strings():
                 tr.add(strings(hz(n), d*0.95, 0.42 if rep else 0.3, a=0.35, r=0.8), t); t += d
     tr.render(OUT + '/candle-strings.wav', length=0.4 + 2*len(prog)*seg + 4)
 
-ALL = {f.__name__: f for f in (silent_night, canon, bach, hymn, ambient, amazing_grace, ode_to_joy, dawn_harp, morning_piano, candle_strings)}
+def guitar(f, dur, vel=0.5):
+    n = int((dur + 1.5) * SR); t = np.arange(n) / SR
+    out = sum(a*np.sin(2*np.pi*f*k*t)*np.exp(-t/(0.9/k**0.8)) for k, a in [(1,1),(2,0.7),(3,0.45),(4,0.3),(5,0.18),(6,0.1)])
+    return vel * out * np.minimum(1, t/0.002) * 0.2
+
+def bell(f, dur, vel=0.5):
+    n = int((dur + 4) * SR); t = np.arange(n) / SR
+    parts = [(0.56,0.6,2.5),(0.92,0.4,1.8),(1.0,1.0,3.0),(1.19,0.3,1.2),(1.71,0.25,0.9),(2.0,0.35,1.4),(2.74,0.2,0.6),(3.0,0.15,0.5),(4.07,0.1,0.3)]
+    out = sum(a*np.sin(2*np.pi*f*r*t)*np.exp(-t/d) for r, a, d in parts)
+    return vel * out * np.minimum(1, t/0.002) * 0.18
+
+# 11) 짐노페디 1번 (사티 1888, 공유 저작물) — 피아노
+def gymnopedie():
+    b = 0.78
+    A = [('G2', ['B3','D4','F#4']), ('D2', ['A3','C#4','F#4'])]
+    mel = [None, None, None, None,
+           [None,'F#5','A5'], ['G5','F#5','C#5'], ['B4','C#5','D5'], ['A4',None,None],
+           ['F#4',None,None], [None,None,None], [None,None,None], [None,None,None],
+           [None,'F#5','A5'], ['G5','F#5','C#5'], ['B4','C#5','D5'], ['A4',None,None],
+           ['C#5',None,None], ['D5',None,None], ['E5',None,None], ['F#5',None,None]]
+    tr = Track(80)
+    for rep in range(2):
+        for i, m in enumerate(mel):
+            bar = rep*len(mel) + i
+            t0 = 0.4 + bar*3*b
+            bass, ch = A[bar % 2]
+            tr.add(piano(hz(bass), 3*b, 0.4), t0)
+            for n in ch: tr.add(piano(hz(n), 2*b, 0.22), t0 + b)
+            if m:
+                for k, n in enumerate(m):
+                    if n: tr.add(piano(hz(n), 2.5*b, 0.45), t0 + k*b)
+    end = 0.4 + 2*len(mel)*3*b
+    for n in ['D2','A3','D4','F#4']: tr.add(piano(hz(n), 4, 0.3), end)
+    tr.render(OUT + '/gymnopedie.wav', length=end + 5)
+
+# 12) 엘리제를 위하여 (베토벤, 공유 저작물) — 피아노
+def fur_elise():
+    s = 0.19  # 16분음표
+    RH = [('E5',1),('D#5',1),
+          ('E5',1),('D#5',1),('E5',1),('B4',1),('D5',1),('C5',1),
+          ('A4',2),(None,1),('C4',1),('E4',1),('A4',1),
+          ('B4',2),(None,1),('E4',1),('G#4',1),('B4',1),
+          ('C5',2),(None,1),('E4',1),('E5',1),('D#5',1),
+          ('E5',1),('D#5',1),('E5',1),('B4',1),('D5',1),('C5',1),
+          ('A4',2),(None,1),('C4',1),('E4',1),('A4',1),
+          ('B4',2),(None,1),('E4',1),('C5',1),('B4',1),
+          ('A4',6)]
+    LH = {8: ['A2','E3','A3'], 14: ['E2','E3','G#3'], 20: ['A2','E3','A3'], 32: ['A2','E3','A3'], 38: ['E2','E3','G#3'], 44: ['A2','E3','A3']}
+    total = sum(d for _, d in RH)
+    tr = Track(80)
+    for rep in range(6):
+        off = 0.4 + rep*(total + 2)*s
+        t = off; pos = 0
+        for n, d in RH:
+            if n: tr.add(piano(hz(n), d*s*1.4, 0.45), t)
+            if pos in LH:
+                for k, ln in enumerate(LH[pos]): tr.add(piano(hz(ln), 3*s, 0.32), off + (pos + k)*s)
+            t += d*s; pos += d
+    tr.render(OUT + '/fur-elise.wav', length=0.4 + 6*(total + 2)*s + 4)
+
+# 13) 평화의 강 (기타, 직접 작곡)
+def peace_guitar():
+    b = 0.42
+    prog = [['C3','G3','C4','E4'],['G2','D3','G3','B3'],['A2','E3','A3','C4'],['F2','C3','F3','A3']]
+    mel = ['E5','D5','C5','D5','E5','G5','E5','D5','C5','A4','C5','D5','C5','B4','A4','G4']
+    tr = Track(80)
+    bar = 0
+    for cyc in range(9):
+        for i, ch in enumerate(prog):
+            t0 = 0.4 + bar*8*b
+            order = [0,2,1,3,2,3,1,2]
+            for k in range(8): tr.add(guitar(hz(ch[order[k]]), 2*b, 0.45 if k == 0 else 0.32), t0 + k*b)
+            if 2 <= cyc <= 7:
+                tr.add(guitar(hz(mel[(bar*2) % 16]), 3*b, 0.42), t0)
+                tr.add(guitar(hz(mel[(bar*2 + 1) % 16]), 3*b, 0.36), t0 + 4*b)
+            bar += 1
+    tr.render(OUT + '/peace-guitar.wav', length=0.4 + bar*8*b + 3)
+
+# 14) 성탄 종소리 (직접 작곡)
+def christmas_bells():
+    b = 0.55
+    mel = ['G4','E4','C5','G4','A4','G4','E4','D4','C4','E4','G4','C5','A4','G4','E4','G4',
+           'C5','D5','E5','D5','C5','A4','G4','E4','F4','A4','G4','E4','D4','E4','C4','C4']
+    chords = [['C3','E3','G3'],['A2','C3','E3'],['F2','A2','C3'],['G2','B2','D3']]
+    tr = Track(80)
+    for rep in range(2):
+        off = 0.4 + rep*len(mel)*2*b
+        for i, n in enumerate(mel):
+            tr.add(bell(hz(n), 2*b, 0.5), off + i*2*b)
+        for j in range(len(mel)//4):
+            for n in chords[j % 4]:
+                tr.add(pad(hz(n), 8*b, 0.3, a=0.8, r=1.5), off + j*8*b)
+    tr.render(OUT + '/christmas-bells.wav', length=0.4 + 2*len(mel)*2*b + 5)
+
+# 15) 묵주 기도 (오르골, 직접 작곡)
+def rosary_musicbox():
+    b = 0.5
+    mel = ['A4','C5','F5','E5','D5','C5','A4','C5','Bb4','D5','G5','F5','E5','C5','G4','C5',
+           'A4','C5','F5','A5','G5','F5','E5','D5','C5','Bb4','A4','G4','F4','A4','C5','F5']
+    chords = [['F2','C3','A3'],['Bb2','F3','D4'],['C3','G3','E4'],['F2','C3','A3']]
+    tr = Track(80)
+    for rep in range(2):
+        off = 0.4 + rep*len(mel)*2*b
+        for i, n in enumerate(mel):
+            tr.add(musicbox(hz(n)*2, 2*b, 0.5), off + i*2*b)
+            if i % 2 == 1: tr.add(musicbox(hz(n), 1*b, 0.25), off + i*2*b + b)
+        for j in range(len(mel)//4):
+            for n in chords[j % 4]:
+                tr.add(pad(hz(n), 8*b, 0.25, a=1.0, r=1.5), off + j*8*b)
+    tr.render(OUT + '/rosary-musicbox.wav', length=0.4 + 2*len(mel)*2*b + 4)
+
+ALL = {f.__name__: f for f in (silent_night, canon, bach, hymn, ambient, amazing_grace, ode_to_joy, dawn_harp, morning_piano, candle_strings,
+                               gymnopedie, fur_elise, peace_guitar, christmas_bells, rosary_musicbox)}
 for name in (sys.argv[2:] or ALL):
     ALL[name](); print('done', name, flush=True)
