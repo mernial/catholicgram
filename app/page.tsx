@@ -1971,12 +1971,19 @@ export default function Home() {
     const vv = window.visualViewport;
     if (!vv) return;
     const onResize = () => {
-      const keyboardOpen = window.innerHeight - vv.height > 120;
+      // 입력칸에 글을 쓰는 중일 때만 키보드로 본다 (아이패드는 확대·도구 막대만으로도 보이는 높이가 줄어
+      // 키보드가 없는데 화면이 줄어든 채 중간에 멈춰 보였음)
+      const el = document.activeElement as HTMLElement | null;
+      const typing = !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable);
+      const keyboardOpen = typing && window.innerHeight - vv.height > 120;
       setVisibleHeight(keyboardOpen ? Math.round(vv.height) : null);
       if (keyboardOpen) window.scrollTo(0, 0);
     };
     vv.addEventListener('resize', onResize);
-    return () => vv.removeEventListener('resize', onResize);
+    // 입력칸에서 나오면(키보드 내림) 원래 높이로
+    const onFocusOut = () => setTimeout(onResize, 150);
+    document.addEventListener('focusout', onFocusOut);
+    return () => { vv.removeEventListener('resize', onResize); document.removeEventListener('focusout', onFocusOut); };
   }, []);
   // 채팅 중 키보드가 올라오면 마지막 메시지가 보이게
   useEffect(() => {
@@ -1994,6 +2001,7 @@ export default function Home() {
     await Promise.all([fetchPosts(), fetchIntentions(), fetchNotices()]).catch(() => {});
     setRefreshState('done');
     setTimeout(() => setRefreshState(''), 1200);
+    window.scrollTo(0, 0); // 문서가 어긋나 있으면 제자리로 (아이패드)
   };
   // 위에서 아래로 당겨 새로고침 (앱 화면 맨 위에서만). 보고 있는 탭에 맞는 것도 함께 새로 불러온다
   const [anonKey, setAnonKey] = useState(0);
@@ -2022,6 +2030,8 @@ export default function Home() {
       const dx = e.touches[0].clientX - start.x, dy = e.touches[0].clientY - start.y;
       if (el.scrollTop > 0 || (dist === 0 && Math.abs(dx) > Math.abs(dy))) { start = null; dist = 0; setPull(0); return; }
       dist = dy > 0 ? Math.min(110, dy * 0.5) : 0;
+      // 우리가 당김을 처리하는 동안 아이폰·아이패드 사파리의 출렁임(화면 통째로 끌려 내려감)을 막음
+      if (dist > 0 && e.cancelable) e.preventDefault();
       setPull(dist);
     };
     const onEnd = () => {
@@ -2030,7 +2040,7 @@ export default function Home() {
       setPull(0);
     };
     el.addEventListener('touchstart', onStart, { passive: true });
-    el.addEventListener('touchmove', onMove, { passive: true });
+    el.addEventListener('touchmove', onMove, { passive: false });
     el.addEventListener('touchend', onEnd);
     el.addEventListener('touchcancel', onEnd);
     return () => {
