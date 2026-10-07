@@ -2482,12 +2482,8 @@ export default function Home() {
               if (filtered.length === 0 && posts.length > 0) {
                 return <div className="py-16 text-center text-sm text-stone-400">{feedFilter === 'media' ? '아직 사진·영상 글이 없어요.' : '아직 글만 쓴 나눔이 없어요.'}</div>;
               }
-              // 인스타그램처럼: 내가 팔로우하는 교우(와 나)의 최근 7일 글을 먼저, 그다음 추천 글 (각각 최신순)
-              const recentFollowed = (p: Post) => (followingIds.has(p.user_id) || p.user_id === user?.id)
-                && Date.now() - new Date(p.created_at).getTime() < 7 * 86400e3;
-              const followedPosts = followingIds.size > 0 ? filtered.filter(recentFollowed) : [];
-              const shown = followedPosts.length > 0 ? [...followedPosts, ...filtered.filter(p => !recentFollowed(p))] : filtered;
-              const suggestStart = followedPosts.length > 0 && followedPosts.length < shown.length ? followedPosts.length : -1;
+              // 홈은 누가 올렸든 최신순 (가장 최근 글이 맨 위)
+              const shown = [...filtered].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
               return shown.map((post, postIndex) => {
               const canDelete = user?.id === post.user_id || (user?.email && ADMIN_EMAILS.includes(user.email));
               // 게시글 FEED_BANNER_EVERY 개마다 후원 배너를 번갈아 끼움
@@ -2495,13 +2491,6 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                {postIndex === suggestStart && (
-                  <div className="bg-[#fdfaf5] px-4 py-6 flex flex-col items-center text-center gap-1.5">
-                    <IconBadge name="check" tone="green" size="lg" />
-                    <p className="font-bold text-stone-900">팔로우한 교우의 새 글을 모두 봤어요</p>
-                    <p className="text-sm text-stone-500">아래는 다른 교우들의 추천 글이에요</p>
-                  </div>
-                )}
                 <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
