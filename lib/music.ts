@@ -41,6 +41,16 @@ export const parseYouTubeUrl = (input: string): { videoId: string; start: number
 export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
   `yt:${videoId}${start > 0 || clip ? `@${start}` : ''}${clip ? `+${clip}` : ''}`;
 
+// 앱에 기본으로 들어 있는 배경음악 (public/bgm). 모두 공유 저작물(저작권이 끝난 곡)이나 직접 만든 곡을
+// scripts/bgm-synth.py 로 새로 연주·녹음한 것이라 저작권 걱정 없이 쓸 수 있다.
+export const BUILTIN_BGM: BgmTrack[] = [
+  { id: 'builtin-silent-night', title: '고요한 밤 (오르골)', artist: '그루버 곡 · 가톨릭그램 연주', url: '/bgm/silent-night.mp3' },
+  { id: 'builtin-bach-prelude', title: '바흐 전주곡 C장조 (아베 마리아 반주)', artist: '바흐 곡 · 가톨릭그램 연주', url: '/bgm/bach-prelude.mp3' },
+  { id: 'builtin-canon', title: '캐논 (잔잔한 피아노)', artist: '파헬벨 곡 · 가톨릭그램 연주', url: '/bgm/canon.mp3' },
+  { id: 'builtin-hymn-organ', title: '성가 오르간 (시편 100편 곡조)', artist: '제네바 시편가 · 가톨릭그램 연주', url: '/bgm/hymn-organ.mp3' },
+  { id: 'builtin-quiet-prayer', title: '고요한 기도 (은은한 화음)', artist: '가톨릭그램', url: '/bgm/quiet-prayer.mp3' },
+];
+
 export const CLIP_SECONDS = 30;  // 고를 수 있는 가장 긴 구간
 export const DEFAULT_CLIP = 15;  // 처음 고를 때 구간 길이
 
