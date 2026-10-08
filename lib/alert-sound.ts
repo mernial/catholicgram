@@ -1,4 +1,5 @@
-// 새 알림이 왔을 때 짧은 알림음을 재생한다 (음원 파일 없이 Web Audio로 생성)
+// 새 알림이 왔을 때 '찬미예수님' 여성 음성으로 알린다 (휴대폰에 들어 있는 한국어 음성 사용)
+// 한국어 음성이 없는 기기에서는 짧은 '띵-동' 알림음 (음원 파일 없이 Web Audio로 생성)
 // 브라우저 정책상 사용자가 화면을 한 번 터치한 뒤부터 소리가 난다.
 
 let ctx: AudioContext | null = null;
@@ -17,10 +18,56 @@ const getContext = () => {
 export function unlockAlertSound() {
   const c = getContext();
   if (c && c.state === 'suspended') c.resume().catch(() => {});
+  // iOS 는 터치 때 한 번 말해 둬야 나중에 음성이 나온다 → 소리 없는 빈 말
+  const synth = getSynth();
+  if (synth && !speechUnlocked) {
+    speechUnlocked = true;
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    synth.speak(u);
+  }
+}
+
+let speechUnlocked = false;
+const getSynth = () => (typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis : null);
+
+// 한국어 여성 음성 고르기 (아이폰: 유나, 안드로이드: 구글 한국어, 윈도우: 선희·해미 등)
+const FEMALE_HINTS = ['yuna', '유나', 'sunhi', '선희', 'heami', '해미', 'female', '여성', 'sora', '소라', 'google'];
+const MALE_HINTS = ['male', '남성', 'injoon', '인준', 'minsu', '민수', 'jinho'];
+function pickKoreanVoice(): SpeechSynthesisVoice | null {
+  const voices = getSynth()?.getVoices() || [];
+  const ko = voices.filter(v => v.lang.toLowerCase().replace('_', '-').startsWith('ko'));
+  if (ko.length === 0) return null;
+  const name = (v: SpeechSynthesisVoice) => v.name.toLowerCase();
+  const notMale = ko.filter(v => !MALE_HINTS.some(h => name(v).includes(h) && !name(v).includes('female')));
+  return notMale.find(v => FEMALE_HINTS.some(h => name(v).includes(h))) || notMale[0] || ko[0];
+}
+// 음성 목록은 늦게 채워지는 기기가 있어 미리 한 번 불러 둔다
+if (typeof window !== 'undefined') getSynth()?.getVoices();
+
+// '찬미예수님' 음성 (한국어 음성이 없으면 false)
+export function speakPraise(): boolean {
+  const synth = getSynth();
+  const voice = synth ? pickKoreanVoice() : null;
+  if (!synth || !voice) return false;
+  synth.cancel();
+  const u = new SpeechSynthesisUtterance('찬미예수님');
+  u.voice = voice;
+  u.lang = voice.lang;
+  u.rate = 0.9;   // 또박또박
+  u.pitch = 1.15; // 조금 높고 부드럽게
+  u.volume = 1;
+  synth.speak(u);
+  return true;
+}
+
+export function playAlertSound() {
+  if (speakPraise()) return;
+  playDingDong();
 }
 
 // '띵-동' 두 음
-export function playAlertSound() {
+function playDingDong() {
   const c = getContext();
   if (!c) return;
   if (c.state === 'suspended') c.resume().catch(() => {});
