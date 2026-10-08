@@ -41,6 +41,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
+import DeletedMessages from '@/components/DeletedMessages';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -127,7 +128,7 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; }
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
 
@@ -811,7 +812,7 @@ export default function Home() {
     const latest = new Map<string, { content: string; created_at: string }>();
     data.forEach(m => {
       const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
-      if (partnerId && !latest.has(partnerId)) latest.set(partnerId, { content: m.content, created_at: m.created_at });
+      if (partnerId && !latest.has(partnerId)) latest.set(partnerId, { content: m.deleted_at ? '삭제된 메시지' : m.content, created_at: m.created_at });
     });
 
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(latest.keys()));
@@ -875,14 +876,36 @@ export default function Home() {
       if (error.code === '42P01' || error.code === 'PGRST205') alert('메시지 하트 기능을 준비 중이에요. (관리자: supabase/message-hearts.sql 실행 필요)');
     }
   };
-  // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지)
-  const onMessageTap = (messageId: string | number) => {
+  // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지 → 하트).
+  // 내 메시지를 한 번만 누르면 밑에 '삭제' 단추가 나옴
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onMessageTap = (messageId: string | number, mine: boolean) => {
     const key = String(messageId);
     const now = Date.now();
     const last = lastMessageTap.current;
+    if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
     if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(messageId); return; }
     lastMessageTap.current = { id: key, at: now };
+    if (mine) singleTapTimer.current = setTimeout(() => setSelectedMessageId(prev => (prev === key ? null : key)), 360);
+    else setSelectedMessageId(null);
   };
+  // 내가 보낸 메시지 지우기 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
+  const deleteMessage = async (msg: Message) => {
+    if (!window.confirm(msg.image_url ? '이 사진을 삭제할까요?\n상대방 화면에서도 지워져요.' : '이 메시지를 삭제할까요?\n상대방 화면에서도 지워져요.')) return;
+    setSelectedMessageId(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch('/api/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+      body: JSON.stringify({ action: 'delete', id: msg.id }),
+    }).catch(() => null);
+    const json = res ? await res.json().catch(() => ({})) : {};
+    if (!res?.ok) { alert(json.error || '삭제하지 못했어요.'); return; }
+    setChatMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: '', image_url: null, deleted_at: new Date().toISOString() } : m));
+    if (currentChatUser) fetchChatMessages(currentChatUser.id);
+  };
+  const [showDeletedMessages, setShowDeletedMessages] = useState(false); // 관리자: 지워진 메시지 보기
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1462,7 +1485,7 @@ export default function Home() {
     data.forEach(m => {
       const g = grouped.get(m.sender_id);
       if (g) g.count += 1;
-      else grouped.set(m.sender_id, { count: 1, lastMessage: m.content, lastAt: m.created_at });
+      else grouped.set(m.sender_id, { count: 1, lastMessage: m.content || '삭제된 메시지', lastAt: m.created_at });
     });
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
       .in('id', Array.from(grouped.keys()));
@@ -2030,7 +2053,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2050,6 +2073,7 @@ export default function Home() {
     setCommentSheetId(null);
     setStoryViewerOpen(false);
     setAvatarPreview(null);
+    setShowDeletedMessages(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as ScreenState | { guard: true } | null;
@@ -2761,6 +2785,7 @@ export default function Home() {
                         <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
+                        <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
                       </>
                     )}
                     <button onClick={() => setShowFeedback(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="envelope" className="w-3.5 h-3.5" />{isAdmin ? '건의함' : '건의하기'}</button>
@@ -2984,20 +3009,25 @@ export default function Home() {
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
-                    {(() => {
+                    {msg.deleted_at ? (
+                      <div className="max-w-[75%] px-4 py-2 rounded-2xl text-[0.9375rem] italic text-stone-400 bg-stone-100 border border-dashed border-stone-300 inline-flex items-center gap-1.5">
+                        <Icon name="trash" className="w-4 h-4 shrink-0" />삭제된 메시지예요
+                      </div>
+                    ) : (() => {
                       const hearts = messageHearts[String(msg.id)] || [];
                       const iHearted = !!user && hearts.includes(user.id);
                       return (
-                        <div className={`relative max-w-[75%] ${hearts.length ? 'mb-4' : ''}`}>
+                        <div className={`max-w-[75%] ${hearts.length ? 'mb-4' : ''}`}>
+                          <div className="relative">
                           <div
-                            onClick={() => onMessageTap(msg.id)}
+                            onClick={() => onMessageTap(msg.id, isMe)}
                             className={`px-4 py-2 rounded-2xl text-[1rem] select-none [touch-action:manipulation] cursor-pointer ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {msg.image_url && (
                               <img
                                 src={msg.image_url}
                                 alt="보낸 사진"
-                                onClick={e => { e.stopPropagation(); setSelectedImage(msg.image_url || null); }}
+                                onClick={e => { if (isMe) return; e.stopPropagation(); setSelectedImage(msg.image_url || null); }}
                                 className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
                               />
                             )}
@@ -3018,6 +3048,20 @@ export default function Home() {
                             >
                               <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" />{hearts.length > 1 && hearts.length}
                             </button>
+                          )}
+                          </div>
+                          {/* 내 메시지를 한 번 누르면: 삭제 단추 */}
+                          {isMe && selectedMessageId === String(msg.id) && (
+                            <div className={`flex justify-end gap-1.5 ${hearts.length ? 'mt-6' : 'mt-1'}`}>
+                              {msg.image_url && (
+                                <button onClick={() => { setSelectedMessageId(null); setSelectedImage(msg.image_url || null); }} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 bg-white border border-stone-200 rounded-full px-3 py-1 shadow-sm">
+                                  <Icon name="search" className="w-4 h-4" />크게 보기
+                                </button>
+                              )}
+                              <button onClick={() => deleteMessage(msg)} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-red-600 bg-white border border-red-200 rounded-full px-3 py-1 shadow-sm">
+                                <Icon name="trash" className="w-4 h-4" />삭제
+                              </button>
+                            </div>
                           )}
                         </div>
                       );
@@ -3388,6 +3432,7 @@ export default function Home() {
 
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
+      {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
 
       {/* 팔로워·팔로잉 목록 */}
       {followList && (

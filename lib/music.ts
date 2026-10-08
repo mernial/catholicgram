@@ -65,6 +65,11 @@ export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-spring-marimba', title: '봄날의 산책 (마림바)', artist: '가톨릭그램', url: '/bgm/spring-marimba.mp3' },
   { id: 'builtin-mary-cello', title: '성모의 노래 (첼로)', artist: '가톨릭그램', url: '/bgm/mary-cello.mp3' },
   { id: 'builtin-evening-prayer', title: '저녁 기도 (피아노)', artist: '가톨릭그램', url: '/bgm/evening-prayer.mp3' },
+  { id: 'builtin-minuet', title: '미뉴에트 G장조 (바흐)', artist: '가톨릭그램', url: '/bgm/minuet.mp3' },
+  { id: 'builtin-westminster-bells', title: '성당 종소리', artist: '가톨릭그램', url: '/bgm/westminster-bells.mp3' },
+  { id: 'builtin-grace-rain', title: '은총의 비 (피아노)', artist: '가톨릭그램', url: '/bgm/grace-rain.mp3' },
+  { id: 'builtin-forest-flute', title: '평화의 숲 (플루트)', artist: '가톨릭그램', url: '/bgm/forest-flute.mp3' },
+  { id: 'builtin-organ-meditation', title: '오르간 묵상', artist: '가톨릭그램', url: '/bgm/organ-meditation.mp3' },
 ];
 
 export const CLIP_SECONDS = 30;  // 고를 수 있는 가장 긴 구간

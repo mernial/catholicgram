@@ -1,7 +1,7 @@
 # 앱 기본 배경음악(public/bgm/*.mp3)을 만드는 스크립트.
 # 공유 저작물(저작권이 끝난 곡: 그루버 '고요한 밤', 바흐 전주곡 C장조, 파헬벨 캐논, 제네바 시편가 100편 곡조,
 # 뉴브리튼 곡조 'Amazing Grace', 베토벤 '환희의 송가'·'엘리제를 위하여', 사티 '짐노페디 1번',
-# 영국 민요 '그린슬리브스', 드보르자크 '신세계' 2악장 주제)과
+# 영국 민요 '그린슬리브스', 드보르자크 '신세계' 2악장 주제, 바흐 미뉴에트 G장조, 웨스트민스터 차임)과
 # 직접 지은 곡을 이 스크립트가 새로 연주·녹음하므로 녹음 저작권도 없음.
 # 사용: pip install numpy && python3 scripts/bgm-synth.py <폴더> [곡 함수 이름 ...]
 #       → <폴더>/*.wav 를 ffmpeg 로 mp3 변환:
@@ -535,8 +535,109 @@ def evening_prayer():
         tr.add(piano(hz(n), 4, 0.33), 0.4 + i*4*q)
     tr.render(OUT + '/evening-prayer.wav', length=0.4 + i*4*q + 5)
 
+def flute(f, dur, vel=0.4):
+    n = int((dur + 0.6) * SR); t = np.arange(n) / SR
+    vib = 1 + 0.004*np.sin(2*np.pi*5.0*t) * np.minimum(1, t/0.5)
+    ph = 2*np.pi*np.cumsum(f*vib)/SR
+    out = np.sin(ph) + 0.18*np.sin(2*ph) + 0.06*np.sin(3*ph)
+    breath = rng.standard_normal(n) * 0.015 * np.exp(-t/0.25)
+    return vel * (out + breath) * env_adsr(n, 0.08, 0.1, 0.85, 0.35) * 0.3
+
+# 21) 미뉴에트 G장조 (바흐 '안나 막달레나 노트', 공유 저작물) — 피아노
+def minuet():
+    q = 0.42
+    A = [('D5',1),('G4',.5),('A4',.5),('B4',.5),('C5',.5), ('D5',1),('G4',1),('G4',1),
+         ('E5',1),('C5',.5),('D5',.5),('E5',.5),('F#5',.5), ('G5',1),('G4',1),('G4',1),
+         ('C5',1),('D5',.5),('C5',.5),('B4',.5),('A4',.5), ('B4',1),('C5',.5),('B4',.5),('A4',.5),('G4',.5),
+         ('F#4',1),('G4',.5),('A4',.5),('B4',.5),('G4',.5), ('A4',3)]
+    B = A[:-6] + [('A4',1),('B4',.5),('A4',.5),('G4',.5),('F#4',.5), ('G4',3)]
+    bass = ['G3','G3','C4','G3','C4','G3','D3','D3', 'G3','G3','C4','G3','C4','G3','D3','G2']
+    tr = Track(90)
+    for rep in range(2):
+        off = 0.4 + rep*16*3*q
+        t = off
+        for n, d in A + B:
+            tr.add(piano(hz(n), d*q*1.1, 0.45), t); t += d*q
+        for i, bn in enumerate(bass):
+            tr.add(piano(hz(bn), 3*q, 0.3), off + i*3*q)
+            tr.add(piano(hz(bn)*1.5, 1.5*q, 0.15), off + i*3*q + q)
+    tr.render(OUT + '/minuet.wav', length=0.4 + 2*16*3*q + 3)
+
+# 22) 성당 종소리 (웨스트민스터 차임, 공유 저작물) — 종 + 오르간
+def westminster():
+    b = 0.7
+    phrases = [['E4','C4','D4','G3'], ['G3','D4','E4','C4'], ['E4','D4','C4','G3'], ['G3','D4','E4','C4']]
+    tr = Track(90)
+    t = 0.4
+    for cyc in range(3):
+        for ph in phrases:
+            for k, n in enumerate(ph):
+                tr.add(bell(hz(n)*2, 3*b, 0.55), t + k*b)
+            t += 5*b
+        for k in range(3):  # 시각을 알리는 큰 종
+            tr.add(bell(hz('C3')*2, 4*b, 0.6), t + k*2*b)
+        for n in ['C3','G3','E4']:
+            tr.add(organ(hz(n), 6*b, 0.18), t)
+        t += 7*b
+    tr.render(OUT + '/westminster-bells.wav', length=t + 4)
+
+# 23) 은총의 비 (피아노 아르페지오, 직접 작곡)
+def grace_rain():
+    s16 = 0.16
+    prog = [['Eb3','Bb3','Eb4','G4'],['C3','G3','C4','Eb4'],['Ab2','Eb3','Ab3','C4'],['Bb2','F3','Bb3','D4']]
+    mel = ['G5','F5','Eb5','F5','G5','Bb5','Ab5','G5','F5','Eb5','D5','Eb5','F5','G5','F5','D5']
+    tr = Track(90)
+    bar = 0
+    for cyc in range(7):
+        for i, ch in enumerate(prog):
+            t0 = 0.4 + bar*16*s16
+            pat = [0,1,2,3,2,1,2,3, 0,1,2,3,2,3,2,1]
+            for k in range(16):
+                tr.add(piano(hz(ch[pat[k]]), 3*s16, 0.26 if k else 0.36), t0 + k*s16)
+            if 1 <= cyc <= 5:
+                tr.add(piano(hz(mel[(bar*2) % 16]), 8*s16, 0.42), t0)
+                tr.add(piano(hz(mel[(bar*2+1) % 16]), 8*s16, 0.36), t0 + 8*s16)
+            bar += 1
+    tr.render(OUT + '/grace-rain.wav', length=0.4 + bar*16*s16 + 3)
+
+# 24) 평화의 숲 (플루트, 직접 작곡)
+def forest_flute():
+    q = 0.6
+    mel = [('D5',2),('E5',1),('F#5',1),('A5',3),('F#5',1),('E5',2),('D5',2),('B4',4),
+           ('A4',2),('B4',1),('D5',1),('E5',3),('D5',1),('B4',2),('A4',2),('D5',4)]
+    prog = [['D3','A3','F#4'],['B2','F#3','D4'],['G2','D3','B3'],['A2','E3','C#4']]
+    tr = Track(90)
+    for rep in range(3):
+        off = 0.4 + rep*32*q
+        if rep > 0:
+            t = off
+            for n, d in mel:
+                tr.add(flute(hz(n), d*q*0.95, 0.5), t); t += d*q
+        for i in range(8):
+            ch = prog[i % 4]
+            for n in ch: tr.add(harp(hz(n), 2*q, 0.3), off + i*4*q)
+            for k, n in enumerate([ch[1], ch[2], ch[1]]): tr.add(harp(hz(n), q, 0.22), off + i*4*q + (k+1)*q)
+            tr.add(pad(hz(ch[0]), 4*q, 0.15), off + i*4*q)
+    tr.render(OUT + '/forest-flute.wav', length=0.4 + 3*32*q + 3)
+
+# 25) 오르간 묵상 (D단조, 직접 작곡)
+def organ_meditation():
+    b = 1.0
+    prog = [['D2','A2','D3','F3','A3'],['Bb1','F2','Bb2','D3','F3'],['G1','D2','G2','Bb2','D3'],['A1','E2','A2','C#3','E3'],
+            ['D2','A2','D3','F3','A3'],['C2','G2','C3','E3','G3'],['F2','C3','F3','A3','C4'],['A1','E2','A2','C#3','E3']]
+    top = ['A4','F4','G4','E4','F4','G4','A4','C#5']
+    tr = Track(90)
+    for rep in range(2):
+        for i, ch in enumerate(prog):
+            t0 = 0.4 + (rep*8 + i)*4*b
+            for n in ch: tr.add(organ(hz(n), 4*b*0.98, 0.3), t0)
+            tr.add(organ(hz(top[i]), 2*b*0.95, 0.4 if rep else 0.3), t0 + b)
+            tr.add(organ(hz(top[(i+1) % 8]), b*0.95, 0.3), t0 + 3*b)
+    tr.render(OUT + '/organ-meditation.wav', length=0.4 + 16*4*b + 3)
+
 ALL = {f.__name__: f for f in (silent_night, canon, bach, hymn, ambient, amazing_grace, ode_to_joy, dawn_harp, morning_piano, candle_strings,
                                gymnopedie, fur_elise, peace_guitar, christmas_bells, rosary_musicbox,
-                               greensleeves, going_home, spring_marimba, mary_cello, evening_prayer)}
+                               greensleeves, going_home, spring_marimba, mary_cello, evening_prayer,
+                               minuet, westminster, grace_rain, forest_flute, organ_meditation)}
 for name in (sys.argv[2:] or ALL):
     ALL[name](); print('done', name, flush=True)
