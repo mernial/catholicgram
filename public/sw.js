@@ -62,10 +62,17 @@ const openInClient = async (client, url) => {
   return focused;
 };
 
+// 알림으로 가야 할 곳을 잠깐 적어 둔다. 앱이 새 버전으로 다시 열리거나(새로고침) 이동 메시지를 놓쳐도
+// 앱이 열린 뒤 이걸 읽어 그 글·댓글·대화로 간다 (2분 안에 한 번만 쓰임).
+const writePending = async (url) => {
+  try { await (await caches.open(META_CACHE)).put('/__pending', new Response(JSON.stringify({ url, at: Date.now() }))); } catch { /* 무시 */ }
+};
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
   event.waitUntil((async () => {
+    await writePending(url);
     const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
       .filter((c) => new URL(c.url).origin === self.location.origin);
     const meta = await readMeta();

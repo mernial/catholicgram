@@ -70,6 +70,22 @@ const timeAgo = (iso: string) => {
   return new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
 };
 
+// 서비스 워커가 알림을 누를 때 적어 둔 목적지 (public/sw.js writePending)
+const PENDING_CACHE = 'catholicgram-sw-meta';
+const clearPendingLink = () => { caches?.open(PENDING_CACHE).then(c => c.delete('/__pending')).catch(() => {}); };
+let pendingLinkHandler: ((url: string) => void) | null = null;
+const consumePendingLink = async () => {
+  try {
+    if (typeof caches === 'undefined') return;
+    const cache = await caches.open(PENDING_CACHE);
+    const res = await cache.match('/__pending');
+    if (!res) return;
+    const pending = await res.json() as { url?: string; at?: number };
+    await cache.delete('/__pending');
+    if (pending.url && pending.at && Date.now() - pending.at < 2 * 60 * 1000) pendingLinkHandler?.(pending.url);
+  } catch { /* 무시 */ }
+};
+
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
 const isStorageAvailable = () => {
@@ -374,6 +390,7 @@ export default function Home() {
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
+        clearPendingLink();
         const link = deepLinkFromSearch(new URL(e.data.url, window.location.origin).search);
         if (link) setDeepLink(link); else goToHome();
       });
@@ -385,11 +402,16 @@ export default function Home() {
     const unlock = () => unlockAlertSound();
     window.addEventListener('pointerdown', unlock, { once: true });
 
+    pendingLinkHandler = (url: string) => {
+      const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
+      if (link) setDeepLink(link);
+    };
     const initialLink = deepLinkFromSearch(window.location.search);
     if (initialLink) {
       setDeepLink(initialLink);
       window.history.replaceState(null, '', '/');
-    }
+      clearPendingLink();
+    } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
 
     const savedTab = storageGet('activeTab') as Tab | null;
     const savedUserId = storageGet('viewingUserId');
@@ -442,16 +464,17 @@ export default function Home() {
     let hiddenAt = 0;
     const onAppResume = async () => {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-      if (!hiddenAt || Date.now() - hiddenAt < 15 * 1000) return; // 아주 잠깐이면 그대로
+      if (!hiddenAt || Date.now() - hiddenAt < 15 * 1000) { setTimeout(consumePendingLink, 400); return; } // 아주 잠깐이면 그대로
       hiddenAt = 0;
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
         const { version } = await res.json();
         if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION) {
-          window.location.reload();
+          window.location.reload(); // 알림으로 가야 할 곳은 적어 둔 채로 새로고침 → 다시 열리면 그리로
           return;
         }
       } catch { /* 인터넷이 잠깐 끊겨도 아래는 진행 */ }
+      setTimeout(consumePendingLink, 400);
       navigator.serviceWorker?.getRegistration('/sw.js').then(reg => reg?.update()).catch(() => {});
       fetchPosts();
       fetchIntentions();
@@ -1686,9 +1709,9 @@ export default function Home() {
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
     } else if (deepLink.chat) {
-      supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).single()
-        // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다
-        .then(({ data }) => { if (data) { if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' }); openChatRoom(data); } });
+      supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).maybeSingle()
+        // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다 (상대를 못 찾으면 대화 목록)
+        .then(({ data }) => { if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' }); if (data) openChatRoom(data); });
     } else if (deepLink.alerts) {
       openNotifications();
     } else if (deepLink.feedback) {
