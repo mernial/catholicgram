@@ -404,7 +404,8 @@ export default function Home() {
     sessionStartRef.current = Date.now();
     setAlertSoundOn(storageGet('alertSound') !== 'off');
     const unlock = () => unlockAlertSound();
-    window.addEventListener('pointerdown', unlock, { once: true });
+    // 아이폰은 손을 뗄 때(touchend·click)여야 소리 허용으로 인정된다
+    (['pointerdown', 'touchend', 'click'] as const).forEach(ev => window.addEventListener(ev, unlock, { once: true }));
 
     pendingLinkHandler = (url: string) => {
       const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
