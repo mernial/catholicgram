@@ -837,8 +837,50 @@ export default function Home() {
     if (data) {
       setChatMessages(data);
       if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
+      loadMessageHearts(data.slice(-200).map(m => m.id));
     }
     else if (error) console.error('메시지를 불러오지 못했습니다', error);
+  };
+
+  // 메시지 하트: 두 번 누르면 그 메시지 밑에 하트 (다시 두 번 누르면 취소). 대화하는 두 사람 모두 보임
+  const [messageHearts, setMessageHearts] = useState<Record<string, string[]>>({}); // 메시지 id → 하트 누른 사람들
+  const [heartPop, setHeartPop] = useState<string | null>(null);
+  const lastMessageTap = useRef<{ id: string; at: number } | null>(null);
+  const savingHearts = useRef<Set<string>>(new Set()); // 저장 중인 하트는 새로고침 결과로 덮지 않음
+  const loadMessageHearts = async (ids: (string | number)[]) => {
+    if (ids.length === 0) return;
+    const { data, error } = await supabase.from('message_reactions').select('message_id, user_id').in('message_id', ids);
+    if (error) return; // SQL 실행 전이면 조용히
+    const next: Record<string, string[]> = {};
+    (data || []).forEach(r => { const k = String(r.message_id); next[k] = [...(next[k] || []), r.user_id]; });
+    setMessageHearts(prev => {
+      savingHearts.current.forEach(k => { next[k] = prev[k] || []; });
+      return next;
+    });
+  };
+  const toggleMessageHeart = async (messageId: string | number) => {
+    if (!user) return;
+    const key = String(messageId);
+    const mine = (messageHearts[key] || []).includes(user.id);
+    setMessageHearts(prev => ({ ...prev, [key]: mine ? (prev[key] || []).filter(u => u !== user.id) : [...(prev[key] || []), user.id] }));
+    if (!mine) { setHeartPop(key); setTimeout(() => setHeartPop(p => (p === key ? null : p)), 700); }
+    savingHearts.current.add(key);
+    const { error } = mine
+      ? await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', user.id)
+      : await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id });
+    savingHearts.current.delete(key);
+    if (error && error.code !== '23505') {
+      setMessageHearts(prev => ({ ...prev, [key]: mine ? [...(prev[key] || []), user.id] : (prev[key] || []).filter(u => u !== user.id) }));
+      if (error.code === '42P01' || error.code === 'PGRST205') alert('메시지 하트 기능을 준비 중이에요. (관리자: supabase/message-hearts.sql 실행 필요)');
+    }
+  };
+  // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지)
+  const onMessageTap = (messageId: string | number) => {
+    const key = String(messageId);
+    const now = Date.now();
+    const last = lastMessageTap.current;
+    if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(messageId); return; }
+    lastMessageTap.current = { id: key, at: now };
   };
 
   const sendMessage = async (e: React.FormEvent) => {
@@ -2912,9 +2954,36 @@ export default function Home() {
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
-                    <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-[1rem] ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}>
-                      {msg.content}
-                    </div>
+                    {(() => {
+                      const hearts = messageHearts[String(msg.id)] || [];
+                      const iHearted = !!user && hearts.includes(user.id);
+                      return (
+                        <div className={`relative max-w-[75%] ${hearts.length ? 'mb-4' : ''}`}>
+                          <div
+                            onClick={() => onMessageTap(msg.id)}
+                            className={`px-4 py-2 rounded-2xl text-[1rem] select-none [touch-action:manipulation] cursor-pointer ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                          >
+                            {msg.content}
+                          </div>
+                          {/* 두 번 누르면 잠깐 큰 하트 */}
+                          {heartPop === String(msg.id) && (
+                            <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
+                              <Icon name="heart" fill className="w-10 h-10 text-rose-500 drop-shadow" />
+                            </span>
+                          )}
+                          {/* 메시지 밑 하트 (누르면 내 하트 취소/추가) */}
+                          {hearts.length > 0 && (
+                            <button
+                              onClick={() => toggleMessageHeart(msg.id)}
+                              aria-label={iHearted ? '하트 취소' : '하트'}
+                              className={`absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.75rem] text-stone-600`}
+                            >
+                              <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" />{hearts.length > 1 && hearts.length}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {!isMe && <span className="text-[0.75rem] text-stone-400 shrink-0">{time}</span>}
                   </div>
                 );
