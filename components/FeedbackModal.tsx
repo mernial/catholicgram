@@ -71,7 +71,7 @@ const REPORT_STATUS: Record<Report['status'], { label: string; className: string
 export default function FeedbackModal({ user, isAdmin, initialView, onClose, sendPush }: {
   user: User;
   isAdmin: boolean;
-  initialView?: 'reports' | null; // 신고 알림으로 열었을 때
+  initialView?: 'reports' | 'inbox' | 'mine' | null; // 알림으로 열었을 때 바로 보여 줄 목록
   onClose: () => void;
   sendPush: (type: 'feedback' | 'feedback_reply' | 'report_reply', id: string) => void;
 }) {
