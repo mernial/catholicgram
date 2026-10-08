@@ -843,8 +843,28 @@ export default function Home() {
       setChatMessages(data);
       if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
       loadMessageHearts(data.slice(-200).map(m => m.id));
+      loadDeletedOriginals(data.filter(m => m.deleted_at).map(m => String(m.id)));
     }
     else if (error) console.error('메시지를 불러오지 못했습니다', error);
+  };
+
+  // 관리자: 대화방에서도 지운 메시지의 원래 글·사진을 본다
+  const [deletedOriginals, setDeletedOriginals] = useState<Record<string, { content: string | null; image_url: string | null }>>({});
+  const deletedOriginalsAsked = useRef<Set<string>>(new Set());
+  const loadDeletedOriginals = async (ids: string[]) => {
+    if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return;
+    const need = ids.filter(id => !deletedOriginalsAsked.current.has(id));
+    if (need.length === 0) return;
+    need.forEach(id => deletedOriginalsAsked.current.add(id));
+    const { data: { session } } = await supabase.auth.getSession();
+    const res = await fetch(`/api/admin/deleted-messages?ids=${encodeURIComponent(need.join(','))}`, { headers: { Authorization: `Bearer ${session?.access_token}` } }).catch(() => null);
+    const json = res?.ok ? await res.json().catch(() => null) : null;
+    if (!json?.items) { need.forEach(id => deletedOriginalsAsked.current.delete(id)); return; } // 다음에 다시 시도
+    setDeletedOriginals(prev => {
+      const next = { ...prev };
+      (json.items as { message_id: string; content: string | null; image_url: string | null }[]).forEach(d => { next[String(d.message_id)] = { content: d.content, image_url: d.image_url }; });
+      return next;
+    });
   };
 
   // 메시지 하트: 두 번 누르면 그 메시지 밑에 하트 (다시 두 번 누르면 취소). 대화하는 두 사람 모두 보임
@@ -3032,11 +3052,26 @@ export default function Home() {
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
-                    {msg.deleted_at ? (
-                      <div className="max-w-[75%] px-4 py-2 rounded-2xl text-[0.9375rem] italic text-stone-400 bg-stone-100 border border-dashed border-stone-300 inline-flex items-center gap-1.5">
-                        <Icon name="trash" className="w-4 h-4 shrink-0" />삭제된 메시지예요
-                      </div>
-                    ) : (() => {
+                    {msg.deleted_at ? (() => {
+                      const original = isAdmin ? deletedOriginals[String(msg.id)] : undefined;
+                      return (
+                        <div className="max-w-[75%] px-4 py-2 rounded-2xl text-[0.9375rem] text-stone-400 bg-stone-100 border border-dashed border-stone-300">
+                          <div className="italic inline-flex items-center gap-1.5"><Icon name="trash" className="w-4 h-4 shrink-0" />삭제된 메시지예요</div>
+                          {/* 관리자에게만: 원래 내용 */}
+                          {original && (
+                            <div className="mt-1.5 pt-1.5 border-t border-dashed border-stone-300">
+                              <p className="text-[0.75rem] font-bold text-red-500">원래 내용 · 관리자만 보여요</p>
+                              {original.image_url && (
+                                <img src={original.image_url} alt="지운 사진" onClick={() => setSelectedImage(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
+                              )}
+                              {original.content && !(original.image_url && original.content === PHOTO_ONLY_TEXT) && (
+                                <p className="mt-0.5 text-stone-600 whitespace-pre-wrap break-words">{original.content}</p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })() : (() => {
                       const hearts = messageHearts[String(msg.id)] || [];
                       const iHearted = !!user && hearts.includes(user.id);
                       return (
