@@ -315,6 +315,8 @@ export default function Home() {
   const backHandlerRef = useRef<(e: PopStateEvent) => void>(() => {});
   const exitArmedAtRef = useRef(0);
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
+  const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
+  const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
@@ -2057,6 +2059,20 @@ export default function Home() {
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
+  // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
+  useEffect(() => {
+    if (anyModalOpen) {
+      if (historyReadyRef.current && !modalHistoryRef.current) {
+        modalHistoryRef.current = true;
+        window.history.pushState({ ...currentScreenRef.current, modal: true }, '');
+      }
+    } else if (modalHistoryRef.current) {
+      // 단추로 닫힘 → 쌓아 둔 칸을 바로 걷어낸다 (그사이 다른 화면으로 옮겼으면 그 칸은 나중에 뒤로가기 때 건너뛴다)
+      modalHistoryRef.current = false;
+      const st = window.history.state as { modal?: true } | null;
+      if (st && st.modal) { skipNextPopRef.current = true; window.history.back(); }
+    }
+  }, [anyModalOpen]);
   const closeAllModals = () => {
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
@@ -2076,12 +2092,18 @@ export default function Home() {
     setShowDeletedMessages(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
-    const st = e.state as ScreenState | { guard: true } | null;
+    const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
+    const staleModalEntry = !!st && 'modal' in st;
+    if (skipNextPopRef.current) { skipNextPopRef.current = false; return; }
     if (anyModalOpen) {
       closeAllModals();
+      // 창을 열 때 쌓아 둔 칸이 빠진 것이면 그대로 끝 (기록을 다시 쌓지 않아야 브라우저가 앞 칸을 건너뛰지 않는다)
+      if (modalHistoryRef.current) { modalHistoryRef.current = false; if (staleModalEntry) window.history.back(); return; }
       window.history.pushState(currentScreenRef.current, ''); // 화면은 그대로 유지
       return;
     }
+    // 단추로 닫은 창의 빈 칸이면 한 칸 더 뒤로
+    if (staleModalEntry) { window.history.back(); return; }
     if (st && 'guard' in st) {
       // 홈이 아니면 한 단계 위 화면으로: 대화방 → 대화 목록 → 내 공간 → 홈
       const cur = currentScreenRef.current;
