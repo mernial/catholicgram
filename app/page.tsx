@@ -316,6 +316,7 @@ export default function Home() {
   const exitArmedAtRef = useRef(0);
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
+  const pushAlertRef = useRef<(url: string) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
   const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
@@ -392,6 +393,8 @@ export default function Home() {
       navigator.serviceWorker.ready.then(reg => reg.active?.postMessage({ type: 'client-info', standalone: standaloneNow })).catch(() => {});
       // 앱이 열려 있을 때 알림을 누르면: 새로고침 없이 해당 글/대화로 이동
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
+        // 앱을 보고 있을 때 온 알림: 휴대폰 알림음 대신 '찬미예수님'
+        if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/')); return; }
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
         clearPendingLink();
@@ -1846,6 +1849,14 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     refreshAlerts(user.id);
+    pushAlertRef.current = (url: string) => {
+      refreshAlerts(user.id);
+      // 지금 그 사람과 대화 중이면 메시지마다 음성은 생략
+      const chatWith = new URL(url, window.location.origin).searchParams.get('chat');
+      const cur = currentScreenRef.current;
+      if (chatWith && cur.tab === 'chat' && cur.chatUser?.id === chatWith) return;
+      if (storageGet('alertSound') !== 'off') playAlertSound();
+    };
     const interval = setInterval(() => refreshAlerts(user.id), 20000);
     const onVisible = () => { if (document.visibilityState === 'visible') refreshAlerts(user.id); };
     document.addEventListener('visibilitychange', onVisible);

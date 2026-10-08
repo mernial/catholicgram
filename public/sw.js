@@ -3,8 +3,28 @@ self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
   const title = data.title || '가톨릭그램';
-  event.waitUntil(
-    self.registration.showNotification(title, {
+  event.waitUntil((async () => {
+    // 앱을 보고 있는 중이면: 휴대폰 알림음은 끄고, 앱이 '찬미예수님' 음성으로 알린다
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
+    const visible = windows.filter(c => c.visibilityState === 'visible');
+    if (visible.length > 0) {
+      visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '' }));
+      // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄웠다가 곧 닫는다
+      await self.registration.showNotification(title, {
+        body: data.body || '',
+        icon: '/icon-v2-192.png',
+        badge: '/icon-v2-192.png',
+        tag: data.tag,
+        silent: true,
+        timestamp: Date.now(),
+        data: { url: data.url || '/' },
+      });
+      await new Promise(r => setTimeout(r, 4000));
+      const shown = await self.registration.getNotifications(data.tag ? { tag: data.tag } : undefined).catch(() => []);
+      shown.forEach(n => { if (n.title === title && n.body === (data.body || '')) n.close(); });
+      return;
+    }
+    await self.registration.showNotification(title, {
       body: data.body || '',
       icon: '/icon-v2-192.png',
       badge: '/icon-v2-192.png',
@@ -14,8 +34,8 @@ self.addEventListener('push', (event) => {
       vibrate: [200, 100, 200],
       timestamp: Date.now(),
       data: { url: data.url || '/' },
-    })
-  );
+    });
+  })());
 });
 
 // 새 버전이 바로 적용되도록
