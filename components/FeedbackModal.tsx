@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
+import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 
 // 운영자 건의함 (supabase/feedback.sql)
 // 일반 교우: 건의 보내기 + 내가 보낸 건의의 상태/답변 보기
@@ -20,6 +21,7 @@ interface Feedback {
   admin_reply: string | null;
   replied_at: string | null;
   created_at: string;
+  image_url?: string | null; // 첨부 사진
 }
 
 const CATEGORIES: { key: Feedback['category']; label: string }[] = [
@@ -82,6 +84,8 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   const [category, setCategory] = useState<Feedback['category']>('suggestion');
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
+  const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null); // 첨부할 사진 (한 장)
+  const [zoom, setZoom] = useState<string | null>(null); // 첨부 사진 크게 보기
   const [items, setItems] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
@@ -156,17 +160,26 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = content.trim();
-    if (!text) return;
+    if (!text && !photo) return;
     setSending(true);
-    const { data, error } = await supabase.from('feedback').insert({ category, content: text }).select('id').single();
+    let imageUrl: string | null = null;
+    if (photo) {
+      try { imageUrl = await uploadPhoto(photo.file, 'feedback'); }
+      catch { setSending(false); alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.'); return; }
+    }
+    const row = { category, content: text || PHOTO_ONLY_TEXT, ...(imageUrl ? { image_url: imageUrl } : {}) };
+    const { data, error } = await supabase.from('feedback').insert(row).select('id').single();
     setSending(false);
     if (error) {
-      if (/does not exist|schema cache/i.test(error.message)) setSetupNeeded(true);
+      if (imageUrl && (error.code === '42703' || error.code === 'PGRST204')) alert('사진 첨부를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)\n사진을 빼고 다시 보내 주세요.');
+      else if (/does not exist|schema cache/i.test(error.message)) setSetupNeeded(true);
       else alert(`보내지 못했습니다.\n(${error.message})`);
       return;
     }
     if (data) sendPush('feedback', data.id);
     setContent('');
+    if (photo) URL.revokeObjectURL(photo.url);
+    setPhoto(null);
     alert('건의사항이 운영자에게 전달되었습니다. 감사합니다 🙏');
     setView('mine');
   };
@@ -218,6 +231,11 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      {zoom && (
+        <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
+          <img src={zoom} alt="첨부 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+        </div>
+      )}
       <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-stone-900"><Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{isAdmin ? '건의함 · 신고 관리' : '운영자에게 건의하기'}</h2>
@@ -312,7 +330,19 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
               placeholder={category === 'bug' ? '어떤 화면에서 무엇을 했을 때 문제가 생겼는지 적어주세요. (휴대폰 종류도 알려주시면 좋아요)' : '자유롭게 적어주세요...'}
               className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
-            <button type="submit" disabled={sending || !content.trim()} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-40">
+            {/* 사진 첨부 (화면 캡처 등 한 장) */}
+            {photo ? (
+              <div className="relative self-start">
+                <img src={photo.url} alt="첨부 사진" className="h-28 rounded-xl border border-stone-200 object-cover" />
+                <button type="button" onClick={() => { URL.revokeObjectURL(photo.url); setPhoto(null); }} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-stone-900 text-white text-base leading-none flex items-center justify-center" aria-label="사진 빼기">×</button>
+              </div>
+            ) : (
+              <label className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2 rounded-xl cursor-pointer">
+                <Icon name="camera" className="w-[1.125rem] h-[1.125rem]" />사진 첨부 <span className="text-xs font-normal text-stone-400">(화면 캡처 등)</span>
+                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setPhoto({ file: f, url: URL.createObjectURL(f) }); }} />
+              </label>
+            )}
+            <button type="submit" disabled={sending || (!content.trim() && !photo)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-40">
               {sending ? '보내는 중...' : '운영자에게 보내기'}
             </button>
           </form>
@@ -332,7 +362,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                     <b className="text-sm text-stone-900 truncate">{item.author_name || '교우'}</b>
                     {item.author_handle && <span className="text-xs text-stone-400 truncate">@{item.author_handle}</span>}
                   </span>
-                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.content}</span>
+                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.image_url && <Icon name="camera" className="w-3.5 h-3.5 inline-block align-[-0.15em] mr-1 text-stone-400" />}{item.content}</span>
                 </span>
                 <span className="text-stone-300 shrink-0">›</span>
               </button>
@@ -349,7 +379,12 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                   </div>
                   <span className={`text-[0.75rem] px-2 py-0.5 rounded-full border font-bold shrink-0 ${STATUS[item.status].className}`}>{STATUS[item.status].label}</span>
                 </div>
-                <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>
+                {!(item.image_url && item.content === PHOTO_ONLY_TEXT) && <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>}
+                {item.image_url && (
+                  <button type="button" onClick={() => setZoom(item.image_url!)} className="self-start" aria-label="첨부 사진 크게 보기">
+                    <img src={item.image_url} alt="첨부 사진" className="max-h-48 max-w-full rounded-xl border border-stone-200 object-cover" />
+                  </button>
+                )}
 
                 {view === 'mine' && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
