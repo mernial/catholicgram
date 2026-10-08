@@ -61,7 +61,11 @@ export function speakPraise(): boolean {
   return true;
 }
 
+let lastPlayedAt = 0;
 export function playAlertSound() {
+  // 같은 알림으로 두 번 울리지 않게 (푸시 + 앱 안 알림 창)
+  if (Date.now() - lastPlayedAt < 5000) return;
+  lastPlayedAt = Date.now();
   if (speakPraise()) return;
   playDingDong();
 }
