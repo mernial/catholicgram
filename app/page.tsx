@@ -33,6 +33,7 @@ import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
+import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -126,7 +127,7 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; }
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
 
@@ -898,6 +899,35 @@ export default function Home() {
     }
     fetchChatMessages(currentChatUser.id);
     if (sent) sendPush('message', sent.id);
+  };
+
+  // 메시지로 사진 보내기 (입력칸에 쓴 글이 있으면 함께)
+  const [sendingPhoto, setSendingPhoto] = useState(false);
+  const sendPhotoMessage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !user || !currentChatUser) return;
+    setSendingPhoto(true);
+    try {
+      const url = await uploadPhoto(file, 'dm');
+      const text = messageInput.trim();
+      const { data: sent, error } = await supabase.from('messages')
+        .insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: text || PHOTO_ONLY_TEXT, image_url: url })
+        .select('id').single();
+      if (error) {
+        alert(error.code === '42703' || error.code === 'PGRST204'
+          ? '사진 보내기를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)'
+          : `사진을 보내지 못했습니다.\n(${error.message})`);
+        return;
+      }
+      if (text) setMessageInput('');
+      fetchChatMessages(currentChatUser.id);
+      if (sent) sendPush('message', sent.id);
+    } catch {
+      alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setSendingPhoto(false);
+    }
   };
 
   const handleKakaoLogin = async (e: React.MouseEvent) => {
@@ -2963,7 +2993,15 @@ export default function Home() {
                             onClick={() => onMessageTap(msg.id)}
                             className={`px-4 py-2 rounded-2xl text-[1rem] select-none [touch-action:manipulation] cursor-pointer ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
-                            {msg.content}
+                            {msg.image_url && (
+                              <img
+                                src={msg.image_url}
+                                alt="보낸 사진"
+                                onClick={e => { e.stopPropagation(); setSelectedImage(msg.image_url || null); }}
+                                className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
+                              />
+                            )}
+                            {!(msg.image_url && msg.content === PHOTO_ONLY_TEXT) && msg.content}
                           </div>
                           {/* 두 번 누르면 잠깐 큰 하트 */}
                           {heartPop === String(msg.id) && (
@@ -2992,6 +3030,11 @@ export default function Home() {
             <div ref={messagesEndRef} />
           </div>
           <form onSubmit={sendMessage} className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
+            {/* 사진 보내기 */}
+            <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진 보내기">
+              {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
+              <input type="file" accept="image/*" className="hidden" disabled={sendingPhoto} onChange={sendPhotoMessage} />
+            </label>
             <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
