@@ -1,6 +1,7 @@
 # 앱 기본 배경음악(public/bgm/*.mp3)을 만드는 스크립트.
 # 공유 저작물(저작권이 끝난 곡: 그루버 '고요한 밤', 바흐 전주곡 C장조, 파헬벨 캐논, 제네바 시편가 100편 곡조,
-# 뉴브리튼 곡조 'Amazing Grace', 베토벤 '환희의 송가'·'엘리제를 위하여', 사티 '짐노페디 1번')과
+# 뉴브리튼 곡조 'Amazing Grace', 베토벤 '환희의 송가'·'엘리제를 위하여', 사티 '짐노페디 1번',
+# 영국 민요 '그린슬리브스', 드보르자크 '신세계' 2악장 주제)과
 # 직접 지은 곡을 이 스크립트가 새로 연주·녹음하므로 녹음 저작권도 없음.
 # 사용: pip install numpy && python3 scripts/bgm-synth.py <폴더> [곡 함수 이름 ...]
 #       → <폴더>/*.wav 를 ffmpeg 로 mp3 변환:
@@ -421,7 +422,121 @@ def rosary_musicbox():
                 tr.add(pad(hz(n), 8*b, 0.25, a=1.0, r=1.5), off + j*8*b)
     tr.render(OUT + '/rosary-musicbox.wav', length=0.4 + 2*len(mel)*2*b + 4)
 
+def marimba(f, dur, vel=0.5):
+    n = int((dur + 1.2) * SR); t = np.arange(n) / SR
+    out = np.sin(2*np.pi*f*t)*np.exp(-t/0.55) + 0.25*np.sin(2*np.pi*f*3.93*t)*np.exp(-t/0.12) + 0.08*np.sin(2*np.pi*f*9.2*t)*np.exp(-t/0.04)
+    return vel * out * np.minimum(1, t/0.002) * 0.3
+
+def cello(f, dur, vel=0.4):
+    return strings(f, dur, vel, a=0.25, r=0.7)
+
+# 16) 그린슬리브스 (영국 민요, 공유 저작물) — 기타 + 현악
+def greensleeves():
+    e = 0.36  # 8분음표 (6/8)
+    mel = [('A4',1),
+           ('C5',2),('D5',1),('E5',1.5),('F5',.5),('E5',1), ('D5',2),('B4',1),('G4',1.5),('A4',.5),('B4',1),
+           ('C5',2),('A4',1),('A4',1.5),('G#4',.5),('A4',1), ('B4',2),('G#4',1),('E4',2),('A4',1),
+           ('C5',2),('D5',1),('E5',1.5),('F5',.5),('E5',1), ('D5',2),('B4',1),('G4',1.5),('A4',.5),('B4',1),
+           ('C5',1.5),('B4',.5),('A4',1),('G#4',1.5),('F#4',.5),('G#4',1), ('A4',3),('A4',2),
+           ('G5',3),('G5',1.5),('F#5',.5),('E5',1), ('D5',2),('B4',1),('G4',1.5),('A4',.5),('B4',1),
+           ('C5',2),('A4',1),('A4',1.5),('G#4',.5),('A4',1), ('B4',2),('G#4',1),('E4',3),
+           ('G5',3),('G5',1.5),('F#5',.5),('E5',1), ('D5',2),('B4',1),('G4',1.5),('A4',.5),('B4',1),
+           ('C5',1.5),('B4',.5),('A4',1),('G#4',1.5),('F#4',.5),('G#4',1), ('A4',6)]
+    bars = ['Am','G','Am','E','Am','G','Am','E','Am','Am','C','G','Am','E','C','G','Am','E','Am','Am']
+    CH = {'Am':['A2','E3','A3','C4'],'G':['G2','D3','G3','B3'],'E':['E2','B2','E3','G#3'],'C':['C3','G3','C4','E4']}
+    tr = Track(100)
+    length = sum(d for _, d in mel) * e
+    for rep in range(2):  # 두 번 (두 번째는 현악이 조금 더)
+        off = 0.4 + rep * (length + e)
+        t = off + e
+        for n, d in mel:
+            tr.add(guitar(hz(n), d*e*1.3, 0.5), t); t += d*e
+        for i, c in enumerate(bars):
+            t0 = off + e + i*6*e
+            ch = CH[c]
+            for k, idx in enumerate([0, 2, 3, 1, 2, 3]):
+                tr.add(guitar(hz(ch[idx]), 2*e, 0.3), t0 + k*e)
+            tr.add(strings(hz(ch[1]), 6*e, 0.18 if rep == 0 else 0.28), t0)
+    tr.render(OUT + '/greensleeves.wav', length=t + 3)
+
+# 17) 꿈속의 고향 (드보르자크 '신세계' 2악장 주제, 공유 저작물) — 현악 + 피아노
+def going_home():
+    q = 0.8
+    mel = [('E4',1),('G4',1),('G4',2), ('E4',1),('D4',1),('C4',2), ('D4',1),('E4',1),('G4',1),('E4',1), ('D4',4),
+           ('E4',1),('G4',1),('G4',2), ('E4',1),('D4',1),('C4',2), ('D4',1),('E4',1),('D4',1),('C4',1), ('C4',4)]
+    CH = [['C3','G3','E4'],['F2','C3','A3'],['C3','G3','E4'],['G2','D3','B3'],['C3','G3','E4'],['F2','C3','A3'],['G2','D3','B3'],['C3','G3','C4']]
+    tr = Track(90)
+    for rep in range(2):
+        off = 0.4 + rep*32*q
+        t = off
+        for n, d in mel:
+            tr.add(strings(hz(n)*2, d*q*0.97, 0.45 if rep else 0.38, a=0.3, r=0.9), t); t += d*q
+        for i, ch in enumerate(CH):
+            for n in ch: tr.add(strings(hz(n), 4*q, 0.22, a=0.8, r=1.2), off + i*4*q)
+            tr.add(piano(hz(ch[0]), 4*q, 0.3), off + i*4*q)
+    tr.render(OUT + '/going-home.wav', length=0.4 + 64*q + 4)
+
+# 18) 봄날의 산책 (마림바, 직접 작곡)
+def spring_marimba():
+    s8 = 0.3
+    prog = [['C3','G3','C4','E4'],['A2','E3','A3','C4'],['F2','C3','F3','A3'],['G2','D3','G3','B3']]
+    mel = ['E5','G5','A5','G5','E5','D5','C5','D5', 'E5','D5','C5','A4','G4','A4','C5','D5',
+           'C5','A4','F4','A4','C5','D5','E5','F5', 'D5','B4','G4','B4','D5','E5','D5','B4']
+    tr = Track(90)
+    bar = 0
+    for cyc in range(7):
+        for i, ch in enumerate(prog):
+            t0 = 0.4 + bar*8*s8
+            for k in range(8):
+                tr.add(marimba(hz(ch[[0,2,1,3,2,3,1,2][k]]), s8*1.5, 0.35), t0 + k*s8)
+            if 1 <= cyc <= 5:
+                for k in range(8):
+                    if k % 2 == 0 or cyc >= 3:
+                        tr.add(marimba(hz(mel[(i*8 + k) % 32]), s8*1.5, 0.42), t0 + k*s8)
+            bar += 1
+    tr.render(OUT + '/spring-marimba.wav', length=0.4 + bar*8*s8 + 3)
+
+# 19) 성모의 노래 (첼로, 직접 작곡)
+def mary_cello():
+    q = 0.9
+    prog = [['G2','D3','B3'],['E2','B2','G3'],['C3','G3','E4'],['D3','A3','F#4'],['G2','D3','B3'],['C3','G3','E4'],['A2','E3','C4'],['D3','A3','F#4']]
+    mel = [('B3',2),('D4',1),('G4',1),('E4',3),('D4',1),('C4',2),('E4',2),('A3',4),
+           ('B3',2),('D4',2),('G4',2),('F#4',1),('E4',1),('D4',3),('C4',1),('B3',4)]
+    tr = Track(90)
+    for rep in range(2):
+        off = 0.4 + rep*32*q
+        t = off
+        for n, d in mel:
+            tr.add(cello(hz(n), d*q*0.97, 0.5), t); t += d*q
+        for i, ch in enumerate(prog):
+            for n in ch: tr.add(pad(hz(n), 4*q, 0.25, a=1.0, r=1.5), off + i*4*q)
+            tr.add(harp(hz(ch[2])*2, 2*q, 0.25), off + i*4*q + 2*q)
+    tr.render(OUT + '/mary-cello.wav', length=0.4 + 64*q + 4)
+
+# 20) 저녁 기도 (피아노 + 화음, 직접 작곡)
+def evening_prayer():
+    q = 0.75
+    prog = [['D3','A3','F#4'],['B2','F#3','D4'],['G2','D3','B3'],['A2','E3','C#4']]
+    mel = ['F#5','E5','D5','E5','D5','B4','A4','B4','G4','A4','B4','D5','C#5','E5','D5','C#5']
+    tr = Track(90)
+    i = 0
+    for cyc in range(6):
+        for j, ch in enumerate(prog):
+            t0 = 0.4 + i*4*q
+            for n in ch: tr.add(pad(hz(n), 4*q, 0.25, a=1.0, r=1.4), t0)
+            tr.add(piano(hz(ch[0]), 4*q, 0.35), t0)
+            tr.add(piano(hz(ch[2]), 2*q, 0.25), t0 + 2*q)
+            if cyc >= 1:
+                for k in range(4):
+                    if cyc < 5 or k % 2 == 0:
+                        tr.add(piano(hz(mel[(j*4 + k) % 16]), q*1.4, 0.4), t0 + k*q)
+            i += 1
+    for n in ['D2','A2','D3','F#3','A3','D4']:
+        tr.add(piano(hz(n), 4, 0.33), 0.4 + i*4*q)
+    tr.render(OUT + '/evening-prayer.wav', length=0.4 + i*4*q + 5)
+
 ALL = {f.__name__: f for f in (silent_night, canon, bach, hymn, ambient, amazing_grace, ode_to_joy, dawn_harp, morning_piano, candle_strings,
-                               gymnopedie, fur_elise, peace_guitar, christmas_bells, rosary_musicbox)}
+                               gymnopedie, fur_elise, peace_guitar, christmas_bells, rosary_musicbox,
+                               greensleeves, going_home, spring_marimba, mary_cello, evening_prayer)}
 for name in (sys.argv[2:] or ALL):
     ALL[name](); print('done', name, flush=True)

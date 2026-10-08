@@ -112,7 +112,7 @@ interface Post {
   visibility?: Visibility | null; // 공개 범위 (없으면 전체 공개)
 }
 
-interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; edited_at?: string | null; }
+interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; parent_id?: string | null; edited_at?: string | null; }
 // 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -235,7 +235,7 @@ export default function Home() {
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string } | null>(null);
-  const [feedbackView, setFeedbackView] = useState<'reports' | null>(null); // 신고 알림으로 열면 신고 목록부터
+  const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
   const [showNotices, setShowNotices] = useState(false);
@@ -268,7 +268,7 @@ export default function Home() {
   const [intentionSaving, setIntentionSaving] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
-  const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string } | null>>({});
+  const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string; commentId?: string } | null>>({});
   // 오늘 축일인 팔로잉 교우들 + 축일 카드 닫음 여부(하루 단위)
   const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
   const [feastCardDismissed, setFeastCardDismissed] = useState(true);
@@ -1715,7 +1715,8 @@ export default function Home() {
     } else if (deepLink.alerts) {
       openNotifications();
     } else if (deepLink.feedback) {
-      setFeedbackView(null);
+      // 관리자는 새 건의가 있는 받은 건의함, 회원은 답변이 달린 내 건의 목록으로
+      setFeedbackView(isAdmin ? 'inbox' : 'mine');
       setShowFeedback(true);
     } else if (deepLink.reports) {
       setFeedbackView('reports');
@@ -1853,10 +1854,11 @@ export default function Home() {
   };
 
   // 닉네임을 누르면 댓글창을 열고 그 사람을 태그한 채로 입력칸에 커서를 둔다
-  const tagUserInComments = async (postId: string, targetUserId: string, name: string) => {
+  // commentId: 이 댓글에 답글 달기 → 답글이 그 댓글 바로 밑에 붙음
+  const tagUserInComments = async (postId: string, targetUserId: string, name: string, commentId?: string) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    if (targetUserId !== user.id) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name } }));
+    if (targetUserId !== user.id || commentId) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name, commentId } }));
     if (commentSheetId !== postId) await toggleCommentBox(postId);
     setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null)?.focus(), 150);
   };
@@ -1869,13 +1871,18 @@ export default function Home() {
     const author = profile?.baptismal_name || '교우';
     const target = replyTargets[postId];
     const row = { post_id: postId, content: text.trim(), user_id: user.id, author_name: author };
+    const replyRow = target ? { ...row, reply_to_user_id: target.userId, reply_to_name: target.name } : row;
     let { data, error } = await supabase.from('comments')
-      .insert([target ? { ...row, reply_to_user_id: target.userId, reply_to_name: target.name } : row]).select();
+      .insert([target?.commentId ? { ...replyRow, parent_id: target.commentId } : replyRow]).select();
+    // 대댓글 칼럼(parent_id)이 아직 없으면(comment-threads.sql 실행 전) 그것만 빼고 저장
+    if (error && target?.commentId && (error.code === 'PGRST204' || error.code === '42703')) {
+      ({ data, error } = await supabase.from('comments').insert([replyRow]).select());
+    }
     // 답글 칼럼이 아직 없으면(SQL 실행 전) 내용 앞에 @이름을 붙여 저장
     if (error && target && (error.code === 'PGRST204' || error.code === '42703')) {
       ({ data, error } = await supabase.from('comments').insert([{ ...row, content: `@${target.name} ${row.content}` }]).select());
     }
-    if (!error && data) {
+    if (!error && data?.[0]) {
       setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
       setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
       setCommentInputs(prev => ({ ...prev, [postId]: '' }));
@@ -3118,7 +3125,26 @@ export default function Home() {
       {commentSheetId && (() => {
         const sid = commentSheetId;
         const sheetPost = posts.find(p => p.id === sid) || storyPosts.find(p => p.id === sid);
-        const list = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id));
+        // 대댓글은 그 댓글 바로 밑에 (한 단계로 모아서). 예전 답글은 답한 사람의 바로 앞 댓글 밑으로
+        const list = (() => {
+          const all = [...(comments[sid] || [])].filter(c => !c.user_id || !blockedIds.has(c.user_id))
+            .sort((a, b) => a.created_at.localeCompare(b.created_at));
+          const byId = new Map(all.map(c => [c.id, c]));
+          const parentOf = (c: Comment, i: number): Comment | undefined => {
+            if (c.parent_id) return byId.get(c.parent_id);
+            if (!c.reply_to_user_id) return undefined;
+            for (let k = i - 1; k >= 0; k--) if (all[k].user_id === c.reply_to_user_id) return all[k];
+            return undefined;
+          };
+          const rootId = new Map<string, string>();
+          all.forEach((c, i) => {
+            const parent = parentOf(c, i);
+            rootId.set(c.id, parent ? (rootId.get(parent.id) || parent.id) : c.id);
+          });
+          const roots = all.filter(c => rootId.get(c.id) === c.id);
+          return roots.flatMap(r => [r, ...all.filter(c => c.id !== r.id && rootId.get(c.id) === r.id)])
+            .map(c => ({ ...c, _isReply: rootId.get(c.id) !== c.id, _rootId: rootId.get(c.id)! }));
+        })();
         const avatarOf = (uid?: string | null, name?: string) => {
           const url = uid ? (uid === user?.id ? profile?.avatar_url : authorByUser[uid]?.avatar) : undefined;
           return url
@@ -3143,7 +3169,7 @@ export default function Home() {
                 {list.map(c => {
                   const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
                   return (
-                    <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c.reply_to_user_id ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
+                    <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c._isReply ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
                       <button onClick={() => { if (c.user_id) { setCommentSheetId(null); goToProfile(c.user_id); } }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 공간`}>{avatarOf(c.user_id, authorName(c))}</button>
                       <div className="flex-1 min-w-0">
                         <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
@@ -3167,7 +3193,7 @@ export default function Home() {
                         )}
                         {editingCommentId !== c.id && (
                           <div className="mt-1 flex items-center gap-3 text-[0.8125rem] font-semibold text-stone-500">
-                            {user && c.user_id && c.user_id !== user.id && <button onClick={() => tagUserInComments(sid, c.user_id!, authorName(c))}>답글 달기</button>}
+                            {user && c.user_id && <button onClick={() => tagUserInComments(sid, c.user_id!, authorName(c), c._rootId)}>답글 달기</button>}
                             <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 ${r.myPray ? 'text-amber-700' : ''}`}><Icon name="pray" fill={r.myPray} className="w-4 h-4" />기도{r.pray > 0 && ` ${r.pray}`}</button>
                             {user && c.user_id === user.id && <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}>수정</button>}
                             {user && (c.user_id === user.id || isAdmin || sheetPost?.user_id === user.id) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
