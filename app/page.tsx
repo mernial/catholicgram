@@ -76,6 +76,14 @@ const timeAgo = (iso: string) => {
 const PENDING_CACHE = 'catholicgram-sw-meta';
 const clearPendingLink = () => { caches?.open(PENDING_CACHE).then(c => c.delete('/__pending')).catch(() => {}); };
 let pendingLinkHandler: ((url: string) => void) | null = null;
+// 같은 알림 목적지를 두 번 열지 않게 (서비스 워커 메시지 + 적어 둔 목적지가 둘 다 올 수 있음)
+let lastOpenedLink: { url: string; at: number } | null = null;
+const markLinkOpened = (url: string) => {
+  const key = new URL(url, 'http://x').search;
+  if (lastOpenedLink && lastOpenedLink.url === key && Date.now() - lastOpenedLink.at < 60 * 1000) return false;
+  lastOpenedLink = { url: key, at: Date.now() };
+  return true;
+};
 const consumePendingLink = async () => {
   try {
     if (typeof caches === 'undefined') return;
@@ -397,7 +405,8 @@ export default function Home() {
         if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/')); return; }
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
-        clearPendingLink();
+        // 적어 둔 목적지는 바로 지우지 않는다: 앱으로 돌아오며 새 버전으로 새로고침되면 그걸로 다시 연다
+        if (!markLinkOpened(String(e.data.url || '/'))) return;
         const link = deepLinkFromSearch(new URL(e.data.url, window.location.origin).search);
         if (link) setDeepLink(link); else goToHome();
       });
@@ -411,11 +420,13 @@ export default function Home() {
     (['pointerdown', 'touchend', 'click'] as const).forEach(ev => window.addEventListener(ev, unlock, { once: true }));
 
     pendingLinkHandler = (url: string) => {
+      if (!markLinkOpened(url)) return; // 방금 연 목적지
       const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
       if (link) setDeepLink(link);
     };
     const initialLink = deepLinkFromSearch(window.location.search);
     if (initialLink) {
+      markLinkOpened(window.location.search);
       setDeepLink(initialLink);
       window.history.replaceState(null, '', '/');
       clearPendingLink();
