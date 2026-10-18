@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
 import Cropper from 'react-easy-crop';
+import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import ExploreTab from '@/components/ExploreTab';
@@ -353,6 +354,7 @@ export default function Home() {
 
   const [avatarFile, setAvatarFile] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [viewerRatios, setViewerRatios] = useState<Record<string, number>>({}); // 크게 보기: 사진별 실제 비율
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
@@ -3928,7 +3930,7 @@ export default function Home() {
                   {peek.avatar_url ? <img src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
-                {thumb ? <div className="bg-black flex justify-center"><img src={thumb} alt="" className="aspect-[4/5] object-cover" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
+                {thumb ? <div className="bg-black flex justify-center"><img src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
               </div>
             );
           })()}
@@ -3962,7 +3964,20 @@ export default function Home() {
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
                 <div className="w-full bg-black flex items-center justify-center relative select-none" data-viewer-media>
-                  <img src={selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)]} alt="게시물 사진" onClick={viewerImageTap} className="aspect-[4/5] object-cover" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} />
+                  {(() => {
+                    const src = selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)];
+                    const r = viewerRatios[src];
+                    const frame = frameRatio(r);
+                    return (
+                      <img
+                        src={src}
+                        alt="게시물 사진"
+                        onClick={viewerImageTap}
+                        onLoad={e => { const nr = naturalRatio(e.currentTarget); if (nr) setViewerRatios(prev => (prev[src] === nr ? prev : { ...prev, [src]: nr })); }}
+                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(60dvh * ${frame}))` }}
+                      />
+                    );
+                  })()}
                   <HeartBurst show={viewerBurst} />
                   {selectedPostDetail.images.length > 1 && (
                     <>
