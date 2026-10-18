@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useDoubleTap } from '@/lib/double-tap';
 import HeartBurst from '@/components/HeartBurst';
 import Icon from '@/components/Icon';
+import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 
 // 피드 게시물 사진: 화면 폭 가득, 여러 장이면 옆으로 넘기고 아래 점으로 위치 표시
 export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, onMusic }: {
@@ -20,6 +21,9 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
     if (el) el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' });
   };
   const [burst, setBurst] = useState(0);
+  // 사진마다 실제 비율 (불러온 뒤 알 수 있음). 틀은 첫 사진 모양을 따른다
+  const [ratios, setRatios] = useState<Record<number, number>>({});
+  const frame = frameRatio(ratios[0]);
   const tap = useDoubleTap(
     () => onOpen(index),
     () => { if (onDoubleTap) { setBurst(Date.now()); onDoubleTap(); } else onOpen(index); },
@@ -32,7 +36,15 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
         onScroll={e => { const el = e.currentTarget; setIndex(Math.round(el.scrollLeft / el.clientWidth)); }}
       >
         {images.map((img, i) => (
-          <img key={i} src={img} alt="게시물 사진" className="w-full shrink-0 snap-center aspect-[4/5] object-cover cursor-pointer bg-stone-100" onClick={tap} />
+          <img
+            key={i}
+            src={img}
+            alt="게시물 사진"
+            className="w-full shrink-0 snap-center cursor-pointer bg-stone-100"
+            style={{ aspectRatio: String(frame), objectFit: photoFit(ratios[i], frame) }}
+            onLoad={e => { const r = naturalRatio(e.currentTarget); if (r) setRatios(prev => (prev[i] === r ? prev : { ...prev, [i]: r })); }}
+            onClick={tap}
+          />
         ))}
       </div>
       <HeartBurst show={burst} />
