@@ -70,6 +70,11 @@ export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-grace-rain', title: '은총의 비 (피아노)', artist: '가톨릭그램', url: '/bgm/grace-rain.mp3' },
   { id: 'builtin-forest-flute', title: '평화의 숲 (플루트)', artist: '가톨릭그램', url: '/bgm/forest-flute.mp3' },
   { id: 'builtin-organ-meditation', title: '오르간 묵상', artist: '가톨릭그램', url: '/bgm/organ-meditation.mp3' },
+  { id: 'builtin-kpop-festival', title: '빛의 축제 (케이팝 댄스)', artist: '가톨릭그램', url: '/bgm/kpop-festival.mp3' },
+  { id: 'builtin-kpop-walk', title: '함께 걷는 길 (밝은 팝)', artist: '가톨릭그램', url: '/bgm/kpop-walk.mp3' },
+  { id: 'builtin-citypop-dawn', title: '새벽 도시 (시티팝)', artist: '가톨릭그램', url: '/bgm/citypop-dawn.mp3' },
+  { id: 'builtin-future-sky', title: '하늘 위로 (퓨처베이스)', artist: '가톨릭그램', url: '/bgm/future-sky.mp3' },
+  { id: 'builtin-tropical-joy', title: '기쁨의 리듬 (트로피컬 팝)', artist: '가톨릭그램', url: '/bgm/tropical-joy.mp3' },
 ];
 
 export const CLIP_SECONDS = 30;  // 고를 수 있는 가장 긴 구간

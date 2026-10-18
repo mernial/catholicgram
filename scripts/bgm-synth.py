@@ -635,9 +635,264 @@ def organ_meditation():
             tr.add(organ(hz(top[(i+1) % 8]), b*0.95, 0.3), t0 + 3*b)
     tr.render(OUT + '/organ-meditation.wav', length=0.4 + 16*4*b + 3)
 
+# ───────── 케이팝 느낌 (드럼·신스) ─────────
+from functools import lru_cache
+
+def kick(vel=1.0):
+    n = int(0.45*SR); t = np.arange(n)/SR
+    f = 48 + 110*np.exp(-t/0.035)
+    body = np.sin(2*np.pi*np.cumsum(f)/SR) * np.exp(-t/0.28)
+    click = rng.standard_normal(n) * np.exp(-t/0.004) * 0.25
+    return vel * (body + click) * 0.5
+
+def hp_noise(n, amt=1):  # 아주 간단한 고역 필터 (차분)
+    x = rng.standard_normal(n + amt)
+    for _ in range(amt): x = np.diff(x)
+    return x / (np.max(np.abs(x)) + 1e-9)
+
+def snare(vel=1.0):
+    n = int(0.3*SR); t = np.arange(n)/SR
+    tone = np.sin(2*np.pi*190*t) * np.exp(-t/0.05)
+    nz = hp_noise(n, 1) * np.exp(-t/0.11)
+    return vel * (0.45*tone + 0.8*nz) * 0.55
+
+def clap(vel=1.0):
+    n = int(0.35*SR); t = np.arange(n)/SR
+    e = np.zeros(n)
+    for k, off in enumerate((0, 0.011, 0.022)):
+        e += np.where(t >= off, np.exp(-(t-off)/(0.008 if k < 2 else 0.13)), 0)
+    return vel * hp_noise(n, 2) * e * 0.5
+
+def hat(vel=1.0, open_=False):
+    n = int((0.3 if open_ else 0.06)*SR); t = np.arange(n)/SR
+    return vel * hp_noise(n, 2) * np.exp(-t/(0.09 if open_ else 0.018)) * 0.12
+
+@lru_cache(maxsize=None)
+def _saw(f, n, bright, seed):
+    t = np.arange(n)/SR
+    ph = np.random.default_rng(seed).random()*6.28
+    kmax = int(max(1, min(48, 10000/f)))
+    out = np.zeros(n)
+    for k in range(1, kmax+1):
+        out += np.sin(2*np.pi*k*f*t + ph*k) / k * np.exp(-k/(9*bright))
+    return out
+
+def supersaw(f, dur, vel=0.4, bright=1.0, a=0.02, r=0.25):
+    n = int((dur + r)*SR)
+    out = sum(_saw(round(f*2**(d/12), 3), n, bright, i) for i, d in enumerate((-0.14, -0.06, 0, 0.06, 0.14)))
+    return vel * out / 5 * env_adsr(n, a, 0.15, 0.8, r) * 0.25
+
+def pluck(f, dur, vel=0.4):
+    n = int((dur + 0.4)*SR); t = np.arange(n)/SR
+    out = np.zeros(n)
+    for k in range(1, int(max(1, min(30, 9000/f)))+1):
+        out += np.sin(2*np.pi*k*f*t) / k * np.exp(-t*(3 + 5*k))
+    return vel * out * np.minimum(1, t/0.002) * 0.45
+
+def lead(f, dur, vel=0.4):  # 부드러운 네모파 + 비브라토
+    n = int((dur + 0.2)*SR); t = np.arange(n)/SR
+    vib = 1 + 0.004*np.sin(2*np.pi*5.5*t) * np.minimum(1, t/0.3)
+    ph = 2*np.pi*np.cumsum(f*vib)/SR
+    out = sum(np.sin(k*ph)/k * np.exp(-k/7) for k in (1, 3, 5, 7, 9)) + 0.3*np.sin(2*ph)
+    return vel * out * env_adsr(n, 0.015, 0.1, 0.75, 0.15) * 0.3
+
+def subbass(f, dur, vel=0.5):
+    n = int((dur + 0.08)*SR); t = np.arange(n)/SR
+    out = np.sin(2*np.pi*f*t) + 0.55*np.sin(2*np.pi*2*f*t) + 0.3*np.sin(2*np.pi*3*f*t) + 0.12*np.sin(2*np.pi*4*f*t)  # 배음: 휴대폰 스피커에서도 들리게
+    return vel * out * env_adsr(n, 0.005, 0.05, 0.9, 0.06) * 0.3
+
+def epiano(f, dur, vel=0.4):  # 로즈 같은 전자 피아노
+    n = int((dur + 1.0)*SR); t = np.arange(n)/SR
+    out = np.sin(2*np.pi*f*t + 1.2*np.exp(-t/0.25)*np.sin(2*np.pi*f*t)) * np.exp(-t/1.4)
+    out += 0.25*np.sin(2*np.pi*f*4*t) * np.exp(-t/0.1)
+    trem = 1 + 0.08*np.sin(2*np.pi*4.5*t)
+    rel = np.where(t > dur, np.exp(-(t-dur)/0.2), 1)
+    return vel * out * trem * rel * 0.35
+
+class PopTrack:
+    """드럼·베이스는 마른 소리(dry), 나머지는 잔향(wet) + 킥에 맞춰 숨 쉬는 펌핑"""
+    def __init__(self, secs):
+        self.dry = np.zeros(int((secs+4)*SR)); self.wet = np.zeros_like(self.dry); self.kicks = []
+    def _put(self, buf, sig, at):
+        i = int(at*SR); j = min(len(buf), i+len(sig))
+        if j > i: buf[i:j] += sig[:j-i]
+    def add(self, sig, at, dry=False): self._put(self.dry if dry else self.wet, sig, at)
+    def kick(self, at, vel=1.0): self._put(self.dry, kick(vel), at); self.kicks.append(at)
+    def render(self, path, length, pump=0.5, rev=0.22):
+        n = int(length*SR)
+        dry, wet = self.dry[:n].copy(), self.wet[:n].copy()
+        if pump and self.kicks:
+            t = np.arange(n)/SR; g = np.ones(n)
+            for k in self.kicks:
+                i = int(k*SR); j = min(n, i + int(0.35*SR))
+                if j > i: g[i:j] = np.minimum(g[i:j], 1 - pump*np.exp(-(t[i:j]-k)/0.11))
+            wet *= g
+        x = dry + 1.8 * reverb(wet, secs=1.8, mix=rev)  # 멜로디·화음을 앞으로
+        x = np.tanh(x / (np.max(np.abs(x)) + 1e-9) * 1.6)  # 살짝 눌러 단단하게
+        fi, fo = int(0.3*SR), int(3.0*SR)
+        x[:fi] *= np.linspace(0, 1, fi); x[-fo:] *= np.linspace(1, 0, fo)
+        x = x / (np.max(np.abs(x)) + 1e-9) * 0.9
+        d = int(0.009*SR)
+        R = np.concatenate([np.zeros(d), x[:-d]]) * 0.95 + x * 0.05
+        pcm = (np.stack([x, R], 1) * 32767).astype('<i2')
+        w = wave.open(path, 'wb'); w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR); w.writeframes(pcm.tobytes()); w.close()
+
+def four_floor(tr, t0, bars, beat, hats=True, claps=True, open_hat=True):
+    for b in range(bars*4):
+        t = t0 + b*beat
+        tr.kick(t)
+        if claps and b % 2 == 1: tr.add(clap(0.9), t, dry=True)
+        if hats:
+            tr.add(hat(0.8, open_=open_hat), t + beat/2, dry=True)
+            tr.add(hat(0.45), t + beat/4, dry=True); tr.add(hat(0.45), t + 3*beat/4, dry=True)
+
+# 26) 빛의 축제 (케이팝 댄스, 124BPM A단조, 직접 작곡)
+def kpop_festival():
+    beat = 60/124; bar = 4*beat
+    prog = [['A3','C4','E4'], ['F3','A3','C4'], ['C4','E4','G4'], ['G3','B3','D4']]
+    roots = ['A1','F1','C2','G1']
+    hook = [('E5',.5),('E5',.5),('D5',.5),('C5',.5),('D5',1),('E5',.5),('G5',1.5),('A5',.5),('G5',.5),('E5',1),('D5',.5),('C5',.5),('D5',2),
+            ('E5',.5),('E5',.5),('D5',.5),('C5',.5),('D5',1),('E5',.5),('C5',1.5),('A4',.5),('C5',.5),('D5',1),('C5',.5),('B4',.5),('A4',2)]
+    tr = PopTrack(80); t0 = 0.2
+    sections = [('intro',4),('verse',8),('drop',8),('verse',4),('drop',8)]
+    t = t0
+    for name, bars in sections:
+        for i in range(bars):
+            ch = prog[i % 4]; tb = t + i*bar
+            if name == 'intro':
+                for k in range(8): tr.add(pluck(hz(ch[k % 3])*2, beat/2, 0.35), tb + k*beat/2)
+                if i == 3:
+                    for k in range(8): tr.add(snare(0.25 + k*0.08), tb + 2*beat + k*beat/4, dry=True)
+                continue
+            for k in range(8): tr.add(subbass(hz(roots[i % 4]), beat/2*0.9, 0.55), tb + k*beat/2, dry=True)
+            if name == 'drop':
+                for nn in ch: tr.add(supersaw(hz(nn), bar*0.97, 0.35), tb)
+            else:
+                for k in range(8): tr.add(pluck(hz(ch[(k*2) % 3])*2, beat/2, 0.3), tb + k*beat/2)
+        if name == 'intro': t += bars*bar; continue
+        four_floor(tr, t, bars, beat, open_hat=(name == 'drop'))
+        if name == 'drop':
+            for rep in range(bars // 8):
+                tt = t + rep*8*bar
+                for nn, d in hook: tr.add(lead(hz(nn), d*beat*0.92, 0.5), tt); tt += d*beat
+        t += bars*bar
+    tr.render(OUT + '/kpop-festival.wav', length=t + 2.5)
+
+# 27) 함께 걷는 길 (밝은 팝, 108BPM C장조, 직접 작곡)
+def kpop_walk():
+    beat = 60/108; bar = 4*beat
+    prog = [['C4','E4','G4'], ['G3','B3','D4'], ['A3','C4','E4'], ['F3','A3','C4']]
+    roots = ['C2','G1','A1','F1']
+    mel = [('G4',.5),('A4',.5),('C5',1),('C5',.5),('D5',.5),('E5',1.5),('D5',.5),('C5',1),('D5',1),('B4',2),
+           ('A4',.5),('B4',.5),('C5',1),('E5',1),('D5',.5),('C5',.5),('A4',1),('G4',.5),('A4',.5),('C5',3)]
+    tr = PopTrack(80); t = 0.2
+    for sec in range(4):  # 8마디씩
+        for i in range(8):
+            ch = prog[i % 4]; tb = t + i*bar
+            for k in (0, 1.5, 2.5): tr.add(piano(hz(ch[0])*2 if k else hz(ch[0]), beat*0.9, 0.3), tb + k*beat)
+            for nn in ch: tr.add(piano(hz(nn), beat*1.8, 0.28), tb); tr.add(piano(hz(nn), beat*1.5, 0.22), tb + 2.5*beat)
+            if sec > 0:
+                for k, d in ((0, 1.5), (1.5, 1), (2.5, 1.5)): tr.add(subbass(hz(roots[i % 4]), d*beat*0.9, 0.5), tb + k*beat, dry=True)
+                tr.kick(tb); tr.kick(tb + 1.5*beat, 0.8); tr.kick(tb + 2.5*beat, 0.9)
+                tr.add(clap(0.85), tb + beat, dry=True); tr.add(clap(0.85), tb + 3*beat, dry=True)
+                for k in range(8): tr.add(hat(0.5 if k % 2 else 0.7), tb + k*beat/2, dry=True)
+            if sec >= 2:
+                for nn in ch: tr.add(supersaw(hz(nn)*2, bar*0.95, 0.12, bright=0.7, a=0.3), tb)
+        if sec >= 1:
+            tt = t
+            for _ in range(2):
+                for nn, d in mel: tr.add(lead(hz(nn)*(2 if sec == 3 else 1), d*beat*0.9, 0.42), tt); tt += d*beat
+        t += 8*bar
+    tr.render(OUT + '/kpop-walk.wav', length=t + 2.5, pump=0.25)
+
+# 28) 새벽 도시 (시티팝, 96BPM, 직접 작곡)
+def citypop_dawn():
+    beat = 60/96; bar = 4*beat
+    prog = [['F3','A3','C4','E4'], ['E3','G3','B3','D4'], ['D3','F3','A3','C4'], ['C3','E3','G3','B3']]
+    roots = ['F1','E1','D1','C2']
+    mel = [('C5',.5),('E5',.5),('G5',1),('F5',.5),('E5',.5),('D5',1),('E5',.5),('C5',1.5),('A4',.5),('C5',.5),('D5',2),
+           ('E5',.5),('G5',.5),('A5',1),('G5',.5),('E5',.5),('D5',1),('C5',.5),('D5',1.5),('E5',.5),('C5',.5),('B4',2)]
+    tr = PopTrack(80); t = 0.2
+    for sec in range(4):
+        for i in range(8):
+            ch = prog[i % 4]; tb = t + i*bar; r = hz(roots[i % 4])
+            for k in (0, 1.75, 2.5): 
+                for nn in ch: tr.add(epiano(hz(nn), beat*0.8, 0.22), tb + k*beat)
+            if sec > 0:
+                for k, mul, d in ((0, 1, .75), (.75, 2, .25), (1.5, 1, .5), (2.5, 1, .5), (3, 2, .25), (3.5, 1.5, .5)):
+                    tr.add(subbass(r*mul, d*beat, 0.5), tb + k*beat, dry=True)
+                tr.kick(tb); tr.kick(tb + 2.5*beat, 0.85)
+                tr.add(snare(0.9), tb + beat, dry=True); tr.add(snare(0.9), tb + 3*beat, dry=True)
+                for k in range(8): tr.add(hat(0.55 if k % 2 else 0.7), tb + k*beat/2 + (0.02 if k % 2 else 0), dry=True)
+        if sec in (1, 3):
+            tt = t
+            for _ in range(2):
+                for nn, d in mel: tr.add(lead(hz(nn), d*beat*0.9, 0.4), tt); tt += d*beat
+        if sec == 2:
+            tt = t
+            for _ in range(2):
+                for nn, d in mel: tr.add(epiano(hz(nn), d*beat*0.9, 0.45), tt); tt += d*beat
+        t += 8*bar
+    tr.render(OUT + '/citypop-dawn.wav', length=t + 2.5, pump=0.15, rev=0.25)
+
+# 29) 하늘 위로 (퓨처베이스, 75BPM 하프타임, D장조, 직접 작곡)
+def future_sky():
+    beat = 60/150; bar = 4*beat  # 150 으로 세고 반박자 느낌
+    prog = [['B3','D4','F#4'], ['G3','B3','D4'], ['D4','F#4','A4'], ['A3','C#4','E4']]
+    roots = ['B1','G1','D2','A1']
+    chop = [('F#5',.5),('A5',.5),('B5',1),('A5',.5),('F#5',.5),('E5',1),('D5',.5),('E5',.5),('F#5',2),('E5',.5),('D5',.5),('A4',1)]
+    tr = PopTrack(80); t = 0.2
+    for sec in range(4):
+        for i in range(8):
+            ch = prog[i % 4]; tb = t + i*bar
+            if sec == 0 or sec == 2:
+                for nn in ch: tr.add(pad(hz(nn), bar, 0.35, a=0.4, r=0.8), tb)
+                for k in range(8): tr.add(pluck(hz(ch[k % 3])*2, beat/2, 0.25), tb + k*beat/2)
+            else:  # 드롭: 킥 1·스네어 3 (하프타임), 박자 쪼갠 신스 코드
+                tr.kick(tb); tr.kick(tb + 2.5*beat, 0.8)
+                tr.add(snare(1.0), tb + 2*beat, dry=True); tr.add(clap(0.6), tb + 2*beat, dry=True)
+                for k in range(8): tr.add(hat(0.6), tb + k*beat/2, dry=True)
+                for k in (0, 0.75, 1.5, 2.5, 3.25):
+                    for nn in ch: tr.add(supersaw(hz(nn), beat*0.6, 0.38, a=0.05, r=0.1), tb + k*beat)
+                tr.add(subbass(hz(roots[i % 4]), bar*0.95, 0.55), tb, dry=True)
+        if sec in (1, 3):
+            tt = t
+            for _ in range(2):
+                for nn, d in chop: tr.add(lead(hz(nn), d*beat*0.85, 0.45), tt); tt += d*beat
+        t += 8*bar
+    tr.render(OUT + '/future-sky.wav', length=t + 2.5, pump=0.6)
+
+# 30) 기쁨의 리듬 (트로피컬 팝, 100BPM G장조, 직접 작곡)
+def tropical_joy():
+    beat = 60/100; bar = 4*beat
+    prog = [['G3','B3','D4'], ['E3','G3','B3'], ['C4','E4','G4'], ['D4','F#4','A4']]
+    roots = ['G1','E1','C2','D2']
+    mel = [('D5',.75),('B4',.75),('D5',.5),('E5',1),('D5',1), ('B4',.75),('A4',.75),('G4',.5),('A4',2),
+           ('D5',.75),('B4',.75),('D5',.5),('G5',1),('F#5',1), ('E5',.75),('D5',.75),('B4',.5),('D5',2)]
+    tr = PopTrack(80); t = 0.2
+    for sec in range(4):
+        for i in range(8):
+            ch = prog[i % 4]; tb = t + i*bar
+            # 마림바처럼 통통 튀는 반주 (3-3-2)
+            for k in (0, 0.75, 1.5, 2, 2.75, 3.5):
+                tr.add(marimba(hz(ch[int(k*2) % 3])*2, beat*0.5, 0.35), tb + k*beat)
+            if sec > 0:
+                tr.kick(tb); tr.kick(tb + beat); tr.kick(tb + 2*beat); tr.kick(tb + 3*beat)
+                for k in (0.75, 1.5, 2.75, 3.5): tr.add(clap(0.6), tb + k*beat, dry=True)
+                for k in range(8): tr.add(hat(0.5), tb + k*beat/2 + beat/4, dry=True)
+                for k, d in ((0, .75), (.75, .75), (1.5, .5), (2, .75), (2.75, .75), (3.5, .5)):
+                    tr.add(subbass(hz(roots[i % 4]), d*beat*0.85, 0.45), tb + k*beat, dry=True)
+        if sec >= 1:
+            tt = t
+            for _ in range(2):
+                for nn, d in mel: tr.add((flute if sec == 2 else lead)(hz(nn), d*beat*0.9, 0.45), tt); tt += d*beat
+        t += 8*bar
+    tr.render(OUT + '/tropical-joy.wav', length=t + 2.5, pump=0.3)
+
 ALL = {f.__name__: f for f in (silent_night, canon, bach, hymn, ambient, amazing_grace, ode_to_joy, dawn_harp, morning_piano, candle_strings,
                                gymnopedie, fur_elise, peace_guitar, christmas_bells, rosary_musicbox,
                                greensleeves, going_home, spring_marimba, mary_cello, evening_prayer,
-                               minuet, westminster, grace_rain, forest_flute, organ_meditation)}
+                               minuet, westminster, grace_rain, forest_flute, organ_meditation,
+                               kpop_festival, kpop_walk, citypop_dawn, future_sky, tropical_joy)}
 for name in (sys.argv[2:] or ALL):
     ALL[name](); print('done', name, flush=True)
