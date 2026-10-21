@@ -24,11 +24,12 @@ const ago = (iso: string) => {
   return m < 1 ? '방금' : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간`;
 };
 
-export default function Stories({ posts, unavailable, openRequest, onOpenHandled, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
+export default function Stories({ posts, unavailable, openRequest, onOpenHandled, pickRequest, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
   posts: StoryPost[];                   // 24시간 안의 스토리 (화면이 불러옴)
   unavailable: boolean;                 // SQL 실행 전
   openRequest?: string | null;          // 이 교우의 스토리를 바로 열기 (알림을 눌렀을 때)
   onOpenHandled?: () => void;
+  pickRequest?: number;                 // 숫자가 바뀌면 스토리 사진 고르기 (새 게시물 화면의 '스토리')
   me: { id: string; name: string; avatar?: string | null } | null;
   followingIds: Set<string>;
   blockedIds: Set<string>;
@@ -154,6 +155,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     if (!canPost()) return;
     fileRef.current?.click();
   };
+  useEffect(() => { if (pickRequest) pick(); }, [pickRequest]);
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
