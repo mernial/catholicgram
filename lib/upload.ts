@@ -6,7 +6,7 @@ export const UPLOAD_CACHE = '31536000';
 // 휴대폰 화면(폭 약 1200px)에 충분한 크기로 줄인다
 export const PHOTO_OPTIONS = { maxSizeMB: 0.6, maxWidthOrHeight: 1440, initialQuality: 0.82, useWebWorker: true };
 
-export type MediaKind = 'posts' | 'videos' | 'posters' | 'avatars' | 'stories' | 'dm' | 'feedback' | 'sponsor' | 'bgm';
+export type MediaKind = 'posts' | 'videos' | 'posters' | 'avatars' | 'stories' | 'dm' | 'feedback' | 'letters' | 'sponsor' | 'bgm';
 
 // 파일 하나 올리기 → 공개 주소.
 // Cloudflare R2 가 설정돼 있으면 R2 로(내려받는 전송량 무료), 아니면 예전처럼 수파베이스 저장소(bucket/path)로.
@@ -33,7 +33,7 @@ export async function uploadMedia(file: Blob, opts: { kind: MediaKind; ext: stri
 export async function uploadPhoto(file: File, prefix: string): Promise<string> {
   const compressed = await imageCompression(file, PHOTO_OPTIONS);
   const name = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}.jpg`;
-  return uploadMedia(compressed, { kind: prefix === 'dm' ? 'dm' : 'feedback', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
+  return uploadMedia(compressed, { kind: prefix === 'dm' ? 'dm' : prefix === 'letters' ? 'letters' : 'feedback', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
 }
 
 // 사진만 보낸 메시지·건의의 글 자리 표시 (목록 미리보기·알림에 '📷 사진'으로 보임)

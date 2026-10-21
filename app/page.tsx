@@ -45,6 +45,7 @@ import AdminStats from '@/components/AdminStats';
 import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
+import LettersModal from '@/components/LettersModal';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -63,7 +64,9 @@ const deepLinkFromSearch = (search: string) => {
   const view = params.get('view') || undefined;       // 글 크게 보기 (글에서 언급됐을 때)
   const profile = params.get('profile') || undefined; // 그 교우의 공간 (새 팔로워)
   const story = params.get('story') || undefined;     // 그 교우의 스토리 (새 스토리 알림)
-  return post || chat || alerts || feedback || notice || reports || view || profile || story ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story } : null;
+  const anon = params.get('anon') || undefined;       // 고민상담의 그 글 (답글 알림)
+  const letters = params.get('letters') === '1';      // 사연함 (관리자) / 보낸 사연
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, letters } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -250,7 +253,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; letters?: boolean } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -553,6 +556,10 @@ export default function Home() {
     }
   }, [activeTab, viewingUserId, user]);
 
+  // 고민상담을 열면 새 글 표시를 지운다
+  useEffect(() => {
+    if (activeTab === 'anon' && user) { storageSet(`anonSeenAt:${user.id}`, new Date().toISOString()); setAnonUnread(0); }
+  }, [activeTab, user?.id]);
   // 영상 탭·태그됨은 필요할 때 따로 불러온다
   useEffect(() => { if (activeTab === 'reels') fetchVideoPosts(); }, [activeTab]);
   useEffect(() => {
@@ -986,6 +993,10 @@ export default function Home() {
   };
   const [showDeletedMessages, setShowDeletedMessages] = useState(false); // 관리자: 지워진 메시지 보기
   const [showMediaStorage, setShowMediaStorage] = useState(false); // 관리자: 사진 저장소(R2)
+  const [showLetters, setShowLetters] = useState(false);       // 사연 보내기 (관리자: 사연함)
+  const [letterNewCount, setLetterNewCount] = useState(0);     // 관리자: 아직 안 읽은 사연 수
+  const [anonUnread, setAnonUnread] = useState(0);             // 고민상담: 마지막으로 본 뒤 새 글 수
+  const [anonFocusId, setAnonFocusId] = useState<string | null>(null); // 알림으로 연 고민글
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1659,7 +1670,23 @@ export default function Home() {
     if (next) playAlertSound();
   };
 
+  // 고민상담 새 글 수 (마지막으로 고민상담을 본 뒤, 내 글 제외)
+  const fetchAnonUnread = async (userId: string) => {
+    const key = `anonSeenAt:${userId}`;
+    const since = storageGet(key);
+    if (!since) { storageSet(key, new Date().toISOString()); setAnonUnread(0); return; }
+    const { count, error } = await supabase.from('anon_posts_feed').select('id', { count: 'exact', head: true }).gt('created_at', since).eq('is_mine', false);
+    if (!error) setAnonUnread(count || 0);
+  };
+  // 관리자: 새 사연 수
+  const fetchLetterCount = async () => {
+    if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return;
+    const { count, error } = await supabase.from('letters').select('id', { count: 'exact', head: true }).eq('status', 'new');
+    if (!error) setLetterNewCount(count || 0);
+  };
   const refreshAlerts = (userId: string) => {
+    fetchAnonUnread(userId);
+    fetchLetterCount();
     fetchBlocks(userId);
     fetchNotifications(userId);
     fetchUnreadMessages(userId);
@@ -1782,7 +1809,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -1961,6 +1988,11 @@ export default function Home() {
       openPostById(deepLink.view);
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
+    } else if (deepLink.anon) {
+      setAnonFocusId(deepLink.anon);
+      goToTab('anon');
+    } else if (deepLink.letters) {
+      setShowLetters(true);
     } else if (deepLink.story) {
       // 홈으로 가서 스토리를 새로 불러온 뒤 그 교우의 스토리를 연다
       if (currentScreenRef.current.tab !== 'home') goToHome();
@@ -2223,7 +2255,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2259,6 +2291,7 @@ export default function Home() {
     setAvatarPreview(null);
     setShowDeletedMessages(false);
     setShowMediaStorage(false);
+    setShowLetters(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
@@ -2570,10 +2603,20 @@ export default function Home() {
             </div>
             <div className="min-w-0">
               {user ? (
-                <div className="flex items-center gap-4 min-w-0">
-                  {/* 고민상담 (익명 게시판) */}
-                  <button onClick={() => goToTab('anon')} className={`${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-700'} hover:text-stone-900`} aria-label="고민상담">
+                <div className="flex items-center gap-3.5 min-w-0">
+                  {/* 사연 보내기 (관리자에게만) — 관리자는 사연함 */}
+                  <button onClick={() => setShowLetters(true)} className="relative text-[1.375rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
+                    💌
+                    {isAdmin && letterNewCount > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{letterNewCount > 9 ? '9+' : letterNewCount}</span>
+                    )}
+                  </button>
+                  {/* 고민상담 (익명 게시판) — 새 글 수 */}
+                  <button onClick={() => goToTab('anon')} className={`relative ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-700'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
                     <Icon name="dove" className="w-6 h-6" />
+                    {anonUnread > 0 && activeTab !== 'anon' && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-violet-600 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{anonUnread > 9 ? '9+' : anonUnread}</span>
+                    )}
                   </button>
                   <button onClick={openNotifications} className="relative text-stone-700 hover:text-stone-900" aria-label="알림">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
@@ -2983,6 +3026,7 @@ export default function Home() {
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
                         <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="camera" className="w-3.5 h-3.5" />사진 저장소</button>
+                        <button onClick={() => setShowLetters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-rose-200 bg-rose-50 text-rose-800 inline-flex items-center gap-1">💌 사연함{letterNewCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] rounded-full flex items-center justify-center">{letterNewCount}</span>}</button>
                       </>
                     )}
                     <button onClick={() => setShowFeedback(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="envelope" className="w-3.5 h-3.5" />{isAdmin ? '건의함' : '건의하기'}</button>
@@ -3140,7 +3184,7 @@ export default function Home() {
       })()}
 
       {activeTab === 'anon' && (
-        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} />
+        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} />
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -3661,6 +3705,16 @@ export default function Home() {
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
       {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}
+      {showLetters && user && (
+        <LettersModal
+          user={user}
+          authorName={profile?.baptismal_name || '교우'}
+          isAdmin={isAdmin}
+          onClose={() => setShowLetters(false)}
+          onSent={id => sendPush('letter', id)}
+          onChanged={fetchLetterCount}
+        />
+      )}
 
       {/* 팔로워·팔로잉 목록 */}
       {followList && (

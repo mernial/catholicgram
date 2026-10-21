@@ -83,12 +83,15 @@ function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean;
   );
 }
 
-export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true }: {
+export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true, focusPostId, onFocused, onReplied }: {
   user: User | null;
   isAdmin: boolean;
   onRequireLogin: () => void;      // 로그인 안 했거나 프로필을 아직 안 만들었을 때
   profileReady?: boolean;           // 프로필(닉네임·핸들)을 만든 회원만 글·답글·공감 가능 (광고 방지)
   onReport: (target: ReportTarget) => void;
+  focusPostId?: string | null;      // 알림으로 들어왔을 때 펼쳐 보여 줄 고민글
+  onFocused?: () => void;
+  onReplied?: (replyId: string) => void; // 답글 알림 보내기
 }) {
   const [posts, setPosts] = useState<AnonPost[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -148,12 +151,27 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
     if (next) fetchReplies(postId);
   };
 
+  // 알림으로 들어온 고민글: 답글을 펼치고 그 글로 이동해 잠깐 강조
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusPostId || !loaded) return;
+    onFocused?.();
+    if (!posts.some(p => p.id === focusPostId)) { alert('삭제되었거나 기간이 지난 고민글이에요.'); return; }
+    setOpenReplies(prev => ({ ...prev, [focusPostId]: true }));
+    fetchReplies(focusPostId);
+    setHighlightId(focusPostId);
+    setTimeout(() => document.getElementById(`anon-${focusPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    setTimeout(() => setHighlightId(prev => (prev === focusPostId ? null : prev)), 3500);
+  }, [focusPostId, loaded]);
+
   const handleReply = async (postId: string) => {
     if (!user || !profileReady) { onRequireLogin(); return; }
     const text = (replyInputs[postId] || '').trim();
     if (!text) return;
-    const { error } = await supabase.from('anon_replies').insert({ post_id: postId, content: text });
+    const id = crypto.randomUUID(); // 저장 뒤 다시 읽을 수 없으므로(익명 보호) 번호를 미리 정해 알림에 씀
+    const { error } = await supabase.from('anon_replies').insert({ id, post_id: postId, content: text });
     if (error) { alert(`답글을 달지 못했습니다.\n(${error.message})`); return; }
+    onReplied?.(id);
     setReplyInputs(prev => ({ ...prev, [postId]: '' }));
     fetchReplies(postId);
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, reply_count: p.reply_count + 1 } : p));
@@ -249,7 +267,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
               <div className="p-12 text-center text-stone-400 text-sm">아직 고민글이 없어요. 첫 마음을 나눠주세요.</div>
             )}
             {posts.map(post => (
-              <article key={post.id} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
+              <article key={post.id} id={`anon-${post.id}`} className={`p-4 sm:p-5 flex flex-col gap-3 transition-colors duration-700 ${highlightId === post.id ? 'bg-violet-50' : 'bg-white'}`}>
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <AnonTag code={post.anon_code} isMine={post.is_mine} />
