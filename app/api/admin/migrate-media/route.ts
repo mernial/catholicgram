@@ -14,6 +14,7 @@ const TABLES: Table[] = [
   { table: 'profiles', cols: ['avatar_url'] },
   { table: 'messages', cols: ['image_url'] },
   { table: 'feedback', cols: ['image_url'] },
+  { table: 'letters', cols: ['image_url'] },
   { table: 'sponsor_banners', cols: ['image_url'] },
   { table: 'bgm_tracks', cols: ['url'] },
 ];

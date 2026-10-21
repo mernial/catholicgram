@@ -10,7 +10,7 @@ import { extractMentions } from '@/lib/mentions';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'post' | 'story' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['comment', 'post', 'story', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -94,6 +94,38 @@ export async function POST(request: Request) {
       list.push({ recipientId: f.follower_id, payload: { title: '📸 새 스토리', body: `${name}님이 새 스토리를 올렸어요`, url: `/?story=${user.id}`, tag: `story-${user.id}` } });
     }
     if (list.length === 0) return Response.json({ skipped: 'no followers' });
+  } else if (type === 'anon_reply') {
+    // 고민글 답글 → 글쓴이에게 (글쓴이가 답하면 그 글에 답글을 단 교우들에게). 누가 썼는지는 알리지 않음
+    const { data: reply } = await admin.from('anon_replies').select('id, post_id, user_id, content, created_at').eq('id', id).single();
+    if (!reply || reply.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(reply.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: anonPost } = await admin.from('anon_posts').select('id, user_id').eq('id', reply.post_id).single();
+    if (!anonPost) return Response.json({ skipped: 'post gone' });
+    const url = `/?anon=${anonPost.id}`;
+    const body = truncate(reply.content || '');
+    if (anonPost.user_id !== user.id) {
+      list.push({ recipientId: anonPost.user_id, payload: { title: '🕊 내 고민글에 답글이 달렸어요', body, url, tag: `anon-${anonPost.id}` } });
+    } else {
+      const { data: others } = await admin.from('anon_replies').select('user_id').eq('post_id', anonPost.id).neq('user_id', user.id).limit(200);
+      for (const uid of Array.from(new Set((others || []).map(o => o.user_id)))) {
+        list.push({ recipientId: uid, payload: { title: '🕊 고민글 작성자가 답글을 남겼어요', body, url, tag: `anon-${anonPost.id}` } });
+      }
+    }
+    if (list.length === 0) return Response.json({ skipped: 'nobody to notify' });
+  } else if (type === 'letter') {
+    // 새 사연 → 관리자에게
+    const { data: letter } = await admin.from('letters').select('id, user_id, author_name, name_display, content, created_at').eq('id', id).single();
+    if (!letter || letter.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(letter.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
+    if (!adminProfile) return Response.json({ skipped: 'admin not found' });
+    recipientId = adminProfile.id;
+    payload = {
+      title: `💌 새 사연 (${letter.name_display === 'name' ? `${letter.author_name || '교우'}님` : '익명'})`,
+      body: truncate(letter.content || ''),
+      url: '/?letters=1',
+      tag: `letter-${letter.id}`,
+    };
   } else if (type === 'feedback') {
     // 새 건의 → 관리자에게
     const { data: fb } = await admin.from('feedback').select('id, user_id, author_name, content, created_at').eq('id', id).single();

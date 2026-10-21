@@ -52,6 +52,7 @@ export async function POST(request: Request) {
     ['follows', 'following_id'],
     ['push_subscriptions', 'user_id'],
     ['feedback', 'user_id'],
+    ['letters', 'user_id'],
     ['anon_reactions', 'user_id'],
     ['anon_replies', 'user_id'],
     ['anon_posts', 'user_id'],

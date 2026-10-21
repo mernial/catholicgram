@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 
-const LABELS: Record<string, string> = { posts: '게시물·스토리', profiles: '프로필 사진', messages: '메시지 사진', feedback: '건의 사진', sponsor_banners: '광고 배너', bgm_tracks: '배경음악' };
+const LABELS: Record<string, string> = { posts: '게시물·스토리', profiles: '프로필 사진', messages: '메시지 사진', feedback: '건의 사진', letters: '사연 사진', sponsor_banners: '광고 배너', bgm_tracks: '배경음악' };
 
 // 관리자 전용: 사진·영상 저장소(Cloudflare R2) 연결 확인, 비밀 열쇠 만들기, 기존 파일 옮기기
 export default function MediaStorage({ onClose }: { onClose: () => void }) {

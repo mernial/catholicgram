@@ -5,7 +5,7 @@ import { mediaEnabled, mediaToken, mediaUrl, newMediaKey } from '@/lib/media-ser
 // 사진·영상 올리기 허가증 (Cloudflare R2)
 // GET  → { enabled } : R2 설정 여부
 // POST { kind, ext } (로그인 필요) → { key, uploadUrl, token, publicUrl } — 받은 허가증으로 uploadUrl 에 PUT
-const KINDS = ['posts', 'videos', 'posters', 'avatars', 'stories', 'dm', 'feedback'];
+const KINDS = ['posts', 'videos', 'posters', 'avatars', 'stories', 'dm', 'feedback', 'letters'];
 const ADMIN_KINDS = ['sponsor', 'bgm'];
 
 export async function GET() {
