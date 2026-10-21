@@ -1747,9 +1747,17 @@ export default function Home() {
   // 홈에서 해당 글로 이동해 댓글을 펼친다
   // 알림에서: 그 글의 댓글 창을 열고, 댓글이 정해져 있으면 그 댓글로 옮겨 잠깐 강조
   const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
+  // 댓글 창이 어느 글(스토리)의 것인지 보여 주려고, 목록에 없는 글은 따로 불러 둔다 (지난 스토리 등)
+  const [sheetPostExtra, setSheetPostExtra] = useState<Post | null>(null);
   const openPostComments = async (postId: string, commentId?: string) => {
     setCommentSheetId(postId);
-    if (!posts.some(p => p.id === postId) && !storyPosts.some(p => p.id === postId)) ensurePost(postId); // 알림으로 연 오래된 글
+    if (!posts.some(p => p.id === postId) && !storyPosts.some(p => p.id === postId)) {
+      supabase.from('posts').select('*').eq('id', postId).maybeSingle().then(({ data }) => {
+        if (!data) return;
+        if ((data as Post & { is_story?: boolean }).is_story) setSheetPostExtra(data as Post);
+        else ensurePost(postId); // 알림으로 연 오래된 글
+      });
+    }
     setHighlightCommentId(commentId || null);
     await loadCommentsFor(postId);
     if (commentId) {
@@ -3484,7 +3492,9 @@ export default function Home() {
       {/* 댓글 창: 인스타그램처럼 아래에서 올라옴 */}
       {commentSheetId && (() => {
         const sid = commentSheetId;
-        const sheetPost = posts.find(p => p.id === sid) || storyPosts.find(p => p.id === sid);
+        const sheetPost = posts.find(p => p.id === sid) || storyPosts.find(p => p.id === sid) || (sheetPostExtra?.id === sid ? sheetPostExtra : undefined);
+        const sheetIsStory = !!(sheetPost as (Post & { is_story?: boolean }) | undefined)?.is_story;
+        const storyStillUp = sheetIsStory && !!sheetPost && Date.now() - new Date(sheetPost.created_at).getTime() < 24 * 3600e3;
         // 대댓글은 그 댓글 바로 밑에 (한 단계로 모아서). 예전 답글은 답한 사람의 바로 앞 댓글 밑으로
         const list = (() => {
           const all = [...(comments[sid] || [])].filter(c => !c.user_id || !blockedIds.has(c.user_id))
@@ -3519,6 +3529,19 @@ export default function Home() {
                 <p className="text-center font-bold text-stone-900 mt-2">댓글</p>
                 <button onClick={() => setCommentSheetId(null)} className="absolute right-3 top-3 w-10 h-10 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
               </div>
+              {/* 스토리 댓글이면: 어떤 스토리인지 (24시간 안이면 바로 다시 보기) */}
+              {sheetIsStory && sheetPost && (
+                <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4]">
+                  {sheetPost.images?.[0] && <img loading="lazy" src={sheetPost.images[0]} alt="" className="w-11 h-14 rounded-lg object-cover shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 스토리' : `${sheetPost.author_name}님의 스토리`}</p>
+                    <p className="text-[0.75rem] text-stone-500 truncate">{sheetPost.content || timeAgo(sheetPost.created_at)}{!storyStillUp && ' · 24시간이 지나 내려간 스토리'}</p>
+                  </div>
+                  {storyStillUp && (
+                    <button onClick={() => { setCommentSheetId(null); if (currentScreenRef.current.tab !== 'home') goToHome(); setStoryOpenRequest(sheetPost.user_id); }} className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">스토리 보기</button>
+                  )}
+                </div>
+              )}
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 flex flex-col gap-4">
                 {list.length === 0 && (
                   <div className="py-16 text-center">
