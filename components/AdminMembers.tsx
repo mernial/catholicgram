@@ -12,6 +12,11 @@ export interface AdminMember {
   provider: string | null;
   created_at: string;
   last_sign_in_at: string | null;
+  last_seen_at: string | null;    // 앱을 마지막으로 쓴 때
+  visits: number;                 // 앱을 연 횟수
+  comments: number;
+  likes_received: number;         // 내 글이 받은 하트(공감)
+  prays_received: number;         // 내 글이 받은 기도
   baptismal_name: string | null;  // 공개 닉네임
   real_name: string | null;       // 이름 + 세례명 (관리자만)
   handle: string | null;
@@ -26,7 +31,24 @@ export interface AdminMember {
   is_admin: boolean;
 }
 
-type Filter = 'all' | 'reported' | 'suspended' | 'incomplete';
+type Filter = 'all' | 'new' | 'reported' | 'suspended' | 'incomplete';
+type Sort = 'joined' | 'seen' | 'visits' | 'posts' | 'likes' | 'prays' | 'comments' | 'followers' | 'name';
+const SORTS: { key: Sort; label: string }[] = [
+  { key: 'joined', label: '가입일 (최신순)' },
+  { key: 'seen', label: '최근 접속순' },
+  { key: 'visits', label: '접속 횟수 많은 순' },
+  { key: 'posts', label: '글 많은 순' },
+  { key: 'likes', label: '받은 하트 많은 순' },
+  { key: 'prays', label: '받은 기도 많은 순' },
+  { key: 'comments', label: '댓글 많은 순' },
+  { key: 'followers', label: '팔로워 많은 순' },
+  { key: 'name', label: '이름 (가나다순)' },
+];
+const sortValue = (m: AdminMember, s: Sort): number => ({
+  joined: new Date(m.created_at).getTime(), seen: m.last_seen_at ? new Date(m.last_seen_at).getTime() : 0, visits: m.visits,
+  posts: m.posts, likes: m.likes_received, prays: m.prays_received, comments: m.comments, followers: m.followers, name: 0,
+} as Record<Sort, number>)[s];
+const NEW_DAYS = 7;
 
 const PAGE = 40;
 const DAY = 24 * 3600e3;
@@ -65,6 +87,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [sort, setSort] = useState<Sort>('joined');
   const [limit, setLimit] = useState(PAGE);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -107,7 +130,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
     return {
       total: list.length,
       newWeek: list.filter(m => now - new Date(m.created_at).getTime() < 7 * DAY).length,
-      activeWeek: list.filter(m => m.last_sign_in_at && now - new Date(m.last_sign_in_at).getTime() < 7 * DAY).length,
+      activeWeek: list.filter(m => m.last_seen_at && now - new Date(m.last_seen_at).getTime() < 7 * DAY).length,
       reported: list.filter(m => m.open_reports > 0).length,
       suspended: list.filter(m => m.suspended).length,
       incomplete: list.filter(m => !m.baptismal_name || !m.handle).length,
@@ -116,14 +139,19 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^@/, '');
-    return (members || []).filter(m => {
+    const now = Date.now();
+    const list = (members || []).filter(m => {
+      if (filter === 'new' && now - new Date(m.created_at).getTime() >= NEW_DAYS * DAY) return false;
       if (filter === 'reported' && m.open_reports === 0) return false;
       if (filter === 'suspended' && !m.suspended) return false;
       if (filter === 'incomplete' && m.baptismal_name && m.handle) return false;
       if (!q) return true;
       return [m.baptismal_name, m.real_name, m.handle, m.email].some(v => v?.toLowerCase().includes(q));
     });
-  }, [members, query, filter]);
+    return sort === 'name'
+      ? list.sort((a, b) => (a.baptismal_name || '힣').localeCompare(b.baptismal_name || '힣', 'ko'))
+      : list.sort((a, b) => sortValue(b, sort) - sortValue(a, sort));
+  }, [members, query, filter, sort]);
 
   const chip = (key: Filter, label: string, count: number) => (
     <button
@@ -139,7 +167,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
     <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       <div className="bg-white w-full sm:w-[28rem] h-[92dvh] sm:h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-          <h2 className="font-bold text-stone-900"><Icon name="users" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />회원 관리</h2>
+          <h2 className="font-bold text-stone-900"><Icon name="users" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />회원 명단</h2>
           <div className="flex items-center gap-2">
             <button onClick={() => { setMembers(null); load(); }} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">새로고침</button>
             <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
@@ -171,8 +199,15 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                 placeholder="닉네임, 실명, @핸들, 이메일 검색"
                 className="w-full px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
               />
+              <label className="flex items-center gap-2 text-[0.8125rem] text-stone-600">
+                정렬
+                <select value={sort} onChange={e => { setSort(e.target.value as Sort); setLimit(PAGE); }} className="flex-1 px-3 py-2 rounded-xl border border-stone-200 bg-white text-[0.875rem] font-bold text-stone-800">
+                  {SORTS.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              </label>
               <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1">
                 {chip('all', '전체', stats.total)}
+                {chip('new', `신규 ${NEW_DAYS}일`, stats.newWeek)}
                 {chip('reported', '신고됨', stats.reported)}
                 {chip('suspended', '정지됨', stats.suspended)}
                 {chip('incomplete', '프로필 미완성', stats.incomplete)}
@@ -181,8 +216,9 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
 
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
               {filtered.length === 0 && <div className="p-10 text-center text-sm text-stone-400">해당하는 회원이 없습니다.</div>}
-              {filtered.slice(0, limit).map(m => {
+              {filtered.slice(0, limit).map((m, idx) => {
                 const name = m.baptismal_name || '(프로필 미완성)';
+                const isNew = Date.now() - new Date(m.created_at).getTime() < NEW_DAYS * DAY;
                 return (
                   <div key={m.id} className={`p-4 flex flex-col gap-2.5 ${m.suspended ? 'bg-red-50/60' : ''}`}>
                     <button onClick={() => m.handle && onOpenProfile(m.id)} className="flex items-center gap-3 text-left min-w-0">
@@ -191,7 +227,9 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                         : <div className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-serif font-bold shrink-0">{name[0]}</div>}
                       <div className="min-w-0 flex-1">
                         <p className="text-[0.9375rem] font-bold text-stone-900 flex items-center gap-1 flex-wrap">
+                          {sort !== 'joined' && sort !== 'name' && <span className="text-[0.75rem] font-bold text-stone-400">{idx + 1}.</span>}
                           <span className="truncate">{name}</span>
+                          {isNew && <span className="text-[0.6875rem] px-1.5 py-px rounded bg-emerald-600 text-white">신규</span>}
                           <RoleBadge type={m.badge_type || undefined} size="xs" showLabel={false} />
                           {m.is_admin && <span className="text-[0.6875rem] px-1.5 py-px rounded bg-stone-900 text-white">관리자</span>}
                           {m.suspended && <span className="text-[0.6875rem] px-1.5 py-px rounded bg-red-600 text-white">이용 정지</span>}
@@ -201,11 +239,20 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                         <p className="text-xs text-stone-700 truncate"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {m.real_name || '미입력'}</p>
                       </div>
                     </button>
+                    {/* 활동 숫자 (정렬 기준은 진하게) */}
+                    <div className="grid grid-cols-5 gap-1 text-center">
+                      {([['posts', '글', m.posts], ['likes', '받은 ♥', m.likes_received], ['prays', '받은 🙏', m.prays_received], ['comments', '댓글', m.comments], ['visits', '접속', m.visits]] as const).map(([key, label, v]) => (
+                        <div key={key} className={`rounded-lg py-1.5 ${sort === key ? 'bg-stone-900 text-white' : 'bg-stone-50 text-stone-800'}`}>
+                          <p className="text-[0.9375rem] font-bold leading-tight">{v}</p>
+                          <p className={`text-[0.6875rem] ${sort === key ? 'text-white/80' : 'text-stone-500'}`}>{label}</p>
+                        </div>
+                      ))}
+                    </div>
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-stone-600 bg-stone-50 rounded-xl p-2.5">
-                      <span>가입: {new Date(m.created_at).toLocaleDateString('ko-KR')}</span>
-                      <span>최근 접속: {relative(m.last_sign_in_at)}</span>
+                      <span className={sort === 'joined' ? 'font-bold text-stone-900' : ''}>가입: {new Date(m.created_at).toLocaleDateString('ko-KR')}</span>
+                      <span className={sort === 'seen' ? 'font-bold text-stone-900' : ''}>최근 접속: {relative(m.last_seen_at)}</span>
                       <span>로그인: {PROVIDERS[m.provider || ''] || m.provider || '-'}</span>
-                      <span>게시글 {m.posts} · 팔로워 {m.followers}</span>
+                      <span className={sort === 'followers' ? 'font-bold text-stone-900' : ''}>팔로워 {m.followers}</span>
                       <span>휴대폰 알림: {m.push ? '켜짐' : '꺼짐'}</span>
                       <span>축일: {m.feast_day ? formatFeastDay(m.feast_day) : '미등록'}</span>
                     </div>
