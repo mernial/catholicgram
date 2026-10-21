@@ -3,7 +3,7 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 import { deleteMedia } from '@/lib/media-server';
 
 // 게시글 고치기 / 지우기 (서버에서 본인 확인 — 데이터베이스 권한 설정과 상관없이 동작)
-// POST { action: 'update', id, changes: { content?, video_overlays?, visibility? } } → 본인 글만
+// POST { action: 'update', id, changes: { content?, video_overlays?, visibility?, music?, images? } } → 본인 글만
 // POST { action: 'delete', id } → 본인 또는 관리자 (사진·영상 파일도 함께 지움)
 
 const VISIBILITIES = ['public', 'followers', 'private'];
@@ -41,6 +41,15 @@ export async function POST(request: Request) {
       changes.music = typeof c.music === 'string' && c.music ? c.music.slice(0, 300) : null;
       changes.music_title = changes.music && typeof c.music_title === 'string' ? c.music_title.slice(0, 200) : null;
     }
+    // 사진 바꾸기 (빼기·추가·편집): 최대 5장, 주소만 받음
+    let removedImages: string[] = [];
+    if (Array.isArray(c.images)) {
+      if (post.video_url) return Response.json({ error: '영상 글은 사진을 바꿀 수 없어요.' }, { status: 400 });
+      const imgs = c.images.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u) && u.length <= 600).slice(0, 5);
+      if (imgs.length !== c.images.length) return Response.json({ error: 'bad images' }, { status: 400 });
+      changes.images = imgs;
+      removedImages = ((post.images as string[] | null) || []).filter(u => !imgs.includes(u));
+    }
     if (typeof c.visibility === 'string') {
       if (!VISIBILITIES.includes(c.visibility)) return Response.json({ error: 'bad request' }, { status: 400 });
       changes.visibility = c.visibility;
@@ -50,6 +59,12 @@ export async function POST(request: Request) {
     if (error) {
       if (/visibility/.test(error.message)) return Response.json({ error: '공개 범위 기능을 준비 중이에요. (관리자: supabase/post-visibility.sql 실행 필요)' }, { status: 500 });
       return Response.json({ error: `고치지 못했어요. (${error.message})` }, { status: 500 });
+    }
+    // 빠진 사진 파일 정리 (실패해도 무시)
+    if (removedImages.length) {
+      const paths = removedImages.map(u => storagePath(u, 'community-images')).filter((x): x is string => !!x);
+      if (paths.length) await admin.storage.from('community-images').remove(paths).catch(() => null);
+      await deleteMedia(removedImages);
     }
     return Response.json({ ok: true, changes });
   }

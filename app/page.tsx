@@ -208,6 +208,10 @@ export default function Home() {
   const [composerPhotoIdx, setComposerPhotoIdx] = useState(0);   // 글쓰기: 크게 보이는 사진
   const [composerVisOpen, setComposerVisOpen] = useState(false);   // 글쓰기: 공개 범위 고르기 펼침
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
+  // 글 고치기의 사진: 원래 사진은 주소만, 새로 넣거나 편집한 사진은 파일과 미리보기 주소
+  const [editPhotos, setEditPhotos] = useState<{ url: string; file?: File }[]>([]);
+  const [editPhotoEditor, setEditPhotoEditor] = useState<{ idx: number; file: File } | null>(null);
+  const [editPhotoLoading, setEditPhotoLoading] = useState(false);
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const [composerVisibility, setComposerVisibility] = useState<Visibility>('public'); // 새 글 공개 범위 (마지막 선택 기억)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -1550,6 +1554,31 @@ export default function Home() {
     setEditOverlays(post.video_overlays || null);
     setEditVisibility(post.visibility || 'public');
     setEditMusic(post.music ? { value: post.music, title: post.music_title || '음악' } : null);
+    setEditPhotos((post.images || []).map(url => ({ url })));
+  };
+  // 글 고치기: 사진 편집 열기 (원래 사진은 내려받아 파일로)
+  const openEditPhotoEditor = async (idx: number) => {
+    const ph = editPhotos[idx];
+    if (!ph) return;
+    if (ph.file) { setEditPhotoEditor({ idx, file: ph.file }); return; }
+    setEditPhotoLoading(true);
+    try {
+      const res = await fetch(ph.url, { mode: 'cors' });
+      if (!res.ok) throw new Error(String(res.status));
+      const blob = await res.blob();
+      setEditPhotoEditor({ idx, file: new File([blob], 'photo.jpg', { type: blob.type || 'image/jpeg' }) });
+    } catch {
+      alert('사진을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setEditPhotoLoading(false);
+    }
+  };
+  const addEditPhotos = (files: FileList | null) => {
+    if (!files) return;
+    const room = MAX_PHOTOS - editPhotos.length;
+    const picked = Array.from(files);
+    if (picked.length > room) alert(`사진은 한 글에 ${MAX_PHOTOS}장까지 넣을 수 있어요.`);
+    setEditPhotos(prev => [...prev, ...picked.slice(0, Math.max(0, room)).map(file => ({ url: URL.createObjectURL(file), file }))]);
   };
   // 공개 범위만 바로 바꾸기 (크게 보기·내 공간에서)
   const changePostVisibility = async (postId: string, visibility: Visibility) => {
@@ -1569,10 +1598,30 @@ export default function Home() {
       changes.music_title = editMusic?.title || null;
     }
     setSavingEdit(true);
+    // 사진이 바뀌었으면: 새로 넣거나 편집한 사진만 올리고 목록을 바꾼다
+    const before = target.images || [];
+    const photosChanged = !target.video_url && (editPhotos.length !== before.length || editPhotos.some((ph, i) => !!ph.file || ph.url !== before[i]));
+    if (photosChanged) {
+      const urls: string[] = [];
+      for (const ph of editPhotos) {
+        if (!ph.file) { urls.push(ph.url); continue; }
+        try {
+          const compressed = await imageCompression(ph.file, PHOTO_OPTIONS);
+          urls.push(await uploadMedia(compressed, { kind: 'posts', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg` }));
+        } catch {
+          setSavingEdit(false);
+          alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
+          return;
+        }
+      }
+      changes.images = urls;
+    }
     const result = await callPostApi({ action: 'update', id: postId, changes });
     setSavingEdit(false);
     if (result.error) { alert(result.error); return; }
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...changes } : p));
+    setSelectedPostDetail(prev => prev && prev.id === postId ? { ...prev, ...changes } : prev);
+    editPhotos.forEach(ph => { if (ph.file) URL.revokeObjectURL(ph.url); });
     setEditingPostId(null);
   };
   // 사진·영상을 두 번 누르면 공감 (이미 공감했으면 그대로 두기)
@@ -2287,7 +2336,7 @@ export default function Home() {
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
     if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) setShowComposer(false);
     setEditingPhotoIdx(null);
-    if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
+    if (showEditVideoEditor) setShowEditVideoEditor(false); else if (editPhotoEditor) setEditPhotoEditor(null); else setEditingPostId(null);
     setFollowList(null);
     setShowAdminStats(false);
     setPostMenuId(null);
@@ -3827,7 +3876,29 @@ export default function Home() {
                 <h2 className="font-bold text-stone-900">글 고치기</h2>
                 <button onClick={() => setEditingPostId(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
               </div>
-              {thumb && <img loading="lazy" src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />}
+              {target.video_url ? (
+                thumb && <img loading="lazy" src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />
+              ) : (
+                // 사진 고치기: 빼기 · 자르기·가리기 · 추가
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
+                    {editPhotos.map((ph, idx) => (
+                      <div key={ph.url} className="relative shrink-0 w-24">
+                        <img src={ph.url} alt="" className="w-24 h-24 rounded-xl object-cover border border-stone-200" />
+                        <button type="button" onClick={() => setEditPhotos(prev => { const next = prev.filter((_, i) => i !== idx); if (ph.file) URL.revokeObjectURL(ph.url); return next; })} className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black/65 text-white text-base leading-none" aria-label="사진 빼기">×</button>
+                        <button type="button" onClick={() => openEditPhotoEditor(idx)} disabled={editPhotoLoading} className="mt-1 w-full py-1.5 rounded-lg bg-stone-100 text-[0.75rem] font-bold text-stone-700 disabled:opacity-50">✂️ 자르기·가리기</button>
+                      </div>
+                    ))}
+                    {editPhotos.length < MAX_PHOTOS && (
+                      <label className="shrink-0 w-24 h-24 rounded-xl border-2 border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-500 cursor-pointer">
+                        <Icon name="plus" className="w-6 h-6" /><span className="text-[0.75rem] font-bold">사진 추가</span>
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={e => { addEditPhotos(e.target.files); e.target.value = ''; }} />
+                      </label>
+                    )}
+                  </div>
+                  {editPhotoLoading && <p className="text-[0.75rem] text-stone-500">사진을 불러오는 중...</p>}
+                </div>
+              )}
               <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
               {user && <MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} />}
               {/* 이모티콘 바로 넣기 */}
@@ -3863,12 +3934,24 @@ export default function Home() {
               )}
               <div className="flex gap-2 pt-1">
                 <button onClick={() => setEditingPostId(null)} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm text-stone-600">취소</button>
-                <button onClick={() => handleUpdatePost(target.id)} disabled={savingEdit || (!editContent.trim() && !target.images?.length && !target.video_url)} className="flex-1 py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40">{savingEdit ? '저장 중...' : '고치기'}</button>
+                <button onClick={() => handleUpdatePost(target.id)} disabled={savingEdit || (!editContent.trim() && editPhotos.length === 0 && !target.video_url)} className="flex-1 py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40">{savingEdit ? '저장 중...' : '고치기'}</button>
               </div>
             </section>
           </div>
         );
       })()}
+      {/* 글 고치기: 사진 자르기·가리기 */}
+      {editingPostId && editPhotoEditor && (
+        <PhotoEditor
+          file={editPhotoEditor.file}
+          onCancel={() => setEditPhotoEditor(null)}
+          onDone={edited => {
+            const { idx } = editPhotoEditor;
+            setEditPhotos(prev => prev.map((ph, i) => { if (i !== idx) return ph; if (ph.file) URL.revokeObjectURL(ph.url); return { url: URL.createObjectURL(edited), file: edited }; }));
+            setEditPhotoEditor(null);
+          }}
+        />
+      )}
       {editingPostId && showEditVideoEditor && (() => {
         const target = posts.find(p => p.id === editingPostId);
         if (!target?.video_url) return null;
