@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: '개인정보처리방침 - 가톨릭
 export default function PrivacyPage() {
   const contact = ADMIN_EMAILS[0];
   return (
-    <LegalPage title="개인정보처리방침" updated="2026년 10월 5일">
+    <LegalPage title="개인정보처리방침" updated="2026년 10월 21일">
       <p>가톨릭그램(이하 &ldquo;서비스&rdquo;)은 이용자의 개인정보를 소중히 여기며, 「개인정보 보호법」 등 관련 법령을 준수합니다. 이 방침은 서비스가 어떤 정보를 어떻게 수집·이용·보관·파기하는지 안내합니다.</p>
 
       <section>
@@ -57,7 +57,8 @@ export default function PrivacyPage() {
         <table>
           <thead><tr><th>업체</th><th>위탁 업무</th></tr></thead>
           <tbody>
-            <tr><td>Supabase Inc.</td><td>회원 인증, 데이터베이스 및 사진 저장</td></tr>
+            <tr><td>Supabase Inc.</td><td>회원 인증, 데이터베이스 (이전에 올린 사진 일부 저장)</td></tr>
+            <tr><td>Cloudflare, Inc.</td><td>사진·영상 파일 저장 및 전송 (R2)</td></tr>
             <tr><td>Vercel Inc.</td><td>웹사이트 호스팅</td></tr>
             <tr><td>Kakao Corp.</td><td>카카오 로그인</td></tr>
             <tr><td>Google LLC</td><td>구글 로그인, 게시물 음악(유튜브) 재생</td></tr>
