@@ -123,7 +123,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   useEffect(() => {
     if (!user) return;
     fetchPosts();
-    const refresh = setInterval(fetchPosts, 30000);
+    const refresh = setInterval(() => { if (document.visibilityState !== 'hidden') fetchPosts(); }, 60000);
     const tick = setInterval(() => setTick(t => t + 1), 60000);
     return () => { clearInterval(refresh); clearInterval(tick); };
   }, [user]);

@@ -51,7 +51,7 @@ const safeForFilter = (q: string) => q.replace(/[,()%*\\]/g, ' ').trim();
 function Avatar({ p, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal_name?: string; author_name?: string }; size?: string }) {
   const name = p.baptismal_name || p.author_name || '교';
   return p.avatar_url
-    ? <img src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
+    ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
     : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{name[0]}</div>;
 }
 
@@ -277,7 +277,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
           {followed && (
             <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/45 text-white rounded-full pl-0.5 pr-1.5 py-0.5 max-w-[90%]">
               {post.avatar_url
-                ? <img src={post.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover" />
+                ? <img loading="lazy" src={post.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover" />
                 : <span className="w-4 h-4 rounded-full bg-white/80 text-stone-700 text-[0.6rem] flex items-center justify-center font-bold">{post.author_name?.[0]}</span>}
               <span className="text-[0.6875rem] truncate">{post.author_name}</span>
             </span>
@@ -302,7 +302,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
           {note && <span className="text-blue-600 ml-1.5">· {note}</span>}
         </p>
       </div>
-      {post.images?.[0] && <img src={post.images[0]} alt="" className="w-20 h-20 rounded-xl object-cover shrink-0 border border-stone-100" />}
+      {post.images?.[0] && <img loading="lazy" src={post.images[0]} alt="" className="w-20 h-20 rounded-xl object-cover shrink-0 border border-stone-100" />}
     </button>
   );
 

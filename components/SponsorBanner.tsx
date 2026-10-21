@@ -48,7 +48,7 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
 
         {banner.image_url && (
           <button onClick={handleClick} className="rounded-xl overflow-hidden border border-stone-100">
-            <img src={banner.image_url} alt={banner.title} className="w-full aspect-square object-cover bg-stone-100" />
+            <img loading="lazy" src={banner.image_url} alt={banner.title} className="w-full aspect-square object-cover bg-stone-100" />
           </button>
         )}
 
@@ -67,7 +67,7 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
     <div ref={ref} className="px-4 pt-3 pb-1 bg-white">
       <button onClick={handleClick} className="w-full text-left rounded-2xl overflow-hidden border border-amber-200/70 bg-gradient-to-br from-amber-50 to-white shadow-sm hover:shadow transition-shadow">
         {banner.image_url && (
-          <img src={banner.image_url} alt={banner.title} className="w-full aspect-[3/1] object-cover bg-stone-100" />
+          <img loading="lazy" src={banner.image_url} alt={banner.title} className="w-full aspect-[3/1] object-cover bg-stone-100" />
         )}
         <div className="px-3.5 py-2.5 flex items-center gap-3">
           <div className="flex-1 min-w-0">

@@ -91,7 +91,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
     try {
       const compressed = await imageCompression(file, { maxSizeMB: 0.8, maxWidthOrHeight: 1500, useWebWorker: false });
       const name = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error } = await supabase.storage.from('sponsor-banners').upload(name, compressed, { contentType: 'image/jpeg' });
+      const { error } = await supabase.storage.from('sponsor-banners').upload(name, compressed, { contentType: 'image/jpeg', cacheControl: '31536000' });
       if (error) throw error;
       const { data: { publicUrl } } = supabase.storage.from('sponsor-banners').getPublicUrl(name);
       setDraft(d => d ? { ...d, image_url: publicUrl } : d);

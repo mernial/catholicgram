@@ -28,7 +28,7 @@ export default function DeletedMessages({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       {zoom && (
         <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
-          <img src={zoom} alt="지운 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          <img loading="lazy" src={zoom} alt="지운 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
       <div className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
@@ -48,7 +48,7 @@ export default function DeletedMessages({ onClose }: { onClose: () => void }) {
               <p className="text-[0.8125rem] text-stone-500"><b className="text-stone-800">{it.sender_name}</b> → {it.receiver_name}</p>
               {it.content && <p className="text-[0.9375rem] text-stone-900 whitespace-pre-wrap bg-stone-50 rounded-xl px-3 py-2">{it.content}</p>}
               {it.image_url && (
-                <button onClick={() => setZoom(it.image_url)} className="self-start"><img src={it.image_url} alt="지운 사진" className="max-h-40 rounded-xl border border-stone-200 object-cover" /></button>
+                <button onClick={() => setZoom(it.image_url)} className="self-start"><img loading="lazy" src={it.image_url} alt="지운 사진" className="max-h-40 rounded-xl border border-stone-200 object-cover" /></button>
               )}
               <p className="text-xs text-stone-400">보낸 때 {when(it.sent_at)} · 지운 때 {when(it.deleted_at)}</p>
             </div>

@@ -40,7 +40,7 @@ export default function MentionSuggest({ value, onChange, excludeId }: {
           className="shrink-0 flex items-center gap-1.5 text-xs bg-blue-50 border border-blue-100 text-blue-800 rounded-full pl-1 pr-2.5 py-1"
         >
           {p.avatar_url
-            ? <img src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
+            ? <img loading="lazy" src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
             : <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[0.6875rem] font-bold">{p.baptismal_name?.[0]}</span>}
           <b>{p.baptismal_name}</b><span className="text-blue-500">@{p.handle}</span>
         </button>

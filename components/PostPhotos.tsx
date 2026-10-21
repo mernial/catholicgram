@@ -36,7 +36,7 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
         onScroll={e => { const el = e.currentTarget; setIndex(Math.round(el.scrollLeft / el.clientWidth)); }}
       >
         {images.map((img, i) => (
-          <img
+          <img loading="lazy"
             key={i}
             src={img}
             alt="게시물 사진"
