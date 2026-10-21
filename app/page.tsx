@@ -508,10 +508,14 @@ export default function Home() {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       if (!hiddenAt || Date.now() - hiddenAt < 15 * 1000) { setTimeout(consumePendingLink, 400); return; } // 아주 잠깐이면 그대로
       hiddenAt = 0;
+      // 알림을 눌러 돌아온 것이면 그 화면부터 (새 버전 확인을 기다리지 않는다)
+      await consumePendingLink();
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
         const { version } = await res.json();
-        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION) {
+        // 방금 알림으로 화면을 열었으면 새로고침은 다음에 (연 화면이 사라지지 않게)
+        const justOpened = !!lastOpenedLink && Date.now() - lastOpenedLink.at < 15 * 1000;
+        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
           window.location.reload(); // 알림으로 가야 할 곳은 적어 둔 채로 새로고침 → 다시 열리면 그리로
           return;
         }
@@ -523,6 +527,10 @@ export default function Home() {
       fetchNotices();
     };
     document.addEventListener('visibilitychange', onAppResume);
+    // 알림으로 앱이 앞으로 왔는데 화면 전환 신호가 늦거나 없을 때를 대비
+    const onAppFocus = () => setTimeout(consumePendingLink, 300);
+    window.addEventListener('focus', onAppFocus);
+    window.addEventListener('pageshow', onAppFocus);
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
@@ -541,6 +549,8 @@ export default function Home() {
     });
     return () => {
       clearTimeout(historyTimer);
+      window.removeEventListener('focus', onAppFocus);
+      window.removeEventListener('pageshow', onAppFocus);
       activationEvents.forEach(ev => window.removeEventListener(ev, setupHistory, { capture: true }));
       clearInterval(intentionTimer);
       document.removeEventListener('visibilitychange', onAppResume);
@@ -1781,7 +1791,10 @@ export default function Home() {
   const hideAlert = (key: string) => {
     if (!user) return;
     setHiddenAlerts(prev => {
-      const next = new Set(prev); next.add(key);
+      // 아직 목록을 안 불러왔어도(알림을 눌러 막 열린 경우) 저장된 것과 합친다
+      let stored: string[] = [];
+      try { stored = JSON.parse(storageGet(`notificationsHidden:${user.id}`) || '[]'); } catch { /* 무시 */ }
+      const next = new Set([...stored, ...prev]); next.add(key);
       storageSet(`notificationsHidden:${user.id}`, JSON.stringify(Array.from(next).slice(-500)));
       return next;
     });
@@ -1793,7 +1806,7 @@ export default function Home() {
     storageSet(`notificationsClearedAt:${user.id}`, now);
   };
 
-  const listedFollows = followRequests.filter(r => !blockedIds.has(r.follower.id) && !isAlertHidden(`f:${r.id}`, r.created_at));
+  const listedFollows = followRequests.filter(r => !blockedIds.has(r.follower.id) && !isAlertHidden(`f:${r.id}`, r.created_at) && !hiddenAlerts.has(`fu:${r.follower.id}`));
   const listedComments = notifications.filter(n => !isAlertHidden(`c:${n.id}`, n.created_at));
   const feastCleared = !!notificationsClearedAt && todayKst(new Date(notificationsClearedAt)) === todayKst();
 
@@ -2050,12 +2063,30 @@ export default function Home() {
     return () => clearTimeout(t);
   }, [toast]);
 
+  // 휴대폰 알림을 눌러 들어온 곳: 앱 알림 목록(♡)에서 그 알림을 지우고, 같은 곳을 가리키는 휴대폰 알림도 닫는다
+  const dismissAlertsFor = (link: NonNullable<typeof deepLink>) => {
+    if (link.comment) hideAlert(`c:${link.comment}`);
+    if (link.view) hideAlert(`c:mp:${link.view}`);
+    if (link.profile) hideAlert(`fu:${link.profile}`);
+    const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
+      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.letters ? 'letters' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
+    const key = keyOf(link);
+    if (!key || !('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications()).then(list => {
+      (list || []).forEach(n => {
+        const url = (n.data as { url?: string } | null)?.url;
+        if (url && keyOf(deepLinkFromSearch(new URL(url, window.location.origin).search)) === key) n.close();
+      });
+    }).catch(() => {});
+  };
+
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
     // 공지 알림은 로그인 없이도 열린다
     if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
+    dismissAlertsFor(deepLink);
     if (deepLink.post) {
       openPostComments(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
