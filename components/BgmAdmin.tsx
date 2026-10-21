@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { uploadMedia } from '@/lib/upload';
 import type { BgmTrack } from '@/lib/music';
 
 const MAX_MB = 20;
@@ -42,9 +43,10 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
     setUploading(true);
     const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
     const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error: upError } = await supabase.storage.from('bgm').upload(path, file, { contentType: file.type || 'audio/mpeg', cacheControl: '31536000' });
-    if (upError) { setUploading(false); alert('파일을 올리지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
-    const { data: { publicUrl } } = supabase.storage.from('bgm').getPublicUrl(path);
+    let publicUrl: string;
+    try {
+      publicUrl = await uploadMedia(file, { kind: 'bgm', ext, contentType: file.type || 'audio/mpeg', bucket: 'bgm', path });
+    } catch { setUploading(false); alert('파일을 올리지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
     const { error: insError } = await supabase.from('bgm_tracks').insert({ title: title.trim(), artist: artist.trim() || null, url: publicUrl, sort: tracks?.length || 0 });
     setUploading(false);
     if (insError) { alert('저장하지 못했어요.'); return; }
@@ -61,7 +63,7 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
 
   const remove = async (t: BgmTrack) => {
     if (!window.confirm(`'${t.title}'을(를) 삭제할까요?\n이 음악을 쓴 게시물에서는 음악이 나오지 않게 됩니다.\n(잠시 숨기려면 '숨기기'를 쓰세요)`)) return;
-    const path = t.url.split('/bgm/')[1];
+    const path = t.url.includes('/storage/v1/') ? t.url.split('/bgm/')[1] : null; // 수파베이스 저장소 파일만 (R2 파일은 남겨 둠)
     if (path) await supabase.storage.from('bgm').remove([path]);
     await supabase.from('bgm_tracks').delete().eq('id', t.id);
     setTracks(prev => prev?.filter(x => x.id !== t.id) || prev);

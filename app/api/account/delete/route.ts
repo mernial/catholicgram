@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { deleteMedia } from '@/lib/media-server';
 
 // 회원 탈퇴: 로그인한 본인의 계정과 작성한 데이터를 모두 삭제한다.
 // (구글 플레이·앱스토어 정책: 앱 안에서 계정 삭제가 가능해야 함)
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
 
   // 올린 사진 파일 정리 (실패해도 계속 진행)
   try {
-    const { data: myPosts } = await admin.from('posts').select('images').eq('user_id', uid);
+    const { data: myPosts } = await admin.from('posts').select('images, video_url, video_poster').eq('user_id', uid);
+    const { data: me } = await admin.from('profiles').select('avatar_url').eq('id', uid).maybeSingle();
+    await deleteMedia([...(myPosts || []).flatMap(p => [...((p.images as string[] | null) || []), p.video_url, p.video_poster]), me?.avatar_url]); // R2 에 있는 파일
     const postFiles = (myPosts || [])
       .flatMap(p => (p.images as string[] | null) || [])
       .map(url => url.split('/community-images/')[1])
