@@ -10,7 +10,7 @@ import { extractMentions } from '@/lib/mentions';
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'post' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'comment' | 'post' | 'story' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['comment', 'post', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['comment', 'post', 'story', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -81,6 +81,19 @@ export async function POST(request: Request) {
       list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(post.content || '')}`, url: `/?view=${post.id}`, tag: `mention-${post.id}` } });
     }
     if (list.length === 0) return Response.json({ skipped: 'no mentions' });
+  } else if (type === 'story') {
+    // 새 스토리 → 나를 팔로우하는 교우들에게
+    const { data: story } = await admin.from('posts').select('id, user_id, author_name, is_story, created_at').eq('id', id).single();
+    if (!story || story.user_id !== user.id || !story.is_story) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(story.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const { data: me } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).single();
+    const { data: followers } = await admin.from('follows').select('follower_id').eq('following_id', user.id).eq('status', 'accepted').limit(1000);
+    const name = me?.baptismal_name || story.author_name || '교우';
+    for (const f of followers || []) {
+      if (f.follower_id === user.id) continue;
+      list.push({ recipientId: f.follower_id, payload: { title: '📸 새 스토리', body: `${name}님이 새 스토리를 올렸어요`, url: `/?story=${user.id}`, tag: `story-${user.id}` } });
+    }
+    if (list.length === 0) return Response.json({ skipped: 'no followers' });
   } else if (type === 'feedback') {
     // 새 건의 → 관리자에게
     const { data: fb } = await admin.from('feedback').select('id, user_id, author_name, content, created_at').eq('id', id).single();

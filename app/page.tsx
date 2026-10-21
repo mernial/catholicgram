@@ -62,7 +62,8 @@ const deepLinkFromSearch = (search: string) => {
   const comment = params.get('comment') || undefined; // post 와 함께: 그 댓글로
   const view = params.get('view') || undefined;       // 글 크게 보기 (글에서 언급됐을 때)
   const profile = params.get('profile') || undefined; // 그 교우의 공간 (새 팔로워)
-  return post || chat || alerts || feedback || notice || reports || view || profile ? { post, chat, alerts, feedback, notice, reports, comment, view, profile } : null;
+  const story = params.get('story') || undefined;     // 그 교우의 스토리 (새 스토리 알림)
+  return post || chat || alerts || feedback || notice || reports || view || profile || story ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -249,7 +250,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -1196,6 +1197,12 @@ export default function Home() {
   // 스토리 (24시간 안, 게시글에 is_story 표시)
   const [storyPosts, setStoryPosts] = useState<Post[]>([]);
   const [storiesUnavailable, setStoriesUnavailable] = useState(false);
+  const [storyOpenRequest, setStoryOpenRequest] = useState<string | null>(null);
+  // 앱을 보고 있는 동안 스토리를 3분마다 새로 (새로 올라온 스토리가 보이게)
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState !== 'hidden') fetchStories(); }, 3 * 60 * 1000);
+    return () => clearInterval(t);
+  }, []);
   const fetchStories = async () => {
     const since = new Date(Date.now() - 24 * 3600e3).toISOString();
     const { data, error } = await supabase.from('posts').select('*').eq('is_story', true).gt('created_at', since).order('created_at', { ascending: true }).limit(300);
@@ -1946,6 +1953,11 @@ export default function Home() {
       openPostById(deepLink.view);
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
+    } else if (deepLink.story) {
+      // 홈으로 가서 스토리를 새로 불러온 뒤 그 교우의 스토리를 연다
+      if (currentScreenRef.current.tab !== 'home') goToHome();
+      fetchStories();
+      setStoryOpenRequest(deepLink.story);
     } else if (deepLink.chat) {
       supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).maybeSingle()
         // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다 (상대를 못 찾으면 대화 목록)
@@ -2586,6 +2598,8 @@ export default function Home() {
           <Stories
             posts={storyPosts}
             unavailable={storiesUnavailable}
+            openRequest={storyOpenRequest}
+            onOpenHandled={() => setStoryOpenRequest(null)}
             onPosted={fetchStories}
             onDelete={deleteStory}
             myReactions={myPostReactions}

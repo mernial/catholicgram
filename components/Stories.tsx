@@ -24,9 +24,11 @@ const ago = (iso: string) => {
   return m < 1 ? '방금' : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간`;
 };
 
-export default function Stories({ posts, unavailable, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
+export default function Stories({ posts, unavailable, openRequest, onOpenHandled, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
   posts: StoryPost[];                   // 24시간 안의 스토리 (화면이 불러옴)
   unavailable: boolean;                 // SQL 실행 전
+  openRequest?: string | null;          // 이 교우의 스토리를 바로 열기 (알림을 눌렀을 때)
+  onOpenHandled?: () => void;
   me: { id: string; name: string; avatar?: string | null } | null;
   followingIds: Set<string>;
   blockedIds: Set<string>;
@@ -124,6 +126,12 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
     setPaused(false);
     setViewerOpen(true);
   };
+  // 알림으로 들어왔을 때: 그 교우의 스토리가 불러와지면 바로 연다 (이미 지났으면 그냥 넘어감)
+  useEffect(() => {
+    if (!openRequest) return;
+    const i = groups.findIndex(g => g.userId === openRequest);
+    if (i >= 0) { open(i); onOpenHandled?.(); }
+  }, [openRequest, groups]);
   const step = (dir: 1 | -1) => {
     setPos(p => {
       const g = groups[p.user];
@@ -160,13 +168,18 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
       const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
       const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
       const url = await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
-      const { error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true });
+      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true }).select('id');
       if (error) {
         alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
         return;
       }
       URL.revokeObjectURL(draft.url);
       setDraft(null);
+      // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
+      if (created?.[0]?.id) {
+        const { data: { session } } = await supabase.auth.getSession();
+        fetch('/api/push/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` }, body: JSON.stringify({ type: 'story', id: created[0].id }) }).catch(() => {});
+      }
       await onPosted();
       setOpenMineAfterPost(true);
     } catch {
