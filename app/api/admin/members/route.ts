@@ -2,7 +2,7 @@ import { createClient, type SupabaseClient, type User } from '@supabase/supabase
 import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 관리자 전용 회원 관리
-// GET  : 가입 회원 목록과 상태 (가입일, 마지막 접속, 로그인 방식, 글 수, 신고 수, 알림 여부, 이용 정지 여부)
+// GET  : 가입 회원 목록과 상태 (가입일, 최근 접속, 접속 횟수, 로그인 방식, 글·댓글 수, 받은 하트·기도, 신고 수, 알림 여부, 이용 정지 여부)
 // POST : { action: 'suspend' | 'unsuspend' | 'dismiss-reports', userId } 이용 정지 / 해제 / 신고 해제
 //        정지하면 로그인이 막히고, 이미 로그인한 기기도 최대 1시간 안에 로그아웃된다.
 
@@ -18,6 +18,20 @@ async function requireAdmin(request: Request): Promise<{ admin: SupabaseClient; 
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
   return { admin, me: user };
+}
+
+// 수파베이스는 한 번에 1000줄까지만 주므로 나눠서 끝까지 받는다
+async function fetchAll(admin: SupabaseClient, table: string, cols: string, apply?: (q: any) => any, maxPages = 200) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const rows: Record<string, unknown>[] = [];
+  for (let page = 0; page < maxPages; page++) {
+    let q = admin.from(table).select(cols).range(page * 1000, page * 1000 + 999);
+    if (apply) q = apply(q);
+    const { data, error } = await q;
+    if (error || !data) break; // 표가 없으면 빈 목록
+    rows.push(...(data as unknown as Record<string, unknown>[]));
+    if (data.length < 1000) break;
+  }
+  return rows;
 }
 
 const countBy = (rows: Record<string, unknown>[] | null, key: string) => {
@@ -42,17 +56,31 @@ export async function GET(request: Request) {
     if (data.users.length < 1000) break;
   }
 
-  const [{ data: profiles }, { data: posts }, { data: reports }, { data: pushes }, { data: followers }, { data: privates }] = await Promise.all([
-    admin.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type, feast_day'),
-    admin.from('posts').select('user_id'),
-    admin.from('reports').select('target_user_id').eq('status', 'open'),
-    admin.from('push_subscriptions').select('user_id'),
-    admin.from('follows').select('following_id').eq('status', 'accepted'),
-    admin.from('profile_private').select('id, real_name'),
+  const [profiles, posts, comments, sessions, reports, pushes, followers, privates] = await Promise.all([
+    fetchAll(admin, 'profiles', 'id, baptismal_name, handle, avatar_url, badge_type, feast_day'),
+    fetchAll(admin, 'posts', 'user_id, like_count, pray_count, is_story'),
+    fetchAll(admin, 'comments', 'user_id'),
+    fetchAll(admin, 'app_sessions', 'user_id, last_seen_at', q => q.not('user_id', 'is', null)),
+    fetchAll(admin, 'reports', 'target_user_id', q => q.eq('status', 'open')),
+    fetchAll(admin, 'push_subscriptions', 'user_id'),
+    fetchAll(admin, 'follows', 'following_id', q => q.eq('status', 'accepted')),
+    fetchAll(admin, 'profile_private', 'id, real_name'),
   ]);
-  const realNameById = new Map((privates || []).map(p => [p.id, p.real_name as string | null]));
-  const profileById = new Map((profiles || []).map(p => [p.id, p]));
-  const postCount = countBy(posts, 'user_id');
+  const realNameById = new Map(privates.map(p => [p.id as string, p.real_name as string | null]));
+  const profileById = new Map(profiles.map(p => [p.id as string, p as Record<string, string | null>]));
+  const feedPosts = posts.filter(p => !p.is_story); // 스토리는 글 수에서 뺌
+  const postCount = countBy(feedPosts, 'user_id');
+  const sumBy = (rows: Record<string, unknown>[], key: string) => {
+    const sums = new Map<string, number>();
+    rows.forEach(r => { const id = r.user_id as string | null; if (id) sums.set(id, (sums.get(id) || 0) + (Number(r[key]) || 0)); });
+    return sums;
+  };
+  const likesReceived = sumBy(posts, 'like_count');
+  const praysReceived = sumBy(posts, 'pray_count');
+  const commentCount = countBy(comments, 'user_id');
+  const visitCount = countBy(sessions, 'user_id');
+  const lastSeen = new Map<string, string>();
+  sessions.forEach(r => { const id = r.user_id as string; const at = r.last_seen_at as string; if (id && at && (!lastSeen.has(id) || at > lastSeen.get(id)!)) lastSeen.set(id, at); });
   const reportCount = countBy(reports, 'target_user_id');
   const pushCount = countBy(pushes, 'user_id');
   const followerCount = countBy(followers, 'following_id');
@@ -67,6 +95,11 @@ export async function GET(request: Request) {
       provider: (u.app_metadata?.naver_id ? 'naver' : (u.app_metadata?.provider as string)) || null,
       created_at: u.created_at,
       last_sign_in_at: u.last_sign_in_at || null,
+      last_seen_at: lastSeen.get(u.id) || u.last_sign_in_at || null, // 앱을 마지막으로 쓴 때
+      visits: visitCount.get(u.id) || 0,                           // 앱을 연 횟수
+      comments: commentCount.get(u.id) || 0,
+      likes_received: likesReceived.get(u.id) || 0,                // 내 글이 받은 하트(공감)
+      prays_received: praysReceived.get(u.id) || 0,                // 내 글이 받은 기도
       baptismal_name: p?.baptismal_name || null,
       real_name: realNameById.get(u.id) || null,
       handle: p?.handle || null,

@@ -3021,6 +3021,7 @@ export default function Home() {
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {isAdmin && (
                       <>
+                        <button onClick={() => setShowAdminMembers(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="users" className="w-3.5 h-3.5" />회원 명단</button>
                         <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
