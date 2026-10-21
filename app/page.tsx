@@ -44,6 +44,7 @@ import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
 import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
+import LoadMore from '@/components/LoadMore';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -544,11 +545,18 @@ export default function Home() {
       latestViewingUserIdRef.current = viewingUserId;
       fetchViewingProfile(viewingUserId);
       fetchFollowData(viewingUserId);
+      fetchUserPosts(viewingUserId); // 그 사람 글 (홈에서 불러온 것만으로는 모자랄 수 있음)
     } else if (activeTab === 'messages') {
       fetchChatPartners();
       if (user) fetchUnreadMessages(user.id);
     }
   }, [activeTab, viewingUserId, user]);
+
+  // 영상 탭·태그됨은 필요할 때 따로 불러온다
+  useEffect(() => { if (activeTab === 'reels') fetchVideoPosts(); }, [activeTab]);
+  useEffect(() => {
+    if (activeTab === 'profile' && profileTab === 'tagged' && viewingProfile?.handle) fetchMentionPosts(viewingProfile.handle);
+  }, [activeTab, profileTab, viewingProfile?.handle]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -1102,27 +1110,87 @@ export default function Home() {
       .then(({ data }) => setMyPostReactions(new Set((data || []).map(r => `${r.post_id}:${r.reaction_type}`))));
   }, [user?.id, posts.length]);
 
-  const fetchPosts = async () => {
-    const { data: allPosts } = await supabase.from('posts').select('*').order('created_at', { ascending: false });
-    fetchStories();
-    if (!allPosts) return;
-    const postsData = allPosts.filter(p => !p.is_story); // 스토리는 피드·내 공간에 안 나옴
-    fetchCommentCounts(postsData.map(p => p.id));
-    // 게시물 작성자의 프로필만 가져오기
-    const authorIds = Array.from(new Set(postsData.map(p => p.user_id).filter(Boolean)));
-    const { data: profilesData } = authorIds.length > 0
-      ? await supabase.from('profiles').select('id, avatar_url, handle, badge_type, baptismal_name').in('id', authorIds)
-      : { data: [] };
-    if (profilesData) {
-      const profileMap = Object.fromEntries(profilesData.map((p: any) => [p.id, { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type, name: p.baptismal_name }]));
-      setPosts(postsData.map(p => ({ 
-        ...p, 
-        author_name: profileMap[p.user_id]?.name || p.author_name, // 현재 닉네임
-        avatar_url: profileMap[p.user_id]?.avatar_url,
-        handle: profileMap[p.user_id]?.handle,
-        badge_type: profileMap[p.user_id]?.badge_type
-      })));
+  // --- 글 목록: 한꺼번에 다 받지 않고 필요한 만큼만 (전송량 절약) ---
+  // 받아 온 글은 posts 한곳에 모아 두고(홈·내 공간·영상·탐색이 함께 씀), 홈은 최근 글부터 30개씩 더 불러온다.
+  const FEED_PAGE = 30;
+  const [feedOldest, setFeedOldest] = useState<string | null>(null); // 홈에서 지금까지 불러온 가장 오래된 글 시각
+  const [feedHasMore, setFeedHasMore] = useState(true);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
+  const authorCacheRef = useRef<Record<string, { avatar_url?: string; handle?: string; badge_type?: string; name?: string }>>({});
+
+  // 글쓴이 정보(현재 닉네임·사진·뱃지)를 붙이고 댓글 수도 불러온다
+  const decoratePosts = async (rows: Post[]): Promise<Post[]> => {
+    const list = rows.filter(p => !(p as Post & { is_story?: boolean }).is_story); // 스토리는 피드·내 공간에 안 나옴
+    if (list.length === 0) return [];
+    fetchCommentCounts(list.map(p => p.id));
+    const need = Array.from(new Set(list.map(p => p.user_id).filter(id => id && !authorCacheRef.current[id])));
+    if (need.length > 0) {
+      const { data } = await supabase.from('profiles').select('id, avatar_url, handle, badge_type, baptismal_name').in('id', need);
+      (data || []).forEach((p: { id: string; avatar_url?: string; handle?: string; badge_type?: string; baptismal_name?: string }) => {
+        authorCacheRef.current[p.id] = { avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type, name: p.baptismal_name };
+      });
     }
+    return list.map(p => {
+      const a = authorCacheRef.current[p.user_id];
+      return { ...p, author_name: a?.name || p.author_name, avatar_url: a?.avatar_url, handle: a?.handle, badge_type: a?.badge_type };
+    });
+  };
+  // 모아 둔 글에 합치기 (같은 글은 새 내용으로). window 를 주면 그 시간 범위 안에서 사라진 글(지워진 글)은 뺀다
+  const mergePosts = (list: Post[], window?: { from: string; ids: Set<string> }) => {
+    setPosts(prev => {
+      const map = new Map(prev.map(p => [p.id, p]));
+      if (window) prev.forEach(p => { if (p.created_at >= window.from && !window.ids.has(p.id)) map.delete(p.id); });
+      list.forEach(p => map.set(p.id, p));
+      return Array.from(map.values()).sort((a, b) => b.created_at.localeCompare(a.created_at));
+    });
+  };
+
+  // 홈 첫 화면 (새로고침할 때도): 최근 글 30개
+  const fetchPosts = async () => {
+    fetchStories();
+    const { data } = await supabase.from('posts').select('*').order('created_at', { ascending: false }).limit(FEED_PAGE);
+    if (!data) return;
+    const rows = data as Post[];
+    const oldest = rows.length ? rows[rows.length - 1].created_at : null;
+    mergePosts(await decoratePosts(rows), oldest ? { from: oldest, ids: new Set(rows.map(r => r.id)) } : undefined);
+    setFeedOldest(prev => (prev && oldest && prev < oldest ? prev : oldest)); // 이미 더 불러온 게 있으면 유지
+    setFeedHasMore(prev => (rows.length < FEED_PAGE ? false : prev || true));
+  };
+  // 홈에서 아래로 내리면: 그보다 오래된 글 30개 더
+  const loadMorePosts = async () => {
+    if (!feedHasMore || feedLoadingMore || !feedOldest) return;
+    setFeedLoadingMore(true);
+    const { data } = await supabase.from('posts').select('*').lt('created_at', feedOldest).order('created_at', { ascending: false }).limit(FEED_PAGE);
+    if (data) {
+      const rows = data as Post[];
+      mergePosts(await decoratePosts(rows));
+      if (rows.length) setFeedOldest(rows[rows.length - 1].created_at);
+      setFeedHasMore(rows.length >= FEED_PAGE);
+    }
+    setFeedLoadingMore(false);
+  };
+  // 한 사람의 공간: 그 사람 글만 (최근 300개)
+  const fetchUserPosts = async (userId: string) => {
+    const { data } = await supabase.from('posts').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(300);
+    if (data) mergePosts(await decoratePosts(data as Post[]));
+  };
+  // 영상 탭: 영상 글만 (최근 100개)
+  const fetchVideoPosts = async () => {
+    const { data } = await supabase.from('posts').select('*').not('video_url', 'is', null).order('created_at', { ascending: false }).limit(100);
+    if (data) mergePosts(await decoratePosts(data as Post[]));
+  };
+  // 태그됨: 그 사람(@아이디)이 언급된 글 (최근 100개)
+  const fetchMentionPosts = async (handle: string) => {
+    const { data } = await supabase.from('posts').select('*').ilike('content', `%@${handle}%`).order('created_at', { ascending: false }).limit(100);
+    if (data) mergePosts(await decoratePosts(data as Post[]));
+  };
+  // 글 하나 (알림으로 연 오래된 글 등)
+  const ensurePost = async (postId: string): Promise<Post | null> => {
+    const { data } = await supabase.from('posts').select('*').eq('id', postId).maybeSingle();
+    if (!data) return null;
+    const [p] = await decoratePosts([data as Post]);
+    if (p) mergePosts([p]);
+    return p || (data as Post);
   };
 
   // 스토리 (24시간 안, 게시글에 is_story 표시)
@@ -1513,7 +1581,7 @@ export default function Home() {
   };
   const fetchNotifications = async (userId: string) => {
     const myHandle = myHandleRef.current;
-    const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId);
+    const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId).order('created_at', { ascending: false }).limit(200); // 최근 글의 댓글만 알림
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
     setNotificationsClearedAt(storageGet(`notificationsClearedAt:${userId}`));
     try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
@@ -1674,6 +1742,7 @@ export default function Home() {
   const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
   const openPostComments = async (postId: string, commentId?: string) => {
     setCommentSheetId(postId);
+    if (!posts.some(p => p.id === postId) && !storyPosts.some(p => p.id === postId)) ensurePost(postId); // 알림으로 연 오래된 글
     setHighlightCommentId(commentId || null);
     await loadCommentsFor(postId);
     if (commentId) {
@@ -1685,8 +1754,8 @@ export default function Home() {
   const openPostById = async (postId: string) => {
     const known = posts.find(p => p.id === postId) || storyPosts.find(p => p.id === postId);
     if (known) { openPostViewer(known); return; }
-    const { data } = await supabase.from('posts').select('*').eq('id', postId).maybeSingle();
-    if (data) openPostViewer(data as Post); else openPostComments(postId);
+    const p = await ensurePost(postId);
+    if (p) openPostViewer(p); else openPostComments(postId);
   };
 
   // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글의 댓글 창에서 그 댓글로
@@ -2705,7 +2774,9 @@ export default function Home() {
           <section className="flex-1 flex flex-col gap-2 bg-[#efe6d6]">
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
+              // 홈은 불러온 범위까지만 (다른 사람 공간에서 불러온 오래된 글이 중간에 끼지 않게)
               const filtered = posts.filter(post => !blockedIds.has(post.user_id)
+                && (!feedHasMore || !feedOldest || post.created_at >= feedOldest)
                 && (feedFilter === 'all' || (feedFilter === 'media' ? hasMedia(post) : !hasMedia(post))));
               if (filtered.length === 0 && posts.length > 0) {
                 return <div className="py-16 text-center text-sm text-stone-400">{feedFilter === 'media' ? '아직 사진·영상 글이 없어요.' : '아직 글만 쓴 나눔이 없어요.'}</div>;
@@ -2804,6 +2875,7 @@ export default function Home() {
               );
             });
             })()}
+            {posts.length > 0 && <LoadMore hasMore={feedHasMore} loading={feedLoadingMore} onMore={loadMorePosts} />}
           </section>
         </>
       )}
