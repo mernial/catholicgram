@@ -46,6 +46,7 @@ import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
 import LettersModal from '@/components/LettersModal';
+import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -206,6 +207,7 @@ export default function Home() {
   const [content, setContent] = useState('');
   const [composerPhotoIdx, setComposerPhotoIdx] = useState(0);   // 글쓰기: 크게 보이는 사진
   const [composerVisOpen, setComposerVisOpen] = useState(false);   // 글쓰기: 공개 범위 고르기 펼침
+  const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const [composerVisibility, setComposerVisibility] = useState<Visibility>('public'); // 새 글 공개 범위 (마지막 선택 기억)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -2283,7 +2285,8 @@ export default function Home() {
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
-    if (!showMusicPicker && !showVideoEditor) setShowComposer(false);
+    if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) setShowComposer(false);
+    setEditingPhotoIdx(null);
     if (showEditVideoEditor) setShowEditVideoEditor(false); else setEditingPostId(null);
     setFollowList(null);
     setShowAdminStats(false);
@@ -2793,6 +2796,7 @@ export default function Home() {
                     <div className="relative bg-stone-100 flex justify-center">
                       <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
                       {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
+                      <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">✂️ 자르기·가리기</button>
                     </div>
                     <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
                       {previewUrls.map((url, idx) => (
@@ -2886,6 +2890,19 @@ export default function Home() {
                 <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : '공유'}</button>
               </div>
             </form>
+            {/* 사진 자르기·가리기 */}
+            {editingPhotoIdx !== null && selectedFiles[editingPhotoIdx] && (
+              <PhotoEditor
+                file={selectedFiles[editingPhotoIdx]}
+                onCancel={() => setEditingPhotoIdx(null)}
+                onDone={edited => {
+                  const idx = editingPhotoIdx;
+                  setSelectedFiles(prev => prev.map((f, i) => (i === idx ? edited : f)));
+                  setPreviewUrls(prev => prev.map((u, i) => { if (i !== idx) return u; URL.revokeObjectURL(u); return URL.createObjectURL(edited); }));
+                  setEditingPhotoIdx(null);
+                }}
+              />
+            )}
           </div>
             );
           })()}
