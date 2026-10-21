@@ -204,6 +204,9 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState('');
+  const [composerPhotoIdx, setComposerPhotoIdx] = useState(0);   // 글쓰기: 크게 보이는 사진
+  const [composerVisOpen, setComposerVisOpen] = useState(false);   // 글쓰기: 공개 범위 고르기 펼침
+  const captionRef = useRef<HTMLTextAreaElement>(null);
   const [composerVisibility, setComposerVisibility] = useState<Visibility>('public'); // 새 글 공개 범위 (마지막 선택 기억)
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
@@ -2755,86 +2758,137 @@ export default function Home() {
               <button onClick={dismissFeastPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
             </div>
           )}
-          {/* 글쓰기 창: 오른쪽 아래 + 버튼을 눌렀을 때만 열림 (닫아도 쓰던 글은 남아 있음) */}
-          {showComposer && (
-          <div className="fixed inset-0 bg-black/50 z-[70] flex items-end sm:items-center justify-center" onClick={() => setShowComposer(false)}>
-          <section className="bg-white w-full sm:w-[30rem] max-w-xl max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="font-bold text-stone-900">새 나눔 쓰기</h2>
-              <button type="button" onClick={() => setShowComposer(false)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
-            </div>
-            <form onSubmit={handleCreatePost} className="flex flex-col gap-3">
-              <textarea autoFocus value={content} onChange={(e) => setContent(e.target.value)} placeholder={user ? "오늘 마음속 기도나 묵상을 들려주세요... (#해시태그, @아이디로 교우 태그)" : '로그인 후 나눌 수 있습니다.'} rows={5} className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
-              {user && <MentionSuggest value={content} onChange={setContent} excludeId={user.id} />}
-              {user && content.length > 0 && composerTagSuggestions.length > 0 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
-                  <span className="text-[0.75rem] text-stone-500 shrink-0">추천 태그</span>
-                  {composerTagSuggestions.map(t => (
-                    <button key={t} type="button" onClick={() => setContent(c => `${c.trimEnd()} #${t} `)} className="shrink-0 text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-2.5 py-1">#{t}</button>
-                  ))}
-                </div>
-              )}
-              {composerMusic && (
-                <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                  <Icon name="music" className="w-4 h-4 text-violet-700" />
-                  <span className="flex-1 min-w-0 text-xs font-bold text-stone-700 truncate">{composerMusic.title}</span>
-                  {canAdjustMusic(composerMusic.value) && (
-                    <button type="button" onClick={() => openMusicSegment('composer', composerMusic)} className="shrink-0 text-[0.75rem] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-2 py-1">{musicRangeLabel(composerMusic.value) || '구간'} · 조절</button>
-                  )}
-                  <button type="button" onClick={() => setComposerMusic(null)} className="text-stone-400 hover:text-stone-700 text-base leading-none px-1" aria-label="음악 빼기">×</button>
-                </div>
-              )}
-              {videoStatus && <p className="text-xs text-violet-700 font-bold"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{videoStatus}</p>}
-              {videoPreviewUrl && (
-                <div className="flex items-end gap-2">
-                <div className="relative w-32 rounded-xl overflow-hidden shadow-sm bg-black [container-type:inline-size]">
-                  <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full aspect-[4/5] object-cover" />
-                  <OverlayLayer overlays={composerOverlays} />
-                  <span className="absolute bottom-1 left-1 text-[0.6875rem] text-white bg-black/50 rounded px-1"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />숏폼</span>
-                  <button type="button" onClick={clearVideo} className="absolute top-1 right-1 bg-black/60 text-white w-5 h-5 rounded-full flex items-center justify-center text-xs">×</button>
-                </div>
-                <button type="button" onClick={() => setShowVideoEditor(true)} className="text-xs font-bold px-3 py-2 rounded-xl bg-violet-50 text-violet-800 border border-violet-100"><Icon name="sparkle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />꾸미기</button>
-                </div>
-              )}
-              {previewUrls.length > 0 && (
-                <div className="flex gap-2 pt-1">
-                  {previewUrls.map((url, idx) => (
-                    <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden shadow-sm">
-                      <img loading="lazy" src={url} alt="미리보기" className="w-full h-full object-cover" />
-                      <button type="button" onClick={() => removeFile(idx)} className="absolute top-0 right-0 bg-black/60 text-white w-4 h-4 flex items-center justify-center text-[0.75rem]">×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {user && <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />}
-              <div className="flex items-center justify-between pt-1">
-                <div>
-                  <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <label htmlFor="photo-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                      <Icon name="camera" className="w-[1.125rem] h-[1.125rem] text-stone-700" />사진
-                    </label>
-                    {user && (
-                      <>
-                        <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
-                        <label htmlFor="video-upload" className="cursor-pointer text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                          <Icon name="film" className="w-[1.125rem] h-[1.125rem] text-stone-700" />영상
-                        </label>
-                      </>
-                    )}
-                    {user && (
-                      <button type="button" onClick={() => setShowMusicPicker(true)} className="text-xs font-semibold text-stone-600 bg-stone-100 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5">
-                        <Icon name="music" className="w-[1.125rem] h-[1.125rem] text-violet-700" />음악
-                      </button>
-                    )}
+          {/* 글쓰기: 인스타그램 '새 게시물'처럼 전체 화면 (닫아도 쓰던 글은 남아 있음) */}
+          {showComposer && (() => {
+            const canShare = !loading && !videoStatus && !!(content.trim() || selectedFiles.length > 0 || selectedVideo);
+            const shownIdx = Math.min(composerPhotoIdx, Math.max(0, previewUrls.length - 1));
+            const insertToken = (token: string) => {
+              setContent(c => (c && !/\s$/.test(c) ? `${c} ${token}` : `${c}${token}`));
+              setTimeout(() => { const el = captionRef.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+            };
+            const row = 'w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-stone-100 active:bg-stone-50';
+            return (
+          <div className="fixed inset-0 z-[70] bg-white flex flex-col" role="dialog" aria-label="새 게시물">
+            <form onSubmit={handleCreatePost} className="flex-1 min-h-0 flex flex-col">
+              {/* 맨 위: ✕ · 새 게시물 · 공유 */}
+              <div className="shrink-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 border-b border-stone-200">
+                <button type="button" onClick={() => setShowComposer(false)} className="w-11 h-11 flex items-center justify-center text-stone-800 text-3xl leading-none" aria-label="닫기">×</button>
+                <h2 className="font-bold text-[1.0625rem] text-stone-900">새 게시물</h2>
+                <button type="submit" disabled={!canShare} className="px-3 h-11 text-[1rem] font-bold text-blue-600 disabled:text-stone-300">{loading ? '올리는 중' : '공유'}</button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                {/* 사진·영상 크게 */}
+                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
+                <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
+                {videoPreviewUrl ? (
+                  <div className="relative bg-black flex justify-center [container-type:inline-size]">
+                    <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
+                    <OverlayLayer overlays={composerOverlays} />
+                    <button type="button" onClick={() => setShowVideoEditor(true)} className="absolute bottom-3 left-3 px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow"><Icon name="sparkle" className="w-4 h-4 inline-block align-[-0.2em] mr-1" />영상 꾸미기</button>
+                    <button type="button" onClick={clearVideo} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white text-xl leading-none" aria-label="영상 빼기">×</button>
                   </div>
+                ) : previewUrls.length > 0 ? (
+                  <>
+                    <div className="relative bg-stone-100 flex justify-center">
+                      <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
+                      {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
+                    </div>
+                    <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
+                      {previewUrls.map((url, idx) => (
+                        <div key={idx} className={`relative shrink-0 w-16 h-16 rounded-lg overflow-hidden ${idx === shownIdx ? 'ring-2 ring-blue-500' : ''}`}>
+                          <button type="button" onClick={() => setComposerPhotoIdx(idx)} className="w-full h-full"><img src={url} alt="" className="w-full h-full object-cover" /></button>
+                          <button type="button" onClick={() => { removeFile(idx); setComposerPhotoIdx(i => Math.max(0, i >= idx ? i - 1 : i)); }} className="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/65 text-white text-[0.8125rem] leading-none" aria-label="사진 빼기">×</button>
+                        </div>
+                      ))}
+                      {previewUrls.length < MAX_PHOTOS && (
+                        <label htmlFor="photo-upload" className="shrink-0 w-16 h-16 rounded-lg border-2 border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-500 cursor-pointer">
+                          <Icon name="plus" className="w-5 h-5" /><span className="text-[0.6875rem]">추가</span>
+                        </label>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="bg-stone-50 border-b border-stone-100 px-4 py-6 flex flex-col items-center gap-3">
+                    <div className="flex gap-3 w-full max-w-sm">
+                      <label htmlFor="photo-upload" className="flex-1 cursor-pointer rounded-2xl bg-white border border-stone-200 py-5 flex flex-col items-center gap-1.5 shadow-sm">
+                        <Icon name="camera" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">사진 선택</span><span className="text-[0.75rem] text-stone-400">최대 {MAX_PHOTOS}장</span>
+                      </label>
+                      <label htmlFor="video-upload" className="flex-1 cursor-pointer rounded-2xl bg-white border border-stone-200 py-5 flex flex-col items-center gap-1.5 shadow-sm">
+                        <Icon name="film" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">영상 선택</span><span className="text-[0.75rem] text-stone-400">1분 이하</span>
+                      </label>
+                    </div>
+                    <p className="text-[0.8125rem] text-stone-400">사진 없이 글만 써도 돼요</p>
+                  </div>
+                )}
+                {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-700 font-bold bg-violet-50"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{videoStatus}</p>}
+
+                {/* 프로필 사진 + 문구 입력 */}
+                <div className="flex gap-3 px-4 pt-4 pb-2">
+                  {profile?.avatar_url
+                    ? <img src={profile.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
+                    : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center shrink-0">{profile?.baptismal_name?.[0] || '교'}</span>}
+                  <textarea ref={captionRef} value={content} onChange={(e) => setContent(e.target.value)} placeholder="문구 입력... (기도, 묵상, 감사한 일을 나눠 주세요)" rows={5} className="flex-1 min-w-0 py-2 text-[1rem] leading-relaxed bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
                 </div>
-                <button type="submit" disabled={loading || !!videoStatus || (!content.trim() && selectedFiles.length === 0 && !selectedVideo)} className="bg-stone-900 text-white px-5 py-2 rounded-xl text-xs font-semibold hover:bg-stone-800 disabled:opacity-40 whitespace-nowrap shrink-0">{loading ? (videoStatus || '올리는 중...') : '나눔 올리기'}</button>
+                <div className="px-4">
+                  {user && <MentionSuggest value={content} onChange={setContent} excludeId={user.id} />}
+                </div>
+                {user && composerTagSuggestions.length > 0 && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto px-4 pb-3">
+                    {composerTagSuggestions.map(t => (
+                      <button key={t} type="button" onClick={() => insertToken(`#${t} `)} className="shrink-0 text-[0.8125rem] text-blue-700 bg-blue-50 border border-blue-100 rounded-full px-3 py-1">#{t}</button>
+                    ))}
+                  </div>
+                )}
+
+                {/* 인스타그램처럼 아래 목록 */}
+                <div className="border-t border-stone-100">
+                  <button type="button" onClick={() => setShowMusicPicker(true)} className={row}>
+                    <Icon name="music" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[0.9375rem] text-stone-900">음악 추가</span>
+                      {composerMusic && <span className="block text-[0.8125rem] text-violet-700 truncate">{composerMusic.title}{musicRangeLabel(composerMusic.value) ? ` · ${musicRangeLabel(composerMusic.value)}` : ''}</span>}
+                    </span>
+                    <span className="text-stone-400 text-xl">›</span>
+                  </button>
+                  {composerMusic && (
+                    <div className="flex gap-2 px-4 py-2 border-b border-stone-100 bg-violet-50/50">
+                      {canAdjustMusic(composerMusic.value) && <button type="button" onClick={() => openMusicSegment('composer', composerMusic)} className="text-[0.8125rem] font-bold text-violet-700 bg-white border border-violet-200 rounded-lg px-3 py-1.5">구간 조절</button>}
+                      <button type="button" onClick={() => setComposerMusic(null)} className="text-[0.8125rem] font-bold text-stone-600 bg-white border border-stone-200 rounded-lg px-3 py-1.5">음악 빼기</button>
+                    </div>
+                  )}
+                  <button type="button" onClick={() => insertToken('@')} className={row}>
+                    <Icon name="user" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[0.9375rem] text-stone-900">사람 태그하기</span>
+                    <span className="text-stone-400 text-xl">›</span>
+                  </button>
+                  <button type="button" onClick={() => insertToken('#')} className={row}>
+                    <Icon name="tag" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[0.9375rem] text-stone-900">해시태그 추가</span>
+                    <span className="text-stone-400 text-xl">›</span>
+                  </button>
+                  <button type="button" onClick={() => setComposerVisOpen(o => !o)} className={row}>
+                    <Icon name={VISIBILITY[composerVisibility].icon} className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[0.9375rem] text-stone-900">공개 범위</span>
+                    <span className="text-[0.875rem] text-stone-500">{VISIBILITY[composerVisibility].label}</span>
+                    <span className="text-stone-400 text-xl">{composerVisOpen ? '⌄' : '›'}</span>
+                  </button>
+                  {composerVisOpen && user && (
+                    <div className="px-4 py-3 border-b border-stone-100">
+                      <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 맨 아래 큰 공유 단추 */}
+              <div className="shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-stone-200 bg-white">
+                <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : '공유'}</button>
               </div>
             </form>
-          </section>
           </div>
-          )}
+            );
+          })()}
 
           <section className="flex-1 flex flex-col gap-2 bg-[#efe6d6]">
             {(() => {
