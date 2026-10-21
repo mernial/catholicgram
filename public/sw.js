@@ -106,18 +106,25 @@ self.addEventListener('message', (event) => {
 });
 
 // 열려 있는 창을 '먼저' 앞으로 가져오고(휴대폰은 알림을 누른 직후에만 허용), 그다음 해당 화면으로 이동시킨다.
-// 앞으로 가져오지 못하면 새로 연다.
+// 앱이 '알겠다'고 답하지 않으면(뒤에서 잠들어 있었거나 예전 버전) 그 창을 그 주소로 새로 연다.
+const tellOpen = (client, url, wait) => new Promise((resolve) => {
+  const channel = new MessageChannel();
+  const timer = setTimeout(() => resolve(false), wait);
+  channel.port1.onmessage = () => { clearTimeout(timer); resolve(true); };
+  try { client.postMessage({ type: 'open-url', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
+});
 const openInClient = async (client, url) => {
   let focused = null;
   try { focused = 'focus' in client ? await client.focus() : null; } catch { focused = null; }
-  if (!focused) return self.clients.openWindow(url);
-  const handled = await new Promise((resolve) => {
-    const channel = new MessageChannel();
-    const timer = setTimeout(() => resolve(false), 1500);
-    channel.port1.onmessage = () => { clearTimeout(timer); resolve(true); };
-    try { focused.postMessage({ type: 'open-url', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
-  });
-  if (!handled && 'navigate' in focused) await focused.navigate(url).catch(() => {});
+  if (!focused) {
+    // 앞으로 가져오지 못하면 새로 열고, 그것도 안 되면 그 창을 그 주소로 옮긴다
+    const opened = await self.clients.openWindow(url).catch(() => null);
+    if (opened) return opened;
+    if ('navigate' in client) return client.navigate(url).catch(() => null);
+    return null;
+  }
+  if (await tellOpen(focused, url, 1200)) return focused;
+  if ('navigate' in focused) return (await focused.navigate(url).catch(() => null)) || focused;
   return focused;
 };
 
@@ -131,14 +138,14 @@ self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
   event.waitUntil((async () => {
-    await writePending(url);
-    const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
-      .filter((c) => new URL(c.url).origin === self.location.origin);
-    const meta = await readMeta();
+    // 앞으로 가져오기는 누른 직후에만 허용되므로 기다리지 않고 바로. 갈 곳은 그사이에 적어 둔다.
+    const saving = writePending(url);
+    const [all, meta] = await Promise.all([self.clients.matchAll({ type: 'window', includeUncontrolled: true }), readMeta()]);
+    const windows = all.filter((c) => new URL(c.url).origin === self.location.origin);
     // 1) 이미 열려 있는 앱 창 → 2) 앱이 설치된 휴대폰이면 앱을 새로 → 3) 열린 탭 → 4) 새 창
     const appWindow = windows.find((c) => meta.standalone.includes(c.id));
-    if (appWindow) return openInClient(appWindow, url);
-    if (meta.hasApp || windows.length === 0) return self.clients.openWindow(url);
-    return openInClient(windows[0], url);
+    const target = appWindow || (!meta.hasApp && windows[0]) || null;
+    const done = target ? openInClient(target, url) : self.clients.openWindow(url);
+    await Promise.all([saving, done]);
   })().catch(() => self.clients.openWindow(url)));
 });
