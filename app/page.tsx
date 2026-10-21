@@ -32,9 +32,9 @@ import Stories from '@/components/Stories';
 import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
-import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
+import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
-import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
+import { UPLOAD_CACHE, PHOTO_OPTIONS, uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -155,11 +155,13 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('No 2d context');
-  canvas.width = pixelCrop.width;
-  canvas.height = pixelCrop.height;
-  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, pixelCrop.width, pixelCrop.height);
+  // 프로필 사진은 작은 동그라미로만 보이므로 400px 로 줄여 저장 (원본 크기면 피드마다 수 MB씩 전송됨)
+  const size = Math.min(400, Math.round(pixelCrop.width));
+  canvas.width = size;
+  canvas.height = Math.round(size * pixelCrop.height / pixelCrop.width);
+  ctx.drawImage(image, pixelCrop.x, pixelCrop.y, pixelCrop.width, pixelCrop.height, 0, 0, canvas.width, canvas.height);
   return new Promise((resolve, reject) => {
-    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.9);
+    canvas.toBlob((blob) => { if (blob) resolve(blob); else reject(new Error('Canvas is empty')); }, 'image/jpeg', 0.85);
   });
 }
 
@@ -479,7 +481,7 @@ export default function Home() {
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
     const savedVisibility = storageGet('postVisibility');
     if (savedVisibility === 'followers' || savedVisibility === 'private') setComposerVisibility(savedVisibility);
-    const intentionTimer = setInterval(fetchIntentions, 60 * 1000);
+    const intentionTimer = setInterval(() => { if (document.visibilityState !== 'hidden') fetchIntentions(); }, 3 * 60 * 1000);
 
     // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
     let hiddenAt = 0;
@@ -551,7 +553,14 @@ export default function Home() {
     let interval: NodeJS.Timeout;
     if (activeTab === 'chat' && currentChatUser && user) {
       fetchChatMessages(currentChatUser.id);
-      interval = setInterval(() => fetchChatMessages(currentChatUser.id), 3000);
+      // 3초마다 새 메시지만 받고, 15초마다 한 번 전체를 다시 받는다(읽음·삭제·하트 반영). 앱이 뒤에 있으면 쉰다
+      let tick = 0;
+      interval = setInterval(() => {
+        if (document.visibilityState === 'hidden') return;
+        tick += 1;
+        if (tick % 5 === 0) fetchChatMessages(currentChatUser.id);
+        else fetchNewChatMessages(currentChatUser.id);
+      }, 3000);
     }
     return () => clearInterval(interval);
   }, [activeTab, currentChatUser, user]);
@@ -883,6 +892,27 @@ export default function Home() {
     });
   };
 
+  // 마지막으로 받은 메시지 뒤에 온 것만 받아 덧붙인다 (전송량 절약)
+  const chatMessagesRef = useRef<Message[]>([]);
+  chatMessagesRef.current = chatMessages;
+  const fetchNewChatMessages = async (partnerId: string) => {
+    if (!user) return;
+    const list = chatMessagesRef.current;
+    const last = list.length ? list[list.length - 1].created_at : null;
+    if (!last) { fetchChatMessages(partnerId); return; }
+    const { data } = await supabase.from('messages').select('*')
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
+      .gt('created_at', last)
+      .order('created_at', { ascending: true });
+    if (!data || data.length === 0) return;
+    setChatMessages(prev => {
+      const seen = new Set(prev.map(m => String(m.id)));
+      const fresh = data.filter(m => !seen.has(String(m.id)));
+      return fresh.length ? [...prev, ...fresh] : prev;
+    });
+    if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
+  };
+
   // 메시지 하트: 두 번 누르면 그 메시지 밑에 하트 (다시 두 번 누르면 취소). 대화하는 두 사람 모두 보임
   const [messageHearts, setMessageHearts] = useState<Record<string, string[]>>({}); // 메시지 id → 하트 누른 사람들
   const [heartPop, setHeartPop] = useState<string | null>(null);
@@ -1119,9 +1149,9 @@ export default function Home() {
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
-      const compressed = await imageCompression(file, { maxSizeMB: 1.5, maxWidthOrHeight: 1920, useWebWorker: true });
+      const compressed = await imageCompression(file, PHOTO_OPTIONS);
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed);
+      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
       if (!uploadError) {
         const { data: { publicUrl } } = supabase.storage.from('community-images').getPublicUrl(fileName);
         uploadedUrls.push(publicUrl);
@@ -1135,12 +1165,12 @@ export default function Home() {
       let posterUrl: string | null = null;
       if (poster) {
         const posterName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_poster.jpg`;
-        const { error: posterError } = await supabase.storage.from('community-images').upload(posterName, poster, { contentType: 'image/jpeg' });
+        const { error: posterError } = await supabase.storage.from('community-images').upload(posterName, poster, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
         if (!posterError) posterUrl = supabase.storage.from('community-images').getPublicUrl(posterName).data.publicUrl;
       }
       const ext = selectedVideo.type.includes('webm') ? 'webm' : selectedVideo.type.includes('quicktime') ? 'mov' : 'mp4';
       const videoName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-      const { error: videoError } = await supabase.storage.from('post-videos').upload(videoName, selectedVideo, { contentType: selectedVideo.type || 'video/mp4' });
+      const { error: videoError } = await supabase.storage.from('post-videos').upload(videoName, selectedVideo, { contentType: selectedVideo.type || 'video/mp4', cacheControl: UPLOAD_CACHE });
       setVideoStatus('');
       if (videoError) {
         alert(/bucket|not found/i.test(videoError.message)
@@ -1361,15 +1391,16 @@ export default function Home() {
     if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); return; }
     if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`1분 이하의 영상만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); return; }
     let video: Blob = file;
-    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+    // 큰 영상은 720p 로 줄여서 올린다 (보는 사람마다 전송량이 들므로). 줄이지 못하면 원본이 한도 안일 때만 그대로
+    if (file.size > SHRINK_OVER_MB * 1024 * 1024) {
       setVideoStatus('영상 용량을 줄이는 중... 0%');
-      const shrunk = await shrinkVideo(file, r => setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`));
+      const shrunk = await shrinkVideo(file, r => setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`)).catch(() => null);
       setVideoStatus('');
-      if (!shrunk || shrunk.size > MAX_VIDEO_MB * 1024 * 1024) {
+      if (shrunk && shrunk.size < file.size) video = shrunk;
+      if (video.size > MAX_VIDEO_MB * 1024 * 1024) {
         alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n휴대폰 카메라 설정에서 화질을 낮추거나(예: 720p), 더 짧게 찍어서 올려주세요.`);
         return;
       }
-      video = shrunk;
     }
     // 영상은 사진 대신 하나만 (배경음악은 함께 넣을 수 있음)
     setSelectedFiles([]); setPreviewUrls([]);
@@ -1870,7 +1901,8 @@ export default function Home() {
       if (chatWith && cur.tab === 'chat' && cur.chatUser?.id === chatWith) return;
       if (storageGet('alertSound') !== 'off') playAlertSound();
     };
-    const interval = setInterval(() => refreshAlerts(user.id), 20000);
+    // 휴대폰 알림(푸시)이 따로 오므로 1분마다만 확인, 앱이 뒤에 있으면 쉰다 (전송량 절약)
+    const interval = setInterval(() => { if (document.visibilityState !== 'hidden') refreshAlerts(user.id); }, 60000);
     const onVisible = () => { if (document.visibilityState === 'visible') refreshAlerts(user.id); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -2048,7 +2080,7 @@ export default function Home() {
     try {
       const croppedBlob = await getCroppedImg(avatarFile, croppedAreaPixels);
       const fileName = `${user.id}_${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, croppedBlob, { contentType: 'image/jpeg' });
+      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, croppedBlob, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
@@ -2421,7 +2453,7 @@ export default function Home() {
             <div className="flex items-center gap-2 min-w-0">
               {currentChatUser?.avatar_url ? (
                 <button onClick={() => setAvatarPreview({ url: currentChatUser.avatar_url!, name: currentChatUser.baptismal_name })} className="shrink-0" aria-label="프로필 사진 크게 보기">
-                  <img src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                  <img loading="lazy" src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 </button>
               ) : (
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{currentChatUser?.baptismal_name?.[0]}</div>
@@ -2441,7 +2473,7 @@ export default function Home() {
         ) : (
           <>
             <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0" onClick={goToHome}>
-              <img src="/icon-v2-192.png" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
+              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
               <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg whitespace-nowrap">가톨릭그램</h1>
             </div>
             <div className="min-w-0">
@@ -2541,7 +2573,7 @@ export default function Home() {
           )}
           {!isStandalone && !installBannerDismissed && !isKakaoInApp && (
             <div className="px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex items-center gap-3">
-              <img src="/icon-v2-192.png" alt="" className="w-8 h-8 rounded-lg" />
+              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-8 h-8 rounded-lg" />
               <p className="flex-1 text-xs text-stone-700 leading-snug">
                 <b>가톨릭그램</b>을 홈 화면에 추가하고<br />앱처럼 바로 열어보세요
               </p>
@@ -2567,7 +2599,7 @@ export default function Home() {
                     <div key={f.id} className="flex items-center gap-2.5">
                       <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
                         {f.avatar_url
-                          ? <img src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
+                          ? <img loading="lazy" src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                           : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{f.baptismal_name[0]}</div>}
                         <span className="text-sm text-stone-800 truncate"><b>{f.baptismal_name}</b>님의 축일이에요</span>
                       </button>
@@ -2631,7 +2663,7 @@ export default function Home() {
                 <div className="flex gap-2 pt-1">
                   {previewUrls.map((url, idx) => (
                     <div key={idx} className="relative w-16 h-16 rounded-xl overflow-hidden shadow-sm">
-                      <img src={url} alt="미리보기" className="w-full h-full object-cover" />
+                      <img loading="lazy" src={url} alt="미리보기" className="w-full h-full object-cover" />
                       <button type="button" onClick={() => removeFile(idx)} className="absolute top-0 right-0 bg-black/60 text-white w-4 h-4 flex items-center justify-center text-[0.75rem]">×</button>
                     </div>
                   ))}
@@ -2689,7 +2721,7 @@ export default function Home() {
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
                     <button onClick={() => goToProfile(post.user_id)} className="shrink-0" aria-label={`${post.author_name}님 공간`}>
                       {post.avatar_url
-                        ? <img src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
+                        ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
                         : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
@@ -2781,7 +2813,7 @@ export default function Home() {
             <div className="flex items-center gap-5">
               {(() => {
                 const avatar = viewingProfile?.avatar_url ? (
-                  <img src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
+                  <img loading="lazy" src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-[5.5rem] h-[5.5rem] bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold">
                     {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
@@ -2917,10 +2949,10 @@ export default function Home() {
                     : (post.images?.length || 0) > 1 && <span className="absolute bottom-1.5 right-1.5 z-10 text-white drop-shadow"><Icon name="stack" fill className="w-5 h-5" /></span>}
                   {post.video_url ? (
                     post.video_poster
-                      ? <img src={post.video_poster} alt="영상" className="w-full h-full object-cover" />
+                      ? <img loading="lazy" src={post.video_poster} alt="영상" className="w-full h-full object-cover" />
                       : <video src={`${post.video_url}#t=0.5`} muted playsInline preload="metadata" className="w-full h-full object-cover" />
                   ) : post.images && post.images.length > 0 ? (
-                    <img src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
+                    <img loading="lazy" src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full p-2 text-[0.75rem] text-stone-600 flex items-center justify-center text-center">{post.content}</div>
                   )}
@@ -2989,7 +3021,7 @@ export default function Home() {
                       <div className="absolute left-0 right-14 bottom-0 z-10 px-4 pb-4 pt-16 bg-gradient-to-t from-black/75 via-black/30 to-transparent text-white flex flex-col gap-2">
                         <button onClick={() => goToProfile(post.user_id)} className="self-start flex items-center gap-2">
                           {post.avatar_url
-                            ? <img src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
+                            ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
                             : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
                           <span className="font-bold text-[0.9375rem]">{post.author_name}</span>
                         </button>
@@ -3029,7 +3061,7 @@ export default function Home() {
               chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => (
                 <button key={partner.id} onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
                   {partner.avatar_url ? (
-                    <img src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
+                    <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{partner.baptismal_name[0]}</div>
                   )}
@@ -3086,7 +3118,7 @@ export default function Home() {
                             <div className="mt-1.5 pt-1.5 border-t border-dashed border-stone-300">
                               <p className="text-[0.75rem] font-bold text-red-500">원래 내용 · 관리자만 보여요</p>
                               {original.image_url && (
-                                <img src={original.image_url} alt="지운 사진" onClick={() => setSelectedImage(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
+                                <img loading="lazy" src={original.image_url} alt="지운 사진" onClick={() => setSelectedImage(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
                               )}
                               {original.content && !(original.image_url && original.content === PHOTO_ONLY_TEXT) && (
                                 <p className="mt-0.5 text-stone-600 whitespace-pre-wrap break-words">{original.content}</p>
@@ -3106,7 +3138,7 @@ export default function Home() {
                             className={`px-4 py-2 rounded-2xl text-[1rem] select-none [touch-action:manipulation] cursor-pointer ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {msg.image_url && (
-                              <img
+                              <img loading="lazy"
                                 src={msg.image_url}
                                 alt="보낸 사진"
                                 onClick={e => { if (isMe) return; e.stopPropagation(); setSelectedImage(msg.image_url || null); }}
@@ -3175,7 +3207,7 @@ export default function Home() {
           <div className="bg-white w-full sm:w-80 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-stone-100 flex items-center gap-3">
               {actionModalUser.avatar_url ? (
-                <img src={actionModalUser.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
+                <img loading="lazy" src={actionModalUser.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
               ) : (
                 <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{actionModalUser.baptismal_name[0]}</div>
               )}
@@ -3386,7 +3418,7 @@ export default function Home() {
         const avatarOf = (uid?: string | null, name?: string) => {
           const url = uid ? (uid === user?.id ? profile?.avatar_url : authorByUser[uid]?.avatar) : undefined;
           return url
-            ? <img src={url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
+            ? <img loading="lazy" src={url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
             : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{name?.[0] || '교'}</span>;
         };
         return (
@@ -3530,7 +3562,7 @@ export default function Home() {
               {followList.items?.map(p => (
                 <button key={p.id} onClick={() => { setFollowList(null); goToProfile(p.id); }} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
                   {p.avatar_url
-                    ? <img src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
+                    ? <img loading="lazy" src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
                     : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{p.baptismal_name?.[0]}</span>}
                   <span className="min-w-0">
                     <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /></span>
@@ -3555,7 +3587,7 @@ export default function Home() {
                 <h2 className="font-bold text-stone-900">글 고치기</h2>
                 <button onClick={() => setEditingPostId(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
               </div>
-              {thumb && <img src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />}
+              {thumb && <img loading="lazy" src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />}
               <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
               {user && <MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} />}
               {/* 이모티콘 바로 넣기 */}
@@ -3693,7 +3725,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
-              <img src="/icon-v2-192.png" alt="" className="w-12 h-12 rounded-xl" />
+              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-12 h-12 rounded-xl" />
               <div>
                 <h2 className="font-bold text-stone-900">{!isIOS && installPrompt ? '가톨릭그램 앱 설치하기' : '홈 화면에 추가하기'}</h2>
                 <p className="text-xs text-stone-500">{isIOS ? '홈 화면에 추가해야 휴대폰 알림도 받을 수 있어요' : '앱처럼 아이콘을 눌러 바로 열 수 있어요'}</p>
@@ -3786,7 +3818,7 @@ export default function Home() {
                 <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
-                      <img src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
+                      <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
                       <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
                     )}
@@ -3837,7 +3869,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAuthModal(false)}>
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200" onClick={e => e.stopPropagation()}>
             <div className="text-center">
-              <img src="/icon-v2-192.png" alt="" className="w-14 h-14 rounded-2xl shadow-md mx-auto" />
+              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-14 h-14 rounded-2xl shadow-md mx-auto" />
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
               <p className="text-xs text-stone-500 mt-1.5">카카오·구글·네이버 계정으로 간편하게 시작하세요</p>
             </div>
@@ -3927,10 +3959,10 @@ export default function Home() {
                 style={{ ...pos, transition: viewerAnimating ? 'top 0.26s ease-out, bottom 0.26s ease-out' : 'none' }}
               >
                 <div className="p-4 flex items-center gap-2.5 border-b border-stone-100">
-                  {peek.avatar_url ? <img src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
+                  {peek.avatar_url ? <img loading="lazy" src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
-                {thumb ? <div className="bg-black flex justify-center"><img src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
+                {thumb ? <div className="bg-black flex justify-center"><img loading="lazy" src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
               </div>
             );
           })()}
@@ -3946,7 +3978,7 @@ export default function Home() {
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
               <button onClick={() => { const d = selectedPostDetail; setSelectedPostDetail(null); handleAvatarClick({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 {selectedPostDetail.avatar_url ? (
-                  <img src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                  <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(selectedPostDetail.author_name || '교')[0]}</div>
                 )}
@@ -3969,7 +4001,7 @@ export default function Home() {
                     const r = viewerRatios[src];
                     const frame = frameRatio(r);
                     return (
-                      <img
+                      <img loading="lazy"
                         src={src}
                         alt="게시물 사진"
                         onClick={viewerImageTap}
@@ -4061,7 +4093,7 @@ export default function Home() {
       {/* 프로필 사진 크게 보기 (인스타그램처럼 동그랗게 크게) */}
       {avatarPreview && (
         <div className="fixed inset-0 z-[95] bg-black/85 flex flex-col items-center justify-center gap-5 p-6 animate-fade-in" onClick={() => setAvatarPreview(null)} role="dialog" aria-label="프로필 사진">
-          <img src={avatarPreview.url} alt={`${avatarPreview.name}님 프로필 사진`} className="w-[min(80vw,22rem)] aspect-square rounded-full object-cover shadow-2xl border-4 border-white/20" />
+          <img loading="lazy" src={avatarPreview.url} alt={`${avatarPreview.name}님 프로필 사진`} className="w-[min(80vw,22rem)] aspect-square rounded-full object-cover shadow-2xl border-4 border-white/20" />
           <p className="text-white text-xl font-bold">{avatarPreview.name}</p>
           <button onClick={() => setAvatarPreview(null)} className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
         </div>
@@ -4069,7 +4101,7 @@ export default function Home() {
 
       {selectedImage && (
         <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 cursor-pointer" onClick={() => setSelectedImage(null)}>
-          <img src={selectedImage} alt="확대 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          <img loading="lazy" src={selectedImage} alt="확대 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
 
@@ -4236,7 +4268,7 @@ export default function Home() {
                 </button>
                 <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`${cls} ${tone(meOn)}`}>
                   {profile?.avatar_url
-                    ? <img src={profile.avatar_url} alt="" className={`w-7 h-7 rounded-full object-cover ${meOn ? (dark ? 'ring-2 ring-white' : 'ring-2 ring-stone-900') : ''}`} />
+                    ? <img loading="lazy" src={profile.avatar_url} alt="" className={`w-7 h-7 rounded-full object-cover ${meOn ? (dark ? 'ring-2 ring-white' : 'ring-2 ring-stone-900') : ''}`} />
                     : <svg viewBox="0 0 24 24" fill={meOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
                   <span className="text-[0.75rem] font-medium">내 공간</span>
                 </button>

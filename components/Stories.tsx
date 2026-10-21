@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
+import { UPLOAD_CACHE, PHOTO_OPTIONS } from '@/lib/upload';
 import Icon from '@/components/Icon';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
@@ -156,9 +157,9 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
     if (!draft || !me) return;
     setPosting(true);
     try {
-      const compressed = await imageCompression(draft.file, { maxSizeMB: 1, maxWidthOrHeight: 1440, useWebWorker: true });
+      const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
       const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error: upErr } = await supabase.storage.from('community-images').upload(name, compressed);
+      const { error: upErr } = await supabase.storage.from('community-images').upload(name, compressed, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
       if (upErr) throw upErr;
       const url = supabase.storage.from('community-images').getPublicUrl(name).data.publicUrl;
       const { error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true });
@@ -185,7 +186,7 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
   };
 
   const avatarOf = (a: { avatar_url?: string | null; baptismal_name?: string } | undefined, size: string) => a?.avatar_url
-    ? <img src={a.avatar_url} alt="" className={`${size} rounded-full object-cover`} />
+    ? <img loading="lazy" src={a.avatar_url} alt="" className={`${size} rounded-full object-cover`} />
     : <span className={`${size} rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center`}>{a?.baptismal_name?.[0] || '교'}</span>;
 
   if (unavailable && !isAdmin) return null; // SQL 실행 전에는 일반 회원에게 숨김
@@ -228,7 +229,7 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
             <p className="font-bold">새 스토리</p>
             <span className="w-8" />
           </div>
-          <div className="flex-1 min-h-0 flex items-center justify-center"><img src={draft.url} alt="" className="max-w-full max-h-full object-contain" /></div>
+          <div className="flex-1 min-h-0 flex items-center justify-center"><img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" /></div>
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
             <input value={caption} onChange={e => setCaption(e.target.value.slice(0, 100))} placeholder="한마디 쓰기 (선택)" className="w-full px-4 py-3 rounded-full bg-white/15 text-white placeholder-white/60 text-[0.9375rem] focus:outline-none" />
             <button onClick={post} disabled={posting} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? '올리는 중...' : '내 스토리에 올리기'}</button>
@@ -246,7 +247,7 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
           <div className="fixed inset-0 z-[90] bg-black flex justify-center">
             <div className="relative w-full max-w-xl h-full select-none"
               onPointerDown={() => setPaused(true)} onPointerUp={() => setPaused(false)} onPointerCancel={() => setPaused(false)}>
-              <img src={current.image_url} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+              <img loading="lazy" src={current.image_url} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
               {/* 위: 진행 막대 + 작성자 */}
               <div className="absolute top-0 inset-x-0 z-10 px-2.5 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-8 bg-gradient-to-b from-black/60 to-transparent">
                 <div className="flex gap-1">

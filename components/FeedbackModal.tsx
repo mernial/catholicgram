@@ -233,7 +233,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
     <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
       {zoom && (
         <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
-          <img src={zoom} alt="첨부 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          <img loading="lazy" src={zoom} alt="첨부 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
       <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
@@ -333,7 +333,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
             {/* 사진 첨부 (화면 캡처 등 한 장) */}
             {photo ? (
               <div className="relative self-start">
-                <img src={photo.url} alt="첨부 사진" className="h-28 rounded-xl border border-stone-200 object-cover" />
+                <img loading="lazy" src={photo.url} alt="첨부 사진" className="h-28 rounded-xl border border-stone-200 object-cover" />
                 <button type="button" onClick={() => { URL.revokeObjectURL(photo.url); setPhoto(null); }} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-stone-900 text-white text-base leading-none flex items-center justify-center" aria-label="사진 빼기">×</button>
               </div>
             ) : (
@@ -382,7 +382,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                 {!(item.image_url && item.content === PHOTO_ONLY_TEXT) && <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>}
                 {item.image_url && (
                   <button type="button" onClick={() => setZoom(item.image_url!)} className="self-start" aria-label="첨부 사진 크게 보기">
-                    <img src={item.image_url} alt="첨부 사진" className="max-h-48 max-w-full rounded-xl border border-stone-200 object-cover" />
+                    <img loading="lazy" src={item.image_url} alt="첨부 사진" className="max-h-48 max-w-full rounded-xl border border-stone-200 object-cover" />
                   </button>
                 )}
 

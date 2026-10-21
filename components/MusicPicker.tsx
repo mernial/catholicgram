@@ -165,7 +165,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                   <div key={r.videoId} className="p-3 flex flex-col gap-2">
                     <div className="flex items-center gap-3">
                       <button onClick={() => setPreviewVideo(previewVideo === r.videoId ? null : r.videoId)} className="relative w-28 shrink-0 rounded-lg overflow-hidden bg-stone-200" aria-label="미리 듣기">
-                        <img src={r.thumbnail} alt="" className="w-full aspect-video object-cover" />
+                        <img loading="lazy" src={r.thumbnail} alt="" className="w-full aspect-video object-cover" />
                         <span className="absolute inset-0 flex items-center justify-center text-white text-lg bg-black/25"><Icon name={previewVideo === r.videoId ? 'pause' : 'play'} fill className="w-6 h-6" /></span>
                         {r.duration && <span className="absolute bottom-1 right-1 text-[0.6875rem] text-white bg-black/70 rounded px-1">{r.duration}</span>}
                       </button>
@@ -202,7 +202,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                   {linkError && <p className="text-xs text-red-600">{linkError}</p>}
                   {found && (
                     <div className="flex flex-col gap-2.5 bg-stone-50 border border-stone-200 rounded-2xl p-3">
-                      <img src={`https://img.youtube.com/vi/${found.videoId}/hqdefault.jpg`} alt="" className="w-full aspect-video object-cover rounded-xl bg-stone-200" />
+                      <img loading="lazy" src={`https://img.youtube.com/vi/${found.videoId}/hqdefault.jpg`} alt="" className="w-full aspect-video object-cover rounded-xl bg-stone-200" />
                       <label className="text-xs font-bold text-stone-500">곡 제목</label>
                       <input
                         value={checking ? '제목 불러오는 중...' : ytTitle}

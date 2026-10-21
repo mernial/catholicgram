@@ -40,30 +40,49 @@ export const makeVideoPoster = async (file: Blob): Promise<Blob | null> => {
   }
 };
 
-// 용량이 큰 영상을 720p 로 다시 녹화해 줄인다 (영상 길이만큼 걸림).
-// 지원하지 않는 브라우저(아이폰 사파리 등)에서는 null.
+// 이 크기보다 큰 영상은 올리기 전에 줄인다 (볼 때마다 전송량이 나가므로)
+export const SHRINK_OVER_MB = 12;
+
+// 영상을 720p·약 1.5Mbps 로 다시 녹화해 줄인다 (영상 길이만큼 걸림, 1분 영상 → 약 12MB).
+// 화면은 캔버스로, 소리는 Web Audio 로 받아 녹화하므로 아이폰 사파리에서도 동작한다.
+// 지원하지 않거나 실패하면 null.
 export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => void): Promise<Blob | null> => {
   const video = await loadVideo(file).catch(() => null);
-  if (!video || typeof MediaRecorder === 'undefined') return null;
-  const capture = (video as HTMLVideoElement & { captureStream?: () => MediaStream }).captureStream;
   const canvas = document.createElement('canvas');
-  if (!capture || !canvas.captureStream) return null;
+  if (!video || typeof MediaRecorder === 'undefined' || !canvas.captureStream) return null;
 
   const scale = Math.min(1, 720 / Math.min(video.videoWidth, video.videoHeight));
   canvas.width = Math.round(video.videoWidth * scale / 2) * 2;
   canvas.height = Math.round(video.videoHeight * scale / 2) * 2;
   const ctx = canvas.getContext('2d')!;
 
-  const mimeType = ['video/mp4;codecs=avc1', 'video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+  // 모든 휴대폰(아이폰 포함)에서 재생되도록 H.264 mp4 로만 만든다. 못 만드는 브라우저는 줄이지 않음
+  const mimeType = ['video/mp4;codecs=avc1,mp4a.40.2', 'video/mp4;codecs=avc1.42E01E,mp4a.40.2', 'video/mp4;codecs=avc1']
     .find(t => MediaRecorder.isTypeSupported(t));
   if (!mimeType) return null;
 
-  video.muted = false;
-  video.volume = 0.0001; // 소리는 녹음되지만 들리지 않게
   const stream = canvas.captureStream(30);
-  try { capture.call(video).getAudioTracks().forEach(t => stream.addTrack(t)); } catch { /* 소리 없이 */ }
+  // 소리: 영상 → Web Audio → 녹음 (스피커로는 내보내지 않음)
+  let audioCtx: AudioContext | null = null;
+  try {
+    const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AC) {
+      audioCtx = new AC();
+      const src = audioCtx.createMediaElementSource(video);
+      const dest = audioCtx.createMediaStreamDestination();
+      src.connect(dest);
+      dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+      await audioCtx.resume().catch(() => {});
+    }
+  } catch { /* 소리 없이 */ }
+  video.muted = false;
+  video.volume = 1;
 
-  const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 96_000 });
+  const cleanup = () => { URL.revokeObjectURL(video.src); audioCtx?.close().catch(() => {}); };
+  let recorder: MediaRecorder;
+  try {
+    recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1_400_000, audioBitsPerSecond: 96_000 });
+  } catch { cleanup(); return null; }
   const chunks: Blob[] = [];
   recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
   const done = new Promise<Blob>(resolve => { recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] })); });
@@ -75,12 +94,12 @@ export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => vo
     if (!video.ended) raf = requestAnimationFrame(draw);
   };
   recorder.start(1000);
-  try { await video.play(); } catch { recorder.stop(); URL.revokeObjectURL(video.src); return null; }
+  try { await video.play(); } catch { recorder.stop(); cleanup(); return null; }
   draw();
   await new Promise<void>(resolve => { video.onended = () => resolve(); });
   cancelAnimationFrame(raf);
   recorder.stop();
   const blob = await done;
-  URL.revokeObjectURL(video.src);
-  return blob;
+  cleanup();
+  return blob.size > 0 ? blob : null;
 };

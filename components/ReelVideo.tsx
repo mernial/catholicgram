@@ -48,7 +48,7 @@ export default function ReelVideo({ src, poster, overlays, muted, onToggleMute, 
         muted={muted || soundless}
         loop
         playsInline
-        preload="metadata"
+        preload={poster ? 'none' : 'metadata'} // 표지 사진이 있으면 볼 때까지 영상을 받지 않는다 (전송량 절약)
         className="absolute inset-0 w-full h-full object-contain"
       />
       <OverlayLayer overlays={overlays} />

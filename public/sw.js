@@ -38,6 +38,42 @@ self.addEventListener('push', (event) => {
   })());
 });
 
+// 사진(게시물·프로필·광고)은 한 번 받으면 휴대폰에 보관해 두고 다시 받지 않는다 (서버 전송량 절약).
+// 사진 주소는 올릴 때마다 새 이름이라 내용이 바뀌지 않는다. 영상은 부분 요청이라 제외.
+const IMG_CACHE = 'catholicgram-img-v1';
+const IMG_MAX = 500;
+const IMG_PATH = /\/storage\/v1\/object\/public\/(community-images|avatars|sponsor-banners)\//;
+let trimming = false;
+const trimImages = async () => {
+  if (trimming) return;
+  trimming = true;
+  try {
+    const cache = await caches.open(IMG_CACHE);
+    const keys = await cache.keys();
+    for (let i = 0; i < keys.length - IMG_MAX; i++) await cache.delete(keys[i]); // 오래된 것부터
+  } catch { /* 무시 */ }
+  trimming = false;
+};
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET' || req.headers.has('range')) return;
+  let url;
+  try { url = new URL(req.url); } catch { return; }
+  if (!IMG_PATH.test(url.pathname)) return;
+  event.respondWith((async () => {
+    try {
+      const cache = await caches.open(IMG_CACHE);
+      const hit = await cache.match(req.url);
+      if (hit) return hit;
+      const res = await fetch(req.url, { mode: 'cors', credentials: 'omit' });
+      if (res.ok) event.waitUntil(cache.put(req.url, res.clone()).then(trimImages).catch(() => {}));
+      return res;
+    } catch {
+      return fetch(req);
+    }
+  })());
+});
+
 // 새 버전이 바로 적용되도록
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));

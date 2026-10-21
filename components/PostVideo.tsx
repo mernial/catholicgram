@@ -64,7 +64,7 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
         onVolumeChange={e => setMuted(e.currentTarget.muted)}
         loop
         playsInline
-        preload="metadata"
+        preload={poster ? 'none' : 'metadata'} // 표지 사진이 있으면 볼 때까지 영상을 받지 않는다 (전송량 절약)
         onClick={videoTap}
         className="w-full aspect-[4/5] object-cover"
       />

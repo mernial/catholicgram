@@ -42,7 +42,7 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
     setUploading(true);
     const ext = (file.name.split('.').pop() || 'mp3').toLowerCase();
     const path = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error: upError } = await supabase.storage.from('bgm').upload(path, file, { contentType: file.type || 'audio/mpeg' });
+    const { error: upError } = await supabase.storage.from('bgm').upload(path, file, { contentType: file.type || 'audio/mpeg', cacheControl: '31536000' });
     if (upError) { setUploading(false); alert('파일을 올리지 못했어요. 잠시 후 다시 시도해주세요.'); return; }
     const { data: { publicUrl } } = supabase.storage.from('bgm').getPublicUrl(path);
     const { error: insError } = await supabase.from('bgm_tracks').insert({ title: title.trim(), artist: artist.trim() || null, url: publicUrl, sort: tracks?.length || 0 });
