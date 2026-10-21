@@ -316,11 +316,15 @@ export default function Home() {
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
-  const [feedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
   const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
   const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기
   const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null); // 프로필 사진 크게 보기 // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
+  const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
+  const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
+  const [storyPickRequest, setStoryPickRequest] = useState(0); // 글쓰기 아래 '스토리'를 누르면 스토리 사진 고르기
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
   // 접속 통계 기록 (앱 열기·나가기)
@@ -745,6 +749,14 @@ export default function Home() {
     if (!user) { setShowAuthModal(true); return false; }
     if (needsProfileSetup) { setSetupDismissed(false); return false; }
     return true;
+  };
+  // 새 게시물 (인스타그램처럼 사진 고르기부터)
+  const openComposer = () => {
+    if (!user) { setShowAuthModal(true); return; }
+    if (!requireProfile()) return;
+    if (activeTab !== 'home') goToHome();
+    setComposerStep('pick');
+    setShowComposer(true);
   };
 
   // 내가 팔로우하는 교우 (홈 피드에서 그분들 글을 먼저)
@@ -1518,6 +1530,14 @@ export default function Home() {
     e.target.value = '';
     if (picked.length === 0) return;
     clearVideo();
+    // 한 장 선택(기본): 새로 고른 사진으로 바꿈
+    if (showComposer && composerStep === 'pick' && !composerMulti) {
+      previewUrls.forEach(u => URL.revokeObjectURL(u));
+      setSelectedFiles([picked[0]]);
+      setPreviewUrls([URL.createObjectURL(picked[0])]);
+      setComposerPhotoIdx(0);
+      return;
+    }
     const room = MAX_PHOTOS - selectedFiles.length;
     if (picked.length > room) alert(`사진은 한 번에 ${MAX_PHOTOS}장까지 올릴 수 있어요.`);
     const added = picked.slice(0, Math.max(0, room));
@@ -2309,7 +2329,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2334,7 +2354,9 @@ export default function Home() {
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
-    if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) setShowComposer(false);
+    // 문구 쓰기 단계에서 뒤로 → 사진 고르기 단계로
+    if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) { if (showComposer && composerStep === 'write') setComposerStep('pick'); else setShowComposer(false); }
+    setFeedMenuOpen(false);
     setEditingPhotoIdx(null);
     if (showEditVideoEditor) setShowEditVideoEditor(false); else if (editPhotoEditor) setEditPhotoEditor(null); else setEditingPostId(null);
     setFollowList(null);
@@ -2651,49 +2673,64 @@ export default function Home() {
         {activeTab === 'chat' && currentChatUser ? (
           <button onClick={() => handleAvatarClick({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
         ) : (
-          <>
-            <div className="flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0" onClick={goToHome}>
-              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-7 h-7 rounded-lg shadow-sm" />
-              <h1 className="font-serif font-bold text-stone-900 tracking-tight text-lg whitespace-nowrap">가톨릭그램</h1>
+          <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            {/* 인스타그램처럼: 왼쪽 + · 가운데 이름 ▾ · 오른쪽 ♡ */}
+            <div className="flex items-center">
+              <button onClick={openComposer} className="w-10 h-10 -ml-1.5 flex items-center justify-center text-stone-900" aria-label="새 글 만들기">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="w-7 h-7"><path d="M12 4.5v15M4.5 12h15" /></svg>
+              </button>
             </div>
-            <div className="min-w-0">
+            <div className="relative">
+              <button onClick={() => { if (activeTab !== 'home') { goToHome(); return; } setFeedMenuOpen(o => !o); }} className="flex items-center gap-1" aria-label="보기 고르기" aria-expanded={feedMenuOpen}>
+                <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-6 h-6 rounded-md shadow-sm" />
+                <h1 className="font-serif font-bold text-stone-900 tracking-tight text-[1.1875rem] whitespace-nowrap">가톨릭그램</h1>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 text-stone-700 transition-transform ${feedMenuOpen ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" /></svg>
+              </button>
+              {feedMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(false)} />
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-52 bg-white rounded-2xl shadow-xl border border-stone-200 overflow-hidden z-40" role="menu">
+                    {([['all', '전체 보기', 'stack'], ['media', '사진·영상만', 'camera'], ['text', '글만', 'pencil']] as const).map(([key, label, icon]) => (
+                      <button key={key} role="menuitem" onClick={() => { setFeedFilter(key); setFeedMenuOpen(false); window.scrollTo({ top: 0 }); }} className="w-full flex items-center gap-3 px-4 py-3.5 text-left text-[1rem] text-stone-900 border-b border-stone-100 last:border-0 active:bg-stone-50">
+                        <Icon name={icon} className="w-5 h-5 text-stone-700" />
+                        <span className="flex-1">{label}</span>
+                        {feedFilter === key && <span className="text-blue-600 font-bold">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex justify-end min-w-0">
               {user ? (
-                <div className="flex items-center gap-3.5 min-w-0">
+                <div className="flex items-center gap-2.5 min-w-0">
                   {/* 사연 보내기 (관리자에게만) — 관리자는 사연함 */}
-                  <button onClick={() => setShowLetters(true)} className="relative text-[1.375rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
+                  <button onClick={() => setShowLetters(true)} className="relative text-[1.3125rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
                     💌
                     {isAdmin && letterNewCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{letterNewCount > 9 ? '9+' : letterNewCount}</span>
                     )}
                   </button>
                   {/* 고민상담 (익명 게시판) — 새 글 수 */}
-                  <button onClick={() => goToTab('anon')} className={`relative ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-700'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
+                  <button onClick={() => goToTab('anon')} className={`relative ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-800'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
                     <Icon name="dove" className="w-6 h-6" />
                     {anonUnread > 0 && activeTab !== 'anon' && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-violet-600 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{anonUnread > 9 ? '9+' : anonUnread}</span>
                     )}
                   </button>
-                  <button onClick={openNotifications} className="relative text-stone-700 hover:text-stone-900" aria-label="알림">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+                  {/* 알림 ♡ (인스타그램처럼 빨간 점) */}
+                  <button onClick={openNotifications} className="relative text-stone-900" aria-label="알림">
+                    <Icon name="heart" className="w-[1.625rem] h-[1.625rem]" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
                     )}
                   </button>
-                  {/* 메시지 (인스타그램처럼 오른쪽 위) */}
-                  <button onClick={() => goToTab('messages')} className="relative text-stone-700 hover:text-stone-900" aria-label="메시지">
-                    <Icon name="send" className="w-6 h-6" />
-                    {unreadMessageCount > 0 && (
-                      <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
-                    )}
-                  </button>
-                  {/* 휴대폰에서는 내 공간 → 설정에서 로그아웃 */}
-                  <button onClick={() => supabase.auth.signOut()} className="hidden sm:inline text-[0.8125rem] text-stone-400 hover:text-stone-700 whitespace-nowrap">로그아웃</button>
                 </div>
               ) : (
                 <button onClick={() => setShowAuthModal(true)} className="text-xs font-semibold bg-stone-900 text-white px-3.5 py-1.5 rounded-full">로그인</button>
               )}
             </div>
-          </>
+          </div>
         )}
       </header>
 
@@ -2706,6 +2743,7 @@ export default function Home() {
             unavailable={storiesUnavailable}
             openRequest={storyOpenRequest}
             onOpenHandled={() => setStoryOpenRequest(null)}
+            pickRequest={storyPickRequest}
             onPosted={fetchStories}
             onDelete={deleteStory}
             myReactions={myPostReactions}
@@ -2820,19 +2858,101 @@ export default function Home() {
             };
             const row = 'w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-stone-100 active:bg-stone-50';
             return (
-          <div className="fixed inset-0 z-[70] bg-white flex flex-col" role="dialog" aria-label="새 게시물">
+          <div className={`fixed inset-0 z-[70] flex flex-col ${composerStep === 'pick' ? 'bg-black text-white' : 'bg-white'}`} role="dialog" aria-label="새 게시물">
+            <input ref={fileInputRef} type="file" accept="image/*" multiple={composerStep === 'write' || composerMulti} onChange={handleFileChange} className="hidden" id="photo-upload" />
+            <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="photo-camera" />
+            <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
+            {composerStep === 'pick' ? (
+              <>
+                {/* 1단계 (인스타그램처럼 어두운 화면): ✕ · 새 게시물 · 다음 */}
+                <div className="shrink-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2">
+                  <button type="button" onClick={() => setShowComposer(false)} className="w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
+                  <h2 className="font-bold text-[1.125rem]">새 게시물</h2>
+                  <button type="button" onClick={() => setComposerStep('write')} className="px-3 h-11 text-[1.0625rem] font-bold text-[#4a9dff]">다음</button>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                  {/* 크게 보기 (3×3 안내선) */}
+                  <div className="relative w-full aspect-square max-h-[48dvh] mx-auto bg-[#111] flex items-center justify-center overflow-hidden">
+                    {videoPreviewUrl ? (
+                      <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full h-full object-contain" />
+                    ) : previewUrls.length > 0 ? (
+                      <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full h-full object-contain" />
+                    ) : (
+                      <label htmlFor="photo-upload" className="cursor-pointer flex flex-col items-center gap-3 text-white/80">
+                        <span className="w-20 h-20 rounded-full border-2 border-white/60 flex items-center justify-center"><Icon name="camera" className="w-10 h-10" /></span>
+                        <span className="text-[1.0625rem] font-bold">사진을 골라 주세요</span>
+                        <span className="text-[0.875rem] text-white/50">사진 없이 글만 쓰려면 위의 &lsquo;다음&rsquo;</span>
+                      </label>
+                    )}
+                    {(previewUrls.length > 0 || videoPreviewUrl) && (
+                      <div className="pointer-events-none absolute inset-0 grid grid-cols-3 grid-rows-3">
+                        {Array.from({ length: 9 }).map((_, i) => <span key={i} className="border-[0.5px] border-white/35" />)}
+                      </div>
+                    )}
+                    {previewUrls.length > 0 && !videoPreviewUrl && (
+                      <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진 자르기·가리기">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                      </button>
+                    )}
+                    {videoPreviewUrl && <button type="button" onClick={clearVideo} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white text-xl leading-none" aria-label="영상 빼기">×</button>}
+                    {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/55 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
+                  </div>
+                  {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-200 font-bold bg-violet-900/40">{videoStatus}</p>}
+                  {/* 최근 ▾ · 여러 장 선택 */}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <label htmlFor="photo-upload" className="cursor-pointer flex items-center gap-1 text-[1.0625rem] font-bold">
+                      최근 항목
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4"><path d="M6 9l6 6 6-6" /></svg>
+                    </label>
+                    <button type="button" onClick={() => setComposerMulti(m => !m)} aria-pressed={composerMulti} className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[0.875rem] font-bold ${composerMulti ? 'bg-[#4a9dff] text-white' : 'bg-white/15 text-white'}`}>
+                      <Icon name="stack" className="w-4 h-4" />{composerMulti ? '여러 장 선택 중' : '여러 장 선택'}
+                    </button>
+                  </div>
+                  {/* 사진 칸: 카메라 · 앨범 · 영상 · 고른 사진 */}
+                  <div className="grid grid-cols-4 gap-[2px]">
+                    <label htmlFor="photo-camera" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
+                      <Icon name="camera" className="w-8 h-8" /><span className="text-[0.75rem]">사진 찍기</span>
+                    </label>
+                    <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
+                      <Icon name="stack" className="w-8 h-8" /><span className="text-[0.75rem]">앨범</span>
+                    </label>
+                    <label htmlFor="video-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
+                      <Icon name="film" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
+                    </label>
+                    {previewUrls.map((url, idx) => (
+                      <div key={url} className="relative aspect-square">
+                        <button type="button" onClick={() => setComposerPhotoIdx(idx)} className="w-full h-full" aria-label={`${idx + 1}번째 사진 크게 보기`}>
+                          <img src={url} alt="" className={`w-full h-full object-cover ${idx === shownIdx ? 'opacity-60' : ''}`} />
+                        </button>
+                        {composerMulti && <span className="pointer-events-none absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-[#4a9dff] border-2 border-white text-white text-[0.75rem] font-bold flex items-center justify-center">{idx + 1}</span>}
+                        <button type="button" onClick={() => { removeFile(idx); setComposerPhotoIdx(i => Math.max(0, i >= idx ? i - 1 : i)); }} className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-black/70 text-white text-[0.875rem] leading-none" aria-label="사진 빼기">×</button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="px-4 pt-3 pb-4 text-[0.8125rem] text-white/45 leading-relaxed">{composerMulti ? `사진은 ${MAX_PHOTOS}장까지 고를 수 있어요.` : '여러 장을 올리려면 위의 \u2018여러 장 선택\u2019을 눌러 주세요.'}</p>
+                </div>
+                {/* 맨 아래: 게시물 · 스토리 · 영상 */}
+                <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
+                  <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
+                    <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
+                    <button type="button" onClick={() => { setShowComposer(false); setStoryPickRequest(n => n + 1); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
+                    <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
+                  </div>
+                </div>
+              </>
+            ) : (
             <form onSubmit={handleCreatePost} className="flex-1 min-h-0 flex flex-col">
-              {/* 맨 위: ✕ · 새 게시물 · 공유 */}
+              {/* 2단계: ← · 새 게시물 · 공유 */}
               <div className="shrink-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 border-b border-stone-200">
-                <button type="button" onClick={() => setShowComposer(false)} className="w-11 h-11 flex items-center justify-center text-stone-800 text-3xl leading-none" aria-label="닫기">×</button>
+                <button type="button" onClick={() => setComposerStep('pick')} className="w-11 h-11 flex items-center justify-center text-stone-800" aria-label="뒤로 (사진 고르기)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                </button>
                 <h2 className="font-bold text-[1.0625rem] text-stone-900">새 게시물</h2>
                 <button type="submit" disabled={!canShare} className="px-3 h-11 text-[1rem] font-bold text-blue-600 disabled:text-stone-300">{loading ? '올리는 중' : '공유'}</button>
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
                 {/* 사진·영상 크게 */}
-                <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
-                <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
                 {videoPreviewUrl ? (
                   <div className="relative bg-black flex justify-center [container-type:inline-size]">
                     <video src={videoPreviewUrl} muted playsInline loop autoPlay className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
@@ -2939,6 +3059,7 @@ export default function Home() {
                 <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : '공유'}</button>
               </div>
             </form>
+            )}
             {/* 사진 자르기·가리기 */}
             {editingPhotoIdx !== null && selectedFiles[editingPhotoIdx] && (
               <PhotoEditor
@@ -2991,8 +3112,14 @@ export default function Home() {
                       )}
                     </div>
                     {post.visibility && post.visibility !== 'public' && <span className="shrink-0 text-[0.75rem] bg-stone-100 text-stone-600 rounded-full px-2 py-0.5 inline-flex items-center gap-1"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" />{VISIBILITY[post.visibility].label}</span>}
+                    {/* 인스타그램처럼 아직 팔로우하지 않은 교우는 '팔로우' */}
+                    {user && post.user_id !== user.id && !followingIds.has(post.user_id) && (
+                      <button onClick={() => toggleFollow(post.user_id, 'none')} className="shrink-0 px-3.5 py-1.5 rounded-lg bg-stone-200/80 hover:bg-stone-300/80 text-[0.875rem] font-bold text-stone-900">팔로우</button>
+                    )}
                     {(canDelete || user) && (
-                      <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-10 h-10 -mr-2 shrink-0 flex items-center justify-center rounded-full text-xl leading-none text-stone-600 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">⋯</button>
+                      <button onClick={() => setPostMenuId(postMenuId === post.id ? null : post.id)} className="w-10 h-10 -mr-2 shrink-0 flex items-center justify-center rounded-full text-stone-700 hover:bg-stone-100" aria-label="더보기 (고치기·지우기)">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="w-6 h-6"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+                      </button>
                     )}
                   </div>
                   {/* 사진·영상 크게 (여러 장이면 옆으로 넘김) — 누르면 크게 보기 */}
@@ -4564,30 +4691,34 @@ export default function Home() {
       {activeTab !== 'chat' && (
         <nav className={`fixed bottom-0 left-0 right-0 max-w-xl mx-auto border-t flex items-center justify-around z-40 pb-safe ${activeTab === 'reels' ? 'bg-black border-white/10' : 'bg-white border-stone-200'}`}>
           {(() => {
-            // 인스타그램처럼: 홈 · 탐색 · 만들기 · 영상 · 내 공간
+            // 인스타그램처럼: 홈 · 영상 · 메시지 · 탐색 · 내 공간 (새 글은 왼쪽 위 +)
             const dark = activeTab === 'reels';
             const tone = (on: boolean) => on ? (dark ? 'text-white' : 'text-stone-900') : (dark ? 'text-white/55' : 'text-stone-400');
             const cls = 'flex-1 py-3 flex flex-col items-center gap-0.5 transition-colors';
-            const meOn = (activeTab === 'profile' && viewingUserId === user?.id) || activeTab === 'messages';
+            const meOn = activeTab === 'profile' && viewingUserId === user?.id;
+            const msgOn = activeTab === 'messages';
             return (
               <>
                 <button onClick={() => tapTab('home', goToHome)} className={`${cls} ${tone(activeTab === 'home')}`}>
                   <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
                   <span className="text-[0.75rem] font-medium">홈</span>
                 </button>
-                <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`${cls} ${tone(activeTab === 'explore')}`}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
-                  <span className="text-[0.75rem] font-medium">탐색</span>
-                </button>
-                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } if (!requireProfile()) return; if (activeTab !== 'home') goToHome(); setShowComposer(true); }} className={cls} aria-label="새 글 만들기">
-                  <span className={`w-7 h-7 rounded-lg border-2 flex items-center justify-center ${dark ? 'border-white text-white' : 'border-stone-800 text-stone-800'}`}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" className="w-4 h-4"><path d="M12 5v14M5 12h14" /></svg>
-                  </span>
-                  <span className={`text-[0.75rem] font-medium ${dark ? 'text-white' : 'text-stone-800'}`}>만들기</span>
-                </button>
                 <button onClick={() => goToTab('reels')} className={`${cls} ${tone(activeTab === 'reels')}`}>
                   <Icon name="film" fill={activeTab === 'reels'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">영상</span>
+                </button>
+                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } goToTab('messages'); }} className={`${cls} ${tone(msgOn)}`} aria-label={unreadMessageCount > 0 ? `메시지 (안 읽은 ${unreadMessageCount}개)` : '메시지'}>
+                  <span className="relative">
+                    <Icon name="send" fill={msgOn} className="w-7 h-7" />
+                    {unreadMessageCount > 0 && (
+                      <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center border-2 border-white">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+                    )}
+                  </span>
+                  <span className="text-[0.75rem] font-medium">메시지</span>
+                </button>
+                <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`${cls} ${tone(activeTab === 'explore')}`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
+                  <span className="text-[0.75rem] font-medium">탐색</span>
                 </button>
                 <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`${cls} ${tone(meOn)}`}>
                   {profile?.avatar_url
