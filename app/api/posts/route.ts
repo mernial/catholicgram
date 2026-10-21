@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { deleteMedia } from '@/lib/media-server';
 
 // 게시글 고치기 / 지우기 (서버에서 본인 확인 — 데이터베이스 권한 설정과 상관없이 동작)
 // POST { action: 'update', id, changes: { content?, video_overlays?, visibility? } } → 본인 글만
@@ -63,9 +64,10 @@ export async function POST(request: Request) {
   const { error } = await admin.from('posts').delete().eq('id', body.id);
   if (error) return Response.json({ error: `지우지 못했어요. (${error.message})` }, { status: 500 });
   // 사진·영상 파일 지우기
-  const images = ((post.images as string[] | null) || []).map(u => storagePath(u, 'community-images')).filter((p): p is string => !!p);
+  const images = [...((post.images as string[] | null) || []), post.video_poster].map(u => storagePath(u, 'community-images')).filter((p): p is string => !!p);
   if (images.length) await admin.storage.from('community-images').remove(images);
-  const videoFiles = [storagePath(post.video_url, 'post-videos'), storagePath(post.video_poster, 'post-videos')].filter((p): p is string => !!p);
+  const videoFiles = [storagePath(post.video_url, 'post-videos')].filter((p): p is string => !!p);
   if (videoFiles.length) await admin.storage.from('post-videos').remove(videoFiles);
+  await deleteMedia([...((post.images as string[] | null) || []), post.video_url, post.video_poster]); // R2 에 있는 파일
   return Response.json({ ok: true });
 }

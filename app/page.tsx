@@ -34,7 +34,7 @@ import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
-import { UPLOAD_CACHE, PHOTO_OPTIONS, uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
+import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -43,6 +43,7 @@ import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
 import DeletedMessages from '@/components/DeletedMessages';
+import MediaStorage from '@/components/MediaStorage';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
 
@@ -975,6 +976,7 @@ export default function Home() {
     if (currentChatUser) fetchChatMessages(currentChatUser.id);
   };
   const [showDeletedMessages, setShowDeletedMessages] = useState(false); // 관리자: 지워진 메시지 보기
+  const [showMediaStorage, setShowMediaStorage] = useState(false); // 관리자: 사진 저장소(R2)
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1151,11 +1153,9 @@ export default function Home() {
     for (const file of selectedFiles) {
       const compressed = await imageCompression(file, PHOTO_OPTIONS);
       const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('community-images').upload(fileName, compressed, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
-      if (!uploadError) {
-        const { data: { publicUrl } } = supabase.storage.from('community-images').getPublicUrl(fileName);
-        uploadedUrls.push(publicUrl);
-      }
+      try {
+        uploadedUrls.push(await uploadMedia(compressed, { kind: 'posts', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: fileName }));
+      } catch { /* 이 사진만 건너뜀 */ }
     }
     // 숏폼 영상: 미리보기 이미지 + 영상 올리기 (영상은 내 폴더에)
     let videoFields: { video_url: string; video_poster: string | null; video_overlays?: VideoOverlays | null } | null = null;
@@ -1165,24 +1165,28 @@ export default function Home() {
       let posterUrl: string | null = null;
       if (poster) {
         const posterName = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_poster.jpg`;
-        const { error: posterError } = await supabase.storage.from('community-images').upload(posterName, poster, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
-        if (!posterError) posterUrl = supabase.storage.from('community-images').getPublicUrl(posterName).data.publicUrl;
+        posterUrl = await uploadMedia(poster, { kind: 'posters', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: posterName }).catch(() => null);
       }
       const ext = selectedVideo.type.includes('webm') ? 'webm' : selectedVideo.type.includes('quicktime') ? 'mov' : 'mp4';
       const videoName = `${user.id}/${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${ext}`;
-      const { error: videoError } = await supabase.storage.from('post-videos').upload(videoName, selectedVideo, { contentType: selectedVideo.type || 'video/mp4', cacheControl: UPLOAD_CACHE });
+      let videoUrl: string | null = null;
+      let videoError: { message: string } | null = null;
+      try {
+        videoUrl = await uploadMedia(selectedVideo, { kind: 'videos', ext, contentType: selectedVideo.type || 'video/mp4', bucket: 'post-videos', path: videoName });
+      } catch (err) { videoError = { message: err instanceof Error ? err.message : String(err) }; }
       setVideoStatus('');
-      if (videoError) {
-        alert(/bucket|not found/i.test(videoError.message)
+      if (videoError || !videoUrl) {
+        const msg = videoError?.message || '';
+        alert(/bucket|not found/i.test(msg)
           ? '영상 기능을 준비 중이에요. (관리자: supabase/videos.sql 실행 필요)'
-          : /size|large|exceed/i.test(videoError.message)
+          : /size|large|exceed|413/i.test(msg)
             ? `영상이 너무 커요. ${MAX_VIDEO_MB}MB 이하로 줄여서 올려주세요.`
             : '영상을 올리지 못했어요. 잠시 후 다시 시도해주세요.');
         setLoading(false);
         return;
       }
       videoFields = {
-        video_url: supabase.storage.from('post-videos').getPublicUrl(videoName).data.publicUrl,
+        video_url: videoUrl,
         video_poster: posterUrl,
         ...(hasOverlays(composerOverlays) ? { video_overlays: composerOverlays } : {}),
       };
@@ -2080,9 +2084,7 @@ export default function Home() {
     try {
       const croppedBlob = await getCroppedImg(avatarFile, croppedAreaPixels);
       const fileName = `${user.id}_${Date.now()}.jpg`;
-      const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, croppedBlob, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
-      if (uploadError) throw uploadError;
-      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      const publicUrl = await uploadMedia(croppedBlob, { kind: 'avatars', ext: 'jpg', contentType: 'image/jpeg', bucket: 'avatars', path: fileName });
       const { error: updateError } = await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', user.id);
       if (updateError) throw updateError;
       setProfile(prev => prev ? { ...prev, avatar_url: publicUrl } : prev);
@@ -2132,7 +2134,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2167,6 +2169,7 @@ export default function Home() {
     setStoryViewerOpen(false);
     setAvatarPreview(null);
     setShowDeletedMessages(false);
+    setShowMediaStorage(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
@@ -2885,6 +2888,7 @@ export default function Home() {
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
+                        <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="camera" className="w-3.5 h-3.5" />사진 저장소</button>
                       </>
                     )}
                     <button onClick={() => setShowFeedback(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="envelope" className="w-3.5 h-3.5" />{isAdmin ? '건의함' : '건의하기'}</button>
@@ -3547,6 +3551,7 @@ export default function Home() {
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
+      {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}
 
       {/* 팔로워·팔로잉 목록 */}
       {followList && (

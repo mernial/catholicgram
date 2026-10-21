@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import imageCompression from 'browser-image-compression';
+import { uploadMedia } from '@/lib/upload';
 import { supabase } from '@/lib/supabase';
 import type { SponsorBannerData } from '@/lib/sponsor';
 import SponsorBanner from '@/components/SponsorBanner';
@@ -91,9 +92,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
     try {
       const compressed = await imageCompression(file, { maxSizeMB: 0.8, maxWidthOrHeight: 1500, useWebWorker: false });
       const name = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error } = await supabase.storage.from('sponsor-banners').upload(name, compressed, { contentType: 'image/jpeg', cacheControl: '31536000' });
-      if (error) throw error;
-      const { data: { publicUrl } } = supabase.storage.from('sponsor-banners').getPublicUrl(name);
+      const publicUrl = await uploadMedia(compressed, { kind: 'sponsor', ext: 'jpg', contentType: 'image/jpeg', bucket: 'sponsor-banners', path: name });
       setDraft(d => d ? { ...d, image_url: publicUrl } : d);
     } catch (err) {
       alert(`이미지를 올리지 못했습니다.\n(${err instanceof Error ? err.message : '알 수 없는 오류'})`);

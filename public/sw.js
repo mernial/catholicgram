@@ -43,6 +43,9 @@ self.addEventListener('push', (event) => {
 const IMG_CACHE = 'catholicgram-img-v1';
 const IMG_MAX = 500;
 const IMG_PATH = /\/storage\/v1\/object\/public\/(community-images|avatars|sponsor-banners)\//;
+// Cloudflare R2 저장소(Worker)의 사진 경로 (영상·음악 제외)
+const R2_IMG_PATH = /^\/(posts|posters|avatars|stories|dm|feedback|sponsor|m\/(community-images|avatars|sponsor-banners))\//;
+const isCachedImage = (url) => IMG_PATH.test(url.pathname) || (url.hostname.endsWith('.workers.dev') && R2_IMG_PATH.test(url.pathname));
 let trimming = false;
 const trimImages = async () => {
   if (trimming) return;
@@ -59,7 +62,7 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET' || req.headers.has('range')) return;
   let url;
   try { url = new URL(req.url); } catch { return; }
-  if (!IMG_PATH.test(url.pathname)) return;
+  if (!isCachedImage(url)) return;
   event.respondWith((async () => {
     try {
       const cache = await caches.open(IMG_CACHE);

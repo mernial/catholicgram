@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
-import { UPLOAD_CACHE, PHOTO_OPTIONS } from '@/lib/upload';
+import { PHOTO_OPTIONS, uploadMedia } from '@/lib/upload';
 import Icon from '@/components/Icon';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
@@ -159,9 +159,7 @@ export default function Stories({ posts, unavailable, me, followingIds, blockedI
     try {
       const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
       const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const { error: upErr } = await supabase.storage.from('community-images').upload(name, compressed, { contentType: 'image/jpeg', cacheControl: UPLOAD_CACHE });
-      if (upErr) throw upErr;
-      const url = supabase.storage.from('community-images').getPublicUrl(name).data.publicUrl;
+      const url = await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
       const { error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true });
       if (error) {
         alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
