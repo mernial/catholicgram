@@ -217,6 +217,9 @@ export async function POST(request: Request) {
   }
 
   const targets = list.length > 0 ? list : [{ recipientId: recipientId!, payload: payload! }];
+  // 알림마다 주소에 고유 표시(n)를 붙인다 → 앱이 같은 알림 주소로 두 번 열리지 않게 (휴대폰이 예전 주소로 앱을 다시 띄우는 경우)
+  const nonce = Date.now().toString(36);
+  targets.forEach(t => { t.payload = { ...t.payload, url: `${t.payload.url}${t.payload.url.includes('?') ? '&' : '?'}n=${nonce}` }; });
   const payloadByUser = new Map(targets.map(t => [t.recipientId, t.payload]));
   const { data: subscriptions } = await admin.from('push_subscriptions')
     .select('id, user_id, endpoint, p256dh, auth').in('user_id', targets.map(t => t.recipientId));

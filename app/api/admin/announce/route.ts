@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   const payload = JSON.stringify({
     title: `📢 ${notice.title}`,
     body: notice.content.length > 80 ? `${notice.content.slice(0, 80)}…` : notice.content,
-    url: `/?notice=${notice.id}`,
+    url: `/?notice=${notice.id}&n=${Date.now().toString(36)}`,
     tag: `notice-${notice.id}`,
   });
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', VAPID_PUBLIC_KEY, vapidPrivateKey);
