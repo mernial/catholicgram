@@ -3573,6 +3573,14 @@ export default function Home() {
       {showLounge && user && (
         <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId}
           onCallAdmin={id => sendPush('lounge_call', id)}
+          onAnnounce={async id => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return '로그인이 필요해요.';
+            const res = await fetch('/api/admin/lounge-call', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ id }) }).catch(() => null);
+            const json = res ? await res.json().catch(() => ({})) : {};
+            if (!res || !res.ok) return json.error || '알림을 보내지 못했어요.';
+            return `📢 ${json.sent ?? 0}대의 휴대폰에 알림을 보냈어요`;
+          }}
           onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); }}
           onOpenProfile={id => { setShowLounge(false); goToProfile(id); }}
           onReport={t => setReportTarget(t)} />
