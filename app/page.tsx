@@ -101,12 +101,28 @@ const linkLog = (kind: string, detail = '') => {
     localStorage.setItem('linkLog', JSON.stringify(list.slice(-25)));
   } catch { /* 무시 */ }
 };
-const consumePendingLink = async () => {
+// 이미 연 알림 주소 (이 휴대폰에 기억) — 휴대폰이 앱을 예전 알림 주소로 다시 띄워도 또 열지 않는다
+const claimLink = (url: string) => {
+  const key = new URL(url, 'http://x').search;
+  let handled: string[] = [];
+  try { handled = JSON.parse(localStorage.getItem('handledLinks') || '[]'); } catch { /* 무시 */ }
+  if (handled.includes(key)) { linkLog('skip', `이미 연 주소 ${key.slice(0, 40)}`); return false; }
+  if (!markLinkOpened(url)) return false;
+  try { localStorage.setItem('handledLinks', JSON.stringify([...handled, key].slice(-60))); } catch { /* 무시 */ }
+  return true;
+};
+// staleSearch: 앱이 알림 주소로 열렸는데 고유 표시(n)가 없는 예전 형식 → 적어 둔 목적지와 같을 때만 연다
+const consumePendingLink = async (staleSearch?: string, retried = false): Promise<void> => {
   try {
     if (typeof caches === 'undefined') return;
     const cache = await caches.open(PENDING_CACHE);
     const res = await cache.match('/__pending');
-    if (!res) return;
+    if (!res) {
+      // 알림을 막 누른 경우 적어 두기가 조금 늦을 수 있어 한 번 더 본다
+      if (staleSearch && !retried) { setTimeout(() => consumePendingLink(staleSearch, true), 1000); return; }
+      if (staleSearch) linkLog('skip', `예전 주소 ${staleSearch.slice(0, 40)}`);
+      return;
+    }
     const pending = await res.json() as { url?: string; at?: number };
     await cache.delete('/__pending');
     linkLog('pending', `${pending.url?.replace(/^https?:\/\/[^/]+/, '')} ${Math.round((Date.now() - (pending.at || 0)) / 1000)}s전`);
@@ -443,7 +459,7 @@ export default function Home() {
         e.ports?.[0]?.postMessage('ok');
         linkLog('message', String(e.data.url || '').replace(/^https?:\/\/[^/]+/, ''));
         // 적어 둔 목적지는 바로 지우지 않는다: 앱으로 돌아오며 새 버전으로 새로고침되면 그걸로 다시 연다
-        if (!markLinkOpened(String(e.data.url || '/'))) return;
+        if (!claimLink(String(e.data.url || '/'))) return;
         const link = deepLinkFromSearch(new URL(e.data.url, window.location.origin).search);
         if (link) setDeepLink(link); else goToHome();
       });
@@ -457,7 +473,7 @@ export default function Home() {
     (['pointerdown', 'touchend', 'click'] as const).forEach(ev => window.addEventListener(ev, unlock, { once: true }));
 
     pendingLinkHandler = (url: string) => {
-      if (!markLinkOpened(url)) return; // 방금 연 목적지
+      if (!claimLink(url)) return; // 방금 연 목적지
       const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
       if (link) setDeepLink(link);
     };
@@ -466,10 +482,10 @@ export default function Home() {
     window.addEventListener('pointerdown', touchMark, { capture: true });
     const initialLink = deepLinkFromSearch(window.location.search);
     if (initialLink) {
-      markLinkOpened(window.location.search);
-      setDeepLink(initialLink);
+      const search = window.location.search;
       window.history.replaceState(null, '', '/');
-      clearPendingLink();
+      if (new URLSearchParams(search).has('n')) { if (claimLink(search)) setDeepLink(initialLink); clearPendingLink(); }
+      else consumePendingLink(search);
     } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
 
     const savedTab = storageGet('activeTab') as Tab | null;
