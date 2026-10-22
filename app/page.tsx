@@ -100,6 +100,8 @@ const consumePendingLink = async () => {
     if (!res) return;
     const pending = await res.json() as { url?: string; at?: number };
     await cache.delete('/__pending');
+    // 이미 연 곳이면(이동 신호로 먼저 열림) 다시 열지 않는다 — 나중에 앱으로 돌아올 때 예전 알림 화면으로 튀지 않게
+    if (pending.url && lastOpenedLink && lastOpenedLink.url === new URL(pending.url, 'http://x').search && (pending.at || 0) <= lastOpenedLink.at + 10 * 1000) return;
     if (pending.url && pending.at && Date.now() - pending.at < 2 * 60 * 1000) pendingLinkHandler?.(pending.url);
   } catch { /* 무시 */ }
 };
@@ -1837,6 +1839,7 @@ export default function Home() {
   const openNotifications = () => {
     if (!user) return;
     setShowNotifications(true);
+    setToast(null);
     // 목록을 열면 모두 읽음 처리 (빨간 숫자는 사라지고, 새 알림 표시는 이번 목록에서만 유지)
     const now = new Date().toISOString();
     storageSet(`notificationsLastSeen:${user.id}`, now);
@@ -2010,21 +2013,22 @@ export default function Home() {
       seenAlertKeysRef.current.add(key);
       return !!at && new Date(at).getTime() > since; // 앱을 연 뒤에 생긴 것만
     };
-    type Candidate = { key: string; icon: string; title: string; body: string; action: () => void };
+    type Candidate = { key: string; icon: string; title: string; body: string; action: () => void; at?: string };
     const fresh: Candidate[] = [];
     followRequests.forEach(r => {
-      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '새 팔로워', body: `${r.follower.baptismal_name}님이 회원님을 팔로우하기 시작했어요`, action: () => goToProfile(r.follower.id) });
+      if (isNew(`f:${r.id}`, r.created_at)) fresh.push({ key: `f:${r.id}`, icon: '👤', title: '새 팔로워', body: `${r.follower.baptismal_name}님이 회원님을 팔로우하기 시작했어요`, action: () => goToProfile(r.follower.id), at: r.created_at });
     });
     unreadMessages.forEach(u => {
       const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
-      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner) });
+      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner), at: u.lastAt });
     });
     notifications.forEach(n => {
-      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n) });
+      if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n), at: n.created_at });
     });
     if (fresh.length === 0) return;
-    const latest = fresh[0];
-    setToast(fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건` } : latest);
+    // 가장 최근 것을 보여 주고, 여러 건이면 누를 때 알림 목록을 연다 (엉뚱한 한 건으로 가지 않게)
+    const latest = [...fresh].sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0];
+    setToast(fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건`, action: () => openNotifications() } : latest);
     if (alertSoundOn) playAlertSound();
     navigator.vibrate?.([150, 80, 150]);
   }, [notifications, unreadMessages, followRequests]);
@@ -4168,7 +4172,8 @@ export default function Home() {
 
       {/* 앱 사용 중 새 알림 배너 */}
       {toast && (
-        <div className="fixed top-2 left-0 right-0 z-[95] flex justify-center px-3 pointer-events-none">
+        // 맨 위 단추(＋·♡ 알림)를 가리지 않게 머리말 아래에 띄운다
+        <div className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] left-0 right-0 z-[95] flex justify-center px-3 pointer-events-none">
           <button
             onClick={() => { const a = toast.action; setToast(null); a(); }}
             className="pointer-events-auto w-full max-w-md bg-white/95 backdrop-blur border border-stone-200 shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 text-left animate-[toastIn_0.25s_ease-out]"
