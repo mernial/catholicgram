@@ -8,11 +8,12 @@ import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
 
 // 모두의 사랑방 (supabase/lounge.sql)
-// 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 7일 동안 남는다.
+// 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
+// 관리자 글은 위쪽 칸(5줄 정도)에, 교우들의 대화는 아래 칸에 따로 보인다.
 // 새 대화·지운 대화는 Supabase 실시간으로 바로 받고, 실시간 연결이 안 되면 5초마다 확인한다.
 // 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만 휴대폰 알림이 간다.
 
-interface LoungeMessage { id: string; user_id: string; content: string; created_at: string }
+interface LoungeMessage { id: string; user_id: string; content: string; created_at: string; is_admin?: boolean }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; badge_type?: string | null }
 interface Trashed { id: string; user_id: string | null; content: string | null; created_at: string | null; deleted_at: string; deleted_by: string | null }
 
@@ -21,6 +22,11 @@ const SETUP_HINT = '사랑방을 준비 중이에요. (관리자: supabase/loung
 const isSetupError = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+// 오늘(한국 시간) 0시 — 이때부터의 대화만 보인다
+const todayStartIso = () => {
+  const kst = new Date(Date.now() + 9 * 3600e3);
+  return new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 3600e3).toISOString();
+};
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 
 export const CALL_ADMIN = '@관리자';
@@ -93,8 +99,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   // 처음 불러오기
   useEffect(() => {
     (async () => {
-      const { data, error: e } = await supabase.from('lounge_messages').select('id, user_id, content, created_at')
-        .order('created_at', { ascending: false }).limit(PAGE);
+      const { data, error: e } = await supabase.from('lounge_messages').select('*')
+        .gte('created_at', todayStartIso()).order('created_at', { ascending: false }).limit(PAGE);
       setLoading(false);
       if (e) { setError(isSetupError(e) ? SETUP_HINT : '대화를 불러오지 못했어요.'); return; }
       const rows = (data || []).reverse();
@@ -133,13 +139,19 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     const poll = setInterval(async () => {
       if (live || document.visibilityState === 'hidden') return;
       const last = messagesRef.current[messagesRef.current.length - 1];
-      let q = supabase.from('lounge_messages').select('id, user_id, content, created_at').order('created_at', { ascending: true }).limit(50);
-      if (last) q = q.gt('created_at', last.created_at);
+      const q = supabase.from('lounge_messages').select('*').order('created_at', { ascending: true }).limit(50)
+        .gt('created_at', last && last.created_at > todayStartIso() ? last.created_at : todayStartIso());
       const { data } = await q;
       if (data) addMessages(data);
     }, 5000);
     return () => { clearInterval(poll); supabase.removeChannel(channel); };
   }, []);
+  // 자정이 지나면 화면의 대화도 비운다 (서버는 지난 대화를 보여 주지 않고 새 글이 올라올 때 지움)
+  const [dayStart, setDayStart] = useState(todayStartIso);
+  useEffect(() => {
+    const t = setInterval(() => { const d = todayStartIso(); if (d !== dayStart) { setDayStart(d); setMessages([]); setHasOlder(false); } }, 20000);
+    return () => clearInterval(t);
+  }, [dayStart]);
   // 새 대화가 오면: 맨 아래를 보고 있었으면 따라 내려간다
   useEffect(() => { if (atBottomRef.current) scrollToBottom(true); }, [messages.length]);
 
@@ -148,8 +160,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (!first) return;
     const el = listRef.current;
     const before = el ? el.scrollHeight : 0;
-    const { data } = await supabase.from('lounge_messages').select('id, user_id, content, created_at')
-      .lt('created_at', first.created_at).order('created_at', { ascending: false }).limit(PAGE);
+    const { data } = await supabase.from('lounge_messages').select('*')
+      .lt('created_at', first.created_at).gte('created_at', todayStartIso()).order('created_at', { ascending: false }).limit(PAGE);
     const rows = (data || []).reverse();
     setHasOlder((data || []).length === PAGE);
     atBottomRef.current = false;
@@ -164,7 +176,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (!text || sending) return;
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) })
-      .select('id, user_id, content, created_at').single();
+      .select('*').single();
     setSending(false);
     if (err) {
       alert(isSetupError(err) ? SETUP_HINT : /천천히|제한/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
@@ -188,7 +200,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (!window.confirm(`모든 교우의 휴대폰으로 알림을 보낼까요?\n\n"${text}"\n\n(사랑방에도 안내 글로 올라가요 · 30분에 한 번)`)) return;
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: `📢 ${text}`.slice(0, 500) })
-      .select('id, user_id, content, created_at').single();
+      .select('*').single();
     setSending(false);
     if (err || !data) { alert(`보내지 못했어요.\n(${err?.message || ''})`); return; }
     setInput('');
@@ -232,7 +244,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     loadAuthors((data || []).map(t => t.user_id).filter(Boolean) as string[]);
   };
 
-  const shown = messages.filter(m => !blockedIds.has(m.user_id));
+  // 관리자 글(위 칸)과 교우 대화(아래 칸). SQL 실행 전(is_admin 없음)에는 관리자 본인 글만 위로
+  const isAdminMsg = (m: LoungeMessage) => m.is_admin === true || (m.is_admin === undefined && isAdmin && m.user_id === user.id);
+  const today = messages.filter(m => m.created_at >= dayStart);
+  const adminMsgs = today.filter(isAdminMsg);
+  const shown = today.filter(m => !isAdminMsg(m) && !blockedIds.has(m.user_id));
+  const adminRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { const el = adminRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, [adminMsgs.length]);
 
   return (
     <div className="fixed inset-0 z-[75] bg-[#f4efe6] flex flex-col" role="dialog" aria-label="모두의 사랑방">
@@ -261,13 +279,29 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           ))}
         </div>
       ) : (
+      <>
+      {/* 위 칸: 관리자 글 (5줄 정도, 새 글이 오면 아래로 따라감) */}
+      <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200">
+        <p className="px-4 pt-2 pb-1 text-[0.8125rem] font-bold text-amber-800 flex items-center gap-1.5">📢 관리자 말씀 <span className="font-normal text-amber-700/70">· 오늘</span></p>
+        <div ref={adminRef} className={`${adminMsgs.length > 0 ? 'h-[8.5rem]' : ''} overflow-y-auto overscroll-contain px-4 pb-2`} aria-label="관리자 말씀">
+          {adminMsgs.length === 0 ? (
+            <p className="text-[0.875rem] text-amber-800/60 pb-1">아직 오늘의 말씀이 없어요.</p>
+          ) : adminMsgs.map(m => (
+            <div key={m.id} id={`lounge-${m.id}`} className="flex items-start gap-2 py-0.5">
+              <p className="flex-1 min-w-0 text-[1rem] leading-relaxed text-stone-900 whitespace-pre-wrap break-words">{withCall(m.content, false)}</p>
+              <span className="shrink-0 text-[0.6875rem] text-amber-800/70 pt-1">{timeOf(m.created_at)}</span>
+              {isAdmin && <button onClick={() => remove(m)} className="shrink-0 text-stone-400 text-lg leading-none px-1" aria-label="이 말씀 지우기">×</button>}
+            </div>
+          ))}
+        </div>
+      </div>
       <div ref={listRef} onScroll={e => {
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
       }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col gap-2" onClick={() => setMenuId(null)}>
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
-          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 7일 뒤 사라져요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.
+          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 매일 자정에 새로 시작돼요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.
         </div>
         {hasOlder && <button onClick={loadOlder} className="self-center text-[0.8125rem] text-stone-600 bg-white border border-stone-200 rounded-full px-4 py-1.5">이전 대화 더 보기</button>}
         {loading && <p className="text-center text-stone-400 text-sm py-10">불러오는 중...</p>}
@@ -319,6 +353,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           );
         })}
       </div>
+      </>
       )}
 
       {newBelow > 0 && !trash && (

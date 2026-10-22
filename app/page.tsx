@@ -1870,7 +1870,10 @@ export default function Home() {
   const fetchLoungeNew = async (userId: string) => {
     const since = storageGet(loungeSeenKey(userId));
     let q = supabase.from('lounge_messages').select('id', { count: 'exact', head: true }).neq('user_id', userId);
-    q = q.gt('created_at', since || new Date(Date.now() - 24 * 3600e3).toISOString());
+    // 사랑방은 매일 자정(한국 시간)에 새로 시작 → 오늘 대화만 센다
+    const kst = new Date(Date.now() + 9 * 3600e3);
+    const todayStart = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate()) - 9 * 3600e3).toISOString();
+    q = q.gt('created_at', since && since > todayStart ? since : todayStart);
     const { count, error } = await q;
     setLoungeNew(error ? 0 : count || 0);
   };
