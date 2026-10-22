@@ -3587,7 +3587,7 @@ export default function Home() {
       })()}
 
       {activeTab === 'anon' && (
-        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} />
+        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={goToProfile} />
       )}
 
       {/* 3. 메시지 목록 탭 */}

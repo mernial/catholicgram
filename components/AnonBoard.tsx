@@ -83,7 +83,8 @@ function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean;
   );
 }
 
-export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true, focusPostId, onFocused, onReplied }: {
+export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true, focusPostId, onFocused, onReplied, onOpenProfile }: {
+  onOpenProfile?: (userId: string) => void; // 관리자: 글쓴이 공간으로
   user: User | null;
   isAdmin: boolean;
   onRequireLogin: () => void;      // 로그인 안 했거나 프로필을 아직 안 만들었을 때
@@ -103,6 +104,24 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   const [replies, setReplies] = useState<{ [postId: string]: AnonReply[] }>({});
   const [replyInputs, setReplyInputs] = useState<{ [postId: string]: string }>({});
   const [, setTick] = useState(0); // 남은 시간 표시 갱신용
+  // 관리자만: 글·답글을 쓴 교우 (supabase/anon-admin-authors.sql) — 다른 교우에게는 보이지 않음
+  const [authors, setAuthors] = useState<Record<string, { user_id: string; name: string | null; handle: string | null }>>({});
+  const fetchAuthors = async (postIds: string[]) => {
+    if (!isAdmin || postIds.length === 0) return;
+    const { data, error } = await supabase.rpc('admin_anon_authors', { p_post_ids: postIds });
+    if (error || !data) return;
+    setAuthors(prev => ({ ...prev, ...Object.fromEntries((data as { id: string; user_id: string; baptismal_name: string | null; handle: string | null }[])
+      .map(a => [a.id, { user_id: a.user_id, name: a.baptismal_name, handle: a.handle }])) }));
+  };
+  const AuthorTag = ({ id }: { id: string }) => {
+    const a = authors[id];
+    if (!isAdmin || !a) return null;
+    return (
+      <button type="button" onClick={() => onOpenProfile?.(a.user_id)} className="text-[0.75rem] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5 truncate max-w-[11rem]" title="관리자만 보여요">
+        👤 {a.name || '교우'}{a.handle ? ` @${a.handle}` : ''}
+      </button>
+    );
+  };
 
   const fetchPosts = async () => {
     const { data, error } = await supabase.from('anon_posts_feed').select('*')
@@ -115,12 +134,14 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
     }
     setPosts((data || []) as AnonPost[]);
     setLoaded(true);
+    fetchAuthors((data || []).map(p => p.id));
   };
 
   const fetchReplies = async (postId: string) => {
     const { data } = await supabase.from('anon_replies_feed').select('*')
       .eq('post_id', postId).order('created_at', { ascending: true });
     if (data) setReplies(prev => ({ ...prev, [postId]: data as AnonReply[] }));
+    fetchAuthors([postId]);
   };
 
   useEffect(() => {
@@ -213,7 +234,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
         {/* 핵심만 크게 */}
         <div className="mt-2 flex flex-col gap-1.5">
           <p className="text-[1.0625rem] font-bold text-violet-900 flex items-center gap-2">
-            <Icon name="lock" className="w-5 h-5 shrink-0" />누가 썼는지 아무도 몰라요
+            <Icon name="lock" className="w-5 h-5 shrink-0" />다른 교우는 누가 썼는지 몰라요
           </p>
           <p className="text-[1rem] text-stone-700 flex items-center gap-2">
             <Icon name="heart" className="w-5 h-5 shrink-0 text-rose-500" />서로 존중하며 따뜻하게 답해 주세요
@@ -271,7 +292,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <AnonTag code={post.anon_code} isMine={post.is_mine} />
-                    <span className="text-[0.8125rem] text-stone-400">· {timeAgo(post.created_at)}</span>
+                    <span className="text-[0.8125rem] text-stone-400 shrink-0">· {timeAgo(post.created_at)}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {post.expires_at && (
@@ -286,6 +307,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                   </div>
                 </div>
 
+                {isAdmin && authors[post.id] && <div className="-mt-1.5 flex items-center gap-1.5"><AuthorTag id={post.id} /><span className="text-[0.6875rem] text-stone-400">관리자만 보여요</span></div>}
                 <p className="text-stone-800 text-[1rem] whitespace-pre-wrap leading-relaxed">{post.content}</p>
 
                 <div className="flex items-center gap-x-3.5 gap-y-2 text-[0.875rem] font-medium pt-1 flex-wrap">
@@ -310,9 +332,10 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                     {(replies[post.id] || []).map(reply => (
                       <div key={reply.id} className={`text-xs p-2.5 rounded-xl flex flex-col gap-1.5 ${reply.is_post_author ? 'bg-violet-50/70' : 'bg-stone-100/70'}`}>
                         <div className="flex items-center justify-between">
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex items-center gap-1.5 flex-wrap min-w-0">
                             <AnonTag code={reply.anon_code} isAuthor={reply.is_post_author} isMine={reply.is_mine} />
                             <span className="text-[0.75rem] text-stone-400">{timeAgo(reply.created_at)}</span>
+                            <AuthorTag id={reply.id} />
                           </span>
                           <span className="flex items-center gap-2">
                             {(reply.is_mine || isAdmin) && (
