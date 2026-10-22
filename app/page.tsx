@@ -2009,8 +2009,11 @@ export default function Home() {
   const [highlightCommentId, setHighlightCommentId] = useState<string | null>(null);
   // 댓글 창이 어느 글(스토리)의 것인지 보여 주려고, 목록에 없는 글은 따로 불러 둔다 (지난 스토리 등)
   const [sheetPostExtra, setSheetPostExtra] = useState<Post | null>(null);
+  // 알림으로 연 댓글 창은 맨 위에 '어느 글의 댓글인지' 보여 준다 (홈 피드 위에 댓글만 떠서 그 글로 안 간 것처럼 보이지 않게)
+  const [sheetShowsPost, setSheetShowsPost] = useState(false);
   const openPostComments = async (postId: string, commentId?: string) => {
     setCommentSheetId(postId);
+    setSheetShowsPost(true);
     if (!posts.some(p => p.id === postId) && !storyPosts.some(p => p.id === postId)) {
       supabase.from('posts').select('*').eq('id', postId).maybeSingle().then(({ data }) => {
         if (!data) return;
@@ -2227,6 +2230,16 @@ export default function Home() {
     }).catch(() => {});
   };
 
+  // 알림을 눌러 들어오면 위에 떠 있던 창부터 닫는다 (사랑방·글 크게 보기·사연함 등에 가려 이동하지 않은 것처럼 보이지 않게)
+  // 글쓰기·글 고치기 창은 쓰던 내용이 있을 수 있어 그대로 둔다
+  const closeOverlaysForLink = () => {
+    setActionModalUser(null); setSelectedPostDetail(null); setSelectedImage(null); setAvatarPreview(null);
+    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowNotices(false);
+    setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminMembers(false); setPostMenuId(null);
+    setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
+    setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
+  };
+
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
     // 공지 알림은 로그인 없이도 열린다
@@ -2235,6 +2248,7 @@ export default function Home() {
     setDeepLink(null);
     linkLog('open', Object.entries(deepLink).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&'));
     dismissAlertsFor(deepLink);
+    closeOverlaysForLink();
     // 글·댓글 알림은 홈 위에 연다 (뒤에 예전에 보던 교우 공간이 깔리지 않게)
     if ((deepLink.post || deepLink.view) && currentScreenRef.current.tab !== 'home') goToHome();
     if (deepLink.post) {
@@ -2378,6 +2392,7 @@ export default function Home() {
   // 댓글 창 열기 (인스타그램처럼 아래에서 올라옴). 열 때마다 새로 불러온다
   const toggleCommentBox = async (postId: string) => {
     setCommentSheetId(postId);
+    setSheetShowsPost(false);
     await loadCommentsFor(postId);
   };
   // 내 댓글 수정 / 삭제 (관리자는 삭제 가능)
@@ -4075,6 +4090,19 @@ export default function Home() {
                     <button onClick={() => { setCommentSheetId(null); if (currentScreenRef.current.tab !== 'home') goToHome(); setStoryOpenRequest(sheetPost.user_id); }} className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">스토리 보기</button>
                   )}
                 </div>
+              )}
+              {/* 알림으로 열었으면: 어느 글의 댓글인지 (누르면 그 글을 크게) */}
+              {!sheetIsStory && sheetShowsPost && sheetPost && (
+                <button onClick={() => { setCommentSheetId(null); openPostViewer(sheetPost); }} className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4] text-left" aria-label="이 글 보기">
+                  {sheetPost.images?.[0] || sheetPost.video_poster
+                    ? <img loading="lazy" src={sheetPost.images?.[0] || sheetPost.video_poster || ''} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
+                    : <span className="w-12 h-12 rounded-lg bg-[#eadfcb] flex items-center justify-center text-xl shrink-0">📝</span>}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 글' : `${sheetPost.author_name}님의 글`} · {timeAgo(sheetPost.created_at)}</p>
+                    <p className="text-[0.8125rem] text-stone-600 line-clamp-2 break-words">{sheetPost.content || (sheetPost.video_url ? '영상' : '사진')}</p>
+                  </div>
+                  <span className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">글 보기</span>
+                </button>
               )}
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 flex flex-col gap-4">
                 {list.length === 0 && (
