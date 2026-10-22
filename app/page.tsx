@@ -9,6 +9,7 @@ import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
+import { useStickToBottom } from '@/lib/stick-bottom';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
 import MentionSuggest from '@/components/MentionSuggest';
@@ -425,6 +426,8 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // 1:1 대화방: 열면 최신 글(맨 아래)부터, 사진이 늦게 불러와져도 맨 아래 유지
+  const chatStick = useStickToBottom(activeTab === 'chat' ? (currentChatUser?.id ?? 'chat') : null);
   const latestViewingUserIdRef = useRef<string | null>(null);
 
   const [avatarFile, setAvatarFile] = useState<string | null>(null);
@@ -686,11 +689,12 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [activeTab, currentChatUser, user]);
 
+  // 새 메시지가 오면: 맨 아래를 보고 있었거나 내가 보낸 것이면 맨 아래로 (위로 올려 읽는 중이면 그대로)
   useEffect(() => {
-    if (activeTab === 'chat') {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [chatMessages, activeTab]);
+    if (activeTab !== 'chat') return;
+    const last = chatMessages[chatMessages.length - 1];
+    if (chatStick.atBottom.current || (last && last.sender_id === user?.id)) chatStick.toBottom(true);
+  }, [chatMessages.length, activeTab]);
 
   // --- 화면 이동 + 뒤로가기 ---
   const applyScreen = (st: ScreenState) => {
@@ -3665,7 +3669,9 @@ export default function Home() {
       {activeTab === 'chat' && (
         // 채팅방: 화면 높이에 맞춰 메시지만 스크롤되고 입력창은 항상 맨 아래에 보임
         <section className="flex-1 min-h-0 flex flex-col bg-stone-100">
-          <div className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col gap-3">
+          <div ref={chatStick.listRef} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
+            {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
+            <div ref={chatStick.contentRef} className="mt-auto flex flex-col gap-3">
             {chatMessages.length === 0 ? (
               <div className="text-center text-stone-400 text-xs mt-10">첫 인사를 건네보세요.</div>
             ) : (
@@ -3764,6 +3770,7 @@ export default function Home() {
               })
             )}
             <div ref={messagesEndRef} />
+            </div>
           </div>
           <form onSubmit={sendMessage} className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
             {/* 사진 보내기 */}

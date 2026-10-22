@@ -64,6 +64,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const atBottomRef = useRef(true);
+  const contentRef = useRef<HTMLDivElement>(null);
   const authorsRef = useRef(authors);
   authorsRef.current = authors;
   const messagesRef = useRef(messages);
@@ -153,6 +154,16 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     const t = setInterval(() => { const d = todayStartIso(); if (d !== dayStart) { setDayStart(d); setMessages([]); setHasOlder(false); } }, 20000);
     return () => clearInterval(t);
   }, [dayStart]);
+  // 열면 최신 대화(맨 아래)부터: 프로필 사진이 늦게 불러와져 내용이 길어져도 맨 아래를 보고 있었으면 계속 맨 아래에
+  useEffect(() => {
+    const list = listRef.current, content = contentRef.current;
+    if (!list || !content) return;
+    const stick = () => { if (atBottomRef.current) list.scrollTop = list.scrollHeight; };
+    const ro = new ResizeObserver(stick);
+    ro.observe(content); ro.observe(list); // 키보드가 올라와 칸이 줄어들 때도
+    stick();
+    return () => ro.disconnect();
+  }, [trash === null]);
   // 새 대화가 오면: 맨 아래를 보고 있었으면 따라 내려간다
   useEffect(() => { if (atBottomRef.current) scrollToBottom(true); }, [messages.length]);
 
@@ -311,7 +322,9 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col gap-2" onClick={() => setMenuId(null)}>
+      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col" onClick={() => setMenuId(null)}>
+        {/* 대화가 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
+        <div ref={contentRef} className="mt-auto flex flex-col gap-2">
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
           모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 매일 자정에 새로 시작돼요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.
         </div>
@@ -364,6 +377,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             </div>
           );
         })}
+        </div>
       </div>
       </>
       )}
