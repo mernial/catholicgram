@@ -479,7 +479,8 @@ export default function Home() {
     // 마지막으로 보던 화면으로 시작
     let startScreen: ScreenState = { screen: true, tab: 'home' };
     if (savedTab === 'chat' || savedTab === 'messages') startScreen = { screen: true, tab: 'messages' };
-    else if (savedTab === 'profile' && savedUserId) startScreen = { screen: true, tab: 'profile', viewingUserId: savedUserId };
+    // 다른 교우의 공간은 다시 열 때 이어서 열지 않는다 (알림을 눌러 열었는데 엉뚱한 교우 공간이 뜨지 않게) — 내 공간만
+    else if (savedTab === 'profile' && savedUserId && savedUserId === storageGet('myUserId')) startScreen = { screen: true, tab: 'profile', viewingUserId: savedUserId };
     else if (savedTab === 'anon') startScreen = { screen: true, tab: 'anon' };
     else if (savedTab === 'explore') startScreen = { screen: true, tab: 'explore' };
     else if (savedTab === 'reels') startScreen = { screen: true, tab: 'reels' };
@@ -505,7 +506,7 @@ export default function Home() {
           .then(({ data }) => { if (data) navigate({ screen: true, tab: 'chat', chatUser: data }); });
       }
     }, 0);
-    if (savedUserId) setViewingUserId(savedUserId);
+    if (startScreen.tab === 'profile' && savedUserId) setViewingUserId(savedUserId);
     const onPopState = (e: PopStateEvent) => backHandlerRef.current(e);
     window.addEventListener('popstate', onPopState);
 
@@ -554,6 +555,7 @@ export default function Home() {
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
       const currentUser = session?.user ?? null;
       setUser(currentUser);
+      if (currentUser) storageSet('myUserId', currentUser.id);
       if (currentUser) {
         setShowAuthModal(false);
         fetchProfile(currentUser.id);
