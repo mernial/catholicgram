@@ -233,9 +233,6 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
         <h2 className="text-lg font-bold text-stone-900 flex items-center gap-1.5"><IconBadge name="dove" tone="violet" size="sm" />익명 고민상담</h2>
         {/* 핵심만 크게 */}
         <div className="mt-2 flex flex-col gap-1.5">
-          <p className="text-[1.0625rem] font-bold text-violet-900 flex items-center gap-2">
-            <Icon name="lock" className="w-5 h-5 shrink-0" />다른 교우는 누가 썼는지 몰라요
-          </p>
           <p className="text-[1rem] text-stone-700 flex items-center gap-2">
             <Icon name="heart" className="w-5 h-5 shrink-0 text-rose-500" />서로 존중하며 따뜻하게 답해 주세요
           </p>
