@@ -2756,7 +2756,8 @@ export default function Home() {
       })()}
       <button onClick={onComment} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
         <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
-        {showCounts && commentCounts[post.id] ? commentCounts[post.id] : null}
+        {/* 댓글 수는 언제나 말풍선 옆에 */}
+        {commentCounts[post.id] ? <span className="text-[0.9375rem] font-bold text-sky-900">{commentCounts[post.id]}</span> : null}
       </button>
       {/* 글쓴이에게 바로 메시지 */}
       {user?.id !== post.user_id && (
@@ -3282,9 +3283,9 @@ export default function Home() {
                     <div className={`flex items-center gap-x-2.5 ${(post.images && post.images.length > 0) || post.video_url ? 'pt-2' : ''}`}>
                       {reactionButtons(post, () => toggleCommentBox(post.id), false)}
                     </div>
-                    {(post.pray_count > 0 || post.like_count > 0) && (
+                    {(post.pray_count > 0 || post.like_count > 0 || (commentCounts[post.id] || 0) > 0) && (
                       <p className="text-[0.875rem] font-bold text-stone-900">
-                        {[post.pray_count > 0 && `기도 ${post.pray_count}명`, post.like_count > 0 && `공감 ${post.like_count}명`].filter(Boolean).join(' · ')}
+                        {[post.pray_count > 0 && `기도 ${post.pray_count}명`, post.like_count > 0 && `공감 ${post.like_count}명`, (commentCounts[post.id] || 0) > 0 && `댓글 ${commentCounts[post.id]}개`].filter(Boolean).join(' · ')}
                       </p>
                     )}
                     {(() => {
@@ -3978,7 +3979,7 @@ export default function Home() {
             <div className="w-full max-w-xl h-[78dvh] bg-[#fdfaf5] rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
               <div className="shrink-0 pt-2.5 pb-3 border-b border-[#eadfcb] relative">
                 <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
-                <p className="text-center font-bold text-stone-900 mt-2">댓글</p>
+                <p className="text-center font-bold text-stone-900 mt-2">댓글{(() => { const n = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).length; return n > 0 ? ` ${n}개` : ''; })()}</p>
                 <button onClick={() => setCommentSheetId(null)} className="absolute right-3 top-3 w-10 h-10 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
               </div>
               {/* 스토리 댓글이면: 어떤 스토리인지 (24시간 안이면 바로 다시 보기) */}
