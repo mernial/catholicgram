@@ -370,6 +370,7 @@ export default function Home() {
   const [loungeOnline, setLoungeOnline] = useState(0);   // 지금 사랑방에 들어와 있는 교우 수 (실시간)
   const loungePresenceRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const showLoungeRef = useRef(false);
+  const [loungeStealth, setLoungeStealth] = useState(false); // 관리자 몰래 들어가기 (안내 없이, 참여 인원에서 빠짐)
   const [loungeFocusId, setLoungeFocusId] = useState<string | null>(null); // 관리자 부름 알림으로 연 대화          // 마지막으로 본 뒤 새 사랑방 대화 수
   const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
@@ -1880,8 +1881,9 @@ export default function Home() {
     if (!error) setAnonUnread(count || 0);
   };
   // 사랑방 참여자 수: 메시지 목록을 보거나 사랑방에 있을 때만 실시간으로 센다.
-  // 사랑방 안에 들어온 교우만 '참여자'로 표시(track)하고, 목록에서는 보기만 한다.
-  showLoungeRef.current = showLounge;
+  // 사랑방 안에 들어온 교우만 '참여자'로 표시(track)하고, 목록에서는 보기만 한다. 관리자가 몰래 들어오면 표시하지 않는다.
+  const loungePresent = showLounge && !loungeStealth;
+  showLoungeRef.current = loungePresent;
   const loungeWatching = !!user && (activeTab === 'messages' || showLounge);
   useEffect(() => {
     if (!loungeWatching || !user) { setLoungeOnline(0); return; }
@@ -1894,8 +1896,8 @@ export default function Home() {
   useEffect(() => {
     const ch = loungePresenceRef.current;
     if (!ch) return;
-    (showLounge ? ch.track({ at: Date.now() }) : ch.untrack()).catch(() => {});
-  }, [showLounge]);
+    (loungePresent ? ch.track({ at: Date.now() }) : ch.untrack()).catch(() => {});
+  }, [loungePresent]);
   // 사랑방: 마지막으로 본 뒤 다른 교우가 쓴 대화 수
   const fetchLoungeNew = async (userId: string) => {
     const since = storageGet(loungeSeenKey(userId));
@@ -2436,11 +2438,15 @@ export default function Home() {
     setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null)?.focus(), 150);
   };
 
+  const commentSendingRef = useRef(new Set<string>()); // 엔터가 두 번 들어와도 한 번만 올리게
   const handleAddComment = async (postId: string) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
     const text = commentInputs[postId];
-    if (!text || !text.trim()) return;
+    if (!text || !text.trim() || commentSendingRef.current.has(postId)) return;
+    commentSendingRef.current.add(postId);
+    // 입력칸은 바로 비운다: 올리는 동안 이어서 친 글자가 나중에 지워지지 않게 (못 올리면 되돌림)
+    setCommentInputs(prev => ({ ...prev, [postId]: '' }));
     const author = profile?.baptismal_name || '교우';
     const target = replyTargets[postId];
     const row = { post_id: postId, content: text.trim(), user_id: user.id, author_name: author };
@@ -2455,13 +2461,16 @@ export default function Home() {
     if (error && target && (error.code === 'PGRST204' || error.code === '42703')) {
       ({ data, error } = await supabase.from('comments').insert([{ ...row, content: `@${target.name} ${row.content}` }]).select());
     }
-    if (!error && data?.[0]) {
-      setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
-      setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
-      setCommentInputs(prev => ({ ...prev, [postId]: '' }));
-      setReplyTargets(prev => ({ ...prev, [postId]: null }));
-      sendPush('comment', data[0].id);
+    commentSendingRef.current.delete(postId);
+    if (error || !data?.[0]) {
+      setCommentInputs(prev => ({ ...prev, [postId]: (prev[postId] || '').trim() ? prev[postId] : text }));
+      if (error) alert(`댓글을 남기지 못했어요.\n(${error.message})`);
+      return;
     }
+    setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
+    setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
+    setReplyTargets(prev => ({ ...prev, [postId]: null }));
+    sendPush('comment', data[0].id);
   };
 
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3662,6 +3671,7 @@ export default function Home() {
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
         <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline}
+          stealth={isAdmin && loungeStealth} onReveal={() => setLoungeStealth(false)}
           onCallAdmin={id => sendPush('lounge_call', id)}
           onAnnounce={async id => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -3671,7 +3681,7 @@ export default function Home() {
             if (!res || !res.ok) return json.error || '알림을 보내지 못했어요.';
             return `📢 ${json.sent ?? 0}대의 휴대폰에 알림을 보냈어요`;
           }}
-          onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); }}
+          onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); setLoungeStealth(false); }}
           onOpenProfile={id => { setShowLounge(false); goToProfile(id); }}
           onReport={t => setReportTarget(t)} />
       )}
@@ -3685,7 +3695,7 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
             {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 */}
-            <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
+            <button onClick={() => { if (!requireProfile()) return; setLoungeStealth(false); setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
               <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
@@ -3699,6 +3709,12 @@ export default function Home() {
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
                 : <span className="text-stone-400 text-xl shrink-0">›</span>}
             </button>
+            {/* 관리자: 몰래 들어가기 — 들어왔다는 안내 없이, 참여 인원에도 안 잡힌다 */}
+            {isAdmin && (
+              <button onClick={() => { setLoungeStealth(true); setShowLounge(true); }} className="w-full px-4 py-2.5 flex items-center gap-2 bg-[#faf6ee] text-left text-[0.8125rem] text-stone-600 hover:bg-[#f3ead8]">
+                <span className="text-base">🤫</span><b className="text-stone-800">몰래 들어가기</b><span className="truncate">· 안내 없이, 참여 인원에도 안 잡혀요</span>
+              </button>
+            )}
             {chatPartners.length === 0 ? (
               <div className="p-12 text-center text-stone-400 text-sm">아직 주고받은 메시지가 없습니다.</div>
             ) : (
@@ -3840,7 +3856,7 @@ export default function Home() {
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*" className="hidden" disabled={sendingPhoto} onChange={sendPhotoMessage} />
             </label>
-            <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
@@ -4171,7 +4187,7 @@ export default function Home() {
                     type="text"
                     value={commentInputs[sid] || ''}
                     onChange={e => setCommentInputs(prev => ({ ...prev, [sid]: e.target.value }))}
-                    onKeyDown={e => e.key === 'Enter' && handleAddComment(sid)}
+                    onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleAddComment(sid); }}
                     placeholder={replyTargets[sid] ? `${replyTargets[sid]!.name}님에게 답글...` : sheetPost ? `${sheetPost.author_name}님에게 댓글 남기기...` : '댓글 달기...'}
                     className="flex-1 min-w-0 text-[0.9375rem] border border-stone-300 rounded-full px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-stone-300"
                   />

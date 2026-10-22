@@ -39,7 +39,7 @@ const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).ma
 
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, stealth = false, onReveal, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
@@ -50,6 +50,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   online?: number;                       // 지금 사랑방에 들어와 있는 교우 수 (화면(page)이 실시간으로 셈)               // 관리자 부름 알림으로 들어왔을 때 그 대화로
   onCallAdmin: (messageId: string) => void;
   onAnnounce?: (messageId: string) => Promise<string>; // 관리자: 모든 교우에게 휴대폰 알림 → 결과 문구
+  stealth?: boolean;                     // 관리자 몰래 들어가기: 들어왔다는 안내 없이, 참여 인원에도 안 잡힘
+  onReveal?: () => void;                 // 몰래 보다가 '들어왔다고 알리기'
 }) {
   const [messages, setMessages] = useState<LoungeMessage[]>([]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
@@ -74,6 +76,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   }, []);
   // 한글 조합 중에 엔터를 누르면 keydown 을 건너뛰고 줄바꿈이 들어오려 함 → 그 줄바꿈 입력을 막고 보낸다
   const shiftRef = useRef(false);
+  const composingRef = useRef(false); // 한글 자음·모음을 조합하는 중인지
   const sendRef = useRef<(typed: string) => void>(() => {});
   useEffect(() => {
     const ta = inputRef.current;
@@ -122,6 +125,15 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     loadAuthors(rows.map(r => r.user_id));
   };
 
+  // 관리자가 들어왔다고 대화에 작게 알림 (10분 안에 이미 알렸으면 생략 — 들락날락해도 도배되지 않게)
+  const postEnterNotice = (rows: LoungeMessage[]) => {
+    const recent = rows.some(r => r.user_id === user.id && r.content.startsWith(ENTER_MARK) && Date.now() - new Date(r.created_at).getTime() < 10 * 60 * 1000);
+    if (recent) return;
+    supabase.from('lounge_messages').insert({ content: ENTER_MARK + ENTER_TEXT }).select('*').single()
+      .then(({ data: d }) => { if (d) addMessages([d as LoungeMessage]); });
+  };
+  const reveal = () => { postEnterNotice(messagesRef.current); onReveal?.(); };
+
   const markSeen = () => { try { localStorage.setItem(loungeSeenKey(user.id), new Date().toISOString()); } catch { /* 무시 */ } };
 
   // 처음 불러오기
@@ -139,12 +151,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       if (!(focusId && rows.some(r => r.id === focusId))) setTimeout(() => scrollToBottom(), 50); // 부른 대화가 있으면 아래 효과가 그리로
       if (isAdmin) {
         loadAuthors([user.id]); // 위 칸에 관리자 프로필
-        // 들어왔다고 알림 (10분 안에 이미 알렸으면 생략 — 들락날락해도 도배되지 않게)
-        const recent = rows.some(r => r.user_id === user.id && r.content.startsWith(ENTER_MARK) && Date.now() - new Date(r.created_at).getTime() < 10 * 60 * 1000);
-        if (!recent) {
-          supabase.from('lounge_messages').insert({ content: ENTER_MARK + ENTER_TEXT }).select('*').single()
-            .then(({ data: d }) => { if (d) addMessages([d as LoungeMessage]); });
-        }
+        if (!stealth) postEnterNotice(rows); // 몰래 들어가기면 알리지 않는다
         const { data: b } = await supabase.from('lounge_bans').select('user_id');
         setBanned(new Set((b || []).map(x => x.user_id)));
       }
@@ -232,20 +239,28 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   const send = async (e?: React.FormEvent, typed?: string) => {
     e?.preventDefault();
-    const text = (typed ?? input).trim();
-    if (!text || sending) return;
+    if (sending) return;
+    const ta = inputRef.current;
+    const raw = typed ?? ta?.value ?? input;
+    const text = raw.trim();
+    if (!text) return;
     // 자판이 올라와 있었으면 보낸 뒤에도 그대로 (입력창에 다시 초점)
-    const keepKeyboard = typeof document !== 'undefined' && document.activeElement === inputRef.current;
+    const keepKeyboard = typeof document !== 'undefined' && !!ta && document.activeElement === ta;
+    // 아직 조합 중인 글자(예: 마지막 '다')를 먼저 끝맺는다. 조합 중에 입력창을 비우면
+    // 다음에 칠 때 그 글자가 되살아나거나 자음·모음이 흩어지고 글자가 사라진다
+    if (keepKeyboard && composingRef.current && ta) { ta.blur(); ta.focus(); composingRef.current = false; }
+    // 입력창은 바로 비운다: 보내는 동안 이어서 친 글자가 나중에 지워지지 않게 (못 보내면 되돌림)
+    setInput('');
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) })
       .select('*').single();
     setSending(false);
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err) {
+      setInput(cur => (cur.trim() ? cur : raw));
       alert(isSetupError(err) ? SETUP_HINT : /천천히|제한/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
       return;
     }
-    setInput('');
     atBottomRef.current = true;
     if (data) addMessages([data]);
     // '@관리자'로 불렀으면 관리자에게만 알림 (관리자 본인은 제외)
@@ -340,6 +355,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         </div>
         {isAdmin && <button onClick={openTrash} className="px-2.5 py-1.5 mr-1 rounded-lg border border-stone-200 text-[0.75rem] text-stone-600">{trash ? '대화로' : '지운 대화'}</button>}
       </div>
+      {isAdmin && stealth && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-stone-800 text-white">
+          <span className="flex-1 min-w-0 text-[0.8125rem] leading-snug">🤫 몰래 보는 중이에요 · 들어왔다는 안내가 없고, 참여 인원에도 안 잡혀요</span>
+          <button onClick={reveal} className="shrink-0 px-3 py-1.5 rounded-full bg-white text-stone-900 text-[0.8125rem] font-bold">들어왔다고 알리기</button>
+        </div>
+      )}
 
       {trash ? (
         <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-2">
@@ -486,6 +507,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 500))}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
             enterKeyHint={enterSends ? 'send' : 'enter'}
             onKeyDown={e => {
               // 엔터 = 보내기, 쉬프트+엔터 = 줄바꿈 (컴퓨터·아이패드 등 큰 화면). 한글 조합 중인 엔터는 글자 완성이므로 건너뜀
