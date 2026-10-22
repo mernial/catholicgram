@@ -8,6 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
+import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
 import MentionSuggest from '@/components/MentionSuggest';
@@ -359,6 +360,8 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
+  const [loungeNew, setLoungeNew] = useState(0);          // 마지막으로 본 뒤 새 사랑방 대화 수
   const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
   const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
@@ -645,7 +648,7 @@ export default function Home() {
       fetchUserPosts(viewingUserId); // 그 사람 글 (홈에서 불러온 것만으로는 모자랄 수 있음)
     } else if (activeTab === 'messages') {
       fetchChatPartners();
-      if (user) fetchUnreadMessages(user.id);
+      if (user) { fetchUnreadMessages(user.id); fetchLoungeNew(user.id); }
     }
   }, [activeTab, viewingUserId, user]);
 
@@ -1838,6 +1841,14 @@ export default function Home() {
     const { count, error } = await supabase.from('anon_posts_feed').select('id', { count: 'exact', head: true }).gt('created_at', since).eq('is_mine', false);
     if (!error) setAnonUnread(count || 0);
   };
+  // 사랑방: 마지막으로 본 뒤 다른 교우가 쓴 대화 수
+  const fetchLoungeNew = async (userId: string) => {
+    const since = storageGet(loungeSeenKey(userId));
+    let q = supabase.from('lounge_messages').select('id', { count: 'exact', head: true }).neq('user_id', userId);
+    q = q.gt('created_at', since || new Date(Date.now() - 24 * 3600e3).toISOString());
+    const { count, error } = await q;
+    setLoungeNew(error ? 0 : count || 0);
+  };
   // 관리자: 새 사연 수
   const fetchLetterCount = async () => {
     if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return;
@@ -2441,7 +2452,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2481,6 +2492,8 @@ export default function Home() {
     setShowDeletedMessages(false);
     setShowMediaStorage(false);
     setShowLetters(false);
+    // 사랑방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
+    if (!reportTarget && !actionModalUser) setShowLounge(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
@@ -2568,7 +2581,7 @@ export default function Home() {
   const pullRefresh = () => {
     if (activeTab === 'anon') setAnonKey(k => k + 1);
     if (activeTab === 'profile' && viewingUserId) { fetchViewingProfile(viewingUserId); fetchFollowData(viewingUserId); }
-    if (activeTab === 'messages') { fetchChatPartners(); if (user) fetchUnreadMessages(user.id); }
+    if (activeTab === 'messages') { fetchChatPartners(); if (user) { fetchUnreadMessages(user.id); fetchLoungeNew(user.id); } }
     refreshFeed();
   };
   const pullCtx = useRef({ blocked: false, refresh: pullRefresh });
@@ -3548,6 +3561,12 @@ export default function Home() {
       )}
 
       {/* 3. 메시지 목록 탭 */}
+      {showLounge && user && (
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds}
+          onClose={() => { setShowLounge(false); setLoungeNew(0); }}
+          onOpenProfile={id => { setShowLounge(false); goToProfile(id); }}
+          onReport={t => setReportTarget(t)} />
+      )}
       {activeTab === 'messages' && (
         <section className="flex-1 bg-white flex flex-col">
           <div className="p-4 border-b border-stone-200 flex items-center gap-2">
@@ -3557,6 +3576,17 @@ export default function Home() {
             <h2 className="font-bold text-lg text-stone-900">메시지</h2>
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+            {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 */}
+            <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
+              <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
+                <span className="block text-xs text-stone-600 mt-0.5">모든 교우가 함께 나누는 실시간 대화방</span>
+              </span>
+              {loungeNew > 0
+                ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
+                : <span className="text-stone-400 text-xl shrink-0">›</span>}
+            </button>
             {chatPartners.length === 0 ? (
               <div className="p-12 text-center text-stone-400 text-sm">아직 주고받은 메시지가 없습니다.</div>
             ) : (
