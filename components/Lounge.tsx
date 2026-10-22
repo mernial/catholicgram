@@ -9,7 +9,7 @@ import type { ReportTarget } from '@/components/ReportDialog';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
-// 관리자 글은 위쪽 칸(5줄 정도)에, 교우들의 대화는 아래 칸에 따로 보인다.
+// 관리자 글은 위쪽 칸(두 줄 높이, 오른쪽 정렬, 관리자 프로필과 함께)에, 교우들의 대화는 아래 칸에 따로 보인다.
 // 새 대화·지운 대화는 Supabase 실시간으로 바로 받고, 실시간 연결이 안 되면 5초마다 확인한다.
 // 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만 휴대폰 알림이 간다.
 
@@ -115,6 +115,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         setTimeout(() => setHighlightId(null), 8000);
       } else setTimeout(() => scrollToBottom(), 50);
       if (isAdmin) {
+        loadAuthors([user.id]); // 위 칸에 관리자 프로필
         const { data: b } = await supabase.from('lounge_bans').select('user_id');
         setBanned(new Set((b || []).map(x => x.user_id)));
       }
@@ -280,21 +281,32 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         </div>
       ) : (
       <>
-      {/* 위 칸: 관리자 글 (5줄 정도, 새 글이 오면 아래로 따라감) */}
-      <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200">
-        <p className="px-4 pt-2 pb-1 text-[0.8125rem] font-bold text-amber-800 flex items-center gap-1.5">📢 관리자 말씀 <span className="font-normal text-amber-700/70">· 오늘</span></p>
-        <div ref={adminRef} className={`${adminMsgs.length > 0 ? 'h-[8.5rem]' : ''} overflow-y-auto overscroll-contain px-4 pb-2`} aria-label="관리자 말씀">
-          {adminMsgs.length === 0 ? (
-            <p className="text-[0.875rem] text-amber-800/60 pb-1">아직 오늘의 말씀이 없어요.</p>
-          ) : adminMsgs.map(m => (
-            <div key={m.id} id={`lounge-${m.id}`} className="flex items-start gap-2 py-0.5">
-              <p className="flex-1 min-w-0 text-[1rem] leading-relaxed text-stone-900 whitespace-pre-wrap break-words">{withCall(m.content, false)}</p>
-              <span className="shrink-0 text-[0.6875rem] text-amber-800/70 pt-1">{timeOf(m.created_at)}</span>
-              {isAdmin && <button onClick={() => remove(m)} className="shrink-0 text-stone-400 text-lg leading-none px-1" aria-label="이 말씀 지우기">×</button>}
+      {/* 위 칸: 관리자 글 (두 줄 높이, 오른쪽 정렬, 새 글이 오면 아래로 따라감) + 관리자 프로필 */}
+      {(() => {
+        const adminId = adminMsgs.length > 0 ? adminMsgs[adminMsgs.length - 1].user_id : (isAdmin ? user.id : null);
+        const a = adminId ? authors[adminId] : undefined;
+        return (
+          <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200 px-3 py-2 flex items-center gap-2.5">
+            <div ref={adminRef} className="flex-1 min-w-0 h-[3.3rem] overflow-y-auto overscroll-contain text-right" aria-label="관리자 말씀">
+              {adminMsgs.length === 0 ? (
+                <p className="text-[0.875rem] leading-[3.3rem] text-amber-800/60">📢 오늘의 관리자 말씀이 여기에 보여요</p>
+              ) : adminMsgs.map(m => (
+                <p key={m.id} id={`lounge-${m.id}`} className="text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words">
+                  {withCall(m.content, false)}
+                  <span className="ml-1.5 text-[0.6875rem] text-amber-800/70 whitespace-nowrap">{timeOf(m.created_at)}</span>
+                  {isAdmin && <button onClick={() => remove(m)} className="ml-1 text-stone-400 text-base leading-none align-middle" aria-label="이 말씀 지우기">×</button>}
+                </p>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
+            <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center" aria-label="관리자 공간">
+              {a?.avatar_url
+                ? <img src={a.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-amber-300" />
+                : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{a?.baptismal_name?.[0] || '📢'}</span>}
+              <span className="mt-0.5 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate flex items-center gap-0.5">{a?.baptismal_name || '관리자'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /></span>
+            </button>
+          </div>
+        );
+      })()}
       <div ref={listRef} onScroll={e => {
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
