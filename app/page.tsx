@@ -379,6 +379,8 @@ export default function Home() {
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
+  // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
+  const [tray, setTray] = useState<{ file: File; url: string }[]>([]);
   const [storyPickRequest, setStoryPickRequest] = useState(0); // 글쓰기 아래 '스토리'를 누르면 스토리 사진 고르기
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
@@ -1421,6 +1423,7 @@ export default function Home() {
       // 글에서 @태그한 사람에게 휴대폰 알림
       if (created?.[0]?.id && extractMentions(content).length > 0) sendPush('post', created[0].id);
       setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
+      tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowComposer(false);
       fetchPosts(); goToHome();
@@ -1631,12 +1634,20 @@ export default function Home() {
     e.target.value = '';
     if (picked.length === 0) return;
     clearVideo();
-    // 한 장 선택(기본): 새로 고른 사진으로 바꿈
-    if (showComposer && composerStep === 'pick' && !composerMulti) {
-      previewUrls.forEach(u => URL.revokeObjectURL(u));
-      setSelectedFiles([picked[0]]);
-      setPreviewUrls([URL.createObjectURL(picked[0])]);
-      setComposerPhotoIdx(0);
+    // 새 게시물 1단계: 고른 사진은 모두 아래 사진 칸에 미리보기로 모으고, 처음 것(여러 장 선택이면 들어갈 만큼)을 고른 상태로
+    if (showComposer && composerStep === 'pick') {
+      const items = picked.slice(0, 60).map(f => ({ file: f, url: URL.createObjectURL(f) }));
+      setTray(prev => [...items, ...prev].slice(0, 80));
+      if (!composerMulti) {
+        setSelectedFiles([items[0].file]); setPreviewUrls([items[0].url]); setComposerPhotoIdx(0);
+      } else {
+        const add = items.slice(0, Math.max(0, MAX_PHOTOS - selectedFiles.length));
+        if (add.length > 0) {
+          setSelectedFiles(prev => [...prev, ...add.map(t => t.file)]);
+          setPreviewUrls(prev => [...prev, ...add.map(t => t.url)]);
+          setComposerPhotoIdx(selectedFiles.length + add.length - 1);
+        }
+      }
       return;
     }
     const room = MAX_PHOTOS - selectedFiles.length;
@@ -1644,6 +1655,21 @@ export default function Home() {
     const added = picked.slice(0, Math.max(0, room));
     setSelectedFiles(prev => [...prev, ...added]);
     setPreviewUrls(prev => [...prev, ...added.map(f => URL.createObjectURL(f))]);
+  };
+  // 사진 칸에서 미리보기를 눌렀을 때: 한 장 모드는 그 사진으로 바꾸고, 여러 장 모드는 고르기/크게 보기/빼기
+  const pickFromTray = (item: { file: File; url: string }) => {
+    const pos = selectedFiles.indexOf(item.file);
+    if (!composerMulti) { setSelectedFiles([item.file]); setPreviewUrls([item.url]); setComposerPhotoIdx(0); return; }
+    const shown = Math.min(composerPhotoIdx, Math.max(0, selectedFiles.length - 1));
+    if (pos < 0) {
+      if (selectedFiles.length >= MAX_PHOTOS) { alert(`사진은 ${MAX_PHOTOS}장까지 고를 수 있어요.`); return; }
+      setSelectedFiles(prev => [...prev, item.file]); setPreviewUrls(prev => [...prev, item.url]); setComposerPhotoIdx(selectedFiles.length);
+    } else if (pos !== shown) {
+      setComposerPhotoIdx(pos);
+    } else {
+      setSelectedFiles(prev => prev.filter((_, i) => i !== pos)); setPreviewUrls(prev => prev.filter((_, i) => i !== pos));
+      setComposerPhotoIdx(i => Math.max(0, i >= pos ? i - 1 : i));
+    }
   };
   const removeFile = (idx: number) => {
     setSelectedFiles(selectedFiles.filter((_, i) => i !== idx));
@@ -3021,7 +3047,7 @@ export default function Home() {
             const row = 'w-full flex items-center gap-3 px-4 py-3.5 text-left border-b border-stone-100 active:bg-stone-50';
             return (
           <div className={`fixed inset-0 z-[70] flex flex-col ${composerStep === 'pick' ? 'bg-black text-white' : 'bg-white'}`} role="dialog" aria-label="새 게시물">
-            <input ref={fileInputRef} type="file" accept="image/*" multiple={composerStep === 'write' || composerMulti} onChange={handleFileChange} className="hidden" id="photo-upload" />
+            <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
             <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="photo-camera" />
             <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
             {composerStep === 'pick' ? (
@@ -3075,13 +3101,28 @@ export default function Home() {
                     <label htmlFor="photo-camera" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="camera" className="w-8 h-8" /><span className="text-[0.75rem]">사진 찍기</span>
                     </label>
-                    <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
-                      <Icon name="stack" className="w-8 h-8" /><span className="text-[0.75rem]">앨범</span>
+                    <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#3a3a3a] flex flex-col items-center justify-center gap-1 text-white">
+                      <Icon name="stack" className="w-8 h-8" /><span className="text-[0.75rem] font-bold">사진첩 열기</span>
                     </label>
                     <label htmlFor="video-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="film" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
                     </label>
-                    {previewUrls.map((url, idx) => (
+                    {/* 사진첩에서 고른 사진 미리보기 (최근 것이 앞에) */}
+                    {tray.map(item => {
+                      const pos = selectedFiles.indexOf(item.file);
+                      const focused = pos >= 0 && pos === shownIdx;
+                      return (
+                        <button key={item.url} type="button" onClick={() => pickFromTray(item)} className="relative aspect-square" aria-label={pos >= 0 ? `고른 사진 ${pos + 1}` : '사진 고르기'} aria-pressed={pos >= 0}>
+                          <img src={item.url} alt="" className="w-full h-full object-cover" />
+                          {focused && <span className="pointer-events-none absolute inset-0 bg-white/35" />}
+                          {composerMulti
+                            ? <span className={`pointer-events-none absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 border-white text-white text-[0.75rem] font-bold flex items-center justify-center ${pos >= 0 ? 'bg-[#4a9dff]' : 'bg-black/25'}`}>{pos >= 0 ? pos + 1 : ''}</span>
+                            : pos >= 0 && <span className="pointer-events-none absolute inset-0 ring-4 ring-inset ring-[#4a9dff]" />}
+                        </button>
+                      );
+                    })}
+                    {/* 이번에 찍은 사진 등 사진 칸에 없는 고른 사진 */}
+                    {previewUrls.map((url, idx) => tray.some(t => t.file === selectedFiles[idx]) ? null : (
                       <div key={url} className="relative aspect-square">
                         <button type="button" onClick={() => setComposerPhotoIdx(idx)} className="w-full h-full" aria-label={`${idx + 1}번째 사진 크게 보기`}>
                           <img src={url} alt="" className={`w-full h-full object-cover ${idx === shownIdx ? 'opacity-60' : ''}`} />
@@ -3091,7 +3132,11 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                  <p className="px-4 pt-3 pb-4 text-[0.8125rem] text-white/45 leading-relaxed">{composerMulti ? `사진은 ${MAX_PHOTOS}장까지 고를 수 있어요.` : '여러 장을 올리려면 위의 \u2018여러 장 선택\u2019을 눌러 주세요.'}</p>
+                  <p className="px-4 pt-3 pb-4 text-[0.8125rem] text-white/50 leading-relaxed">
+                    {tray.length === 0
+                      ? <>📱 <b className="text-white/80">사진첩 열기</b>에서 사진을 <b className="text-white/80">여러 장 한꺼번에</b> 고르면 여기에 미리보기로 모여요. 그중에서 올릴 사진을 누르세요.</>
+                      : composerMulti ? `누르는 순서대로 번호가 붙어요 · ${MAX_PHOTOS}장까지 · 큰 사진을 한 번 더 누르면 빠져요` : '올릴 사진을 누르세요 · 여러 장을 올리려면 위의 \u2018여러 장 선택\u2019'}
+                  </p>
                 </div>
                 {/* 맨 아래: 게시물 · 스토리 · 영상 */}
                 <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
@@ -3229,8 +3274,10 @@ export default function Home() {
                 onCancel={() => setEditingPhotoIdx(null)}
                 onDone={edited => {
                   const idx = editingPhotoIdx;
+                  const oldFile = selectedFiles[idx]; const newUrl = URL.createObjectURL(edited);
                   setSelectedFiles(prev => prev.map((f, i) => (i === idx ? edited : f)));
-                  setPreviewUrls(prev => prev.map((u, i) => { if (i !== idx) return u; URL.revokeObjectURL(u); return URL.createObjectURL(edited); }));
+                  setPreviewUrls(prev => prev.map((u, i) => { if (i !== idx) return u; URL.revokeObjectURL(u); return newUrl; }));
+                  setTray(prev => prev.map(t => (t.file === oldFile ? { file: edited, url: newUrl } : t)));
                   setEditingPhotoIdx(null);
                 }}
               />
