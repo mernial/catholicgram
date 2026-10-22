@@ -8,9 +8,11 @@ import { extractMentions } from '@/lib/mentions';
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
 // 받는 사람과 내용은 서버가 DB에서 직접 확인한다.
 
+export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸다
+
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'test' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['test', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -51,7 +53,13 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'comment') {
+  if (type === 'test') {
+    // 알림 확인용: 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
+    const { data: post } = await admin.from('posts').select('id').eq('id', id).maybeSingle();
+    if (!post) return Response.json({ error: 'not found' }, { status: 404 });
+    await new Promise(r => setTimeout(r, 10 * 1000));
+    list.push({ recipientId: user.id, payload: { title: '🔔 테스트 알림', body: '눌러서 이 글의 댓글 창이 열리는지 확인해 보세요', url: `/?post=${post.id}`, tag: `test-${Date.now()}` } });
+  } else if (type === 'comment') {
     const { data: comment } = await admin.from('comments').select('*').eq('id', id).single();
     if (!comment || comment.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(comment.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
