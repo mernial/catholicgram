@@ -12,7 +12,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'test' | 'lounge_call' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['test', 'lounge_call', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -64,6 +64,8 @@ export async function POST(request: Request) {
     const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();
     if (!msg || msg.user_id !== user.id || !String(msg.content).includes('@관리자')) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(msg.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    // 자정부터 아침 8시(한국 시간)까지는 관리자를 부르지 않는다 (앱에서도 막음)
+    if (new Date(Date.now() + 9 * 3600e3).getUTCHours() < 8) return Response.json({ skipped: 'quiet hours' });
     // 같은 교우는 5분에 한 번만 (여러 번 불러도 알림이 쏟아지지 않게)
     const { count } = await admin.from('lounge_messages').select('id', { count: 'exact', head: true })
       .eq('user_id', user.id).neq('id', msg.id).like('content', '%@관리자%')
@@ -73,6 +75,31 @@ export async function POST(request: Request) {
     if (!adminProfile || adminProfile.id === user.id) return Response.json({ skipped: 'admin not found' });
     const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
     list.push({ recipientId: adminProfile.id, payload: { title: '🙋 사랑방에서 관리자를 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content).replace(/@관리자\s*/g, '').trim() || '관리자님!')}`, url: `/?lounge=${msg.id}`, tag: `lounge-call-${msg.id}` } });
+  } else if (type === 'lounge_mention') {
+    // 사랑방에서 '@아이디'로 부름 → 부른 교우에게만 (누르면 사랑방 그 대화로)
+    const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();
+    if (!msg || msg.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(msg.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const handles = extractMentions(String(msg.content)).filter(h => h !== '관리자').slice(0, 5); // 한 번에 다섯 분까지
+    if (handles.length === 0) return Response.json({ skipped: 'no mention' });
+    // 1분에 세 번까지만 (여러 번 불러 알림이 쏟아지지 않게)
+    const { count } = await admin.from('lounge_messages').select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id).neq('id', msg.id).like('content', '%@%')
+      .gt('created_at', new Date(Date.now() - 60 * 1000).toISOString());
+    if ((count || 0) >= 3) return Response.json({ skipped: 'too many' });
+    const { data: people } = await admin.from('profiles').select('id').in('handle', handles);
+    let ids = (people || []).map(p => p.id as string).filter(pid => pid !== user.id);
+    if (ids.length === 0) return Response.json({ skipped: 'nobody' });
+    // 서로 차단한 사이는 보내지 않는다
+    const [{ data: b1 }, { data: b2 }] = await Promise.all([
+      admin.from('blocks').select('blocker_id').in('blocker_id', ids).eq('blocked_id', user.id),
+      admin.from('blocks').select('blocked_id').eq('blocker_id', user.id).in('blocked_id', ids),
+    ]);
+    const blocked = new Set([...(b1 || []).map(b => b.blocker_id as string), ...(b2 || []).map(b => b.blocked_id as string)]);
+    ids = ids.filter(pid => !blocked.has(pid));
+    const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
+    ids.forEach(pid => list.push({ recipientId: pid, payload: { title: '💬 사랑방에서 회원님을 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content))}`, url: `/?lounge=${msg.id}`, tag: `lounge-mention-${msg.id}` } }));
+    if (list.length === 0) return Response.json({ skipped: 'nobody' });
   } else if (type === 'test') {
     // 알림 확인용: 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
     const { data: post } = await admin.from('posts').select('id').eq('id', id).maybeSingle();
