@@ -4686,7 +4686,8 @@ export default function Home() {
                         alt="게시물 사진"
                         onClick={viewerImageTap}
                         onLoad={e => { const nr = naturalRatio(e.currentTarget); if (nr) setViewerRatios(prev => (prev[src] === nr ? prev : { ...prev, [src]: nr })); }}
-                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(60dvh * ${frame}))` }}
+                        // 글이 있으면 사진을 조금 낮춰 글이 한 화면에 함께 보이게
+                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(${(selectedPostDetail.content || '').trim() ? 44 : 60}dvh * ${frame}))` }}
                       />
                     );
                   })()}
@@ -4734,9 +4735,21 @@ export default function Home() {
                 );
               })()}
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
+                {/* 글은 처음엔 여섯 줄까지, 더 길면 '더 보기' */}
+                <ClampText
+                  key={selectedPostDetail.id}
+                  lines={6}
+                  expanded={viewerTextOpen}
+                  onExpand={() => setViewerTextOpen(true)}
+                  onCollapse={() => setViewerTextOpen(false)}
+                  className="text-stone-900 text-[1rem] whitespace-pre-wrap leading-relaxed"
+                  text={selectedPostDetail.content || ''}
+                  renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
+                />
+                <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
                 {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
                 {user?.id === selectedPostDetail.user_id && (
-                  <div className="mb-1 flex flex-col gap-2">
+                  <div className="mt-3 pt-3 border-t border-stone-100 flex flex-col gap-2">
                     <VisibilityPicker value={selectedPostDetail.visibility || 'public'} onChange={v => changePostVisibility(selectedPostDetail.id, v)} />
                     <div className="flex gap-1.5">
                       <button onClick={() => { const p = posts.find(x => x.id === selectedPostDetail.id) || selectedPostDetail; setSelectedPostDetail(null); startEditPost(p); }} className="flex-1 py-2 rounded-xl border border-stone-300 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center justify-center"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />글 고치기</button>
@@ -4744,18 +4757,6 @@ export default function Home() {
                     </div>
                   </div>
                 )}
-                {/* 글은 처음엔 두 줄만, 누르면 전체 */}
-                <ClampText
-                  key={selectedPostDetail.id}
-                  lines={2}
-                  expanded={viewerTextOpen}
-                  onExpand={() => setViewerTextOpen(true)}
-                  onCollapse={() => setViewerTextOpen(false)}
-                  className="text-stone-800 text-[0.9375rem] whitespace-pre-wrap leading-relaxed"
-                  text={selectedPostDetail.content || ''}
-                  renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
-                />
-                <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
 
               </div>
             </div>
