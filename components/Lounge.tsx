@@ -6,12 +6,15 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
+import MentionSuggest from '@/components/MentionSuggest';
+import { extractMentions } from '@/lib/mentions';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
 // 관리자 글은 위쪽 칸(두 줄 높이, 오른쪽 정렬, 관리자 프로필과 함께)에, 교우들의 대화는 아래 칸에 따로 보인다.
 // 새 대화·지운 대화는 Supabase 실시간으로 바로 받고, 실시간 연결이 안 되면 5초마다 확인한다.
-// 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만 휴대폰 알림이 간다.
+// 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만, '@아이디'로 부르면 그 교우에게만 휴대폰 알림이 간다.
+// 관리자는 기본으로 몰래 들어오고(위쪽 '들어왔다고 알리기'), 대화 얼리기·모두 지우기·교우 뱃지를 쓸 수 있다 (supabase/lounge-admin.sql).
 
 interface LoungeMessage { id: string; user_id: string; content: string; created_at: string; is_admin?: boolean }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; badge_type?: string | null }
@@ -33,13 +36,36 @@ export const CALL_ADMIN = '@관리자';
 // 관리자가 사랑방에 들어오면 교우 대화 칸에 작게 '관리자가 들어왔어요' (보이지 않는 표시 문자로 구분)
 const ENTER_MARK = '\u2063';
 const ENTER_TEXT = '관리자가 사랑방에 들어왔어요';
-// '@관리자' 부분을 눈에 띄게
-const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).map((part, i) =>
-  part === CALL_ADMIN ? <b key={i} className={mine ? 'text-amber-200' : 'text-amber-700'}>{part}</b> : part);
+// 관리자 안내(대화 칸 가운데 작은 글): 보이지 않는 표시 문자 + 종류 글자 (교우 글에서는 서버가 이 표시를 지운다)
+const SYS_MARK = '\u2064';
+const SYS = { freeze: `${SYS_MARK}F`, unfreeze: `${SYS_MARK}U`, clear: `${SYS_MARK}C` };
+const SYS_TEXT = { freeze: '❄️ 관리자가 대화를 잠시 멈췄어요', unfreeze: '🌤 대화를 다시 나눌 수 있어요', clear: '🧹 관리자가 대화를 모두 정리했어요' };
+type SysKind = 'enter' | 'freeze' | 'unfreeze' | 'clear';
+const sysKind = (m: { content: string; is_admin?: boolean }): SysKind | null => {
+  if (m.is_admin === false) return null;
+  if (m.content.startsWith(ENTER_MARK)) return 'enter';
+  if (m.content.startsWith(SYS.freeze)) return 'freeze';
+  if (m.content.startsWith(SYS.unfreeze)) return 'unfreeze';
+  if (m.content.startsWith(SYS.clear)) return 'clear';
+  return null;
+};
+// '모두 지우기' 안내가 오면 그 앞의 대화는 화면에서도 뺀다 (얼림 상태 표시는 남김)
+const applyClear = <T extends { content: string; is_admin?: boolean; created_at: string }>(list: T[]) => {
+  const last = [...list].reverse().find(m => sysKind(m) === 'clear');
+  if (!last) return list;
+  return list.filter(m => m.created_at >= last.created_at || sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze');
+};
+// 자정부터 아침 8시(한국 시간)까지는 관리자를 부를 수 없다
+const callQuietNow = () => new Date(Date.now() + 9 * 3600e3).getUTCHours() < 8;
+const QUIET_NOTICE = '자정부터 아침 8시까지는 관리자를 부를 수 없어요.\n아침 8시 이후에 다시 불러 주세요 🙏';
+// '@관리자'·'@아이디' 부분을 눈에 띄게
+const withCall = (text: string, mine: boolean) => text.split(/(@[0-9A-Za-z_가-힣][0-9A-Za-z_.가-힣]{0,29})/g).map((part, i) =>
+  part === CALL_ADMIN ? <b key={i} className={mine ? 'text-amber-200' : 'text-amber-700'}>{part}</b>
+    : i % 2 === 1 ? <b key={i} className={mine ? 'text-sky-200' : 'text-sky-700'}>{part}</b> : part);
 
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, stealth = false, onReveal, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, stealth = false, onReveal, onClose, onOpenProfile, onReport, onCallAdmin, onMention, onAnnounce }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
@@ -49,6 +75,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   focusId?: string | null;
   online?: number;                       // 지금 사랑방에 들어와 있는 교우 수 (화면(page)이 실시간으로 셈)               // 관리자 부름 알림으로 들어왔을 때 그 대화로
   onCallAdmin: (messageId: string) => void;
+  onMention?: (messageId: string) => void; // '@아이디'로 부른 교우에게 알림
   onAnnounce?: (messageId: string) => Promise<string>; // 관리자: 모든 교우에게 휴대폰 알림 → 결과 문구
   stealth?: boolean;                     // 관리자 몰래 들어가기: 들어왔다는 안내 없이, 참여 인원에도 안 잡힘
   onReveal?: () => void;                 // 몰래 보다가 '들어왔다고 알리기'
@@ -64,6 +91,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [newBelow, setNewBelow] = useState(0);         // 위로 올려 보는 중에 새로 온 대화 수
   const [banned, setBanned] = useState<Set<string>>(new Set());
   const [trash, setTrash] = useState<Trashed[] | null>(null);
+  const [badges, setBadges] = useState<Record<string, string>>({}); // 관리자가 단 교우 뱃지
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   // 엔터로 보내기: 컴퓨터(마우스)와 아이패드처럼 화면이 큰 기기. 휴대폰은 엔터가 줄바꿈 (보내기 단추로 전송)
@@ -120,19 +148,19 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       const fresh = rows.filter(r => !seen.has(r.id));
       if (fresh.length === 0) return prev;
       if (!atBottomRef.current) setNewBelow(n => n + fresh.filter(r => r.user_id !== user.id).length);
-      return [...prev, ...fresh].sort((a, b) => a.created_at.localeCompare(b.created_at));
+      return applyClear([...prev, ...fresh].sort((a, b) => a.created_at.localeCompare(b.created_at)));
     });
     loadAuthors(rows.map(r => r.user_id));
   };
 
   // 관리자가 들어왔다고 대화에 작게 알림 (10분 안에 이미 알렸으면 생략 — 들락날락해도 도배되지 않게)
-  const postEnterNotice = (rows: LoungeMessage[]) => {
+  const postEnterNotice = (rows: LoungeMessage[], force = false) => {
     const recent = rows.some(r => r.user_id === user.id && r.content.startsWith(ENTER_MARK) && Date.now() - new Date(r.created_at).getTime() < 10 * 60 * 1000);
-    if (recent) return;
+    if (recent && !force) return;
     supabase.from('lounge_messages').insert({ content: ENTER_MARK + ENTER_TEXT }).select('*').single()
-      .then(({ data: d }) => { if (d) addMessages([d as LoungeMessage]); });
+      .then(({ data: d, error: err }) => { if (d) addMessages([d as LoungeMessage]); else if (err) alert(`알리지 못했어요.\n(${err.message})`); });
   };
-  const reveal = () => { postEnterNotice(messagesRef.current); onReveal?.(); };
+  const reveal = () => { postEnterNotice(messagesRef.current, true); onReveal?.(); };
 
   const markSeen = () => { try { localStorage.setItem(loungeSeenKey(user.id), new Date().toISOString()); } catch { /* 무시 */ } };
 
@@ -143,11 +171,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         .gte('created_at', todayStartIso()).order('created_at', { ascending: false }).limit(PAGE);
       setLoading(false);
       if (e) { setError(isSetupError(e) ? SETUP_HINT : '대화를 불러오지 못했어요.'); return; }
-      const rows = (data || []).reverse();
+      const rows = applyClear((data || []).reverse());
       setMessages(rows);
       setHasOlder((data || []).length === PAGE);
       loadAuthors(rows.map(r => r.user_id));
       markSeen();
+      supabase.from('lounge_badges').select('user_id, label')
+        .then(({ data: bd }) => { if (bd) setBadges(Object.fromEntries(bd.map(x => [x.user_id, x.label]))); });
       if (!(focusId && rows.some(r => r.id === focusId))) setTimeout(() => scrollToBottom(), 50); // 부른 대화가 있으면 아래 효과가 그리로
       if (isAdmin) {
         loadAuthors([user.id]); // 위 칸에 관리자 프로필
@@ -244,6 +274,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     const raw = typed ?? ta?.value ?? input;
     const text = raw.trim();
     if (!text) return;
+    if (!isAdmin && text.includes(CALL_ADMIN) && callQuietNow()) { alert(QUIET_NOTICE); return; }
     // 자판이 올라와 있었으면 보낸 뒤에도 그대로 (입력창에 다시 초점)
     const keepKeyboard = typeof document !== 'undefined' && !!ta && document.activeElement === ta;
     // 아직 조합 중인 글자(예: 마지막 '다')를 먼저 끝맺는다. 조합 중에 입력창을 비우면
@@ -258,7 +289,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err) {
       setInput(cur => (cur.trim() ? cur : raw));
-      alert(isSetupError(err) ? SETUP_HINT : /천천히|제한/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
+      alert(isSetupError(err) ? SETUP_HINT : /천천히|제한|멈췄/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
       return;
     }
     atBottomRef.current = true;
@@ -267,6 +298,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (data && text.includes(CALL_ADMIN) && !isAdmin) {
       onCallAdmin(data.id);
       setNotice('관리자에게 알림을 보냈어요 🙋');
+      setTimeout(() => setNotice(''), 4000);
+    }
+    // '@아이디'로 부른 교우에게만 휴대폰 알림 (누르면 사랑방 이 대화로)
+    if (data && onMention && extractMentions(text).some(h => h !== '관리자')) {
+      onMention(data.id);
+      setNotice('🔔 부른 교우에게 알림을 보냈어요');
       setTimeout(() => setNotice(''), 4000);
     }
   };
@@ -314,6 +351,44 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     }
   };
 
+  // 관리자: 대화 얼리기 / 다시 열기 (얼리면 교우는 읽기만, 서버도 막음)
+  const toggleFreeze = async () => {
+    if (!frozen && !window.confirm('사랑방 대화를 잠시 얼릴까요?\n교우들은 읽기만 하고 글을 쓸 수 없어요. (관리자는 쓸 수 있어요)')) return;
+    const kind = frozen ? 'unfreeze' : 'freeze';
+    const { data, error: err } = await supabase.from('lounge_messages').insert({ content: SYS[kind] + SYS_TEXT[kind] }).select('*').single();
+    if (err || !data) { alert(`바꾸지 못했어요.\n(${err?.message || ''})`); return; }
+    atBottomRef.current = true;
+    addMessages([data as LoungeMessage]);
+  };
+  // 관리자: 오늘 대화를 한꺼번에 지우기 (지운 대화 보관함에는 남음)
+  const clearAll = async () => {
+    if (!window.confirm('오늘 사랑방 대화를 모두 지울까요?\n(지운 대화는 위의 \u2018지운 대화\u2019에서 볼 수 있어요)')) return;
+    const { error: err } = await supabase.from('lounge_messages').delete().gte('created_at', todayStartIso())
+      .not('content', 'like', `${SYS.freeze}%`).not('content', 'like', `${SYS.unfreeze}%`);
+    if (err) { alert(`지우지 못했어요.\n(${err.message})`); return; }
+    const { data } = await supabase.from('lounge_messages').insert({ content: SYS.clear + SYS_TEXT.clear }).select('*').single();
+    setMessages(prev => applyClear(data ? [...prev, data as LoungeMessage] : prev.filter(m => sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze')));
+    setHasOlder(false);
+  };
+  // 관리자: 교우 뱃지 달기·떼기
+  const toggleBadge = async (userId: string) => {
+    setMenuId(null);
+    const name = authors[userId]?.baptismal_name || '이 교우';
+    const setupMsg = '뱃지 기능을 준비 중이에요. (관리자: supabase/lounge-admin.sql 실행 필요)';
+    if (badges[userId]) {
+      if (!window.confirm(`${name}님의 뱃지 '${badges[userId]}'를 뗄까요?`)) return;
+      const { error: err } = await supabase.from('lounge_badges').delete().eq('user_id', userId);
+      if (err) { alert(isSetupError(err) ? setupMsg : err.message); return; }
+      setBadges(prev => { const n = { ...prev }; delete n[userId]; return n; });
+      return;
+    }
+    const label = window.prompt(`${name}님에게 달 뱃지 (예: ⭐ 봉사자, 🌹 레지오)`, '⭐ 사랑방 지기')?.trim().slice(0, 20);
+    if (!label) return;
+    const { error: err } = await supabase.from('lounge_badges').upsert({ user_id: userId, label });
+    if (err) { alert(isSetupError(err) ? setupMsg : err.message); return; }
+    setBadges(prev => ({ ...prev, [userId]: label }));
+  };
+
   const openTrash = async () => {
     if (trash) { setTrash(null); return; }
     const { data, error: err } = await supabase.from('lounge_trash').select('*').order('deleted_at', { ascending: false }).limit(100);
@@ -325,9 +400,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   // 관리자 글(위 칸)과 교우 대화(아래 칸). SQL 실행 전(is_admin 없음)에는 관리자 본인 글만 위로
   const isAdminMsg = (m: LoungeMessage) => m.is_admin === true || (m.is_admin === undefined && isAdmin && m.user_id === user.id);
   const today = messages.filter(m => m.created_at >= dayStart);
-  const isEnter = (m: LoungeMessage) => m.content.startsWith(ENTER_MARK) && m.is_admin !== false;
+  const isEnter = (m: LoungeMessage) => sysKind(m) !== null; // 관리자 안내 (들어옴·얼림·다시 엶·모두 지움)
   const adminMsgs = today.filter(m => isAdminMsg(m) && !isEnter(m));
-  const shown = today.filter(m => (isEnter(m) || !isAdminMsg(m)) && !blockedIds.has(m.user_id));
+  // 얼림: 오늘 마지막 얼림/다시 엶 안내가 '얼림'이면
+  const lastFreeze = [...today].reverse().find(m => sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze');
+  const frozen = !!lastFreeze && sysKind(lastFreeze) === 'freeze';
+  const lastClearAt = [...today].reverse().find(m => sysKind(m) === 'clear')?.created_at || '';
+  const shown = today.filter(m => (isEnter(m) || !isAdminMsg(m)) && !blockedIds.has(m.user_id) && !(isEnter(m) && m.created_at < lastClearAt));
   const adminRef = useRef<HTMLDivElement>(null);
   const adminAtBottom = useRef(true);
   useEffect(() => { const el = adminRef.current; if (el) { adminAtBottom.current = true; el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); } }, [adminMsgs.length]);
@@ -355,10 +434,20 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         </div>
         {isAdmin && <button onClick={openTrash} className="px-2.5 py-1.5 mr-1 rounded-lg border border-stone-200 text-[0.75rem] text-stone-600">{trash ? '대화로' : '지운 대화'}</button>}
       </div>
-      {isAdmin && stealth && (
-        <div className="shrink-0 flex items-center gap-2 px-3 py-2 bg-stone-800 text-white">
-          <span className="flex-1 min-w-0 text-[0.8125rem] leading-snug">🤫 몰래 보는 중이에요 · 들어왔다는 안내가 없고, 참여 인원에도 안 잡혀요</span>
-          <button onClick={reveal} className="shrink-0 px-3 py-1.5 rounded-full bg-white text-stone-900 text-[0.8125rem] font-bold">들어왔다고 알리기</button>
+      {/* 관리자: 몰래 보는 중이면 '들어왔다고 알리기', 대화 얼리기·모두 지우기 */}
+      {isAdmin && !trash && (
+        <div className="shrink-0 bg-stone-800 text-white px-2.5 py-2 flex flex-col gap-2">
+          {stealth ? (
+            <div className="flex items-center gap-2">
+              <span className="flex-1 min-w-0 text-[0.8125rem] leading-snug">🤫 몰래 보는 중이에요 · 교우들은 관리자가 온 줄 몰라요</span>
+              <button onClick={reveal} className="shrink-0 px-3.5 py-2 rounded-full bg-amber-300 text-stone-900 text-[0.875rem] font-bold">🙋 들어왔다고 알리기</button>
+            </div>
+          ) : <p className="text-[0.8125rem] text-amber-200 font-bold px-1">👋 들어왔다고 알렸어요</p>}
+          <div className="flex items-center gap-1.5">
+            <button onClick={toggleFreeze} className={`shrink-0 px-3 py-1.5 rounded-full text-[0.8125rem] font-bold ${frozen ? 'bg-sky-300 text-stone-900' : 'bg-white/15'}`}>{frozen ? '🌤 대화 다시 열기' : '❄️ 대화 얼리기'}</button>
+            <button onClick={clearAll} className="shrink-0 px-3 py-1.5 rounded-full bg-white/15 text-[0.8125rem] font-bold">🧹 모두 지우기</button>
+            <span className="min-w-0 text-[0.6875rem] text-white/50 truncate">뱃지는 대화를 눌러서</span>
+          </div>
         </div>
       )}
 
@@ -423,13 +512,17 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const a = authors[m.user_id];
           const prev = shown[i - 1];
           const newDay = !prev || dayOf(prev.created_at) !== dayOf(m.created_at);
-          // 관리자 입장 알림: 가운데 작은 안내
-          if (isEnter(m)) return (
+          // 관리자 안내(들어옴·얼림·다시 엶·모두 지움): 가운데 작은 글
+          const sk = sysKind(m);
+          if (sk) return (
             <div key={m.id} id={`lounge-${m.id}`}>
               {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
               <p className="text-center my-1">
-                <span className="inline-flex items-center gap-1.5 text-[0.8125rem] text-amber-900 bg-amber-100/80 border border-amber-200 rounded-full px-3.5 py-1">
-                  <span>🙋 관리자 {a?.baptismal_name ? <><b>{a.baptismal_name}</b>님이</> : '가'} 들어왔어요</span><span className="text-[0.6875rem] text-amber-800/60">{timeOf(m.created_at)}</span>
+                <span className={`inline-flex items-center gap-1.5 text-[0.8125rem] rounded-full px-3.5 py-1 border ${sk === 'freeze' ? 'text-sky-900 bg-sky-100 border-sky-200' : sk === 'enter' ? 'text-amber-900 bg-amber-100/80 border-amber-200' : 'text-stone-700 bg-white/80 border-stone-200'}`}>
+                  {sk === 'enter'
+                    ? <span>🙋 관리자 {a?.baptismal_name ? <><b>{a.baptismal_name}</b>님이</> : '가'} 들어왔어요</span>
+                    : <span>{SYS_TEXT[sk]}</span>}
+                  <span className="text-[0.6875rem] opacity-60">{timeOf(m.created_at)}</span>
                 </span>
               </p>
             </div>
@@ -452,6 +545,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                   {!mine && !grouped && (
                     <span className="flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 mb-0.5 ml-1">
                       {a?.baptismal_name || '교우'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
+                      {badges[m.user_id] && <span className="text-[0.6875rem] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-px">{badges[m.user_id]}</span>}
                       {isAdmin && banned.has(m.user_id) && <span className="text-[0.6875rem] text-red-500 font-normal">(대화 금지)</span>}
                     </span>
                   )}
@@ -466,6 +560,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                     <div className={`mt-1 flex gap-1.5 ${mine ? 'justify-end' : ''}`} onClick={e => e.stopPropagation()}>
                       {(mine || isAdmin) && <button onClick={() => remove(m)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-red-600"><Icon name="trash" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />지우기</button>}
                       {!mine && <button onClick={() => { setMenuId(null); onReport({ type: 'lounge', id: m.id, userId: m.user_id, userName: a?.baptismal_name, preview: m.content }); }} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700"><Icon name="siren" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />신고</button>}
+                      {isAdmin && !mine && <button onClick={() => toggleBadge(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800">🏅 {badges[m.user_id] ? '뱃지 떼기' : '뱃지 달기'}</button>}
                       {isAdmin && !mine && <button onClick={() => toggleBan(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700">{banned.has(m.user_id) ? '대화 금지 풀기' : '대화 금지'}</button>}
                     </div>
                   )}
@@ -495,13 +590,16 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         )}
         {!isAdmin && (
           <div className="px-3 pt-2 flex items-center gap-2">
-            <button type="button" onClick={() => {
+            <button type="button" disabled={frozen} onClick={() => {
+              if (callQuietNow()) { alert(QUIET_NOTICE); return; }
               setInput(v => (v.includes(CALL_ADMIN) ? v : `${CALL_ADMIN} ${v}`));
               setTimeout(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
-            }} className="px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-[0.8125rem] font-bold">🙋 관리자 부르기</button>
-            <span className="text-[0.75rem] text-stone-400">대화는 알림 없이 조용히 올라가요</span>
+            }} className="shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-[0.8125rem] font-bold disabled:opacity-50">🙋 관리자 부르기</button>
+            <span className="min-w-0 text-[0.75rem] leading-snug text-stone-400">@아이디로 부르면 그분께만 알림이 가요</span>
           </div>
         )}
+        {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
+        {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={v => { setInput(v); setTimeout(() => inputRef.current?.focus(), 0); }} excludeId={user.id} label="부르기" /></div>}
         <form onSubmit={send} className="px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
           <textarea
             ref={inputRef}
@@ -520,12 +618,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               setTimeout(() => sendRef.current(typed), 0);
             }}
             rows={1}
-            placeholder="사랑방에 한마디..."
+            disabled={frozen && !isAdmin}
+            placeholder={frozen && !isAdmin ? '❄️ 잠시 멈춘 대화예요' : '사랑방에 한마디...'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] focus:outline-none focus:border-stone-500"
             aria-label="사랑방에 보낼 말"
           />
           {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
         </div>
       )}

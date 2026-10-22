@@ -370,7 +370,7 @@ export default function Home() {
   const [loungeOnline, setLoungeOnline] = useState(0);   // 지금 사랑방에 들어와 있는 교우 수 (실시간)
   const loungePresenceRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const showLoungeRef = useRef(false);
-  const [loungeStealth, setLoungeStealth] = useState(false); // 관리자 몰래 들어가기 (안내 없이, 참여 인원에서 빠짐)
+  const [loungeStealth, setLoungeStealth] = useState(true); // 관리자는 기본으로 몰래 들어간다 (안내 없이, 참여 인원에서 빠짐) → 안에서 '들어왔다고 알리기'
   const [loungeFocusId, setLoungeFocusId] = useState<string | null>(null); // 관리자 부름 알림으로 연 대화          // 마지막으로 본 뒤 새 사랑방 대화 수
   const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
@@ -1572,6 +1572,7 @@ export default function Home() {
   // (휴대폰 브라우저는 사용자가 누른 순간에만 소리 재생을 허용하므로 누른 즉시 재생을 시작)
   const openPostViewer = (post: Post, imageIndex = 0) => {
     setViewerTextOpen(false);
+    setViewerComment(null);
     setSelectedPostDetail(post);
     setDetailImageIndex(imageIndex);
     const music = parsePostMusic(post.music);
@@ -2056,16 +2057,27 @@ export default function Home() {
     if (p) openPostViewer(p); else openPostComments(postId);
   };
 
-  // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글의 댓글 창에서 그 댓글로
+  // 댓글 알림: 그 글을 크게 열고, 글 안에 새 댓글을 보여 준다 (스토리 댓글·지워진 글은 댓글 창)
+  const [viewerComment, setViewerComment] = useState<{ postId: string; commentId?: string } | null>(null);
+  const openPostFromAlert = async (postId: string, commentId?: string) => {
+    if (storyPosts.some(p => p.id === postId)) { openPostComments(postId, commentId); return; }
+    const p = posts.find(x => x.id === postId) || await ensurePost(postId);
+    if (!p || (p as Post & { is_story?: boolean }).is_story) { openPostComments(postId, commentId); return; }
+    openPostViewer(p);
+    setViewerComment({ postId, commentId });
+    loadCommentsFor(postId);
+  };
+
+  // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글을 크게 + 그 댓글
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
     if (n.mention === 'post') openPostById(n.post_id);
-    else openPostComments(n.post_id, n.id);
+    else openPostFromAlert(n.post_id, n.id);
   };
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'letter_gift' | 'lounge_call' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -2272,7 +2284,7 @@ export default function Home() {
     // 글·댓글 알림은 홈 위에 연다 (뒤에 예전에 보던 교우 공간이 깔리지 않게)
     if ((deepLink.post || deepLink.view) && currentScreenRef.current.tab !== 'home') goToHome();
     if (deepLink.post) {
-      openPostComments(deepLink.post, deepLink.comment);
+      openPostFromAlert(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
       openPostById(deepLink.view);
     } else if (deepLink.profile) {
@@ -3693,6 +3705,7 @@ export default function Home() {
         <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline}
           stealth={isAdmin && loungeStealth} onReveal={() => setLoungeStealth(false)}
           onCallAdmin={id => sendPush('lounge_call', id)}
+          onMention={id => sendPush('lounge_mention', id)}
           onAnnounce={async id => {
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) return '로그인이 필요해요.';
@@ -3701,7 +3714,7 @@ export default function Home() {
             if (!res || !res.ok) return json.error || '알림을 보내지 못했어요.';
             return `📢 ${json.sent ?? 0}대의 휴대폰에 알림을 보냈어요`;
           }}
-          onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); setLoungeStealth(false); }}
+          onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); setLoungeStealth(true); }}
           onOpenProfile={id => openProfileCard({ id })}
           onReport={t => setReportTarget(t)} />
       )}
@@ -3715,7 +3728,7 @@ export default function Home() {
           </div>
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
             {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 */}
-            <button onClick={() => { if (!requireProfile()) return; setLoungeStealth(false); setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
+            <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
               <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
@@ -3729,12 +3742,6 @@ export default function Home() {
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
                 : <span className="text-stone-400 text-xl shrink-0">›</span>}
             </button>
-            {/* 관리자: 몰래 들어가기 — 들어왔다는 안내 없이, 참여 인원에도 안 잡힌다 */}
-            {isAdmin && (
-              <button onClick={() => { setLoungeStealth(true); setShowLounge(true); }} className="w-full px-4 py-2.5 flex items-center gap-2 bg-[#faf6ee] text-left text-[0.8125rem] text-stone-600 hover:bg-[#f3ead8]">
-                <span className="text-base">🤫</span><b className="text-stone-800">몰래 들어가기</b><span className="truncate">· 안내 없이, 참여 인원에도 안 잡혀요</span>
-              </button>
-            )}
             {chatPartners.length === 0 ? (
               <div className="p-12 text-center text-stone-400 text-sm">아직 주고받은 메시지가 없습니다.</div>
             ) : (
@@ -4581,7 +4588,7 @@ export default function Home() {
               ))}
               {listedFollows.map(r => (
                 <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
-                  <button onClick={() => openProfileCard({ id: r.follower.id, name: r.follower.baptismal_name, avatar_url: r.follower.avatar_url, handle: r.follower.handle, badge_type: r.follower.badge_type })} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
+                  <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
@@ -4842,6 +4849,27 @@ export default function Home() {
                   <div className="px-4 pt-3 flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
                     {reactionButtons(live, () => { setSelectedPostDetail(null); openPostComments(live.id); })}
                   </div>
+                );
+              })()}
+              {/* 댓글 알림으로 열었으면: 새 댓글 (누르면 댓글 창에서 그 댓글로) */}
+              {viewerComment?.postId === selectedPostDetail.id && (() => {
+                const pid = selectedPostDetail.id;
+                const c = viewerComment.commentId ? (comments[pid] || []).find(x => x.id === viewerComment.commentId) : undefined;
+                const total = (comments[pid] || []).length;
+                const avatar = c?.user_id ? (c.user_id === user?.id ? profile?.avatar_url : authorByUser[c.user_id]?.avatar) : undefined;
+                return (
+                  <button onClick={() => { setSelectedPostDetail(null); openPostComments(pid, viewerComment.commentId); }} className="mx-4 mt-3 p-3 rounded-2xl bg-amber-50 border-2 border-amber-200 text-left flex flex-col gap-1.5" aria-label="새 댓글 보기">
+                    <span className="text-[0.8125rem] font-bold text-amber-800">💬 {c ? '새 댓글' : '댓글'}{total > 0 ? ` · 모두 ${total}개` : ''}</span>
+                    {c && (
+                      <span className="flex items-start gap-2">
+                        {avatar
+                          ? <img loading="lazy" src={avatar} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
+                          : <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{(c.author_name || '교')[0]}</span>}
+                        <span className="min-w-0 text-[0.9375rem] text-stone-800 leading-snug"><b className="mr-1.5">{c.author_name || '교우'}</b><span className="whitespace-pre-wrap break-words line-clamp-3">{c.content}</span></span>
+                      </span>
+                    )}
+                    <span className="self-end text-[0.8125rem] font-bold text-stone-700">댓글 보기 · 답글 달기 ›</span>
+                  </button>
                 );
               })()}
               <div className="px-5 pb-5 pt-3 flex flex-col gap-2">

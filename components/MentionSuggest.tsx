@@ -7,10 +7,11 @@ import { insertMention, typingMention } from '@/lib/mentions';
 interface Person { id: string; baptismal_name: string; handle: string; avatar_url?: string | null }
 
 // 입력칸에서 @를 치면 회원 목록을 보여주고, 고르면 @핸들을 넣는다
-export default function MentionSuggest({ value, onChange, excludeId }: {
+export default function MentionSuggest({ value, onChange, excludeId, label = '태그' }: {
   value: string;
   onChange: (next: string) => void;
   excludeId?: string;
+  label?: string;
 }) {
   const query = typingMention(value);
   const [people, setPeople] = useState<Person[]>([]);
@@ -30,7 +31,7 @@ export default function MentionSuggest({ value, onChange, excludeId }: {
   if (query === null || people.length === 0) return null;
   return (
     <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-0.5">
-      <span className="text-[0.75rem] text-stone-500 shrink-0 self-center">태그</span>
+      <span className="text-[0.75rem] text-stone-500 shrink-0 self-center">{label}</span>
       {people.map(p => (
         <button
           key={p.id}
