@@ -61,6 +61,30 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [trash, setTrash] = useState<Trashed[] | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  // 엔터로 보내기: 컴퓨터(마우스)와 아이패드처럼 화면이 큰 기기. 휴대폰은 엔터가 줄바꿈 (보내기 단추로 전송)
+  const [enterSends, setEnterSends] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: fine), (min-width: 700px)');
+    const on = () => setEnterSends(mq.matches);
+    on(); mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  // 한글 조합 중에 엔터를 누르면 keydown 을 건너뛰고 줄바꿈이 들어오려 함 → 그 줄바꿈 입력을 막고 보낸다
+  const shiftRef = useRef(false);
+  const sendRef = useRef<(typed: string) => void>(() => {});
+  useEffect(() => {
+    const ta = inputRef.current;
+    if (!ta || !enterSends) return;
+    const onBeforeInput = (ev: InputEvent) => {
+      if ((ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph') && !shiftRef.current) {
+        ev.preventDefault();
+        const typed = ta.value;
+        setTimeout(() => sendRef.current(typed), 0);
+      }
+    };
+    ta.addEventListener('beforeinput', onBeforeInput);
+    return () => ta.removeEventListener('beforeinput', onBeforeInput);
+  }, [enterSends, trash === null]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const atBottomRef = useRef(true);
@@ -182,9 +206,17 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
   };
 
-  const send = async (e?: React.FormEvent) => {
+  const lastSendRef = useRef({ text: '', at: 0 });
+  sendRef.current = (typed: string) => {
+    // 엔터 한 번에 두 번 보내지지 않게
+    const now = Date.now();
+    if (typed.trim() === lastSendRef.current.text && now - lastSendRef.current.at < 1000) return;
+    lastSendRef.current = { text: typed.trim(), at: now };
+    send(undefined, typed);
+  };
+  const send = async (e?: React.FormEvent, typed?: string) => {
     e?.preventDefault();
-    const text = input.trim();
+    const text = (typed ?? input).trim();
     if (!text || sending) return;
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) })
@@ -410,7 +442,16 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 500))}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(pointer: fine)').matches) { e.preventDefault(); send(); } }}
+            enterKeyHint={enterSends ? 'send' : 'enter'}
+            onKeyDown={e => {
+              // 엔터 = 보내기, 쉬프트+엔터 = 줄바꿈 (컴퓨터·아이패드 등 큰 화면). 한글 조합 중인 엔터는 글자 완성이므로 건너뜀
+              if (e.key === 'Enter') shiftRef.current = e.shiftKey;
+              if (e.key !== 'Enter' || e.shiftKey || !enterSends) return;
+              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+              e.preventDefault();
+              const typed = e.currentTarget.value; // 방금 완성된 글자까지 포함 (화면 갱신 전에 읽음)
+              setTimeout(() => sendRef.current(typed), 0);
+            }}
             rows={1}
             placeholder="사랑방에 한마디..."
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] focus:outline-none focus:border-stone-500"
