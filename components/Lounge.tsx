@@ -30,7 +30,7 @@ const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).ma
 
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, onOpenProfile, onReport, onCallAdmin }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
@@ -39,6 +39,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
   onReport: (target: ReportTarget) => void;
   focusId?: string | null;               // 관리자 부름 알림으로 들어왔을 때 그 대화로
   onCallAdmin: (messageId: string) => void;
+  onAnnounce?: (messageId: string) => Promise<string>; // 관리자: 모든 교우에게 휴대폰 알림 → 결과 문구
 }) {
   const [messages, setMessages] = useState<LoungeMessage[]>([]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
@@ -184,6 +185,25 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
     }
   };
 
+  // 관리자: '관리자가 사랑방에 왔어요' — 사랑방에 📢 안내 글을 올리고 모든 교우에게 휴대폰 알림
+  const announce = async () => {
+    if (!onAnnounce || sending) return;
+    const text = input.trim() || '관리자가 사랑방에 왔어요! 함께 이야기 나눠요 😊';
+    if (!window.confirm(`모든 교우의 휴대폰으로 알림을 보낼까요?\n\n"${text}"\n\n(사랑방에도 안내 글로 올라가요 · 30분에 한 번)`)) return;
+    setSending(true);
+    const { data, error: err } = await supabase.from('lounge_messages').insert({ content: `📢 ${text}`.slice(0, 500) })
+      .select('id, user_id, content, created_at').single();
+    setSending(false);
+    if (err || !data) { alert(`보내지 못했어요.\n(${err?.message || ''})`); return; }
+    setInput('');
+    atBottomRef.current = true;
+    addMessages([data]);
+    setNotice('알림을 보내는 중...');
+    const result = await onAnnounce(data.id);
+    setNotice(result);
+    setTimeout(() => setNotice(''), 6000);
+  };
+
   const remove = async (m: LoungeMessage) => {
     setMenuId(null);
     if (!window.confirm('이 대화를 지울까요?')) return;
@@ -286,8 +306,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
                   <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''}`}>
                     <button
                       onClick={e => { e.stopPropagation(); setMenuId(menuId === m.id ? null : m.id); }}
-                      className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
-                    >{withCall(m.content, mine)}</button>
+                      className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${m.content.startsWith('📢') ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
+                    >{withCall(m.content, mine && !m.content.startsWith('📢'))}</button>
                     <span className="shrink-0 text-[0.6875rem] text-stone-500 pb-0.5">{timeOf(m.created_at)}</span>
                   </div>
                   {menuId === m.id && (
@@ -313,6 +333,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
       {!trash && (
         <div className="shrink-0 bg-white border-t border-stone-200">
         {notice && <p className="px-4 pt-2 text-[0.8125rem] font-bold text-amber-700">{notice}</p>}
+        {isAdmin && onAnnounce && (
+          <div className="px-3 pt-2 flex items-center gap-2">
+            <button type="button" onClick={announce} disabled={sending || !!error} className="px-3 py-1.5 rounded-full border border-sky-300 bg-sky-50 text-sky-800 text-[0.8125rem] font-bold disabled:opacity-50">📢 모두에게 알리기</button>
+            <span className="text-[0.75rem] text-stone-400">모든 교우 휴대폰으로 &lsquo;관리자가 왔어요&rsquo;</span>
+          </div>
+        )}
         {!isAdmin && (
           <div className="px-3 pt-2 flex items-center gap-2">
             <button type="button" onClick={() => {
