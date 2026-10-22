@@ -30,14 +30,15 @@ const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).ma
 
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, onClose, onOpenProfile, onReport, onCallAdmin, onAnnounce }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
   onClose: () => void;
   onOpenProfile: (userId: string) => void;
   onReport: (target: ReportTarget) => void;
-  focusId?: string | null;               // 관리자 부름 알림으로 들어왔을 때 그 대화로
+  focusId?: string | null;
+  online?: number;                       // 지금 사랑방에 들어와 있는 교우 수 (화면(page)이 실시간으로 셈)               // 관리자 부름 알림으로 들어왔을 때 그 대화로
   onCallAdmin: (messageId: string) => void;
   onAnnounce?: (messageId: string) => Promise<string>; // 관리자: 모든 교우에게 휴대폰 알림 → 결과 문구
 }) {
@@ -48,7 +49,6 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
   const [hasOlder, setHasOlder] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [online, setOnline] = useState(0);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [newBelow, setNewBelow] = useState(0);         // 위로 올려 보는 중에 새로 온 대화 수
   const [banned, setBanned] = useState<Set<string>>(new Set());
@@ -116,10 +116,10 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
     return () => markSeen();
   }, []);
 
-  // 실시간: 새 대화·지운 대화 + 지금 함께 있는 교우 수
+  // 실시간: 새 대화·지운 대화 (함께 있는 교우 수는 화면(page)의 lounge-presence 채널이 셈)
   useEffect(() => {
     let live = false;
-    const channel = supabase.channel('lounge', { config: { presence: { key: user.id } } })
+    const channel = supabase.channel('lounge-db')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'lounge_messages' }, payload => {
         addMessages([payload.new as LoungeMessage]);
         markSeen();
@@ -128,11 +128,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, on
         const id = (payload.old as { id?: string }).id;
         if (id) setMessages(prev => prev.filter(m => m.id !== id));
       })
-      .on('presence', { event: 'sync' }, () => setOnline(Object.keys(channel.presenceState()).length))
-      .subscribe(status => {
-        live = status === 'SUBSCRIBED';
-        if (live) channel.track({ at: Date.now() }).catch(() => {});
-      });
+      .subscribe(status => { live = status === 'SUBSCRIBED'; });
     // 실시간 연결이 안 되는 환경이면 5초마다 새 대화 확인
     const poll = setInterval(async () => {
       if (live || document.visibilityState === 'hidden') return;

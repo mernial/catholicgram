@@ -366,6 +366,9 @@ export default function Home() {
   const [lettersStart, setLettersStart] = useState<'write' | 'mine'>('write'); // 사연함: 알림으로 열면 '보낸 사연'
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
   const [loungeNew, setLoungeNew] = useState(0);
+  const [loungeOnline, setLoungeOnline] = useState(0);   // 지금 사랑방에 들어와 있는 교우 수 (실시간)
+  const loungePresenceRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const showLoungeRef = useRef(false);
   const [loungeFocusId, setLoungeFocusId] = useState<string | null>(null); // 관리자 부름 알림으로 연 대화          // 마지막으로 본 뒤 새 사랑방 대화 수
   const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
@@ -1846,6 +1849,23 @@ export default function Home() {
     const { count, error } = await supabase.from('anon_posts_feed').select('id', { count: 'exact', head: true }).gt('created_at', since).eq('is_mine', false);
     if (!error) setAnonUnread(count || 0);
   };
+  // 사랑방 참여자 수: 메시지 목록을 보거나 사랑방에 있을 때만 실시간으로 센다.
+  // 사랑방 안에 들어온 교우만 '참여자'로 표시(track)하고, 목록에서는 보기만 한다.
+  showLoungeRef.current = showLounge;
+  const loungeWatching = !!user && (activeTab === 'messages' || showLounge);
+  useEffect(() => {
+    if (!loungeWatching || !user) { setLoungeOnline(0); return; }
+    const ch = supabase.channel('lounge-presence', { config: { presence: { key: user.id } } });
+    ch.on('presence', { event: 'sync' }, () => setLoungeOnline(Object.keys(ch.presenceState()).length))
+      .subscribe(status => { if (status === 'SUBSCRIBED' && showLoungeRef.current) ch.track({ at: Date.now() }).catch(() => {}); });
+    loungePresenceRef.current = ch;
+    return () => { loungePresenceRef.current = null; supabase.removeChannel(ch); };
+  }, [loungeWatching, user?.id]);
+  useEffect(() => {
+    const ch = loungePresenceRef.current;
+    if (!ch) return;
+    (showLounge ? ch.track({ at: Date.now() }) : ch.untrack()).catch(() => {});
+  }, [showLounge]);
   // 사랑방: 마지막으로 본 뒤 다른 교우가 쓴 대화 수
   const fetchLoungeNew = async (userId: string) => {
     const since = storageGet(loungeSeenKey(userId));
@@ -3572,7 +3592,7 @@ export default function Home() {
 
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
-        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId}
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline}
           onCallAdmin={id => sendPush('lounge_call', id)}
           onAnnounce={async id => {
             const { data: { session } } = await supabase.auth.getSession();
@@ -3600,7 +3620,11 @@ export default function Home() {
               <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
-                <span className="block text-xs text-stone-600 mt-0.5">모든 교우가 함께 나누는 실시간 대화방</span>
+                <span className="block text-xs text-stone-600 mt-0.5">
+                  {loungeOnline > 0
+                    ? <><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 align-middle animate-pulse" /><b className="text-emerald-700">지금 {loungeOnline}명 참여 중</b></>
+                    : '모든 교우가 함께 나누는 실시간 대화방'}
+                </span>
               </span>
               {loungeNew > 0
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
