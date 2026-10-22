@@ -45,8 +45,8 @@ export const SHRINK_OVER_MB = 12;
 
 // 영상을 720p·약 1.5Mbps 로 다시 녹화해 줄인다 (영상 길이만큼 걸림, 1분 영상 → 약 12MB).
 // 화면은 캔버스로, 소리는 Web Audio 로 받아 녹화하므로 아이폰 사파리에서도 동작한다.
-// 지원하지 않거나 실패하면 null.
-export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => void): Promise<Blob | null> => {
+// 지원하지 않거나 실패하면 null. isCancelled 가 참이 되면(그사이 영상을 빼거나 바꿈) 멈추고 null.
+export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => void, isCancelled?: () => boolean): Promise<Blob | null> => {
   const video = await loadVideo(file).catch(() => null);
   const canvas = document.createElement('canvas');
   if (!video || typeof MediaRecorder === 'undefined' || !canvas.captureStream) return null;
@@ -88,7 +88,10 @@ export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => vo
   const done = new Promise<Blob>(resolve => { recorder.onstop = () => resolve(new Blob(chunks, { type: mimeType.split(';')[0] })); });
 
   let raf = 0;
+  let finish = () => {};
+  const ended = new Promise<void>(resolve => { finish = resolve; video.onended = () => resolve(); });
   const draw = () => {
+    if (isCancelled?.()) { video.pause(); finish(); return; }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     onProgress?.(Math.min(1, video.currentTime / (video.duration || 1)));
     if (!video.ended) raf = requestAnimationFrame(draw);
@@ -96,10 +99,11 @@ export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => vo
   recorder.start(1000);
   try { await video.play(); } catch { recorder.stop(); cleanup(); return null; }
   draw();
-  await new Promise<void>(resolve => { video.onended = () => resolve(); });
+  await ended;
   cancelAnimationFrame(raf);
   recorder.stop();
   const blob = await done;
   cleanup();
+  if (isCancelled?.()) return null;
   return blob.size > 0 ? blob : null;
 };

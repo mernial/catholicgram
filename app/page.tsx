@@ -1592,7 +1592,9 @@ export default function Home() {
     else { audio.pause(); setBgmPlaying(false); }
   };
 
+  const videoJobRef = useRef(0); // 고른 영상 차례 (뒤에서 용량을 줄이는 중에 빼거나 바꾸면 그 작업은 버린다)
   const clearVideo = () => {
+    videoJobRef.current++;
     if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
     setSelectedVideo(null); setVideoPreviewUrl(null); setVideoStatus(''); setComposerOverlays(null); setShowVideoEditor(false);
     if (videoInputRef.current) videoInputRef.current.value = '';
@@ -1606,26 +1608,33 @@ export default function Home() {
     const info = await getVideoInfo(file).catch(() => null);
     if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); return; }
     if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`1분 이하의 영상만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); return; }
-    let video: Blob = file;
-    // 큰 영상은 720p 로 줄여서 올린다 (보는 사람마다 전송량이 들므로). 줄이지 못하면 원본이 한도 안일 때만 그대로
-    if (file.size > SHRINK_OVER_MB * 1024 * 1024) {
-      setVideoStatus('영상 용량을 줄이는 중... 0%');
-      const shrunk = await shrinkVideo(file, r => setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`)).catch(() => null);
-      setVideoStatus('');
-      if (shrunk && shrunk.size < file.size) video = shrunk;
-      if (video.size > MAX_VIDEO_MB * 1024 * 1024) {
-        alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n휴대폰 카메라 설정에서 화질을 낮추거나(예: 720p), 더 짧게 찍어서 올려주세요.`);
-        return;
-      }
-    }
-    // 영상은 사진 대신 하나만 (배경음악은 함께 넣을 수 있음)
+    // 고르자마자 그 영상을 보여 준다. 영상은 사진 대신 하나만 (배경음악은 함께 넣을 수 있음)
     setSelectedFiles([]); setPreviewUrls([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
     if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
-    setSelectedVideo(video);
-    setVideoPreviewUrl(URL.createObjectURL(video));
+    const job = ++videoJobRef.current;
+    const previewUrl = URL.createObjectURL(file);
+    setSelectedVideo(file);
+    setVideoPreviewUrl(previewUrl);
     setComposerOverlays(null);
     setShowVideoEditor(true); // 고르자마자 꾸미기 화면
+    if (file.size <= SHRINK_OVER_MB * 1024 * 1024) { setVideoStatus(''); return; }
+    // 큰 영상은 720p 로 줄여서 올린다 (보는 사람마다 전송량이 들므로). 영상 길이만큼 걸리므로 뒤에서 줄이고,
+    // 그동안 꾸미기·글쓰기를 할 수 있다. 다 줄면 '공유'가 켜진다. 줄이지 못하면 원본이 한도 안일 때만 그대로
+    setVideoStatus('영상 용량을 줄이는 중... 0%');
+    const stale = () => videoJobRef.current !== job;
+    const shrunk = await shrinkVideo(file, r => { if (!stale()) setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`); }, stale).catch(() => null);
+    if (stale()) return; // 그사이 영상을 빼거나 다른 것으로 바꿈
+    setVideoStatus('');
+    const video = shrunk && shrunk.size < file.size ? shrunk : file;
+    if (video.size > MAX_VIDEO_MB * 1024 * 1024) {
+      alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n휴대폰 카메라 설정에서 화질을 낮추거나(예: 720p), 더 짧게 찍어서 올려주세요.`);
+      videoJobRef.current++;
+      URL.revokeObjectURL(previewUrl);
+      setSelectedVideo(null); setVideoPreviewUrl(null); setComposerOverlays(null); setShowVideoEditor(false);
+      return;
+    }
+    setSelectedVideo(video); // 미리보기는 원본 그대로 (꾸미던 화면이 다시 불러와지지 않게)
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -3109,7 +3118,7 @@ export default function Home() {
                     {videoPreviewUrl && <button type="button" onClick={clearVideo} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white text-xl leading-none" aria-label="영상 빼기">×</button>}
                     {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/55 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
                   </div>
-                  {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-200 font-bold bg-violet-900/40">{videoStatus}</p>}
+                  {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-200 font-bold bg-violet-900/40">{videoStatus} <span className="font-normal text-violet-200/70">· 그동안 꾸미기·글쓰기를 할 수 있어요</span></p>}
                   {/* 최근 ▾ · 여러 장 선택 */}
                   <div className="flex items-center justify-between px-4 py-3">
                     <label htmlFor="photo-upload" className="cursor-pointer flex items-center gap-1 text-[1.0625rem] font-bold">
@@ -3287,7 +3296,7 @@ export default function Home() {
 
               {/* 맨 아래 큰 공유 단추 */}
               <div className="shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] border-t border-stone-200 bg-white">
-                <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : '공유'}</button>
+                <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : videoStatus ? `${videoStatus.replace('영상 용량을 줄이는 중...', '영상 준비 중')} · 끝나면 공유` : '공유'}</button>
               </div>
             </form>
             )}
