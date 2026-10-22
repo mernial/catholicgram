@@ -203,14 +203,14 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
               <div>
                 <p className="text-[0.875rem] font-bold text-stone-700 mb-2">어떻게 보낼까요?</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {([['anonymous', '🙈 익명으로', '이름을 밝히지 않아요'], ['name', '🙋 아이디 공개', `${authorName || '내 이름'}${authorHandle ? ` @${authorHandle}` : ''}`]] as const).map(([k, label, sub]) => (
+                  {([['anonymous', '🙈 익명으로', '소개할 때 이름 없이'], ['name', '🙋 아이디 공개', `${authorName || '내 이름'}${authorHandle ? ` @${authorHandle}` : ''}`]] as const).map(([k, label, sub]) => (
                     <button key={k} type="button" onClick={() => setNameDisplay(k)} className={`py-3 px-2 rounded-xl border flex flex-col items-center gap-0.5 ${nameDisplay === k ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 text-stone-600'}`}>
                       <span className="text-[0.9375rem] font-bold">{label}</span>
                       <span className={`text-[0.75rem] truncate max-w-full ${nameDisplay === k ? 'text-white/75' : 'text-stone-400'}`}>{sub}</span>
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[0.75rem] text-stone-500 leading-relaxed">🎁 좋은 사연을 보내 주신 분께는 선물을 드려요. 익명으로 보내셔도 선물 안내를 위해 <b>운영자에게만</b> 보낸 분이 보여요. 방송에서는 고르신 대로 소개해요.</p>
+                <p className="mt-2 text-[0.75rem] text-stone-500 leading-relaxed">🎁 좋은 사연을 보내 주신 분께는 선물을 드려요. 방송에서는 고르신 대로 소개해요.</p>
               </div>
 
               <label className="flex items-center gap-3 p-3 rounded-xl border border-stone-200">
