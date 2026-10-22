@@ -92,6 +92,15 @@ const markLinkOpened = (url: string) => {
   lastOpenedLink = { url: key, at: Date.now() };
   return true;
 };
+// 알림 이동 기록 (문제 찾기용, 이 휴대폰에만 남음) — 알림 목록 맨 아래에서 볼 수 있다
+let lastTouchAt = 0;
+const linkLog = (kind: string, detail = '') => {
+  try {
+    const list = JSON.parse(localStorage.getItem('linkLog') || '[]') as { at: number; kind: string; detail: string }[];
+    list.push({ at: Date.now(), kind, detail: detail.slice(0, 80) });
+    localStorage.setItem('linkLog', JSON.stringify(list.slice(-25)));
+  } catch { /* 무시 */ }
+};
 const consumePendingLink = async () => {
   try {
     if (typeof caches === 'undefined') return;
@@ -100,6 +109,7 @@ const consumePendingLink = async () => {
     if (!res) return;
     const pending = await res.json() as { url?: string; at?: number };
     await cache.delete('/__pending');
+    linkLog('pending', `${pending.url?.replace(/^https?:\/\/[^/]+/, '')} ${Math.round((Date.now() - (pending.at || 0)) / 1000)}s전`);
     // 이미 연 곳이면(이동 신호로 먼저 열림) 다시 열지 않는다 — 나중에 앱으로 돌아올 때 예전 알림 화면으로 튀지 않게
     if (pending.url && lastOpenedLink && lastOpenedLink.url === new URL(pending.url, 'http://x').search && (pending.at || 0) <= lastOpenedLink.at + 10 * 1000) return;
     if (pending.url && pending.at && Date.now() - pending.at < 2 * 60 * 1000) pendingLinkHandler?.(pending.url);
@@ -319,6 +329,7 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
   const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
   const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기
@@ -430,6 +441,7 @@ export default function Home() {
         if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/')); return; }
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
+        linkLog('message', String(e.data.url || '').replace(/^https?:\/\/[^/]+/, ''));
         // 적어 둔 목적지는 바로 지우지 않는다: 앱으로 돌아오며 새 버전으로 새로고침되면 그걸로 다시 연다
         if (!markLinkOpened(String(e.data.url || '/'))) return;
         const link = deepLinkFromSearch(new URL(e.data.url, window.location.origin).search);
@@ -449,6 +461,9 @@ export default function Home() {
       const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
       if (link) setDeepLink(link);
     };
+    linkLog('start', `${window.location.search || '(주소 없음)'} 마지막화면=${storageGet('activeTab') || ''}`);
+    const touchMark = () => { lastTouchAt = Date.now(); };
+    window.addEventListener('pointerdown', touchMark, { capture: true });
     const initialLink = deepLinkFromSearch(window.location.search);
     if (initialLink) {
       markLinkOpened(window.location.search);
@@ -652,6 +667,7 @@ export default function Home() {
   };
 
   const goToProfile = (targetUserId: string) => {
+    linkLog('profile', `${targetUserId.slice(0, 8)} ${Date.now() - lastTouchAt < 1500 ? '손으로 누름' : '자동'}`);
     navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
     setActionModalUser(null);
   };
@@ -2090,7 +2106,10 @@ export default function Home() {
     if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
+    linkLog('open', Object.entries(deepLink).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&'));
     dismissAlertsFor(deepLink);
+    // 글·댓글 알림은 홈 위에 연다 (뒤에 예전에 보던 교우 공간이 깔리지 않게)
+    if ((deepLink.post || deepLink.view) && currentScreenRef.current.tab !== 'home') goToHome();
     if (deepLink.post) {
       openPostComments(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
@@ -4345,6 +4364,23 @@ export default function Home() {
                   </div>
                 ))
               )}
+              {/* 문제 찾기용: 알림을 눌렀을 때 어떤 길로 열렸는지 */}
+              <div className="p-4">
+                <button onClick={async () => {
+                  if (linkLogText !== null) { setLinkLogText(null); return; }
+                  const t = (ms: number) => new Date(ms).toLocaleTimeString('en-GB');
+                  let sw: { at: number; [k: string]: unknown }[] = [];
+                  try { const r = await (await caches.open('catholicgram-sw-meta')).match('/__clicklog'); if (r) sw = await r.json(); } catch { /* 무시 */ }
+                  let app: { at: number; kind: string; detail: string }[] = [];
+                  try { app = JSON.parse(storageGet('linkLog') || '[]'); } catch { /* 무시 */ }
+                  const lines = [
+                    ...sw.map(e => ({ at: e.at, text: `[알림누름] ${Object.entries(e).filter(([k]) => k !== 'at').map(([k, v]) => `${k}=${v}`).join(' ')}` })),
+                    ...app.map(e => ({ at: e.at, text: `[앱] ${e.kind} ${e.detail}` })),
+                  ].sort((a, b) => a.at - b.at).slice(-30).map(l => `${t(l.at)} ${l.text}`);
+                  setLinkLogText(lines.join('\n') || '기록이 없어요');
+                }} className="text-[0.75rem] text-stone-400 underline">알림 이동 기록 {linkLogText !== null ? '닫기' : '보기'} (문제 확인용)</button>
+                {linkLogText !== null && <pre className="mt-2 p-2 bg-stone-50 border border-stone-200 rounded-lg text-[0.6875rem] leading-snug text-stone-700 whitespace-pre-wrap break-all">{linkLogText}</pre>}
+              </div>
             </div>
           </div>
         </div>
