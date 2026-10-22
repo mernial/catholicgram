@@ -113,19 +113,32 @@ const tellOpen = (client, url, wait) => new Promise((resolve) => {
   channel.port1.onmessage = () => { clearTimeout(timer); resolve(true); };
   try { client.postMessage({ type: 'open-url', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
 });
-const openInClient = async (client, url) => {
+const openInClient = async (client, url, log) => {
   let focused = null;
-  try { focused = 'focus' in client ? await client.focus() : null; } catch { focused = null; }
+  try { focused = 'focus' in client ? await client.focus() : null; } catch (e) { focused = null; log.focusErr = String(e && e.message || e).slice(0, 60); }
   if (!focused) {
     // 앞으로 가져오지 못하면 새로 열고, 그것도 안 되면 그 창을 그 주소로 옮긴다
     const opened = await self.clients.openWindow(url).catch(() => null);
-    if (opened) return opened;
-    if ('navigate' in client) return client.navigate(url).catch(() => null);
+    if (opened) { log.path = 'openWindow'; return opened; }
+    if ('navigate' in client) { log.path = 'navigate'; const n = await client.navigate(url).catch(() => null); log.navOk = !!n; return n; }
+    log.path = 'none';
     return null;
   }
-  if (await tellOpen(focused, url, 1200)) return focused;
-  if ('navigate' in focused) return (await focused.navigate(url).catch(() => null)) || focused;
+  if (await tellOpen(focused, url, 1200)) { log.path = 'message-ok'; return focused; }
+  log.path = 'message-timeout';
+  if ('navigate' in focused) { const n = await focused.navigate(url).catch(() => null); log.navOk = !!n; return n || focused; }
   return focused;
+};
+
+// 알림을 눌렀을 때 어떤 길로 열었는지 기록 (알림 목록 맨 아래 '알림 이동 기록'에서 확인, 문제 찾기용)
+const logClick = async (entry) => {
+  try {
+    const cache = await caches.open(META_CACHE);
+    const res = await cache.match('/__clicklog');
+    const list = res ? await res.json() : [];
+    list.push({ at: Date.now(), ...entry });
+    await cache.put('/__clicklog', new Response(JSON.stringify(list.slice(-15))));
+  } catch { /* 무시 */ }
 };
 
 // 알림으로 가야 할 곳을 잠깐 적어 둔다. 앱이 새 버전으로 다시 열리거나(새로고침) 이동 메시지를 놓쳐도
@@ -145,7 +158,9 @@ self.addEventListener('notificationclick', (event) => {
     // 1) 이미 열려 있는 앱 창 → 2) 앱이 설치된 휴대폰이면 앱을 새로 → 3) 열린 탭 → 4) 새 창
     const appWindow = windows.find((c) => meta.standalone.includes(c.id));
     const target = appWindow || (!meta.hasApp && windows[0]) || null;
-    const done = target ? openInClient(target, url) : self.clients.openWindow(url);
+    const log = { url: url.replace(self.location.origin, ''), wins: windows.length, app: !!appWindow, hasApp: !!meta.hasApp, vis: windows.map((c) => c.visibilityState[0]).join('') };
+    const done = target ? openInClient(target, url, log) : self.clients.openWindow(url).then((w) => { log.path = w ? 'openWindow-new' : 'openWindow-null'; return w; });
     await Promise.all([saving, done]);
+    await logClick(log);
   })().catch(() => self.clients.openWindow(url)));
 });
