@@ -9,7 +9,8 @@ self.addEventListener('push', (event) => {
     const visible = windows.filter(c => c.visibilityState === 'visible');
     if (visible.length > 0) {
       visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '' }));
-      // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄웠다가 곧 닫는다
+      // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄운다.
+      // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)
       await self.registration.showNotification(title, {
         body: data.body || '',
         icon: '/icon-v2-192.png',
@@ -19,9 +20,6 @@ self.addEventListener('push', (event) => {
         timestamp: Date.now(),
         data: { url: data.url || '/' },
       });
-      await new Promise(r => setTimeout(r, 4000));
-      const shown = await self.registration.getNotifications(data.tag ? { tag: data.tag } : undefined).catch(() => []);
-      shown.forEach(n => { if (n.title === title && n.body === (data.body || '')) n.close(); });
       return;
     }
     await self.registration.showNotification(title, {
@@ -116,6 +114,8 @@ const tellOpen = (client, url, wait) => new Promise((resolve) => {
 const openInClient = async (client, url, log) => {
   let focused = null;
   try { focused = 'focus' in client ? await client.focus() : null; } catch (e) { focused = null; log.focusErr = String(e && e.message || e).slice(0, 60); }
+  // 이미 보고 있는 창(앱을 보는 중에 알림을 누름)이면 앞으로 가져오지 못해도 이동 신호를 보낸다
+  if (!focused && client.visibilityState === 'visible') focused = client;
   if (!focused) {
     // 앞으로 가져오지 못하면 새로 열고, 그것도 안 되면 그 창을 그 주소로 옮긴다
     const opened = await self.clients.openWindow(url).catch(() => null);
@@ -155,9 +155,10 @@ self.addEventListener('notificationclick', (event) => {
     const saving = writePending(url);
     const [all, meta] = await Promise.all([self.clients.matchAll({ type: 'window', includeUncontrolled: true }), readMeta()]);
     const windows = all.filter((c) => new URL(c.url).origin === self.location.origin);
-    // 1) 이미 열려 있는 앱 창 → 2) 앱이 설치된 휴대폰이면 앱을 새로 → 3) 열린 탭 → 4) 새 창
+    // 1) 이미 열려 있는 앱 창 → 2) 지금 보고 있는 창(앱을 보는 중에 누른 경우) → 3) 앱이 설치된 휴대폰이면 앱을 새로 → 4) 열린 탭 → 5) 새 창
     const appWindow = windows.find((c) => meta.standalone.includes(c.id));
-    const target = appWindow || (!meta.hasApp && windows[0]) || null;
+    const seen = windows.find((c) => c.focused) || windows.find((c) => c.visibilityState === 'visible');
+    const target = appWindow || seen || (!meta.hasApp && windows[0]) || null;
     const log = { url: url.replace(self.location.origin, ''), wins: windows.length, app: !!appWindow, hasApp: !!meta.hasApp, vis: windows.map((c) => c.visibilityState[0]).join('') };
     const done = target ? openInClient(target, url, log) : self.clients.openWindow(url).then((w) => { log.path = w ? 'openWindow-new' : 'openWindow-null'; return w; });
     await Promise.all([saving, done]);
