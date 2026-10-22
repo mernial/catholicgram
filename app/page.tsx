@@ -732,8 +732,8 @@ export default function Home() {
 
   // @핸들을 누르면 그 사람 프로필로
   const goToHandle = async (handle: string) => {
-    const { data } = await supabase.from('profiles').select('id').eq('handle', handle.toLowerCase()).maybeSingle();
-    if (data) goToProfile(data.id);
+    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('handle', handle.toLowerCase()).maybeSingle();
+    if (data) openProfileCard({ ...data, name: data.baptismal_name });
     else alert(`@${handle} 회원을 찾을 수 없어요.`);
   };
 
@@ -963,14 +963,23 @@ export default function Home() {
     setFollowRequests(prev => prev.map(r => r.id === item.id ? { ...r, iFollow: true } : r));
   };
 
-  const handleAvatarClick = async (postUser: { id: string, name: string, avatar_url?: string, handle?: string, badge_type?: string }) => {
+  // 교우 프로필을 누르면: 프로필 사진을 크게 보여 주고 그 밑에 '방문하기' (내 프로필은 바로 내 공간으로)
+  // 글·댓글·사랑방 등 보던 창 위에 뜨고, 방문하기를 누를 때 그 창들을 닫는다
+  const [actionUserBio, setActionUserBio] = useState('');
+  const profileCardIdRef = useRef<string | null>(null);
+  const openProfileCard = (target: { id: string; name?: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }) => {
     if (!user) { setShowAuthModal(true); return; }
-    if (postUser.id === user.id) {
-      goToProfile(user.id);
-      return;
-    }
-    setActionUserFollowStatus(await getFollowStatus(postUser.id));
-    setActionModalUser({ id: postUser.id, baptismal_name: postUser.name, avatar_url: postUser.avatar_url, handle: postUser.handle, badge_type: postUser.badge_type });
+    if (target.id === user.id) { closeOverlaysForLink(); goToProfile(user.id); return; }
+    profileCardIdRef.current = target.id;
+    setActionUserBio('');
+    setActionUserFollowStatus('none');
+    setActionModalUser({ id: target.id, baptismal_name: target.name || '', avatar_url: target.avatar_url || undefined, handle: target.handle || undefined, badge_type: target.badge_type || undefined });
+    getFollowStatus(target.id).then(st => { if (profileCardIdRef.current === target.id) setActionUserFollowStatus(st); });
+    // 사진·이름이 없거나 예전 것일 수 있어 새로 불러오고, 소개 글도 (소개 칸이 아직 없으면 생략)
+    supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', target.id).maybeSingle()
+      .then(({ data }) => { if (data && profileCardIdRef.current === target.id) setActionModalUser(cur => (cur && cur.id === data.id ? { ...cur, ...data, avatar_url: data.avatar_url || undefined } : cur)); });
+    supabase.from('profiles').select('bio').eq('id', target.id).maybeSingle()
+      .then(({ data, error }) => { if (!error && data && profileCardIdRef.current === target.id) setActionUserBio((data as { bio?: string | null }).bio || ''); });
   };
 
   const fetchChatPartners = async () => {
@@ -2566,6 +2575,8 @@ export default function Home() {
     }
   }, [anyModalOpen]);
   const closeAllModals = () => {
+    // 프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
+    if (actionModalUser) { setActionModalUser(null); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -2892,7 +2903,7 @@ export default function Home() {
           </div>
         ) : null}
         {activeTab === 'chat' && currentChatUser ? (
-          <button onClick={() => handleAvatarClick({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
+          <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
         ) : (
           <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             {/* 인스타그램처럼: 왼쪽 + · 가운데 이름 ▾ · 오른쪽 ♡ */}
@@ -2977,7 +2988,7 @@ export default function Home() {
             isAdmin={isAdmin}
             viewerOpen={storyViewerOpen}
             setViewerOpen={setStoryViewerOpen}
-            onOpenProfile={goToProfile}
+            onOpenProfile={id => openProfileCard({ id })}
             onMessage={u => openChatRoom(u)}
             onNeedLogin={() => setShowAuthModal(true)}
             canPost={requireProfile}
@@ -3341,13 +3352,13 @@ export default function Home() {
                 <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
-                    <button onClick={() => goToProfile(post.user_id)} className="shrink-0" aria-label={`${post.author_name}님 공간`}>
+                    <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="shrink-0" aria-label={`${post.author_name}님 프로필`}>
                       {post.avatar_url
                         ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
                         : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
-                      <button onClick={() => goToProfile(post.user_id)} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
+                      <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
                       {/* 음악: 누르면 크게 보기에서 재생 */}
                       {parsePostMusic(post.music) && (
                         <button onClick={() => openPostViewer(post)} className="max-w-full flex items-center gap-1 text-[0.75rem] text-stone-500"><Icon name="music" className="w-3 h-3 shrink-0" /><span className="truncate">{post.music_title || '음악'}</span></button>
@@ -3408,7 +3419,7 @@ export default function Home() {
                         prefixText={post.author_name}
                         prefix={
                           /* 글 앞에 굵은 이름: 누르면 그 사람의 공간으로 */
-                          <button onClick={e => { e.stopPropagation(); goToProfile(post.user_id); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
+                          <button onClick={e => { e.stopPropagation(); openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type }); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
                         }
                         text={post.content || ''}
                         renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
@@ -3603,7 +3614,7 @@ export default function Home() {
           posts={posts.map(p => p.video_url && !(p.images && p.images.length) ? { ...p, images: p.video_poster ? [p.video_poster] : [], is_video: true } : p)}
           blockedIds={blockedIds}
           initialQuery={exploreQuery}
-          onOpenProfile={goToProfile}
+          onOpenProfile={id => openProfileCard({ id })}
           onOpenPost={(id, queue) => { const p = posts.find(x => x.id === id); if (p) { openPostViewer(p); setViewerQueue(queue); } }}
           onRequireLogin={() => setShowAuthModal(true)}
         />
@@ -3651,7 +3662,7 @@ export default function Home() {
                       </div>
                       {/* 아래: 작성자·글·음악 */}
                       <div className="absolute left-0 right-14 bottom-0 z-10 px-4 pb-4 pt-16 bg-gradient-to-t from-black/75 via-black/30 to-transparent text-white flex flex-col gap-2">
-                        <button onClick={() => goToProfile(post.user_id)} className="self-start flex items-center gap-2">
+                        <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="self-start flex items-center gap-2">
                           {post.avatar_url
                             ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
                             : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
@@ -3674,7 +3685,7 @@ export default function Home() {
       })()}
 
       {activeTab === 'anon' && (
-        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={goToProfile} />
+        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -3691,7 +3702,7 @@ export default function Home() {
             return `📢 ${json.sent ?? 0}대의 휴대폰에 알림을 보냈어요`;
           }}
           onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); setLoungeStealth(false); }}
-          onOpenProfile={id => { setShowLounge(false); goToProfile(id); }}
+          onOpenProfile={id => openProfileCard({ id })}
           onReport={t => setReportTarget(t)} />
       )}
       {activeTab === 'messages' && (
@@ -3874,52 +3885,51 @@ export default function Home() {
       )}
 
       {/* 사용자 액션 팝업 메뉴 */}
-      {actionModalUser && (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-fade-in" onClick={() => setActionModalUser(null)}>
-          <div className="bg-white w-full sm:w-80 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-stone-100 flex items-center gap-3">
-              {actionModalUser.avatar_url ? (
-                <img loading="lazy" src={actionModalUser.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{actionModalUser.baptismal_name[0]}</div>
-              )}
-              <div>
-                <div className="flex items-center gap-1.5">
-                  <h3 className="font-bold text-stone-900">{actionModalUser.baptismal_name}</h3>
-                  <RoleBadge type={actionModalUser.badge_type} />
+      {/* 교우 프로필 카드: 프로필 사진을 크게 + 방문하기 (보던 창 위에 뜸) */}
+      {actionModalUser && (() => {
+        const u = actionModalUser;
+        const chattingWith = activeTab === 'chat' && currentChatUser?.id === u.id;
+        const blocked = blockedIds.has(u.id);
+        return (
+          <div className="fixed inset-0 bg-black/70 z-[93] flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setActionModalUser(null)}>
+            <div className="relative bg-[#fdfaf5] w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label={`${u.baptismal_name || '교우'}님 프로필`}>
+              <button onClick={() => setActionModalUser(null)} className="absolute right-2 top-2 w-11 h-11 flex items-center justify-center text-stone-500 text-3xl leading-none" aria-label="닫기">×</button>
+              <div className="px-6 pt-8 pb-5 flex flex-col items-center text-center">
+                {u.avatar_url
+                  ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-[#e6d9c3]" />
+                  : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{u.baptismal_name?.[0] || '교'}</span>}
+                <div className="mt-4 flex items-center gap-1.5 max-w-full">
+                  <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
+                  <RoleBadge type={u.badge_type} />
                 </div>
-                <p className="text-xs text-stone-400">@{actionModalUser.handle}</p>
+                {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
+                {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
+                <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-[#4d6a45] text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
+                  🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기
+                </button>
+                {!blocked && (
+                  <div className={`mt-2.5 w-full grid gap-2 ${chattingWith ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                    <button onClick={() => toggleFollow(u.id, actionUserFollowStatus)} className={`py-3 rounded-2xl text-[0.9375rem] font-bold ${actionUserFollowStatus === 'none' ? 'bg-white border-2 border-[#4d6a45] text-[#4d6a45]' : 'bg-white border border-stone-300 text-stone-700'}`}>
+                      {actionUserFollowStatus === 'none' ? '팔로우' : actionUserFollowStatus === 'pending' ? '팔로우 요청됨' : '팔로잉 ✓'}
+                    </button>
+                    {!chattingWith && (
+                      <button onClick={() => { closeOverlaysForLink(); openChatRoom(u); }} className="py-3 rounded-2xl bg-white border border-stone-300 text-stone-700 text-[0.9375rem] font-bold">
+                        <Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />메시지
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div className="mt-4 flex items-center justify-center gap-5 text-[0.8125rem] text-stone-400">
+                  <button onClick={() => { setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="py-1">신고하기</button>
+                  {blocked
+                    ? <button onClick={() => { unblockUser(u.id); setActionModalUser(null); }} className="py-1">차단 해제</button>
+                    : <button onClick={() => confirmBlock(u)} className="py-1 text-red-400">차단하기</button>}
+                </div>
               </div>
             </div>
-            <div className="flex flex-col">
-              <button onClick={() => goToProfile(actionModalUser.id)} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                <Icon name="user" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />프로필(공간) 보러가기
-              </button>
-              <button onClick={() => { toggleFollow(actionModalUser.id, actionUserFollowStatus); }} className="w-full p-4 text-sm font-medium text-left hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                {actionUserFollowStatus === 'none' ? <><Icon name="userPlus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />팔로우하기</> : <><Icon name="userMinus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />팔로우 취소</>}
-              </button>
-              <button onClick={() => openChatRoom(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-blue-600 hover:bg-blue-50 border-b border-stone-100 transition-colors">
-                <Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />개인 메시지(DM) 보내기
-              </button>
-              <button onClick={() => { const u = actionModalUser; setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 border-b border-stone-100 transition-colors">
-                <Icon name="siren" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고하기
-              </button>
-              {blockedIds.has(actionModalUser.id) ? (
-                <button onClick={() => { unblockUser(actionModalUser.id); setActionModalUser(null); }} className="w-full p-4 text-sm font-medium text-left text-stone-600 hover:bg-stone-50 transition-colors">
-                  <Icon name="unlock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />차단 해제
-                </button>
-              ) : (
-                <button onClick={() => confirmBlock(actionModalUser)} className="w-full p-4 text-sm font-medium text-left text-red-600 hover:bg-red-50 transition-colors">
-                  <Icon name="prohibit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />차단하기
-                </button>
-              )}
-              <button onClick={() => setActionModalUser(null)} className="w-full p-4 text-sm font-bold text-center text-stone-400 hover:bg-stone-50 transition-colors bg-stone-50/50 mt-2">
-                닫기
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 후원 배너 관리 (관리자) */}
       {showSponsorAdmin && isAdmin && (
@@ -4140,7 +4150,7 @@ export default function Home() {
                   const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
                   return (
                     <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c._isReply ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
-                      <button onClick={() => { if (c.user_id) { setCommentSheetId(null); goToProfile(c.user_id); } }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 공간`}>{avatarOf(c.user_id, authorName(c))}</button>
+                      <button onClick={() => { if (c.user_id) openProfileCard({ id: c.user_id, name: authorName(c) }); }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 프로필`}>{avatarOf(c.user_id, authorName(c))}</button>
                       <div className="flex-1 min-w-0">
                         <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
                           <b className="text-stone-900">{authorName(c)}</b>
@@ -4280,7 +4290,7 @@ export default function Home() {
               {!followList.items && <div className="p-10 text-center text-sm text-stone-400">불러오는 중...</div>}
               {followList.items?.length === 0 && <div className="p-10 text-center text-sm text-stone-400">{followList.mode === 'followers' ? '아직 팔로워가 없어요.' : '아직 팔로우한 사람이 없어요.'}</div>}
               {followList.items?.map(p => (
-                <button key={p.id} onClick={() => { setFollowList(null); goToProfile(p.id); }} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
+                <button key={p.id} onClick={() => openProfileCard({ id: p.id, name: p.baptismal_name, avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type })} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
                   {p.avatar_url
                     ? <img loading="lazy" src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
                     : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{p.baptismal_name?.[0]}</span>}
@@ -4571,7 +4581,7 @@ export default function Home() {
               ))}
               {listedFollows.map(r => (
                 <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
-                  <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
+                  <button onClick={() => openProfileCard({ id: r.follower.id, name: r.follower.baptismal_name, avatar_url: r.follower.avatar_url, handle: r.follower.handle, badge_type: r.follower.badge_type })} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
@@ -4756,7 +4766,7 @@ export default function Home() {
             onTouchEnd={onViewerTouchEnd}
           >
             <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-              <button onClick={() => { const d = selectedPostDetail; setSelectedPostDetail(null); handleAvatarClick({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
+              <button onClick={() => { const d = selectedPostDetail; openProfileCard({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 {selectedPostDetail.avatar_url ? (
                   <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
