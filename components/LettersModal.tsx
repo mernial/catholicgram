@@ -19,6 +19,7 @@ interface Letter {
   name_display: 'name' | 'anonymous';
   broadcast_ok: boolean;
   status: 'new' | 'read' | 'aired';
+  gift?: boolean;           // 선물 대상으로 뽑힘 (supabase/letters-gift.sql)
   created_at: string;
 }
 
@@ -33,18 +34,23 @@ const SETUP_HINT = '사연 보내기를 준비 중이에요. (관리자: supabas
 const isSetupError = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
 
-export default function LettersModal({ user, authorName, isAdmin, onClose, onSent, onChanged }: {
+export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onMessage }: {
   user: User;
   authorName: string;
+  authorHandle?: string | null;
   isAdmin: boolean;
+  startView?: 'write' | 'mine';     // 알림으로 열면 '보낸 사연'
+  onGift?: (id: string) => void;    // 관리자: 선물 대상으로 뽑았을 때 보낸 분께 알림
+  onMessage?: (userId: string) => void; // 관리자: 보낸 분께 메시지 (선물 안내)
   onClose: () => void;
   onSent: (id: string) => void;    // 관리자에게 알림 보내기
   onChanged?: () => void;          // 관리자: 새 사연 수 다시 세기
 }) {
-  const [view, setView] = useState<'write' | 'mine' | 'inbox'>(isAdmin ? 'inbox' : 'write');
+  const [view, setView] = useState<'write' | 'mine' | 'inbox'>(isAdmin ? 'inbox' : startView || 'write');
+  const [handles, setHandles] = useState<Record<string, string>>({}); // 관리자: 보낸 분 @아이디
   const [items, setItems] = useState<Letter[] | null>(null);
   const [error, setError] = useState('');
-  const [filter, setFilter] = useState<'new' | 'read' | 'aired' | 'all'>('new');
+  const [filter, setFilter] = useState<'new' | 'read' | 'aired' | 'gift' | 'all'>('new');
   const [reading, setReading] = useState<Letter | null>(null); // 방송용 크게 읽기
   const [zoom, setZoom] = useState<string | null>(null);
   // 쓰기
@@ -62,6 +68,11 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
     const { data, error: e } = await q;
     if (e) { setError(isSetupError(e) ? SETUP_HINT : '불러오지 못했어요.'); setItems([]); return; }
     setItems((data || []) as Letter[]);
+    if (v === 'inbox' && data && data.length > 0) {
+      const ids = Array.from(new Set(data.map(l => l.user_id)));
+      const { data: ps } = await supabase.from('profiles').select('id, handle').in('id', ids);
+      setHandles(Object.fromEntries((ps || []).filter(p => p.handle).map(p => [p.id, p.handle as string])));
+    }
   };
   useEffect(() => { load(view); }, [view]);
 
@@ -91,6 +102,16 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
     if (reading?.id === l.id) setReading({ ...l, status });
     onChanged?.();
   };
+  // 관리자: 선물 대상으로 뽑기 / 취소
+  const toggleGift = async (l: Letter) => {
+    const next = !l.gift;
+    if (next && !window.confirm(`${l.author_name || '이 교우'}님의 사연을 선물 대상으로 뽑을까요?\n보낸 분께 "선물 대상으로 뽑혔어요" 알림이 가요.`)) return;
+    const { error: e } = await supabase.from('letters').update({ gift: next }).eq('id', l.id);
+    if (e) { alert(/gift/.test(e.message) ? '선물 기능을 준비 중이에요. (관리자: supabase/letters-gift.sql 실행 필요)' : '바꾸지 못했어요.'); return; }
+    setItems(prev => prev?.map(x => x.id === l.id ? { ...x, gift: next } : x) || prev);
+    if (reading?.id === l.id) setReading({ ...reading, gift: next });
+    if (next) onGift?.(l.id);
+  };
   const remove = async (l: Letter) => {
     if (!window.confirm('이 사연을 지울까요?')) return;
     const { error: e } = await supabase.from('letters').delete().eq('id', l.id);
@@ -104,9 +125,12 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
     else setReading(l);
   };
 
-  const shown = (items || []).filter(l => view !== 'inbox' || filter === 'all' || l.status === filter);
+  const shown = (items || []).filter(l => view !== 'inbox' || filter === 'all' || (filter === 'gift' ? l.gift : l.status === filter));
+  // 관리자에게만: 실제로 보낸 분 (익명이어도 선물 안내를 위해)
+  const realSender = (l: Letter) => `${l.author_name || '교우'}${handles[l.user_id] ? ` @${handles[l.user_id]}` : ''}`;
   const count = (s: Letter['status']) => (items || []).filter(l => l.status === s).length;
   const displayName = (l: Letter) => (l.name_display === 'name' ? `${l.author_name || '교우'}님` : '익명');
+  const giftCount = (items || []).filter(l => l.gift).length;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
@@ -124,12 +148,15 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6">
             <p className="text-[1.125rem] font-bold text-stone-500 mb-1">{displayName(reading)}의 사연</p>
-            <p className="text-[0.875rem] text-stone-400 mb-5">{when(reading.created_at)}{reading.name_display === 'anonymous' && ` · 보낸 분: ${reading.author_name || '교우'} (관리자만 보임)`}</p>
+            <p className="text-[0.875rem] text-stone-400 mb-5">{when(reading.created_at)} · 보낸 분: {realSender(reading)}{reading.name_display === 'anonymous' && ' (익명 요청 · 관리자만 보임)'}</p>
+            {reading.gift && <p className="mb-4 text-[0.9375rem] font-bold text-amber-700">🎁 선물 대상으로 뽑은 사연이에요</p>}
             {!reading.broadcast_ok && <p className="mb-4 text-[0.9375rem] font-bold text-red-600">⚠️ 방송에서 소개하지 말아 달라고 하셨어요</p>}
             <p className="text-[1.5rem] leading-[1.8] text-stone-900 whitespace-pre-wrap break-words">{reading.content}</p>
             {reading.image_url && <img src={reading.image_url} alt="사연 사진" onClick={() => setZoom(reading.image_url)} className="mt-6 max-w-full rounded-2xl" />}
           </div>
-          <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2">
+          <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2 flex-wrap">
+            <button onClick={() => toggleGift(reading)} className={`flex-1 py-3 rounded-2xl font-bold ${reading.gift ? 'border border-amber-300 text-amber-800 bg-amber-50' : 'bg-amber-500 text-white'}`}>{reading.gift ? '🎁 선물 취소' : '🎁 선물 대상으로'}</button>
+            {onMessage && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
             {reading.status !== 'aired'
               ? <button onClick={() => setStatus(reading, 'aired')} className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-bold">방송에서 소개했어요</button>
               : <button onClick={() => setStatus(reading, 'read')} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-700 font-bold">소개 표시 취소</button>}
@@ -155,7 +182,7 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
         )}
         {isAdmin && (
           <div className="flex gap-1.5 px-3 py-2.5 border-b border-stone-100 shrink-0 overflow-x-auto">
-            {([['new', `새 사연 ${count('new')}`], ['read', `읽음 ${count('read')}`], ['aired', `소개함 ${count('aired')}`], ['all', '전체']] as const).map(([k, label]) => (
+            {([['new', `새 사연 ${count('new')}`], ['read', `읽음 ${count('read')}`], ['aired', `소개함 ${count('aired')}`], ['gift', `🎁 선물 ${giftCount}`], ['all', '전체']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setFilter(k)} className={`shrink-0 px-3 py-1.5 rounded-full text-[0.8125rem] font-bold border ${filter === k ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-600 border-stone-200'}`}>{label}</button>
             ))}
           </div>
@@ -174,12 +201,16 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
               <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{content.length} / 5000</p>
 
               <div>
-                <p className="text-[0.875rem] font-bold text-stone-700 mb-2">방송에서 이름은</p>
+                <p className="text-[0.875rem] font-bold text-stone-700 mb-2">어떻게 보낼까요?</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {([['anonymous', '익명으로'], ['name', `${authorName || '내 이름'}(으)로`]] as const).map(([k, label]) => (
-                    <button key={k} type="button" onClick={() => setNameDisplay(k)} className={`py-3 rounded-xl border text-[0.9375rem] font-bold ${nameDisplay === k ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 text-stone-600'}`}>{label}</button>
+                  {([['anonymous', '🙈 익명으로', '이름을 밝히지 않아요'], ['name', '🙋 아이디 공개', `${authorName || '내 이름'}${authorHandle ? ` @${authorHandle}` : ''}`]] as const).map(([k, label, sub]) => (
+                    <button key={k} type="button" onClick={() => setNameDisplay(k)} className={`py-3 px-2 rounded-xl border flex flex-col items-center gap-0.5 ${nameDisplay === k ? 'border-stone-900 bg-stone-900 text-white' : 'border-stone-200 text-stone-600'}`}>
+                      <span className="text-[0.9375rem] font-bold">{label}</span>
+                      <span className={`text-[0.75rem] truncate max-w-full ${nameDisplay === k ? 'text-white/75' : 'text-stone-400'}`}>{sub}</span>
+                    </button>
                   ))}
                 </div>
+                <p className="mt-2 text-[0.75rem] text-stone-500 leading-relaxed">🎁 좋은 사연을 보내 주신 분께는 선물을 드려요. 익명으로 보내셔도 선물 안내를 위해 <b>운영자에게만</b> 보낸 분이 보여요. 방송에서는 고르신 대로 소개해요.</p>
               </div>
 
               <label className="flex items-center gap-3 p-3 rounded-xl border border-stone-200">
@@ -216,16 +247,20 @@ export default function LettersModal({ user, authorName, isAdmin, onClose, onSen
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[0.75rem] font-bold px-2 py-0.5 rounded-full border ${STATUS[l.status].className}`}>{view === 'mine' ? STATUS[l.status].mine : STATUS[l.status].label}</span>
                     {view === 'inbox' && <span className="text-[0.8125rem] font-bold text-stone-800">{displayName(l)}</span>}
-                    {view === 'inbox' && l.name_display === 'anonymous' && <span className="text-[0.75rem] text-stone-400">({l.author_name || '교우'})</span>}
+                    {view === 'inbox' && <span className="text-[0.75rem] text-stone-400">({realSender(l)})</span>}
+                    {view === 'mine' && <span className="text-[0.75rem] text-stone-500">{l.name_display === 'name' ? '🙋 아이디 공개' : '🙈 익명'}</span>}
+                    {l.gift && <span className="text-[0.75rem] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">🎁 선물</span>}
                     {!l.broadcast_ok && <span className="text-[0.75rem] font-bold text-red-600">방송 소개 안 함</span>}
                     <span className="ml-auto text-[0.75rem] text-stone-400">{when(l.created_at)}</span>
                   </div>
+                  {view === 'mine' && l.gift && <p className="text-[0.875rem] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">🎉 이 사연이 선물 대상으로 뽑혔어요! 운영자가 메시지로 연락드릴게요.</p>}
                   <p className={`text-[0.9375rem] text-stone-800 whitespace-pre-wrap break-words ${view === 'inbox' ? 'line-clamp-4' : ''}`}>{l.content}</p>
                   {l.image_url && <button onClick={() => setZoom(l.image_url)} className="self-start"><img loading="lazy" src={l.image_url} alt="사연 사진" className="max-h-32 rounded-xl border border-stone-200 object-cover" /></button>}
                   <div className="flex gap-2">
                     {view === 'inbox' && <button onClick={() => openReading(l)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[0.8125rem] font-bold">크게 읽기</button>}
                     {view === 'inbox' && l.status === 'new' && <button onClick={() => setStatus(l, 'read')} className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 text-[0.8125rem] font-bold">읽음으로</button>}
                     {view === 'inbox' && l.status !== 'aired' && <button onClick={() => setStatus(l, 'aired')} className="px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-[0.8125rem] font-bold">소개함</button>}
+                    {view === 'inbox' && <button onClick={() => toggleGift(l)} className={`px-3 py-1.5 rounded-lg border text-[0.8125rem] font-bold ${l.gift ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-amber-200 text-amber-700'}`}>{l.gift ? '🎁 선물 취소' : '🎁 선물'}</button>}
                     {(view === 'inbox' || l.status === 'new') && <button onClick={() => remove(l)} className="ml-auto px-2 py-1.5 text-stone-400 text-[0.8125rem]">지우기</button>}
                   </div>
                 </div>

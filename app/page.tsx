@@ -363,6 +363,7 @@ export default function Home() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
+  const [lettersStart, setLettersStart] = useState<'write' | 'mine'>('write'); // 사연함: 알림으로 열면 '보낸 사연'
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
   const [loungeNew, setLoungeNew] = useState(0);
   const [loungeFocusId, setLoungeFocusId] = useState<string | null>(null); // 관리자 부름 알림으로 연 대화          // 마지막으로 본 뒤 새 사랑방 대화 수
@@ -1988,7 +1989,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'lounge_call' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'letter_gift' | 'lounge_call' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -2196,6 +2197,7 @@ export default function Home() {
       setLoungeFocusId(deepLink.lounge);
       setShowLounge(true);
     } else if (deepLink.letters) {
+      setLettersStart('mine');
       setShowLetters(true);
     } else if (deepLink.story) {
       // 홈으로 가서 스토리를 새로 불러온 뒤 그 교우의 스토리를 연다
@@ -2837,7 +2839,7 @@ export default function Home() {
               {user ? (
                 <div className="flex items-center gap-2.5 min-w-0">
                   {/* 사연 보내기 (관리자에게만) — 관리자는 사연함 */}
-                  <button onClick={() => setShowLetters(true)} className="relative text-[1.3125rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
+                  <button onClick={() => { setLettersStart('write'); setShowLetters(true); }} className="relative text-[1.3125rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
                     💌
                     {isAdmin && letterNewCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{letterNewCount > 9 ? '9+' : letterNewCount}</span>
@@ -4107,7 +4109,16 @@ export default function Home() {
         <LettersModal
           user={user}
           authorName={profile?.baptismal_name || '교우'}
+          authorHandle={profile?.handle}
           isAdmin={isAdmin}
+          startView={lettersStart}
+          onGift={id => sendPush('letter_gift', id)}
+          onMessage={async uid => {
+            const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', uid).maybeSingle();
+            if (!data) { alert('교우를 찾지 못했어요.'); return; }
+            setShowLetters(false);
+            openChatRoom(data);
+          }}
           onClose={() => setShowLetters(false)}
           onSent={id => sendPush('letter', id)}
           onChanged={fetchLetterCount}
