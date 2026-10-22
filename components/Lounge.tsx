@@ -136,12 +136,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       setHasOlder((data || []).length === PAGE);
       loadAuthors(rows.map(r => r.user_id));
       markSeen();
-      if (focusId && rows.some(r => r.id === focusId)) {
-        atBottomRef.current = false;
-        setHighlightId(focusId);
-        setTimeout(() => document.getElementById(`lounge-${focusId}`)?.scrollIntoView({ block: 'center' }), 80);
-        setTimeout(() => setHighlightId(null), 8000);
-      } else setTimeout(() => scrollToBottom(), 50);
+      if (!(focusId && rows.some(r => r.id === focusId))) setTimeout(() => scrollToBottom(), 50); // 부른 대화가 있으면 아래 효과가 그리로
       if (isAdmin) {
         loadAuthors([user.id]); // 위 칸에 관리자 프로필
         // 들어왔다고 알림 (10분 안에 이미 알렸으면 생략 — 들락날락해도 도배되지 않게)
@@ -156,6 +151,18 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     })();
     return () => markSeen();
   }, []);
+
+  // 관리자 부름 알림으로 열면 그 대화로 옮겨 잠깐 강조. 사랑방이 이미 열려 있을 때 알림을 눌러도,
+  // 그 대화가 아직 화면에 안 왔으면 실시간으로 들어오는 대로
+  const focusedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusId || loading || focusedRef.current === focusId || !messages.some(m => m.id === focusId)) return;
+    focusedRef.current = focusId;
+    atBottomRef.current = false;
+    setHighlightId(focusId);
+    setTimeout(() => document.getElementById(`lounge-${focusId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
+    setTimeout(() => setHighlightId(h => (h === focusId ? null : h)), 8000);
+  }, [focusId, loading, messages]);
 
   // 실시간: 새 대화·지운 대화 (함께 있는 교우 수는 화면(page)의 lounge-presence 채널이 셈)
   useEffect(() => {
