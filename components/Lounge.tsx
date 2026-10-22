@@ -323,29 +323,31 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           ))}
         </div>
       ) : (
-      <>
-      {/* 위 칸: 관리자 글 (두 줄 높이, 오른쪽 정렬, 새 글이 오면 아래로 따라감) + 관리자 프로필 */}
+      // 휴대폰: 위 칸(관리자) + 아래 칸(교우 대화). 아이패드처럼 넓은 화면: 왼쪽 교우 대화 + 오른쪽 관리자 기둥
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row-reverse">
+      {/* 관리자 글 (휴대폰은 두 줄 높이, 오른쪽 정렬, 새 글이 오면 아래로 따라감) + 관리자 프로필 */}
       {(() => {
         const adminId = adminMsgs.length > 0 ? adminMsgs[adminMsgs.length - 1].user_id : (isAdmin ? user.id : null);
         const a = adminId ? authors[adminId] : undefined;
         return (
-          <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200 px-3 py-2 flex items-center gap-2.5">
-            <div ref={adminRef} className="flex-1 min-w-0 h-[3.3rem] overflow-y-auto overscroll-contain text-right" aria-label="관리자 말씀">
+          <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200 px-3 py-2 flex items-center gap-2.5
+            md:w-[36%] md:max-w-[26rem] md:flex-col-reverse md:items-stretch md:justify-end md:border-b-0 md:border-l-2 md:px-4 md:py-3 md:gap-2">
+            <div ref={adminRef} className="flex-1 min-w-0 h-[3.3rem] overflow-y-auto overscroll-contain text-right md:h-auto md:min-h-0 md:flex md:flex-col md:gap-2" aria-label="관리자 말씀">
               {adminMsgs.length === 0 ? (
-                <p className="text-[0.875rem] leading-[3.3rem] text-amber-800/60">📢 오늘의 관리자 말씀이 여기에 보여요</p>
+                <p className="text-[0.875rem] leading-[3.3rem] text-amber-800/60 md:leading-normal md:mt-2">📢 오늘의 관리자 말씀이 여기에 보여요</p>
               ) : adminMsgs.map(m => (
-                <p key={m.id} id={`lounge-${m.id}`} className="text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words">
+                <p key={m.id} id={`lounge-${m.id}`} className="text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words md:bg-white/70 md:rounded-2xl md:rounded-tr-md md:px-3.5 md:py-2 md:shadow-sm md:self-end md:max-w-full">
                   {withCall(m.content, false)}
                   <span className="ml-1.5 text-[0.6875rem] text-amber-800/70 whitespace-nowrap">{timeOf(m.created_at)}</span>
                   {isAdmin && <button onClick={() => remove(m)} className="ml-1 text-stone-400 text-base leading-none align-middle" aria-label="이 말씀 지우기">×</button>}
                 </p>
               ))}
             </div>
-            <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center" aria-label="관리자 공간">
+            <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center md:w-auto md:flex-row md:justify-end md:gap-2 md:pb-2 md:border-b md:border-amber-200" aria-label="관리자 공간">
               {a?.avatar_url
                 ? <img src={a.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-amber-300" />
                 : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{a?.baptismal_name?.[0] || '📢'}</span>}
-              <span className="mt-0.5 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate flex items-center gap-0.5">{a?.baptismal_name || '관리자'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /></span>
+              <span className="mt-0.5 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate flex items-center gap-0.5 md:order-first md:mt-0 md:text-[0.9375rem]"><span className="hidden md:inline text-amber-700 font-normal mr-1">📢 관리자 말씀 ·</span>{a?.baptismal_name || '관리자'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /></span>
             </button>
           </div>
         );
@@ -354,7 +356,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col" onClick={() => setMenuId(null)}>
+      }} className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col" onClick={() => setMenuId(null)}>
         {/* 대화가 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
@@ -411,7 +413,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         })}
         </div>
       </div>
-      </>
+      </div>
       )}
 
       {newBelow > 0 && !trash && (
