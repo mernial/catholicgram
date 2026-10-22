@@ -10,6 +10,7 @@ import type { ReportTarget } from '@/components/ReportDialog';
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 7일 동안 남는다.
 // 새 대화·지운 대화는 Supabase 실시간으로 바로 받고, 실시간 연결이 안 되면 5초마다 확인한다.
+// 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만 휴대폰 알림이 간다.
 
 interface LoungeMessage { id: string; user_id: string; content: string; created_at: string }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; badge_type?: string | null }
@@ -22,15 +23,22 @@ const isSetupError = (e: { code?: string; message?: string } | null) =>
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 
+export const CALL_ADMIN = '@관리자';
+// '@관리자' 부분을 눈에 띄게
+const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).map((part, i) =>
+  part === CALL_ADMIN ? <b key={i} className={mine ? 'text-amber-200' : 'text-amber-700'}>{part}</b> : part);
+
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfile, onReport }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, onClose, onOpenProfile, onReport, onCallAdmin }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
   onClose: () => void;
   onOpenProfile: (userId: string) => void;
   onReport: (target: ReportTarget) => void;
+  focusId?: string | null;               // 관리자 부름 알림으로 들어왔을 때 그 대화로
+  onCallAdmin: (messageId: string) => void;
 }) {
   const [messages, setMessages] = useState<LoungeMessage[]>([]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
@@ -45,6 +53,9 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
   const [banned, setBanned] = useState<Set<string>>(new Set());
   const [trash, setTrash] = useState<Trashed[] | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [notice, setNotice] = useState('');
   const atBottomRef = useRef(true);
   const authorsRef = useRef(authors);
   authorsRef.current = authors;
@@ -90,7 +101,12 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
       setHasOlder((data || []).length === PAGE);
       loadAuthors(rows.map(r => r.user_id));
       markSeen();
-      setTimeout(() => scrollToBottom(), 50);
+      if (focusId && rows.some(r => r.id === focusId)) {
+        atBottomRef.current = false;
+        setHighlightId(focusId);
+        setTimeout(() => document.getElementById(`lounge-${focusId}`)?.scrollIntoView({ block: 'center' }), 80);
+        setTimeout(() => setHighlightId(null), 8000);
+      } else setTimeout(() => scrollToBottom(), 50);
       if (isAdmin) {
         const { data: b } = await supabase.from('lounge_bans').select('user_id');
         setBanned(new Set((b || []).map(x => x.user_id)));
@@ -160,6 +176,12 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
     setInput('');
     atBottomRef.current = true;
     if (data) addMessages([data]);
+    // '@관리자'로 불렀으면 관리자에게만 알림 (관리자 본인은 제외)
+    if (data && text.includes(CALL_ADMIN) && !isAdmin) {
+      onCallAdmin(data.id);
+      setNotice('관리자에게 알림을 보냈어요 🙋');
+      setTimeout(() => setNotice(''), 4000);
+    }
   };
 
   const remove = async (m: LoungeMessage) => {
@@ -229,7 +251,7 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
         if (atBottomRef.current && newBelow) setNewBelow(0);
       }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col gap-2" onClick={() => setMenuId(null)}>
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
-          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 7일 뒤 사라져요.
+          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 7일 뒤 사라져요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.
         </div>
         {hasOlder && <button onClick={loadOlder} className="self-center text-[0.8125rem] text-stone-600 bg-white border border-stone-200 rounded-full px-4 py-1.5">이전 대화 더 보기</button>}
         {loading && <p className="text-center text-stone-400 text-sm py-10">불러오는 중...</p>}
@@ -242,7 +264,7 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
           const newDay = !prev || dayOf(prev.created_at) !== dayOf(m.created_at);
           const grouped = !newDay && prev && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
           return (
-            <div key={m.id}>
+            <div key={m.id} id={`lounge-${m.id}`} className={highlightId === m.id ? 'rounded-2xl ring-4 ring-amber-300/70 bg-amber-50/60 transition-all' : ''}>
               {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
               <div className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''}`}>
                 {!mine && (
@@ -265,7 +287,7 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
                     <button
                       onClick={e => { e.stopPropagation(); setMenuId(menuId === m.id ? null : m.id); }}
                       className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
-                    >{m.content}</button>
+                    >{withCall(m.content, mine)}</button>
                     <span className="shrink-0 text-[0.6875rem] text-stone-500 pb-0.5">{timeOf(m.created_at)}</span>
                   </div>
                   {menuId === m.id && (
@@ -289,8 +311,20 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
 
       {/* 입력 */}
       {!trash && (
-        <form onSubmit={send} className="shrink-0 bg-white border-t border-stone-200 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
+        <div className="shrink-0 bg-white border-t border-stone-200">
+        {notice && <p className="px-4 pt-2 text-[0.8125rem] font-bold text-amber-700">{notice}</p>}
+        {!isAdmin && (
+          <div className="px-3 pt-2 flex items-center gap-2">
+            <button type="button" onClick={() => {
+              setInput(v => (v.includes(CALL_ADMIN) ? v : `${CALL_ADMIN} ${v}`));
+              setTimeout(() => { const el = inputRef.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+            }} className="px-3 py-1.5 rounded-full border border-amber-300 bg-amber-50 text-amber-800 text-[0.8125rem] font-bold">🙋 관리자 부르기</button>
+            <span className="text-[0.75rem] text-stone-400">대화는 알림 없이 조용히 올라가요</span>
+          </div>
+        )}
+        <form onSubmit={send} className="px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
           <textarea
+            ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value.slice(0, 500))}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(pointer: fine)').matches) { e.preventDefault(); send(); } }}
@@ -301,6 +335,7 @@ export default function Lounge({ user, isAdmin, blockedIds, onClose, onOpenProfi
           />
           <button type="submit" disabled={!input.trim() || sending || !!error} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
+        </div>
       )}
     </div>
   );
