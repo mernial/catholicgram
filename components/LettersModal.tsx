@@ -155,8 +155,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
             {reading.image_url && <img src={reading.image_url} alt="사연 사진" onClick={() => setZoom(reading.image_url)} className="mt-6 max-w-full rounded-2xl" />}
           </div>
           <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2 flex-wrap">
-            <button onClick={() => toggleGift(reading)} className={`flex-1 py-3 rounded-2xl font-bold ${reading.gift ? 'border border-amber-300 text-amber-800 bg-amber-50' : 'bg-amber-500 text-white'}`}>{reading.gift ? '🎁 선물 취소' : '🎁 선물 대상으로'}</button>
-            {onMessage && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
+            {reading.name_display === 'name' && <button onClick={() => toggleGift(reading)} className={`flex-1 py-3 rounded-2xl font-bold ${reading.gift ? 'border border-amber-300 text-amber-800 bg-amber-50' : 'bg-amber-500 text-white'}`}>{reading.gift ? '🎁 선물 취소' : '🎁 선물 대상으로'}</button>}
+            {onMessage && reading.name_display === 'name' && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
             {reading.status !== 'aired'
               ? <button onClick={() => setStatus(reading, 'aired')} className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-bold">방송에서 소개했어요</button>
               : <button onClick={() => setStatus(reading, 'read')} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-700 font-bold">소개 표시 취소</button>}
@@ -210,7 +210,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[0.75rem] text-stone-500 leading-relaxed">🎁 좋은 사연을 보내 주신 분께는 선물을 드려요. 방송에서는 고르신 대로 소개해요.</p>
+                <p className="mt-2 text-[0.75rem] text-stone-500 leading-relaxed">🎁 좋은 사연에는 선물을 드려요. 선물은 <b>아이디 공개</b>로 보내신 분께만 메시지로 안내해 드릴 수 있어요. (익명은 선물 제외)</p>
               </div>
 
               <label className="flex items-center gap-3 p-3 rounded-xl border border-stone-200">
@@ -260,7 +260,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                     {view === 'inbox' && <button onClick={() => openReading(l)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[0.8125rem] font-bold">크게 읽기</button>}
                     {view === 'inbox' && l.status === 'new' && <button onClick={() => setStatus(l, 'read')} className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 text-[0.8125rem] font-bold">읽음으로</button>}
                     {view === 'inbox' && l.status !== 'aired' && <button onClick={() => setStatus(l, 'aired')} className="px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-[0.8125rem] font-bold">소개함</button>}
-                    {view === 'inbox' && <button onClick={() => toggleGift(l)} className={`px-3 py-1.5 rounded-lg border text-[0.8125rem] font-bold ${l.gift ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-amber-200 text-amber-700'}`}>{l.gift ? '🎁 선물 취소' : '🎁 선물'}</button>}
+                    {view === 'inbox' && (l.name_display === 'name' || l.gift) && <button onClick={() => toggleGift(l)} className={`px-3 py-1.5 rounded-lg border text-[0.8125rem] font-bold ${l.gift ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-amber-200 text-amber-700'}`}>{l.gift ? '🎁 선물 취소' : '🎁 선물'}</button>}
                     {(view === 'inbox' || l.status === 'new') && <button onClick={() => remove(l)} className="ml-auto px-2 py-1.5 text-stone-400 text-[0.8125rem]">지우기</button>}
                   </div>
                 </div>
