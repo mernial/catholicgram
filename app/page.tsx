@@ -112,6 +112,20 @@ const claimLink = (url: string) => {
   return true;
 };
 // staleSearch: 앱이 알림 주소로 열렸는데 고유 표시(n)가 없는 예전 형식 → 적어 둔 목적지와 같을 때만 연다
+// 휴대폰에 저장된 로그인 정보 (서버 확인 없이). 인터넷이 잠깐 안 될 때 로그인이 풀린 것처럼 보이지 않게 쓴다
+const storedAuthUser = () => {
+  try {
+    const key = (supabase.auth as unknown as { storageKey?: string }).storageKey;
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as { refresh_token?: string; user?: User };
+    if (!saved.refresh_token) return null;
+    let u = saved.user;
+    if (!u?.id) { const sep = JSON.parse(localStorage.getItem(`${key}-user`) || 'null') as { user?: User } | null; u = sep?.user; }
+    return u?.id ? u : null;
+  } catch { return null; }
+};
 const consumePendingLink = async (staleSearch?: string, retried = false): Promise<void> => {
   try {
     if (typeof caches === 'undefined') return;
@@ -526,6 +540,9 @@ export default function Home() {
     const onPopState = (e: PopStateEvent) => backHandlerRef.current(e);
     window.addEventListener('popstate', onPopState);
 
+    // 저장된 로그인으로 바로 로그인 화면을 보여 준다 (서버 확인이 늦거나 인터넷이 약해도 '로그인' 단추가 뜨지 않게)
+    const savedLogin = storedAuthUser();
+    if (savedLogin) { setUser(savedLogin); fetchProfile(savedLogin.id); }
     checkUser();
     fetchPosts();
     fetchBgmTracks();
@@ -550,6 +567,8 @@ export default function Home() {
         // 방금 알림으로 화면을 열었으면 새로고침은 다음에 (연 화면이 사라지지 않게)
         const justOpened = !!lastOpenedLink && Date.now() - lastOpenedLink.at < 15 * 1000;
         if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
+          // 로그인 토큰을 새로 받는 중이면 끝난 뒤에 새로고침 (도중에 끊기면 로그인이 풀릴 수 있음)
+          await supabase.auth.getSession().catch(() => {});
           window.location.reload(); // 알림으로 가야 할 곳은 적어 둔 채로 새로고침 → 다시 열리면 그리로
           return;
         }
@@ -565,10 +584,25 @@ export default function Home() {
     const onAppFocus = () => setTimeout(consumePendingLink, 300);
     window.addEventListener('focus', onAppFocus);
     window.addEventListener('pageshow', onAppFocus);
+    // 휴대폰이 저장 공간을 정리할 때 로그인 정보가 지워지지 않게 '보관' 요청
+    navigator.storage?.persist?.().catch(() => {});
+    // 인터넷이 다시 연결되면 로그인 다시 확인 (토큰 새로 받기)
+    const onOnline = () => { supabase.auth.getSession().catch(() => {}); };
+    window.addEventListener('online', onOnline);
     fetchSponsorBanners();
     const bannerTimer = setInterval(fetchSponsorBanners, 10 * 60 * 1000);
 
     const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // 로그아웃 단추를 누른 게 아닌데 세션을 못 받은 경우(인터넷 끊김·서버 지연)는 저장된 로그인을 유지하고 잠시 뒤 다시 확인
+      if (!session && event !== 'SIGNED_OUT') {
+        const kept = storedAuthUser();
+        if (kept) {
+          setUser(prev => prev ?? kept);
+          storageSet('myUserId', kept.id);
+          setTimeout(() => supabase.auth.getSession().catch(() => {}), 5000);
+          return;
+        }
+      }
       const currentUser = session?.user ?? null;
       setUser(currentUser);
       if (currentUser) storageSet('myUserId', currentUser.id);
@@ -586,6 +620,7 @@ export default function Home() {
       clearTimeout(historyTimer);
       window.removeEventListener('focus', onAppFocus);
       window.removeEventListener('pageshow', onAppFocus);
+      window.removeEventListener('online', onOnline);
       activationEvents.forEach(ev => window.removeEventListener(ev, setupHistory, { capture: true }));
       clearInterval(intentionTimer);
       document.removeEventListener('visibilitychange', onAppResume);
@@ -690,10 +725,15 @@ export default function Home() {
     setActionModalUser(null);
   };
 
+  // 로그인 확인: 휴대폰에 저장된 로그인으로 바로 시작한다.
+  // (예전에는 서버에 물어봐서, 앱을 켤 때 인터넷이 잠깐 안 되면 로그인이 풀린 것처럼 보였음)
   const checkUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    setUser(user);
-    if (user) fetchProfile(user.id);
+    const { data: { session }, error } = await supabase.auth.getSession();
+    const u = session?.user ?? (error ? storedAuthUser() : null);
+    if (!session && !error && storedAuthUser()) return; // 아직 토큰을 새로 받는 중 → 끝나면 알려 줌(onAuthStateChange)
+    setUser(u);
+    if (u) fetchProfile(u.id);
+    if (!session && u) setTimeout(() => supabase.auth.getSession().catch(() => {}), 5000); // 인터넷이 돌아오면 다시
   };
 
   const fetchProfile = async (userId: string) => {
