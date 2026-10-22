@@ -41,7 +41,7 @@ const categoryLabel = (c: Feedback['category']) => CATEGORIES.find(x => x.key ==
 // 신고 (supabase/report-block.sql) — 관리자만 볼 수 있음
 interface Report {
   id: string;
-  target_type: 'post' | 'comment' | 'anon_post' | 'anon_reply' | 'user' | 'message';
+  target_type: 'post' | 'comment' | 'anon_post' | 'anon_reply' | 'user' | 'message' | 'lounge';
   target_id: string;
   target_user_id: string | null;
   target_preview: string | null;
@@ -59,7 +59,7 @@ const REPORT_REPLY_PRESETS = [
   '검토해 보니 운영 규칙에 어긋나지 않아 그대로 두었습니다. 관심 가져 주셔서 감사합니다.',
 ];
 const REPORT_TYPE: Record<Report['target_type'], string> = {
-  post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지',
+  post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지', lounge: '사랑방 대화',
 };
 const REPORT_REASON: Record<string, string> = {
   spam: '스팸·광고', abuse: '욕설·괴롭힘', sexual: '음란·성적', hate: '혐오·차별', privacy: '개인정보 노출', other: '기타',
@@ -147,6 +147,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
       : report.target_type === 'comment' ? await supabase.from('comments').delete().eq('id', report.target_id)
       : report.target_type === 'anon_post' ? await supabase.rpc('delete_anon_post', { p_id: report.target_id })
       : report.target_type === 'anon_reply' ? await supabase.rpc('delete_anon_reply', { p_id: report.target_id })
+      : report.target_type === 'lounge' ? await supabase.from('lounge_messages').delete().eq('id', report.target_id)
       : { error: { message: '이 유형은 직접 삭제할 수 없습니다.' } };
     if (error) { alert(`삭제하지 못했습니다.\n(${error.message})`); return; }
     setReportStatus(report, 'resolved');

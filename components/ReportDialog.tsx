@@ -6,7 +6,7 @@ import Icon from '@/components/Icon';
 
 // 부적절한 콘텐츠/사용자 신고 (supabase/report-block.sql 의 reports 테이블)
 
-export type ReportTargetType = 'post' | 'comment' | 'anon_post' | 'anon_reply' | 'user' | 'message';
+export type ReportTargetType = 'post' | 'comment' | 'anon_post' | 'anon_reply' | 'user' | 'message' | 'lounge';
 
 export interface ReportTarget {
   type: ReportTargetType;
@@ -26,7 +26,7 @@ const REASONS = [
 ];
 
 const TYPE_LABEL: Record<ReportTargetType, string> = {
-  post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지',
+  post: '게시글', comment: '댓글', anon_post: '익명 고민글', anon_reply: '익명 답글', user: '사용자', message: '메시지', lounge: '사랑방 대화',
 };
 
 export default function ReportDialog({ target, onClose, onBlock, onSent }: {
