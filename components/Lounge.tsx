@@ -218,10 +218,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     e?.preventDefault();
     const text = (typed ?? input).trim();
     if (!text || sending) return;
+    // 자판이 올라와 있었으면 보낸 뒤에도 그대로 (입력창에 다시 초점)
+    const keepKeyboard = typeof document !== 'undefined' && document.activeElement === inputRef.current;
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) })
       .select('*').single();
     setSending(false);
+    if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err) {
       alert(isSetupError(err) ? SETUP_HINT : /천천히|제한/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
       return;
@@ -294,7 +297,18 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const adminMsgs = today.filter(isAdminMsg);
   const shown = today.filter(m => !isAdminMsg(m) && !blockedIds.has(m.user_id));
   const adminRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { const el = adminRef.current; if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); }, [adminMsgs.length]);
+  const adminAtBottom = useRef(true);
+  useEffect(() => { const el = adminRef.current; if (el) { adminAtBottom.current = true; el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); } }, [adminMsgs.length]);
+  // 자판이 올라와 화면이 줄어도(폴드·아이패드의 오른쪽 관리자 칸) 최신 말씀이 보이게 맨 아래에 붙여 둔다
+  useEffect(() => {
+    const el = adminRef.current;
+    if (!el) return;
+    const onScroll = () => { adminAtBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; };
+    const ro = new ResizeObserver(() => { if (adminAtBottom.current) el.scrollTop = el.scrollHeight; });
+    ro.observe(el);
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll); };
+  }, [trash === null]);
 
   return (
     <div className="fixed inset-0 z-[75] bg-[#f4efe6] flex flex-col" role="dialog" aria-label="모두의 사랑방">
@@ -459,7 +473,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] focus:outline-none focus:border-stone-500"
             aria-label="사랑방에 보낼 말"
           />
-          <button type="submit" disabled={!input.trim() || sending || !!error} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
+          {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
         </div>
       )}
