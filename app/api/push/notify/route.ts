@@ -12,7 +12,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'test' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'test' | 'lounge_call' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['test', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['test', 'lounge_call', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -53,7 +53,21 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'test') {
+  if (type === 'lounge_call') {
+    // 사랑방에서 '@관리자'로 부름 → 관리자에게만 (사랑방의 다른 대화는 알림 없음)
+    const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();
+    if (!msg || msg.user_id !== user.id || !String(msg.content).includes('@관리자')) return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(msg.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    // 같은 교우는 5분에 한 번만 (여러 번 불러도 알림이 쏟아지지 않게)
+    const { count } = await admin.from('lounge_messages').select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id).neq('id', msg.id).like('content', '%@관리자%')
+      .gt('created_at', new Date(Date.now() - 5 * 60 * 1000).toISOString());
+    if ((count || 0) > 0) return Response.json({ skipped: 'called recently' });
+    const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
+    if (!adminProfile || adminProfile.id === user.id) return Response.json({ skipped: 'admin not found' });
+    const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
+    list.push({ recipientId: adminProfile.id, payload: { title: '🙋 사랑방에서 관리자를 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content).replace(/@관리자\s*/g, '').trim() || '관리자님!')}`, url: `/?lounge=${msg.id}`, tag: `lounge-call-${msg.id}` } });
+  } else if (type === 'test') {
     // 알림 확인용: 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
     const { data: post } = await admin.from('posts').select('id').eq('id', id).maybeSingle();
     if (!post) return Response.json({ error: 'not found' }, { status: 404 });
@@ -168,7 +182,7 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(rp.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
     if (!adminProfile) return Response.json({ skipped: 'admin not found' });
-    const what: Record<string, string> = { post: '게시글', comment: '댓글', anon_post: '고민글', anon_reply: '고민 답글', user: '사용자', message: '메시지' };
+    const what: Record<string, string> = { post: '게시글', comment: '댓글', anon_post: '고민글', anon_reply: '고민 답글', user: '사용자', message: '메시지', lounge: '사랑방 대화' };
     recipientId = adminProfile.id;
     payload = {
       title: `🚨 새 신고 (${what[rp.target_type] || rp.target_type})`,

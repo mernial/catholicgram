@@ -68,7 +68,8 @@ const deepLinkFromSearch = (search: string) => {
   const story = params.get('story') || undefined;     // 그 교우의 스토리 (새 스토리 알림)
   const anon = params.get('anon') || undefined;       // 고민상담의 그 글 (답글 알림)
   const letters = params.get('letters') === '1';      // 사연함 (관리자) / 보낸 사연
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, letters } : null;
+  const lounge = params.get('lounge') || undefined;   // 사랑방의 그 대화 (관리자 부름)
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, letters, lounge } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -105,11 +106,13 @@ const linkLog = (kind: string, detail = '') => {
 // 이미 연 알림 주소 (이 휴대폰에 기억) — 휴대폰이 앱을 예전 알림 주소로 다시 띄워도 또 열지 않는다
 const claimLink = (url: string) => {
   const key = new URL(url, 'http://x').search;
-  let handled: string[] = [];
-  try { handled = JSON.parse(localStorage.getItem('handledLinks') || '[]'); } catch { /* 무시 */ }
-  if (handled.includes(key)) { linkLog('skip', `이미 연 주소 ${key.slice(0, 40)}`); return false; }
+  let handled: [string, number][] = [];
+  try { handled = (JSON.parse(localStorage.getItem('handledLinks') || '[]') as (string | [string, number])[]).map(h => (typeof h === 'string' ? [h, 0] : h)); } catch { /* 무시 */ }
+  // 오래전에 연 주소면 막는다. 방금(1분 안) 연 주소는 허용 — 알림을 누르면 휴대폰이 앱을 곧바로 새로 띄우는 경우가 있어서
+  const prev = handled.find(([k]) => k === key);
+  if (prev && Date.now() - prev[1] > 60 * 1000) { linkLog('skip', `이미 연 주소 ${key.slice(0, 40)}`); return false; }
   if (!markLinkOpened(url)) return false;
-  try { localStorage.setItem('handledLinks', JSON.stringify([...handled, key].slice(-60))); } catch { /* 무시 */ }
+  try { localStorage.setItem('handledLinks', JSON.stringify([...handled.filter(([k]) => k !== key), [key, prev ? prev[1] : Date.now()]].slice(-60))); } catch { /* 무시 */ }
   return true;
 };
 // staleSearch: 앱이 알림 주소로 열렸는데 고유 표시(n)가 없는 예전 형식 → 적어 둔 목적지와 같을 때만 연다
@@ -305,7 +308,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; letters?: boolean } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; letters?: boolean; lounge?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -361,7 +364,8 @@ export default function Home() {
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
-  const [loungeNew, setLoungeNew] = useState(0);          // 마지막으로 본 뒤 새 사랑방 대화 수
+  const [loungeNew, setLoungeNew] = useState(0);
+  const [loungeFocusId, setLoungeFocusId] = useState<string | null>(null); // 관리자 부름 알림으로 연 대화          // 마지막으로 본 뒤 새 사랑방 대화 수
   const [linkLogText, setLinkLogText] = useState<string | null>(null); // 알림 이동 기록 (문제 찾기용)
   const [feedMenuOpen, setFeedMenuOpen] = useState(false); // 가톨릭그램 ▾ 눌러서 보기 고르기
   const [reelsMuted, setReelsMuted] = useState(true); // 영상 탭: 소리 (모든 영상 공통)
@@ -1984,7 +1988,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'lounge_call' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -2158,7 +2162,7 @@ export default function Home() {
     if (link.view) hideAlert(`c:mp:${link.view}`);
     if (link.profile) hideAlert(`fu:${link.profile}`);
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
-      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.letters ? 'letters' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
+      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.letters ? 'letters' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
     if (!key || !('serviceWorker' in navigator)) return;
     navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications()).then(list => {
@@ -2188,6 +2192,9 @@ export default function Home() {
     } else if (deepLink.anon) {
       setAnonFocusId(deepLink.anon);
       goToTab('anon');
+    } else if (deepLink.lounge) {
+      setLoungeFocusId(deepLink.lounge);
+      setShowLounge(true);
     } else if (deepLink.letters) {
       setShowLetters(true);
     } else if (deepLink.story) {
@@ -3562,8 +3569,9 @@ export default function Home() {
 
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
-        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds}
-          onClose={() => { setShowLounge(false); setLoungeNew(0); }}
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId}
+          onCallAdmin={id => sendPush('lounge_call', id)}
+          onClose={() => { setShowLounge(false); setLoungeNew(0); setLoungeFocusId(null); }}
           onOpenProfile={id => { setShowLounge(false); goToProfile(id); }}
           onReport={t => setReportTarget(t)} />
       )}
