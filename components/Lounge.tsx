@@ -30,6 +30,9 @@ const todayStartIso = () => {
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 
 export const CALL_ADMIN = '@관리자';
+// 관리자가 사랑방에 들어오면 교우 대화 칸에 작게 '관리자가 들어왔어요' (보이지 않는 표시 문자로 구분)
+const ENTER_MARK = '\u2063';
+const ENTER_TEXT = '관리자가 사랑방에 들어왔어요';
 // '@관리자' 부분을 눈에 띄게
 const withCall = (text: string, mine: boolean) => text.split(/(@관리자)/g).map((part, i) =>
   part === CALL_ADMIN ? <b key={i} className={mine ? 'text-amber-200' : 'text-amber-700'}>{part}</b> : part);
@@ -141,6 +144,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       } else setTimeout(() => scrollToBottom(), 50);
       if (isAdmin) {
         loadAuthors([user.id]); // 위 칸에 관리자 프로필
+        // 들어왔다고 알림 (10분 안에 이미 알렸으면 생략 — 들락날락해도 도배되지 않게)
+        const recent = rows.some(r => r.user_id === user.id && r.content.startsWith(ENTER_MARK) && Date.now() - new Date(r.created_at).getTime() < 10 * 60 * 1000);
+        if (!recent) {
+          supabase.from('lounge_messages').insert({ content: ENTER_MARK + ENTER_TEXT }).select('*').single()
+            .then(({ data: d }) => { if (d) addMessages([d as LoungeMessage]); });
+        }
         const { data: b } = await supabase.from('lounge_bans').select('user_id');
         setBanned(new Set((b || []).map(x => x.user_id)));
       }
@@ -294,8 +303,9 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   // 관리자 글(위 칸)과 교우 대화(아래 칸). SQL 실행 전(is_admin 없음)에는 관리자 본인 글만 위로
   const isAdminMsg = (m: LoungeMessage) => m.is_admin === true || (m.is_admin === undefined && isAdmin && m.user_id === user.id);
   const today = messages.filter(m => m.created_at >= dayStart);
-  const adminMsgs = today.filter(isAdminMsg);
-  const shown = today.filter(m => !isAdminMsg(m) && !blockedIds.has(m.user_id));
+  const isEnter = (m: LoungeMessage) => m.content.startsWith(ENTER_MARK) && m.is_admin !== false;
+  const adminMsgs = today.filter(m => isAdminMsg(m) && !isEnter(m));
+  const shown = today.filter(m => (isEnter(m) || !isAdminMsg(m)) && !blockedIds.has(m.user_id));
   const adminRef = useRef<HTMLDivElement>(null);
   const adminAtBottom = useRef(true);
   useEffect(() => { const el = adminRef.current; if (el) { adminAtBottom.current = true; el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); } }, [adminMsgs.length]);
@@ -385,7 +395,18 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const a = authors[m.user_id];
           const prev = shown[i - 1];
           const newDay = !prev || dayOf(prev.created_at) !== dayOf(m.created_at);
-          const grouped = !newDay && prev && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
+          // 관리자 입장 알림: 가운데 작은 안내
+          if (isEnter(m)) return (
+            <div key={m.id} id={`lounge-${m.id}`}>
+              {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
+              <p className="text-center my-1">
+                <span className="inline-flex items-center gap-1.5 text-[0.8125rem] text-amber-900 bg-amber-100/80 border border-amber-200 rounded-full px-3.5 py-1">
+                  <span>🙋 관리자 {a?.baptismal_name ? <><b>{a.baptismal_name}</b>님이</> : '가'} 들어왔어요</span><span className="text-[0.6875rem] text-amber-800/60">{timeOf(m.created_at)}</span>
+                </span>
+              </p>
+            </div>
+          );
+          const grouped = !newDay && prev && !isEnter(prev) && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
           return (
             <div key={m.id} id={`lounge-${m.id}`} className={highlightId === m.id ? 'rounded-2xl ring-4 ring-amber-300/70 bg-amber-50/60 transition-all' : ''}>
               {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
