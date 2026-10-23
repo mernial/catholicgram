@@ -335,7 +335,8 @@ export default function Home() {
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
   const [openIntentionId, setOpenIntentionId] = useState<string | null>(null); // 기도지향 목록에서 펼쳐 본 것
   // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
-  const [intentions, setIntentions] = useState<{ id: string; user_id: string; author_name: string | null; title?: string | null; content: string; created_at: string }[]>([]);
+  // 기도지향: 교우에게는 올린 사람 없이(is_mine·blocked 만), 관리자에게만 user_id·이름
+  const [intentions, setIntentions] = useState<{ id: string; user_id?: string; author_name?: string | null; title?: string | null; content: string; created_at: string; is_mine?: boolean; blocked?: boolean }[]>([]);
   const [showIntentions, setShowIntentions] = useState(false);
   const [intentionTitleInput, setIntentionTitleInput] = useState(''); // 기도지향 (30자)
   const [intentionInput, setIntentionInput] = useState('');            // 기도 내용 (100자)
@@ -1481,7 +1482,19 @@ export default function Home() {
   const popupNotice = notices.find(n => n.popup && !hiddenNotices.includes(n.id) && !popupClosed.includes(n.id));
   const closePopup = (id: string) => setPopupClosed(prev => [...prev, id]);
 
+  const isAdminRef = useRef(false);
   const fetchIntentions = async () => {
+    // 올린 사람은 관리자만 안다: 교우는 보기(prayer_intentions_feed)로 이름 없이 읽는다 (supabase/intention-private.sql)
+    if (!isAdminRef.current) {
+      const { data, error } = await supabase.from('prayer_intentions_feed').select('id, title, content, created_at, is_mine, blocked')
+        .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
+      if (!error) {
+        setIntentions((data || []) as unknown as typeof intentions);
+        loadIntentionPrayers((data || []).map(i => i.id as string));
+        return;
+      }
+      // 보기가 아직 없으면(SQL 실행 전) 테이블에서 읽는다 (이름은 화면에 보이지 않음)
+    }
     const query = (cols: string) => supabase.from('prayer_intentions').select(cols)
       .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
     let { data, error } = await query('id, user_id, author_name, title, content, created_at');
@@ -1527,8 +1540,8 @@ export default function Home() {
     }
   };
 
-  const myIntention = user ? intentions.find(i => i.user_id === user.id) : undefined;
-  const visibleIntentions = intentions.filter(i => !blockedIds.has(i.user_id));
+  const myIntention = user ? intentions.find(i => i.is_mine === true || (i.is_mine === undefined && i.user_id === user.id)) : undefined;
+  const visibleIntentions = intentions.filter(i => !i.blocked && !(i.user_id && blockedIds.has(i.user_id)));
 
   const saveIntention = async () => {
     if (!user) { setShowAuthModal(true); return; }
@@ -2530,6 +2543,9 @@ export default function Home() {
   };
 
   const isAdmin = !!(user?.email && ADMIN_EMAILS.includes(user.email));
+  isAdminRef.current = isAdmin;
+  // 로그인(관리자 여부)이 정해지면 기도지향을 다시 읽는다 (관리자는 올린 사람까지)
+  useEffect(() => { if (user) fetchIntentions(); }, [user?.id, isAdmin]);
 
   // 관리자 전용: 성직자/수도자 뱃지 지정
   const handleSetBadge = async (targetId: string, badge: string) => {
@@ -3027,12 +3043,12 @@ export default function Home() {
             <button onClick={() => { setShowIntentions(true); }} className="w-full flex items-center bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-[#fbe7b0] border-b border-[#c99330]/40 overflow-hidden" aria-label="오늘의 기도지향 모아 보기">
               <span className="shrink-0 pl-3 pr-2 py-2 text-xs font-bold bg-[#101a3f] z-10 shadow-[6px_0_8px_-4px_#101a3f]"><Icon name="pray" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-[#fbe7b0]" />오늘의 기도</span>
               <span className="flex-1 overflow-hidden whitespace-nowrap py-2">
-                <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + (i.title || i.content).length + (i.author_name || '').length, 0) * 0.4)}s` }}>
+                <span className="inline-block intention-marquee" style={{ ['--marquee-duration' as string]: `${Math.max(18, visibleIntentions.reduce((n, i) => n + (i.title || i.content).length, 0) * 0.4)}s` }}>
                   {[0, 1].map(copy => (
                     <span key={copy} className="pr-8">
                       {visibleIntentions.map(i => (
                         <span key={`${copy}-${i.id}`} onClick={() => setOpenIntentionId(i.id)} className="mr-8 text-[0.875rem]">
-                          <b className="text-white">{i.author_name || '교우'}</b> · {i.title || i.content}
+                          <span className="text-white/50 mr-2">✝</span>{i.title || i.content}
                         </span>
                       ))}
                     </span>
@@ -4038,7 +4054,10 @@ export default function Home() {
                     <span className="w-9 h-9 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0"><Icon name="pray" fill={open} className="w-5 h-5" /></span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-[0.9375rem] font-bold text-[#1f2f66] truncate">{i.title || i.content}</span>
-                      <span className="block text-xs text-stone-500 mt-0.5">{i.author_name || '교우'} · {new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}</span>
+                      <span className="block text-xs text-stone-500 mt-0.5">
+                        {myIntention?.id === i.id ? '내 기도지향 · ' : isAdmin && i.author_name ? <><b className="text-amber-800">👤 {i.author_name}</b> <span className="text-amber-700/70">(관리자만 보여요)</span> · </> : ''}
+                        {new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}
+                      </span>
                     </span>
                     {(intentionPrayers[i.id]?.count || 0) > 0 && (
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[0.8125rem] font-bold ${intentionPrayers[i.id]?.mine ? 'text-amber-700' : 'text-stone-500'}`}>
@@ -4065,10 +4084,13 @@ export default function Home() {
                           </button>
                         );
                       })()}
-                      <div className="flex items-center justify-between">
-                        <button onClick={() => { setShowIntentions(false); goToProfile(i.user_id); }} className="text-xs font-bold text-stone-600">👤 {i.author_name || '교우'}님 공간 가기</button>
-                        {isAdmin && user?.id !== i.user_id && <button onClick={() => deleteIntention(i.id)} className="text-xs text-red-500">삭제</button>}
-                      </div>
+                      {/* 올린 사람은 관리자만 */}
+                      {isAdmin && i.user_id && user?.id !== i.user_id && (
+                        <div className="flex items-center justify-between">
+                          <button onClick={() => { const uid = i.user_id!; setShowIntentions(false); goToProfile(uid); }} className="text-xs font-bold text-stone-600">👤 {i.author_name || '교우'}님 공간 가기 <span className="font-normal text-stone-400">(관리자만 보여요)</span></button>
+                          <button onClick={() => deleteIntention(i.id)} className="text-xs text-red-500">삭제</button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
