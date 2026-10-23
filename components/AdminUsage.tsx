@@ -13,8 +13,9 @@ interface SupabaseUsage {
   tables: { name: string; rows: number; bytes: number }[];
   counts: { posts: number; posts30: number; comments: number; messages: number; reactions: number };
 }
-type R2Usage = { bytes: number; files: number; byKind: Record<string, { bytes: number; files: number }> };
-interface Usage { supabase: SupabaseUsage; r2: R2Usage | { needsWorkerUpdate: true } | null; checkedAt: string }
+// estimated: 사진 저장소가 예전 코드라 앱에서 쓰는 파일만 하나씩 크기를 물어 더한 값
+type R2Usage = { bytes: number; files: number; byKind: Record<string, { bytes: number; files: number }>; estimated?: boolean };
+interface Usage { supabase: SupabaseUsage; r2: R2Usage | null; checkedAt: string }
 
 const GB = 1024 ** 3;
 // 요금제에 포함된 양 (Supabase Pro, Cloudflare R2 무료 범위)
@@ -56,7 +57,7 @@ export default function AdminUsage({ onClose }: { onClose: () => void }) {
   useEffect(() => { fetchUsage().then(apply); }, []);
 
   const s = usage?.supabase;
-  const r2 = usage?.r2 && 'bytes' in usage.r2 ? usage.r2 : null;
+  const r2 = usage?.r2 || null;
   const tile = 'bg-white border border-stone-200 rounded-2xl p-3.5';
 
   // 저장 공간 막대: 절반 넘으면 노랑, 80% 넘으면 빨강
@@ -114,13 +115,11 @@ export default function AdminUsage({ onClose }: { onClose: () => void }) {
               <p className="text-sm font-bold text-stone-700">저장 공간</p>
               {s && !s.setupNeeded && bar('데이터베이스', 'Supabase · 글·댓글·회원 정보 등 (요금제 포함량)', s.dbBytes, LIMITS.db)}
               {r2
-                ? bar('사진·영상', `Cloudflare R2 · 파일 ${r2.files.toLocaleString()}개 (무료 범위)`, r2.bytes, LIMITS.r2)
+                ? bar('사진·영상', `Cloudflare R2 · ${r2.estimated ? '앱에서 쓰는 ' : ''}파일 ${r2.files.toLocaleString()}개 (무료 범위)`, r2.bytes, LIMITS.r2)
                 : (
                   <div className={`${tile} text-sm text-stone-600 leading-relaxed`}>
                     <p className="font-bold text-stone-800">사진·영상 (Cloudflare R2)</p>
-                    {usage.r2 === null
-                      ? <p className="text-xs mt-1">사진 저장소가 연결되어 있지 않아요.</p>
-                      : <p className="text-xs mt-1">사진 저장소 Worker 코드를 새로 붙여 넣으면 여기에 보여요. (<code>cloudflare/media-worker.js</code>) 그 전에는 아래 Cloudflare 바로 가기에서 볼 수 있어요.</p>}
+                    <p className="text-xs mt-1">사진 저장소가 연결되어 있지 않아요.</p>
                   </div>
                 )}
               {s && !s.setupNeeded && bar('예전 사진 저장소', 'Supabase Storage · 사진 저장소를 옮기기 전에 올린 파일 (요금제 포함량)', s.storageBytes, LIMITS.storage)}
