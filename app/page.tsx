@@ -406,7 +406,8 @@ export default function Home() {
   const exitArmedAtRef = useRef(0);
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
-  const pushAlertRef = useRef<(url: string) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
+  const pushAlertRef = useRef<(url: string, title: string, body: string) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
+  const pushToastAtRef = useRef(0); // 푸시 내용을 배너로 띄운 시각 (같은 알림을 배너로 또 띄우지 않게)
   const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
@@ -487,7 +488,7 @@ export default function Home() {
       // 앱이 열려 있을 때 알림을 누르면: 새로고침 없이 해당 글/대화로 이동
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
         // 앱을 보고 있을 때 온 알림: 휴대폰 알림음 대신 '찬미예수님'
-        if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/')); return; }
+        if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/'), String(e.data.title || ''), String(e.data.body || '')); return; }
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
         linkLog('message', String(e.data.url || '').replace(/^https?:\/\/[^/]+/, ''));
@@ -2220,6 +2221,8 @@ export default function Home() {
       if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n), at: n.created_at });
     });
     if (fresh.length === 0) return;
+    // 방금 휴대폰 알림 내용을 배너로 띄웠으면 같은 소식을 또 띄우거나 소리 내지 않는다
+    if (Date.now() - pushToastAtRef.current < 15000) return;
     // 가장 최근 것을 보여 주고, 여러 건이면 누를 때 알림 목록을 연다 (엉뚱한 한 건으로 가지 않게)
     const latest = [...fresh].sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0];
     setToast(fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건`, action: () => openNotifications() } : latest);
@@ -2254,10 +2257,10 @@ export default function Home() {
     if (alertSoundOn) playAlertSound();
   }, [user, needsProfileSetup, isMyFeastToday, feastFriends]);
 
-  // 배너는 5초 뒤 자동으로 사라짐
+  // 배너는 5초(휴대폰 알림 배너는 8초) 뒤 자동으로 사라짐
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 5000);
+    const t = setTimeout(() => setToast(null), toast.key.startsWith('push:') ? 8000 : 5000); // 알림 배너는 조금 더 오래
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -2339,12 +2342,21 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     refreshAlerts(user.id);
-    pushAlertRef.current = (url: string) => {
+    pushAlertRef.current = (url: string, title: string, body: string) => {
       refreshAlerts(user.id);
-      // 지금 그 사람과 대화 중이면 메시지마다 음성은 생략
+      // 지금 그 사람과 대화 중이면 메시지마다 음성·배너는 생략
       const chatWith = new URL(url, window.location.origin).searchParams.get('chat');
       const cur = currentScreenRef.current;
       if (chatWith && cur.tab === 'chat' && cur.chatUser?.id === chatWith) return;
+      // 어디서 온 알림인지 앱 화면 위 배너로도 보여 준다 (컴퓨터에서는 휴대폰 알림이 구석에 조용히 떠서 놓치기 쉬움)
+      // 제목 앞 그림(💌 새 사연, 🙋 관리자 호출 …)은 배너 그림으로 쓴다. 누르면 그 글·대화로.
+      const m = title.match(/^(\S+)\s+(.+)$/);
+      const hasIcon = !!m && !/[\p{L}\p{N}]/u.test(m[1]);
+      pushToastAtRef.current = Date.now();
+      setToast({
+        key: `push:${Date.now()}`, icon: hasIcon ? m[1] : '🔔', title: hasIcon ? m[2] : title || '새 알림', body,
+        action: () => { const link = deepLinkFromSearch(new URL(url, window.location.origin).search); if (link) setDeepLink(link); else goToHome(); },
+      });
       if (storageGet('alertSound') !== 'off') playAlertSound();
     };
     // 휴대폰 알림(푸시)이 따로 오므로 1분마다만 확인, 앱이 뒤에 있으면 쉰다 (전송량 절약)
