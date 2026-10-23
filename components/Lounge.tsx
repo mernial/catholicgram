@@ -599,7 +599,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           </div>
         )}
         {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
-        {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={v => { setInput(v); setTimeout(() => inputRef.current?.focus(), 0); }} excludeId={user.id} label="부르기" /></div>}
+        {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={setInput} excludeId={user.id} label="부르기" /></div>}
         <form onSubmit={send} className="px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
           <textarea
             ref={inputRef}

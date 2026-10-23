@@ -6,6 +6,22 @@ import { insertMention, typingMention } from '@/lib/mentions';
 
 interface Person { id: string; baptismal_name: string; handle: string; avatar_url?: string | null }
 
+// 안드로이드 자판은 같은 입력칸에 있는 한 조합 중이던 한글(예: '@베'의 '베')을 기억했다가 다음 글자를 칠 때 다시 붙인다.
+// 보이지 않는 칸으로 잠깐 옮겨 자판 연결을 새로 시작하게 한다 (다른 입력칸으로 옮기는 것이라 자판은 내려가지 않음).
+let imeHelper: HTMLInputElement | null = null;
+const getImeHelper = () => {
+  if (imeHelper && document.body.contains(imeHelper)) return imeHelper;
+  const el = document.createElement('input');
+  el.type = 'text';
+  el.tabIndex = -1;
+  el.autocomplete = 'off';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;font-size:16px;border:0;padding:0;margin:0';
+  document.body.appendChild(el);
+  imeHelper = el;
+  return el;
+};
+
 // 입력칸에서 @를 치면 회원 목록을 보여주고, 고르면 @핸들을 넣는다
 export default function MentionSuggest({ value, onChange, excludeId, label = '태그' }: {
   value: string;
@@ -32,11 +48,23 @@ export default function MentionSuggest({ value, onChange, excludeId, label = '�
   const pick = (handle: string) => {
     const el = typeof document !== 'undefined' ? document.activeElement : null;
     const field = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el : null;
-    // 한글을 치던 중이면(조합 중) 그 글자를 먼저 끝맺는다. 그대로 바꾸면 '@아이디베'처럼 치던 글자가 뒤에 다시 붙는다
-    if (field) { field.blur(); field.focus(); }
     const next = insertMention(value, handle);
+    const toEnd = () => { if (!field) return; field.focus({ preventScroll: true }); field.setSelectionRange(next.length, next.length); };
+    if (field && /Android/i.test(navigator.userAgent)) {
+      // 한글을 치던 중이면(조합 중) 자판이 그 글자를 잊도록 보이지 않는 칸에 잠깐 들렀다가 '@아이디 ' 뒤로 돌아온다
+      const helper = getImeHelper();
+      const r = field.getBoundingClientRect();
+      helper.style.top = `${Math.max(0, r.top)}px`;
+      helper.style.left = `${Math.max(0, r.left)}px`;
+      helper.focus({ preventScroll: true });
+      onChange(next);
+      setTimeout(() => { toEnd(); helper.value = ''; }, 80);
+      return;
+    }
+    // 그 밖의 기기: 조합 중인 글자를 끝맺고 바꾼 뒤 '@아이디 ' 뒤에 커서
+    if (field) { field.blur(); field.focus(); }
     onChange(next);
-    if (field) setTimeout(() => { field.focus(); field.setSelectionRange(next.length, next.length); }, 0);
+    setTimeout(toEnd, 0);
   };
 
   if (query === null || people.length === 0) return null;
