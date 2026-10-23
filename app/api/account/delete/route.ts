@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { deleteMedia } from '@/lib/media-server';
+import { deleteMedia, filesSafeToDelete } from '@/lib/media-server';
 
 // 회원 탈퇴: 로그인한 본인의 계정과 작성한 데이터를 모두 삭제한다.
 // (구글 플레이·앱스토어 정책: 앱 안에서 계정 삭제가 가능해야 함)
@@ -25,11 +25,14 @@ export async function POST(request: Request) {
   try {
     const { data: myPosts } = await admin.from('posts').select('images, video_url, video_poster').eq('user_id', uid);
     const { data: me } = await admin.from('profiles').select('avatar_url').eq('id', uid).maybeSingle();
-    await deleteMedia([...(myPosts || []).flatMap(p => [...((p.images as string[] | null) || []), p.video_url, p.video_poster]), me?.avatar_url]); // R2 에 있는 파일
-    const postFiles = (myPosts || [])
-      .flatMap(p => (p.images as string[] | null) || [])
-      .map(url => url.split('/community-images/')[1])
-      .filter((name): name is string => !!name);
+    // 글·프로필의 사진 주소는 아무 주소나 넣을 수 있으므로, 내 파일이고 다른 교우가 쓰지 않는 것만 지운다
+    const safe = await filesSafeToDelete(admin,
+      [...(myPosts || []).flatMap(p => [...((p.images as string[] | null) || []), p.video_url, p.video_poster]), me?.avatar_url], uid, { userId: uid });
+    await deleteMedia(safe); // R2 에 있는 파일
+    const postFiles = safe
+      .map(url => url.split('/community-images/')[1]?.split('?')[0])
+      .filter((name): name is string => !!name)
+      .map(name => decodeURIComponent(name));
     if (postFiles.length > 0) await admin.storage.from('community-images').remove(postFiles);
     const { data: avatars } = await admin.storage.from('avatars').list('', { search: uid, limit: 100 });
     const avatarFiles = (avatars || []).map(f => f.name).filter(name => name.startsWith(uid));
