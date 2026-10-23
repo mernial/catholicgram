@@ -7,7 +7,7 @@ export const mediaBase = () => (process.env.NEXT_PUBLIC_MEDIA_URL || '').replace
 export const mediaEnabled = () => !!(mediaBase() && process.env.R2_UPLOAD_SECRET);
 
 // 허가증: "만료시각.서명" (서명 = HMAC(방법\n경로\n만료시각))
-export function mediaToken(method: 'PUT' | 'DELETE', key: string, ttlSeconds = 600) {
+export function mediaToken(method: 'PUT' | 'DELETE' | 'USAGE', key: string, ttlSeconds = 600) { // USAGE: 관리자 사용량 보기
   const exp = Math.floor(Date.now() / 1000) + ttlSeconds;
   const sig = createHmac('sha256', process.env.R2_UPLOAD_SECRET || '').update(`${method}\n${key}\n${exp}`).digest('hex');
   return `${exp}.${sig}`;
