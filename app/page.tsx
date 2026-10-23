@@ -68,9 +68,10 @@ const deepLinkFromSearch = (search: string) => {
   const profile = params.get('profile') || undefined; // 그 교우의 공간 (새 팔로워)
   const story = params.get('story') || undefined;     // 그 교우의 스토리 (새 스토리 알림)
   const anon = params.get('anon') || undefined;       // 고민상담의 그 글 (답글 알림)
+  const reply = params.get('reply') || undefined;     // anon 과 함께: 그 답글로
   const letters = params.get('letters') === '1';      // 사연함 (관리자) / 보낸 사연
   const lounge = params.get('lounge') || undefined;   // 사랑방의 그 대화 (관리자 부름)
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, letters, lounge } : null;
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -309,7 +310,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; letters?: boolean; lounge?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -1134,6 +1135,7 @@ export default function Home() {
   const [letterNewCount, setLetterNewCount] = useState(0);     // 관리자: 아직 안 읽은 사연 수
   const [anonUnread, setAnonUnread] = useState(0);             // 고민상담: 마지막으로 본 뒤 새 글 수
   const [anonFocusId, setAnonFocusId] = useState<string | null>(null); // 알림으로 연 고민글
+  const [anonFocusReply, setAnonFocusReply] = useState<string | null>(null); // 그 글의 새 답글
 
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2067,11 +2069,16 @@ export default function Home() {
     }
   };
   // 알림에서: 글 자체를 크게 보기 (피드에 없으면 불러와서)
-  const openPostById = async (postId: string) => {
+  const openPostById = async (postId: string, focusText = false) => {
     const known = posts.find(p => p.id === postId) || storyPosts.find(p => p.id === postId);
-    if (known) { openPostViewer(known); return; }
-    const p = await ensurePost(postId);
-    if (p) openPostViewer(p); else openPostComments(postId);
+    const p = known || await ensurePost(postId);
+    if (!p) { openPostComments(postId); return; }
+    openPostViewer(p);
+    if (focusText) scrollViewerTo('viewer-post-text'); // 글에서 언급됐을 때: 사진 아래 글 내용으로
+  };
+  // 크게 보기 안에서 그 자리로 화면 옮기기 (사진이 크면 아래쪽이 처음엔 안 보임). 열리는 동안을 기다려 몇 번 시도.
+  const scrollViewerTo = (elementId: string) => {
+    [250, 600, 1200].forEach(ms => setTimeout(() => document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), ms));
   };
 
   // 댓글 알림: 그 글을 크게 열고, 글 안에 새 댓글을 보여 준다 (스토리 댓글·지워진 글은 댓글 창)
@@ -2082,13 +2089,14 @@ export default function Home() {
     if (!p || (p as Post & { is_story?: boolean }).is_story) { openPostComments(postId, commentId); return; }
     openPostViewer(p);
     setViewerComment({ postId, commentId });
-    loadCommentsFor(postId);
+    await loadCommentsFor(postId);
+    scrollViewerTo('viewer-new-comment'); // 사진 아래 새 댓글 상자로 바로
   };
 
   // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글을 크게 + 그 댓글
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
-    if (n.mention === 'post') openPostById(n.post_id);
+    if (n.mention === 'post') openPostById(n.post_id, true);
     else openPostFromAlert(n.post_id, n.id);
   };
 
@@ -2305,11 +2313,12 @@ export default function Home() {
     if (deepLink.post) {
       openPostFromAlert(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
-      openPostById(deepLink.view);
+      openPostById(deepLink.view, true);
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
     } else if (deepLink.anon) {
       setAnonFocusId(deepLink.anon);
+      setAnonFocusReply(deepLink.reply || null);
       goToTab('anon');
     } else if (deepLink.lounge) {
       setLoungeFocusId(deepLink.lounge);
@@ -3739,7 +3748,7 @@ export default function Home() {
       })()}
 
       {activeTab === 'anon' && (
-        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} onFocused={() => setAnonFocusId(null)} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
+        <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} focusReplyId={anonFocusReply} onFocused={() => { setAnonFocusId(null); setAnonFocusReply(null); }} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -4906,7 +4915,7 @@ export default function Home() {
                 const total = (comments[pid] || []).length;
                 const avatar = c?.user_id ? (c.user_id === user?.id ? profile?.avatar_url : authorByUser[c.user_id]?.avatar) : undefined;
                 return (
-                  <button onClick={() => { setSelectedPostDetail(null); openPostComments(pid, viewerComment.commentId); }} className="mx-4 mt-3 p-3 rounded-2xl bg-amber-50 border-2 border-amber-200 text-left flex flex-col gap-1.5" aria-label="새 댓글 보기">
+                  <button id="viewer-new-comment" onClick={() => { setSelectedPostDetail(null); openPostComments(pid, viewerComment.commentId); }} className="mx-4 mt-3 scroll-my-24 p-3 rounded-2xl bg-amber-50 border-2 border-amber-200 text-left flex flex-col gap-1.5" aria-label="새 댓글 보기">
                     <span className="text-[0.8125rem] font-bold text-amber-800">💬 {c ? '새 댓글' : '댓글'}{total > 0 ? ` · 모두 ${total}개` : ''}</span>
                     {c && (
                       <span className="flex items-start gap-2">
@@ -4920,7 +4929,7 @@ export default function Home() {
                   </button>
                 );
               })()}
-              <div className="px-5 pb-5 pt-3 flex flex-col gap-2">
+              <div id="viewer-post-text" className="px-5 pb-5 pt-3 flex flex-col gap-2">
                 {/* 글은 처음엔 여섯 줄까지, 더 길면 '더 보기' */}
                 <ClampText
                   key={selectedPostDetail.id}

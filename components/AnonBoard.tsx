@@ -83,7 +83,7 @@ function AnonTag({ code, isAuthor, isMine }: { code: string; isAuthor?: boolean;
   );
 }
 
-export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true, focusPostId, onFocused, onReplied, onOpenProfile }: {
+export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, profileReady = true, focusPostId, focusReplyId, onFocused, onReplied, onOpenProfile }: {
   onOpenProfile?: (userId: string) => void; // 관리자: 글쓴이 공간으로
   user: User | null;
   isAdmin: boolean;
@@ -91,6 +91,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   profileReady?: boolean;           // 프로필(닉네임·핸들)을 만든 회원만 글·답글·공감 가능 (광고 방지)
   onReport: (target: ReportTarget) => void;
   focusPostId?: string | null;      // 알림으로 들어왔을 때 펼쳐 보여 줄 고민글
+  focusReplyId?: string | null;     // 그 글의 새 답글 (없으면 가장 최근 답글)
   onFocused?: () => void;
   onReplied?: (replyId: string) => void; // 답글 알림 보내기
 }) {
@@ -142,6 +143,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
       .eq('post_id', postId).order('created_at', { ascending: true });
     if (data) setReplies(prev => ({ ...prev, [postId]: data as AnonReply[] }));
     fetchAuthors([postId]);
+    return (data || []) as AnonReply[];
   };
 
   useEffect(() => {
@@ -174,15 +176,23 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
 
   // 알림으로 들어온 고민글: 답글을 펼치고 그 글로 이동해 잠깐 강조
   const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
   useEffect(() => {
     if (!focusPostId || !loaded) return;
     onFocused?.();
     if (!posts.some(p => p.id === focusPostId)) { alert('삭제되었거나 기간이 지난 고민글이에요.'); return; }
     setOpenReplies(prev => ({ ...prev, [focusPostId]: true }));
-    fetchReplies(focusPostId);
     setHighlightId(focusPostId);
     setTimeout(() => document.getElementById(`anon-${focusPostId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
     setTimeout(() => setHighlightId(prev => (prev === focusPostId ? null : prev)), 3500);
+    // 답글을 불러온 뒤 그 답글(없으면 가장 최근 답글)로 화면을 옮기고 잠깐 강조
+    fetchReplies(focusPostId).then(list => {
+      const target = (focusReplyId && list.find(r => r.id === focusReplyId)) || list[list.length - 1];
+      if (!target) return;
+      setHighlightReplyId(target.id);
+      [350, 800].forEach(ms => setTimeout(() => document.getElementById(`anon-reply-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), ms));
+      setTimeout(() => setHighlightReplyId(prev => (prev === target.id ? null : prev)), 3500);
+    });
   }, [focusPostId, loaded]);
 
   const handleReply = async (postId: string) => {
@@ -327,7 +337,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                 {openReplies[post.id] && (
                   <div className="mt-1 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
                     {(replies[post.id] || []).map(reply => (
-                      <div key={reply.id} className={`text-xs p-2.5 rounded-xl flex flex-col gap-1.5 ${reply.is_post_author ? 'bg-violet-50/70' : 'bg-stone-100/70'}`}>
+                      <div key={reply.id} id={`anon-reply-${reply.id}`} className={`text-xs p-2.5 rounded-xl flex flex-col gap-1.5 transition-colors duration-700 ${highlightReplyId === reply.id ? 'bg-amber-100 ring-2 ring-amber-300' : reply.is_post_author ? 'bg-violet-50/70' : 'bg-stone-100/70'}`}>
                         <div className="flex items-center justify-between">
                           <span className="flex items-center gap-1.5 flex-wrap min-w-0">
                             <AnonTag code={reply.anon_code} isAuthor={reply.is_post_author} isMine={reply.is_mine} />

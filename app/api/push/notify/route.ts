@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(reply.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: anonPost } = await admin.from('anon_posts').select('id, user_id').eq('id', reply.post_id).single();
     if (!anonPost) return Response.json({ skipped: 'post gone' });
-    const url = `/?anon=${anonPost.id}`;
+    const url = `/?anon=${anonPost.id}&reply=${reply.id}`; // 그 답글로
     const body = truncate(reply.content || '');
     if (anonPost.user_id !== user.id) {
       list.push({ recipientId: anonPost.user_id, payload: { title: '🕊 내 고민글에 답글이 달렸어요', body, url, tag: `anon-${anonPost.id}` } });
