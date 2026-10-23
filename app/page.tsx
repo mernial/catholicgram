@@ -44,6 +44,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
+import AdminUsage from '@/components/AdminUsage';
 import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
@@ -388,6 +389,7 @@ export default function Home() {
   const [storyPickRequest, setStoryPickRequest] = useState(0); // 글쓰기 아래 '스토리'를 누르면 스토리 사진 고르기
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
+  const [showAdminUsage, setShowAdminUsage] = useState(false); // 관리자: 데이터 사용량
   // 접속 통계 기록 (앱 열기·나가기)
   useEffect(() => startVisitTracking(), []);
   const [myPostReactions, setMyPostReactions] = useState<Set<string>>(new Set()); // 내가 누른 기도·공감 ('글id:pray')
@@ -2294,7 +2296,7 @@ export default function Home() {
   const closeOverlaysForLink = () => {
     setActionModalUser(null); setSelectedPostDetail(null); setSelectedImage(null); setAvatarPreview(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowNotices(false);
-    setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminMembers(false); setPostMenuId(null);
+    setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
   };
@@ -2608,7 +2610,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2642,6 +2644,7 @@ export default function Home() {
     if (showEditVideoEditor) setShowEditVideoEditor(false); else if (editPhotoEditor) setEditPhotoEditor(null); else setEditingPostId(null);
     setFollowList(null);
     setShowAdminStats(false);
+    setShowAdminUsage(false);
     setPostMenuId(null);
     setFabOpen(false);
     setCommentSheetId(null);
@@ -3586,6 +3589,7 @@ export default function Home() {
                       <>
                         <button onClick={() => setShowAdminMembers(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="users" className="w-3.5 h-3.5" />회원 명단</button>
                         <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
+                        <button onClick={() => setShowAdminUsage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="stack" className="w-3.5 h-3.5" />데이터 사용량</button>
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
@@ -4320,6 +4324,7 @@ export default function Home() {
 
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
+      {showAdminUsage && isAdmin && <AdminUsage onClose={() => setShowAdminUsage(false)} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
       {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}
       {showLetters && user && (

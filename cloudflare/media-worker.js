@@ -2,6 +2,7 @@
 // - GET  /<경로>  : 사진·영상 보내기 (누구나, 1년 캐시, 영상 구간 요청 지원)
 // - PUT  /<경로>  : 올리기  — 앱 서버(/api/media/token)가 만든 1회용 허가증이 있어야 함
 // - DELETE /<경로>: 지우기 — 앱 서버가 만든 허가증이 있어야 함
+// - GET /__usage  : 저장소 사용량(종류별 크기·개수) — 앱 서버가 만든 관리 허가증이 있어야 함 (관리자 화면 '데이터 사용량')
 // 설정 (Cloudflare 대시보드 → Workers → 이 Worker → 설정):
 //   - R2 버킷 연결(Binding): 변수 이름 MEDIA → 버킷 catholicgram-media
 //   - 비밀 변수(Secret): UPLOAD_SECRET → Vercel 의 R2_UPLOAD_SECRET 과 같은 값
@@ -48,6 +49,27 @@ export default {
     const method = request.method;
 
     if (method === 'OPTIONS') return new Response(null, { headers: CORS });
+
+    // 관리자 화면용 사용량: 모든 파일 크기를 종류(경로 첫 부분: posts·videos·dm …)별로 더한다
+    if (method === 'GET' && key === '__usage') {
+      if (!env.UPLOAD_SECRET) return json({ error: 'UPLOAD_SECRET 이 설정되지 않았어요' }, 500);
+      const [exp, sig] = (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '').split('.');
+      if (!exp || !sig || Date.now() / 1000 > Number(exp)) return json({ error: '허가증이 없거나 만료됐어요' }, 401);
+      if (!same(await sign(env.UPLOAD_SECRET, `USAGE\n__usage\n${exp}`), sig)) return json({ error: '허가증이 맞지 않아요' }, 403);
+      const byKind = {};
+      let bytes = 0, files = 0, cursor;
+      do {
+        const page = await env.MEDIA.list({ cursor, limit: 1000 });
+        for (const o of page.objects) {
+          const kind = o.key.split('/')[0] || '기타';
+          byKind[kind] = byKind[kind] || { bytes: 0, files: 0 };
+          byKind[kind].bytes += o.size; byKind[kind].files += 1;
+          bytes += o.size; files += 1;
+        }
+        cursor = page.truncated ? page.cursor : undefined;
+      } while (cursor);
+      return json({ bytes, files, byKind });
+    }
 
     if (method === 'GET' || method === 'HEAD') {
       if (!key) return json({ ok: true, service: 'catholicgram-media' });
