@@ -5,22 +5,16 @@ import { supabase } from '@/lib/supabase';
 import { insertMention, typingMention } from '@/lib/mentions';
 
 interface Person { id: string; baptismal_name: string; handle: string; avatar_url?: string | null }
+type Field = HTMLTextAreaElement | HTMLInputElement;
 
-// 안드로이드 자판은 같은 입력칸에 있는 한 조합 중이던 한글(예: '@베'의 '베')을 기억했다가 다음 글자를 칠 때 다시 붙인다.
-// 보이지 않는 칸으로 잠깐 옮겨 자판 연결을 새로 시작하게 한다 (다른 입력칸으로 옮기는 것이라 자판은 내려가지 않음).
-let imeHelper: HTMLInputElement | null = null;
-const getImeHelper = () => {
-  if (imeHelper && document.body.contains(imeHelper)) return imeHelper;
-  const el = document.createElement('input');
-  el.type = 'text';
-  el.tabIndex = -1;
-  el.autocomplete = 'off';
-  el.setAttribute('aria-hidden', 'true');
-  el.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;font-size:16px;border:0;padding:0;margin:0';
-  document.body.appendChild(el);
-  imeHelper = el;
-  return el;
-};
+// 마지막으로 글을 치던 입력칸 (태그 단추를 누를 때 초점이 단추로 옮겨 가도 그 입력칸을 찾게)
+let lastField: Field | null = null;
+if (typeof document !== 'undefined') {
+  document.addEventListener('focusin', e => {
+    const t = e.target;
+    if (t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && t.type === 'text')) lastField = t;
+  }, true);
+}
 
 // 입력칸에서 @를 치면 회원 목록을 보여주고, 고르면 @핸들을 넣는다
 export default function MentionSuggest({ value, onChange, excludeId, label = '태그' }: {
@@ -47,18 +41,20 @@ export default function MentionSuggest({ value, onChange, excludeId, label = '�
   // 고르면 '@아이디 ' 다음(한 칸 띈 자리)에 커서를 두어 바로 이어서 칠 수 있게
   const pick = (handle: string) => {
     const el = typeof document !== 'undefined' ? document.activeElement : null;
-    const field = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el : null;
+    const field: Field | null = el instanceof HTMLTextAreaElement || el instanceof HTMLInputElement ? el
+      : lastField && lastField.isConnected ? lastField : null;
     const next = insertMention(value, handle);
     const toEnd = () => { if (!field) return; field.focus({ preventScroll: true }); field.setSelectionRange(next.length, next.length); };
     if (field && /Android/i.test(navigator.userAgent)) {
-      // 한글을 치던 중이면(조합 중) 자판이 그 글자를 잊도록 보이지 않는 칸에 잠깐 들렀다가 '@아이디 ' 뒤로 돌아온다
-      const helper = getImeHelper();
-      const r = field.getBoundingClientRect();
-      helper.style.top = `${Math.max(0, r.top)}px`;
-      helper.style.left = `${Math.max(0, r.left)}px`;
-      helper.focus({ preventScroll: true });
-      onChange(next);
-      setTimeout(() => { toEnd(); helper.value = ''; }, 80);
+      // 안드로이드 자판(삼성 키보드 등)은 입력칸에 머무는 동안 치던 낱말('@안토'의 '안토')을 기억했다가
+      // 다음 글자를 칠 때 되살린다. 입력칸에서 완전히 빠져 자판 연결을 끊은 뒤(자판이 잠깐 내려갔다 올라옴)
+      // '@아이디 '로 바꾸고 그 뒤에 커서를 두고 다시 들어간다.
+      field.blur();
+      (document.activeElement as HTMLElement | null)?.blur?.(); // 단추로 초점이 갔어도 자판 연결을 끊는다
+      setTimeout(() => {
+        onChange(next);
+        setTimeout(toEnd, 30);
+      }, 200);
       return;
     }
     // 그 밖의 기기: 조합 중인 글자를 끝맺고 바꾼 뒤 '@아이디 ' 뒤에 커서
