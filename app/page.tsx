@@ -1218,7 +1218,8 @@ export default function Home() {
     setSetupError('');
 
     const feastDay = isValidFeastDay(feastDayInput) ? feastDayInput : null;
-    const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle, email: user.email };
+    // 이메일은 보내지 않는다: 서버가 로그인 정보에서 채우고, 앱에서는 읽을 수 없다 (supabase/profiles-email-private.sql)
+    const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle };
     let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]);
     // 새 칼럼이 아직 없는 경우(SQL 실행 전)에는 있는 칼럼만 저장
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]));
