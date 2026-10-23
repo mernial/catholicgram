@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
-import { deleteMedia } from '@/lib/media-server';
+import { deleteMedia, filesSafeToDelete, mediaKeyFromUrl } from '@/lib/media-server';
 
 // 게시글 고치기 / 지우기 (서버에서 본인 확인 — 데이터베이스 권한 설정과 상관없이 동작)
 // POST { action: 'update', id, changes: { content?, video_overlays?, visibility?, music?, images? } } → 본인 글만
@@ -45,10 +45,18 @@ export async function POST(request: Request) {
     let removedImages: string[] = [];
     if (Array.isArray(c.images)) {
       if (post.video_url) return Response.json({ error: '영상 글은 사진을 바꿀 수 없어요.' }, { status: 400 });
-      const imgs = c.images.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u) && u.length <= 600).slice(0, 5);
+      // 새로 넣는 사진은 우리 저장소에 내가 올린 것만 (R2 는 경로에 내 id, 예전 저장소는 글 사진 칸)
+      const current = (post.images as string[] | null) || [];
+      const ownUpload = (u: string) => {
+        const key = mediaKeyFromUrl(u);
+        if (key) return key.split('/')[1] === user.id;
+        return u.startsWith(`${supabaseUrl}/storage/v1/object/public/community-images/`);
+      };
+      const imgs = c.images.filter((u): u is string => typeof u === 'string' && /^https:\/\//.test(u) && u.length <= 600
+        && (current.includes(u) || ownUpload(u))).slice(0, 5);
       if (imgs.length !== c.images.length) return Response.json({ error: 'bad images' }, { status: 400 });
       changes.images = imgs;
-      removedImages = ((post.images as string[] | null) || []).filter(u => !imgs.includes(u));
+      removedImages = current.filter(u => !imgs.includes(u));
     }
     if (typeof c.visibility === 'string') {
       if (!VISIBILITIES.includes(c.visibility)) return Response.json({ error: 'bad request' }, { status: 400 });
@@ -60,11 +68,12 @@ export async function POST(request: Request) {
       if (/visibility/.test(error.message)) return Response.json({ error: '공개 범위 기능을 준비 중이에요. (관리자: supabase/post-visibility.sql 실행 필요)' }, { status: 500 });
       return Response.json({ error: `고치지 못했어요. (${error.message})` }, { status: 500 });
     }
-    // 빠진 사진 파일 정리 (실패해도 무시)
+    // 빠진 사진 파일 정리 (글 주인의 파일이고 다른 곳에서 쓰지 않는 것만, 실패해도 무시)
     if (removedImages.length) {
-      const paths = removedImages.map(u => storagePath(u, 'community-images')).filter((x): x is string => !!x);
+      const safe = await filesSafeToDelete(admin, removedImages, post.user_id, { postId: post.id });
+      const paths = safe.map(u => storagePath(u, 'community-images')).filter((x): x is string => !!x);
       if (paths.length) await admin.storage.from('community-images').remove(paths).catch(() => null);
-      await deleteMedia(removedImages);
+      await deleteMedia(safe);
     }
     return Response.json({ ok: true, changes });
   }
@@ -78,11 +87,12 @@ export async function POST(request: Request) {
   await admin.from('post_reactions').delete().eq('post_id', body.id);
   const { error } = await admin.from('posts').delete().eq('id', body.id);
   if (error) return Response.json({ error: `지우지 못했어요. (${error.message})` }, { status: 500 });
-  // 사진·영상 파일 지우기
-  const images = [...((post.images as string[] | null) || []), post.video_poster].map(u => storagePath(u, 'community-images')).filter((p): p is string => !!p);
+  // 사진·영상 파일 지우기: 글 주인의 파일이고 다른 글·프로필이 쓰지 않는 것만 (남의 사진 주소를 넣은 글로 남의 파일을 지우지 못하게)
+  const safe = await filesSafeToDelete(admin, [...((post.images as string[] | null) || []), post.video_url, post.video_poster], post.user_id, { postId: post.id });
+  const images = safe.map(u => storagePath(u, 'community-images')).filter((p): p is string => !!p);
   if (images.length) await admin.storage.from('community-images').remove(images);
-  const videoFiles = [storagePath(post.video_url, 'post-videos')].filter((p): p is string => !!p);
+  const videoFiles = safe.map(u => storagePath(u, 'post-videos')).filter((p): p is string => !!p);
   if (videoFiles.length) await admin.storage.from('post-videos').remove(videoFiles);
-  await deleteMedia([...((post.images as string[] | null) || []), post.video_url, post.video_poster]); // R2 에 있는 파일
+  await deleteMedia(safe); // R2 에 있는 파일
   return Response.json({ ok: true });
 }
