@@ -102,10 +102,27 @@ export async function POST(request: Request) {
     if (list.length === 0) return Response.json({ skipped: 'nobody' });
   } else if (type === 'test') {
     // 알림 확인용: 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
+    // 댓글 알림처럼 그 글의 가장 최근 댓글로 가는지 확인한다. 그 글에 댓글이 없으면 최근 댓글이 달린 다른 공개 글로.
     const { data: post } = await admin.from('posts').select('id').eq('id', id).maybeSingle();
     if (!post) return Response.json({ error: 'not found' }, { status: 404 });
+    let target: { postId: string; commentId: string | null } = { postId: post.id, commentId: null };
+    const { data: own } = await admin.from('comments').select('id').eq('post_id', post.id).order('created_at', { ascending: false }).limit(1).maybeSingle();
+    if (own) target.commentId = own.id;
+    else {
+      const { data: recent } = await admin.from('comments').select('id, post_id').order('created_at', { ascending: false }).limit(20);
+      const ids = Array.from(new Set((recent || []).map(c => c.post_id as string)));
+      const { data: open } = ids.length ? await admin.from('posts').select('id, visibility, is_story').in('id', ids) : { data: [] };
+      const ok = new Set((open || []).filter(p => (p.visibility ?? 'public') === 'public' && !p.is_story).map(p => p.id as string));
+      const c = (recent || []).find(x => ok.has(x.post_id as string));
+      if (c) target = { postId: c.post_id as string, commentId: c.id as string };
+    }
     await new Promise(r => setTimeout(r, 10 * 1000));
-    list.push({ recipientId: user.id, payload: { title: '🔔 테스트 알림', body: '눌러서 이 글의 댓글 창이 열리는지 확인해 보세요', url: `/?post=${post.id}`, tag: `test-${Date.now()}` } });
+    list.push({ recipientId: user.id, payload: {
+      title: '🔔 테스트 알림',
+      body: target.commentId ? '눌러서 그 글의 최근 댓글로 바로 가는지 확인해 보세요' : '눌러서 이 글이 열리는지 확인해 보세요',
+      url: target.commentId ? `/?post=${target.postId}&comment=${target.commentId}` : `/?post=${target.postId}`,
+      tag: `test-${Date.now()}`,
+    } });
   } else if (type === 'comment') {
     const { data: comment } = await admin.from('comments').select('*').eq('id', id).single();
     if (!comment || comment.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
