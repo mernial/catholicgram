@@ -24,6 +24,9 @@ from (values
   (10, '남들끼리 차단 여부 엿보기 막힘',
       coalesce(has_function_privilege('anon', to_regprocedure('public.is_blocked(uuid, uuid)')::oid, 'execute'), false), false),
   (11, '기도지향 올린 사람 엿보기 막힘',
-      exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'prayer_intentions_feed' and column_name = 'blocked'), false)
+      exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'prayer_intentions_feed' and column_name = 'blocked'), false),
+  (12, '모든 표 잠금(RLS) 켜짐 — ❌ 면 posts-rls.sql 실행',
+      exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity), false)
 ) as t(번호, 항목, 결과, 정상값)
 order by 번호;
