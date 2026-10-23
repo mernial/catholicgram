@@ -2777,6 +2777,17 @@ export default function Home() {
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
+  // 글을 쓰는 중(입력칸에 커서가 있을 때)에는 '맨 위로'를 숨긴다 — 키보드 위로 떠서 입력칸을 가리지 않게
+  const [typingField, setTypingField] = useState(false);
+  useEffect(() => {
+    const isField = (el: EventTarget | null) => el instanceof HTMLElement && (el.tagName === 'TEXTAREA' || el.isContentEditable
+      || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'submit', 'file', 'range'].includes((el as HTMLInputElement).type)));
+    const onIn = (e: FocusEvent) => { if (isField(e.target)) setTypingField(true); };
+    const onOut = () => setTimeout(() => setTypingField(isField(document.activeElement)), 100);
+    document.addEventListener('focusin', onIn);
+    document.addEventListener('focusout', onOut);
+    return () => { document.removeEventListener('focusin', onIn); document.removeEventListener('focusout', onOut); };
+  }, []);
 
   // 다른 탭으로 가면 + 메뉴 접기
   useEffect(() => { setFabOpen(false); }, [activeTab]);
@@ -5052,7 +5063,7 @@ export default function Home() {
       })()}
 
       {/* 맨 위로: 하단 가운데 + 버튼 바로 위 */}
-      {showToTop && !fabOpen && activeTab !== 'chat' && activeTab !== 'reels' && (
+      {showToTop && !typingField && !fabOpen && activeTab !== 'chat' && activeTab !== 'reels' && (
         <button
           onClick={() => scrollToTop()}
           className="fixed z-[38] left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom))] flex items-center gap-1 pl-3 pr-4 py-2 rounded-full bg-white/95 backdrop-blur border border-stone-200 shadow-lg text-sm font-bold text-stone-700 animate-fade-in"
