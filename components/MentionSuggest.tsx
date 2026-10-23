@@ -12,28 +12,26 @@ let lastField: Field | null = null;
 if (typeof document !== 'undefined') {
   document.addEventListener('focusin', e => {
     const t = e.target;
-    if ((t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && t.type === 'text')) && t !== imeHelper) lastField = t;
+    if (t instanceof HTMLTextAreaElement || (t instanceof HTMLInputElement && t.type === 'text')) lastField = t;
   }, true);
 }
 
-// 아이폰·아이패드 자판은 같은 입력칸에 머무는 동안 조합 중이던 글자('@안토'의 '안토')를 기억했다가 다음 글자를 칠 때
-// 되살린다 (같은 칸에서 빠졌다 바로 돌아오는 것은 자판이 모름). 보이지 않는 입력칸에 잠깐 들렀다 돌아와
-// 자판 연결을 새로 시작하게 한다. 입력칸끼리 옮기는 것이라 자판은 내려가지 않는다.
-let imeHelper: HTMLInputElement | null = null;
-const getImeHelper = () => {
-  if (imeHelper && imeHelper.isConnected) return imeHelper;
-  const el = document.createElement('input');
-  el.type = 'text';
-  el.tabIndex = -1;
-  el.autocomplete = 'off';
-  el.setAttribute('aria-hidden', 'true');
-  el.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;font-size:16px;border:0;padding:0;margin:0;caret-color:transparent';
-  document.body.appendChild(el);
-  imeHelper = el;
-  return el;
+// 입력칸에서 커서 앞의 '@치던글자'를 편집 기능(붙여넣기와 같은 길)으로 '@아이디 '로 바꾼다.
+// 값을 직접 바꾸면 아이패드 등의 자판은 바뀐 줄 몰라, 앞에 '@베드'가 있다고 기억했다가 다음 글자를 칠 때
+// '베드'를 되살린다. 편집 기능으로 바꾸면 조합 중이던 글자도 정리되고 자판도 바뀐 글자를 안다.
+// 성공하면 입력칸의 input 이벤트로 화면 값(onChange)도 함께 바뀐다.
+const replaceByEditing = (field: Field, handle: string) => {
+  const caret = field.selectionEnd ?? field.value.length;
+  const m = field.value.slice(0, caret).match(/(^|\s)@([0-9A-Za-z_.가-힣ㄱ-ㅎㅏ-ㅣ]{0,30})$/);
+  if (!m) return false;
+  const start = caret - m[0].length + m[1].length; // '@' 자리
+  const text = `@${handle} `;
+  if (document.activeElement !== field) field.focus({ preventScroll: true });
+  field.setSelectionRange(start, caret);
+  let ok = false;
+  try { ok = document.execCommand('insertText', false, text); } catch { ok = false; }
+  return ok && field.value.slice(start, start + text.length) === text;
 };
-const isIOS = () => typeof navigator !== 'undefined'
-  && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1));
 
 // 입력칸에서 @를 치면 회원 목록을 보여주고, 고르면 @핸들을 넣는다
 export default function MentionSuggest({ value, onChange, excludeId, label = '태그' }: {
@@ -76,18 +74,9 @@ export default function MentionSuggest({ value, onChange, excludeId, label = '�
       }, 200);
       return;
     }
-    if (field && isIOS()) {
-      // 아이폰·아이패드: 보이지 않는 칸에 들렀다가(자판 연결을 새로) '@아이디 ' 뒤로 돌아온다
-      const helper = getImeHelper();
-      const r = field.getBoundingClientRect();
-      helper.style.top = `${Math.max(0, r.top)}px`;
-      helper.style.left = `${Math.max(0, r.left)}px`;
-      helper.focus({ preventScroll: true });
-      onChange(next);
-      setTimeout(() => { toEnd(); helper.value = ''; }, 120);
-      return;
-    }
-    // 그 밖의 기기(컴퓨터 등): 조합 중인 글자를 끝맺고 바꾼 뒤 '@아이디 ' 뒤에 커서
+    // 아이패드·아이폰·컴퓨터: 편집 기능으로 바꾼다 (커서는 '@아이디 ' 바로 뒤)
+    if (field && replaceByEditing(field, handle)) return;
+    // 편집 기능을 못 쓰는 브라우저: 조합 중인 글자를 끝맺고 값을 바꾼 뒤 '@아이디 ' 뒤에 커서
     if (field) { field.blur(); field.focus(); }
     onChange(next);
     setTimeout(toEnd, 0);
