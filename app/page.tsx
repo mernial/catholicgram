@@ -13,7 +13,7 @@ import { useStickToBottom } from '@/lib/stick-bottom';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
 import MentionSuggest from '@/components/MentionSuggest';
-import NoticeBoard, { type Notice } from '@/components/NoticeBoard';
+import NoticeBoard, { type Notice, noticeShownNow } from '@/components/NoticeBoard';
 import { extractMentions, mentionsHandle } from '@/lib/mentions';
 import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
@@ -1479,9 +1479,10 @@ export default function Home() {
     setHiddenNotices(next);
     storageSet('noticeHidden', JSON.stringify(next));
   };
-  const homeNotice = notices.find(n => n.pinned && !hiddenNotices.includes(n.id));
+  // 홈 맨 위 공지·팝업 공지는 올린 뒤 하루 동안만 (지난 공지는 공지사항 목록에서 볼 수 있음)
+  const homeNotice = notices.find(n => n.pinned && noticeShownNow(n) && !hiddenNotices.includes(n.id));
   // 앱에 들어오면 띄우는 팝업 공지: 가장 최근 것 하나, '다시 보지 않기' 전까지 들어올 때마다
-  const popupNotice = notices.find(n => n.popup && !hiddenNotices.includes(n.id) && !popupClosed.includes(n.id));
+  const popupNotice = notices.find(n => n.popup && noticeShownNow(n) && !hiddenNotices.includes(n.id) && !popupClosed.includes(n.id));
   const closePopup = (id: string) => setPopupClosed(prev => [...prev, id]);
 
   const isAdminRef = useRef(false);
