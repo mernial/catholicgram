@@ -7,6 +7,9 @@ import Icon from '@/components/Icon';
 // 영상 파일은 그대로 두고 위치 정보만 posts.video_overlays 에 저장해, 재생할 때 영상 위에 겹쳐 보여준다.
 // 위치(x, y)는 화면 비율(0~1), 크기(size)는 화면 너비 대비 비율이라 어떤 휴대폰에서도 같은 자리에 보인다.
 
+// 글자 색은 저장된 값을 그대로 CSS 에 넣으므로 '#rrggbb' 같은 색 값만 쓴다 (다른 주소를 불러오는 url(...) 등 차단)
+const safeColor = (c: unknown) => (typeof c === 'string' && /^#[0-9a-f]{3,8}$/i.test(c) ? c : '#ffffff');
+
 export interface OverlayItem {
   id: string;
   type: 'text' | 'emoji';
@@ -49,8 +52,8 @@ function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; sele
         transform: `translate(-50%, -50%) rotate(${item.rotation || 0}deg)`,
         fontSize: `${item.size * 100}cqw`,
         maxWidth: '90cqw',
-        color: item.type === 'text' ? (item.bg ? (item.color === '#ffffff' ? '#111827' : '#ffffff') : item.color) : undefined,
-        background: item.type === 'text' && item.bg ? item.color : undefined,
+        color: item.type === 'text' ? (item.bg ? (item.color === '#ffffff' ? '#111827' : '#ffffff') : safeColor(item.color)) : undefined,
+        background: item.type === 'text' && item.bg ? safeColor(item.color) : undefined,
         textShadow: item.type === 'text' && !item.bg ? '0 1px 4px rgba(0,0,0,0.6)' : undefined,
       }}
     >

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { deleteMyAccount } from '@/lib/account';
+import { deleteMyAccount, signOutAndClear } from '@/lib/account';
 import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
@@ -121,7 +121,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
             <a href="/terms" className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
             <a href="/privacy" className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
-            <button onClick={() => supabase.auth.signOut().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
+            <button onClick={() => signOutAndClear().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>

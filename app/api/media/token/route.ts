@@ -7,6 +7,12 @@ import { mediaEnabled, mediaToken, mediaUrl, newMediaKey } from '@/lib/media-ser
 // POST { kind, ext } (로그인 필요) → { key, uploadUrl, token, publicUrl } — 받은 허가증으로 uploadUrl 에 PUT
 const KINDS = ['posts', 'videos', 'posters', 'avatars', 'stories', 'dm', 'feedback', 'letters'];
 const ADMIN_KINDS = ['sponsor', 'bgm'];
+// 종류별로 올릴 수 있는 파일 형식 (html·svg·js 같은 파일은 받지 않음 — 저장소 Worker 도 확장자로 형식을 정함)
+const IMAGE_EXTS = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
+const EXTS: Record<string, string[]> = {
+  videos: ['mp4', 'mov', 'webm', 'm4v'],
+  bgm: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'oga'],
+};
 
 export async function GET() {
   return Response.json({ enabled: mediaEnabled() });
@@ -26,6 +32,8 @@ export async function POST(request: Request) {
   const { kind, ext } = ((await request.json().catch(() => ({}))) ?? {}) as { kind?: string; ext?: string };
   const isAdmin = !!user.email && ADMIN_EMAILS.includes(user.email);
   if (!kind || !(KINDS.includes(kind) || (isAdmin && ADMIN_KINDS.includes(kind)))) return Response.json({ error: 'bad kind' }, { status: 400 });
-  const key = newMediaKey(kind, user.id, ext || 'jpg');
+  const cleanExt = (ext || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!(EXTS[kind] || IMAGE_EXTS).includes(cleanExt)) return Response.json({ error: '올릴 수 없는 파일 형식이에요.' }, { status: 400 });
+  const key = newMediaKey(kind, user.id, cleanExt);
   return Response.json({ enabled: true, key, uploadUrl: mediaUrl(key), token: mediaToken('PUT', key), publicUrl: mediaUrl(key) });
 }
