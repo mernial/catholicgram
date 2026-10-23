@@ -4709,7 +4709,7 @@ export default function Home() {
                   if (!target || !session) return;
                   fetch('/api/push/notify', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify({ type: 'test', id: target.id }) }).catch(() => {});
                   linkLog('test', `글 ${target.id.slice(0, 8)} (${target.author_name})`);
-                  alert('10초 뒤에 휴대폰 알림이 와요.\n\n지금 휴대폰의 홈 버튼을 눌러 앱을 잠깐 내려 두세요. (앱을 끄지는 마세요)\n\n알림이 오면 눌러서 「' + (target.author_name || '') + '」님 글의 댓글 창이 열리는지 봐 주세요.');
+                  alert('10초 뒤에 알림이 와요.\n\n· 휴대폰: 홈 버튼을 눌러 앱을 잠깐 내려 두세요. (앱을 끄지는 마세요)\n· 컴퓨터: 이 창을 그대로 두면 화면 위에 알림 배너가 떠요.\n\n알림(배너)을 누르면 최근 댓글이 달린 글이 열리고, 그 댓글로 화면이 바로 가는지 봐 주세요.');
                 }} className="ml-3 text-[0.75rem] text-blue-600 underline">테스트 알림 보내기</button>
                 {linkLogText !== null && <pre className="mt-2 p-2 bg-stone-50 border border-stone-200 rounded-lg text-[0.6875rem] leading-snug text-stone-700 whitespace-pre-wrap break-all">{linkLogText}</pre>}
               </div>
