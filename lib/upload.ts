@@ -32,7 +32,8 @@ export async function uploadMedia(file: Blob, opts: { kind: MediaKind; ext: stri
 // prefix: 파일 이름 앞부분 (예: 'dm', 'feedback'). 주소는 무작위 이름이라 링크를 아는 사람만 볼 수 있다.
 export async function uploadPhoto(file: File, prefix: string): Promise<string> {
   const compressed = await imageCompression(file, PHOTO_OPTIONS);
-  const name = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}.jpg`;
+  const rand = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join(''); // 짐작할 수 없는 이름
+  const name = `${prefix}_${Date.now()}_${rand}.jpg`;
   return uploadMedia(compressed, { kind: prefix === 'dm' ? 'dm' : prefix === 'letters' ? 'letters' : 'feedback', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
 }
 

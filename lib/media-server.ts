@@ -16,8 +16,9 @@ export function mediaToken(method: 'PUT' | 'DELETE', key: string, ttlSeconds = 6
 export const mediaUrl = (key: string) => `${mediaBase()}/${key.split('/').map(encodeURIComponent).join('/')}`;
 
 // 새 파일 경로: 종류/사용자/시각_무작위.확장자 (서버가 정하므로 남의 파일을 덮어쓸 수 없음)
+// 무작위 부분은 길게(96비트) — 메시지 사진처럼 주소를 아는 사람만 보는 파일의 주소를 짐작할 수 없게
 export const newMediaKey = (kind: string, userId: string, ext: string) =>
-  `${kind}/${userId}/${Date.now()}_${randomBytes(5).toString('hex')}.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'bin'}`;
+  `${kind}/${userId}/${Date.now()}_${randomBytes(12).toString('hex')}.${ext.replace(/[^a-z0-9]/gi, '').slice(0, 5) || 'bin'}`;
 
 // R2 주소 → 경로 (우리 저장소 주소가 아니면 null)
 export const mediaKeyFromUrl = (url: string | null | undefined) => {
