@@ -368,7 +368,8 @@ export default function Home() {
   const [lettersStart, setLettersStart] = useState<'write' | 'mine'>('write'); // 사연함: 알림으로 열면 '보낸 사연'
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
   const [loungeNew, setLoungeNew] = useState(0);
-  const [loungeOnline, setLoungeOnline] = useState(0);   // 지금 사랑방에 들어와 있는 교우 수 (실시간)
+  const [loungeOnlineIds, setLoungeOnlineIds] = useState<string[]>([]); // 지금 사랑방에 들어와 있는 교우 (실시간)
+  const loungeOnline = loungeOnlineIds.length;
   const loungePresenceRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const showLoungeRef = useRef(false);
   const [loungeStealth, setLoungeStealth] = useState(true); // 관리자는 기본으로 몰래 들어간다 (안내 없이, 참여 인원에서 빠짐) → 안에서 '들어왔다고 알리기'
@@ -1918,9 +1919,9 @@ export default function Home() {
   showLoungeRef.current = loungePresent;
   const loungeWatching = !!user && (activeTab === 'messages' || showLounge);
   useEffect(() => {
-    if (!loungeWatching || !user) { setLoungeOnline(0); return; }
+    if (!loungeWatching || !user) { setLoungeOnlineIds([]); return; }
     const ch = supabase.channel('lounge-presence', { config: { presence: { key: user.id } } });
-    ch.on('presence', { event: 'sync' }, () => setLoungeOnline(Object.keys(ch.presenceState()).length))
+    ch.on('presence', { event: 'sync' }, () => setLoungeOnlineIds(Object.keys(ch.presenceState())))
       .subscribe(status => { if (status === 'SUBSCRIBED' && showLoungeRef.current) ch.track({ at: Date.now() }).catch(() => {}); });
     loungePresenceRef.current = ch;
     return () => { loungePresenceRef.current = null; supabase.removeChannel(ch); };
@@ -3718,7 +3719,7 @@ export default function Home() {
 
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
-        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline}
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline} onlineIds={loungeOnlineIds}
           stealth={isAdmin && loungeStealth} onReveal={() => setLoungeStealth(false)}
           onCallAdmin={id => sendPush('lounge_call', id)}
           onMention={id => sendPush('lounge_mention', id)}
@@ -3750,8 +3751,8 @@ export default function Home() {
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
                 <span className="block text-xs text-stone-600 mt-0.5">
                   {loungeOnline > 0
-                    ? <><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 align-middle animate-pulse" /><b className="text-emerald-700">지금 {loungeOnline}명 참여 중</b></>
-                    : '모든 교우가 함께 나누는 실시간 대화방'}
+                    ? <><span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 align-middle animate-pulse" /><b className="text-emerald-700">👥 지금 {loungeOnline}명 참여 중</b></>
+                    : <>👥 지금 0명 · 먼저 들어가 인사를 건네 보세요</>}
                 </span>
               </span>
               {loungeNew > 0
