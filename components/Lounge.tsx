@@ -590,8 +590,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                   <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''}`}>
                     <button
                       onClick={e => { e.stopPropagation(); setMenuId(menuId === m.id ? null : m.id); }}
-                      className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${m.content.startsWith('📢') ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
-                    >{withCall(m.content, mine && !m.content.startsWith('📢'))}</button>
+                      className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${m.content.startsWith('📢') && m.is_admin ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
+                    >{withCall(m.content, mine && !(m.content.startsWith('📢') && m.is_admin))}</button>
                     <span className="shrink-0 text-[0.6875rem] text-stone-500 pb-0.5">{timeOf(m.created_at)}</span>
                   </div>
                   {menuId === m.id && (

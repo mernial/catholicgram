@@ -27,6 +27,8 @@ export async function POST(request: Request) {
     userId = user?.id || null;
   }
   const deviceId = typeof body.deviceId === 'string' ? body.deviceId.slice(0, 64) : null;
+  // 접속 기록은 1년까지만 둔다 (가끔 한 번씩 정리)
+  if (Math.random() < 0.02) await admin.from('app_sessions').delete().lt('started_at', new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString());
   const { data, error } = await admin.from('app_sessions')
     .insert({ user_id: userId, device_id: deviceId, standalone: !!body.standalone }).select('id').single();
   if (error) return Response.json({ skipped: error.message });

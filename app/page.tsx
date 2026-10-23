@@ -335,7 +335,7 @@ export default function Home() {
   const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
   const [openIntentionId, setOpenIntentionId] = useState<string | null>(null); // 기도지향 목록에서 펼쳐 본 것
   // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
-  // 기도지향: 교우에게는 올린 사람 없이(is_mine·blocked 만), 관리자에게만 user_id·이름
+  // 기도지향: 교우에게는 올린 사람 없이(is_mine 만), 관리자에게만 user_id·이름
   const [intentions, setIntentions] = useState<{ id: string; user_id?: string; author_name?: string | null; title?: string | null; content: string; created_at: string; is_mine?: boolean; blocked?: boolean }[]>([]);
   const [showIntentions, setShowIntentions] = useState(false);
   const [intentionTitleInput, setIntentionTitleInput] = useState(''); // 기도지향 (30자)
@@ -1488,7 +1488,7 @@ export default function Home() {
   const fetchIntentions = async () => {
     // 올린 사람은 관리자만 안다: 교우는 보기(prayer_intentions_feed)로 이름 없이 읽는다 (supabase/intention-private.sql)
     if (!isAdminRef.current) {
-      const { data, error } = await supabase.from('prayer_intentions_feed').select('id, title, content, created_at, is_mine, blocked')
+      const { data, error } = await supabase.from('prayer_intentions_feed').select('id, title, content, created_at, is_mine')
         .eq('prayer_date', todayKst()).order('created_at', { ascending: true }).limit(300);
       if (!error) {
         setIntentions((data || []) as unknown as typeof intentions);
@@ -1824,12 +1824,11 @@ export default function Home() {
       if (existing) next.delete(`${postId}:${type}`); else next.add(`${postId}:${type}`);
       return next;
     });
-    // 화면의 숫자에 ±1 하지 않고 post_reactions 테이블에서 실제 개수를 다시 세어 저장
-    // (여러 사람이 동시에 눌러도 값이 어긋나지 않음)
+    // 화면의 숫자에 ±1 하지 않고 post_reactions 테이블에서 실제 개수를 다시 센다
+    // (글의 숫자 칸은 DB 가 반응이 생기고 없어질 때 직접 센다 — 앱은 남의 글을 고칠 수 없음, supabase/security-hardening.sql)
     const { count } = await supabase.from('post_reactions').select('*', { count: 'exact', head: true }).eq('post_id', postId).eq('reaction_type', type);
     const newCount = count ?? 0;
     const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
-    await supabase.from('posts').update(updateField).eq('id', postId);
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
     setStoryPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };

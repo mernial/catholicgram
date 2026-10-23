@@ -1,8 +1,9 @@
 import { createClient } from '@supabase/supabase-js';
+import { purgeOldDeletedMessages } from '@/lib/media-server';
 
 // 메시지 삭제 (서버에서 본인 확인)
 // POST { action: 'delete', id } → 내가 보낸 메시지만.
-// 원래 글·사진은 관리자만 볼 수 있는 deleted_messages 로 옮기고, 대화에서는 내용을 비우고 '삭제됨' 표시만 남긴다
+// 원래 글·사진은 관리자만 볼 수 있는 deleted_messages 로 옮겨 30일 동안만 두고, 대화에서는 내용을 비우고 '삭제됨' 표시만 남긴다
 // (상대가 앱 밖에서 데이터를 꺼내 봐도 지운 내용은 남아 있지 않음).
 
 export async function POST(request: Request) {
@@ -40,5 +41,6 @@ export async function POST(request: Request) {
   const { error } = await admin.from('messages').update(changes).eq('id', msg.id);
   if (error) return Response.json({ error: '삭제하지 못했어요.' }, { status: 500 });
   await admin.from('message_reactions').delete().eq('message_id', msg.id); // 표가 없어도 무시
+  await purgeOldDeletedMessages(admin); // 보관 30일이 지난 것 정리
   return Response.json({ ok: true });
 }

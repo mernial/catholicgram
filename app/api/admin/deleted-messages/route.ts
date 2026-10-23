@@ -1,7 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { purgeOldDeletedMessages } from '@/lib/media-server';
 
-// 관리자 전용: 회원이 지운 메시지의 원래 글·사진 보기 (최근 300개)
+// 관리자 전용: 회원이 지운 메시지의 원래 글·사진 보기 (최근 300개, 지운 지 30일 안의 것만 — 지난 것은 이때 정리)
 export async function GET(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -12,6 +13,7 @@ export async function GET(request: Request) {
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
 
+  await purgeOldDeletedMessages(admin);
   // ?ids=1,2,3 → 대화방에서 그 메시지들의 원래 내용만
   const ids = (new URL(request.url).searchParams.get('ids') || '').split(',').map(s => s.trim()).filter(Boolean).slice(0, 300);
   let query = admin.from('deleted_messages').select('*').order('deleted_at', { ascending: false }).limit(300);

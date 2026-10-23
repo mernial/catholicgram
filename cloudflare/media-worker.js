@@ -6,6 +6,19 @@
 //   - R2 버킷 연결(Binding): 변수 이름 MEDIA → 버킷 catholicgram-media
 //   - 비밀 변수(Secret): UPLOAD_SECRET → Vercel 의 R2_UPLOAD_SECRET 과 같은 값
 const MAX_BYTES = 60 * 1024 * 1024;
+// 파일 형식은 올리는 사람이 보낸 값이 아니라 확장자로 정한다 (html·svg·js 같은 파일을 올려 이 주소로 퍼뜨리지 못하게)
+const TYPES = {
+  jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif',
+  mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+  mp3: 'audio/mpeg', m4a: 'audio/mp4', aac: 'audio/aac', wav: 'audio/wav', ogg: 'audio/ogg', oga: 'audio/ogg',
+};
+const typeOf = (key) => TYPES[(key.split('.').pop() || '').toLowerCase()];
+// 보낼 때 함께 붙이는 보안 머리글: 형식 추측 금지, 혹시 문서로 열려도 스크립트 실행 금지
+const SAFE = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "default-src 'none'; sandbox",
+  'Cross-Origin-Resource-Policy': 'cross-origin',
+};
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, HEAD, PUT, DELETE, OPTIONS',
@@ -43,6 +56,10 @@ export default {
       if (!obj) return new Response('not found', { status: 404, headers: CORS });
       const headers = new Headers(CORS);
       obj.writeHttpMetadata(headers);
+      Object.entries(SAFE).forEach(([k, v]) => headers.set(k, v));
+      const type = typeOf(key);
+      if (type) headers.set('Content-Type', type);
+      else { headers.set('Content-Type', 'application/octet-stream'); headers.set('Content-Disposition', 'attachment'); }
       headers.set('ETag', obj.httpEtag);
       headers.set('Cache-Control', 'public, max-age=31536000, immutable');
       headers.set('Accept-Ranges', 'bytes');
@@ -63,10 +80,15 @@ export default {
       if (!key || !exp || !sig || Date.now() / 1000 > Number(exp)) return json({ error: '허가증이 없거나 만료됐어요' }, 401);
       if (!same(await sign(env.UPLOAD_SECRET, `${method}\n${key}\n${exp}`), sig)) return json({ error: '허가증이 맞지 않아요' }, 403);
       if (method === 'DELETE') { await env.MEDIA.delete(key); return json({ ok: true }); }
+      const type = typeOf(key);
+      if (!type) return json({ error: '올릴 수 없는 파일 형식이에요' }, 415);
       const size = Number(request.headers.get('content-length') || 0);
+      if (!size) return json({ error: '파일 크기를 알 수 없어요' }, 411);
       if (size > MAX_BYTES) return json({ error: '파일이 너무 커요' }, 413);
+      // 한 번 올린 파일은 같은 허가증으로 바꿔치기하지 못하게
+      if (await env.MEDIA.head(key)) return json({ error: '이미 올린 파일이에요' }, 409);
       await env.MEDIA.put(key, request.body, {
-        httpMetadata: { contentType: request.headers.get('content-type') || 'application/octet-stream', cacheControl: 'public, max-age=31536000, immutable' },
+        httpMetadata: { contentType: type, cacheControl: 'public, max-age=31536000, immutable' },
       });
       return json({ ok: true, key });
     }

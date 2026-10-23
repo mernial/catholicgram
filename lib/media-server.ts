@@ -55,7 +55,8 @@ export async function filesSafeToDelete(
   return safe;
 }
 
-// 이 주소를 다른 글(사진·영상·미리보기)이나 다른 교우의 프로필 사진이 쓰고 있는지 (확인이 안 되면 쓰는 것으로 본다)
+// 이 주소를 다른 글(사진·영상·미리보기), 다른 교우의 프로필 사진, 메시지·사연·건의 사진이 쓰고 있는지
+// (확인이 안 되면 쓰는 것으로 본다. 탈퇴할 때는 본인 것은 빼고 센다)
 async function usedElsewhere(admin: SupabaseClient, url: string, except: { postId?: string; userId?: string }) {
   const posts = () => {
     let q = admin.from('posts').select('id', { count: 'exact', head: true });
@@ -65,8 +66,27 @@ async function usedElsewhere(admin: SupabaseClient, url: string, except: { postI
   };
   let avatars = admin.from('profiles').select('id', { count: 'exact', head: true }).eq('avatar_url', url);
   if (except.userId) avatars = avatars.neq('id', except.userId);
-  const results = await Promise.all([posts().contains('images', [url]), posts().eq('video_url', url), posts().eq('video_poster', url), avatars]);
+  const attached = (table: string, owner: string) => {
+    let q = admin.from(table).select('id', { count: 'exact', head: true }).eq('image_url', url);
+    if (except.userId) q = q.neq(owner, except.userId);
+    return q;
+  };
+  const results = await Promise.all([
+    posts().contains('images', [url]), posts().eq('video_url', url), posts().eq('video_poster', url), avatars,
+    attached('messages', 'sender_id'), attached('letters', 'user_id'), attached('feedback', 'user_id'),
+  ]);
   return results.some(r => !!r.error || (r.count || 0) > 0);
+}
+
+// 지운 메시지 보관함(관리자 확인용)은 30일까지만: 지난 것과 그 사진(보낸 사람의 R2 파일)을 정리한다 (실패해도 무시)
+export const DELETED_MESSAGE_DAYS = 30;
+export async function purgeOldDeletedMessages(admin: SupabaseClient) {
+  const before = new Date(Date.now() - DELETED_MESSAGE_DAYS * 24 * 3600 * 1000).toISOString();
+  const { data: old, error } = await admin.from('deleted_messages').select('id, sender_id, image_url').lt('deleted_at', before).limit(500);
+  if (error || !old || old.length === 0) return;
+  const images = old.filter(o => o.image_url && mediaKeyFromUrl(o.image_url)?.split('/')[1] === o.sender_id).map(o => o.image_url as string);
+  await deleteMedia(images);
+  await admin.from('deleted_messages').delete().in('id', old.map(o => o.id));
 }
 
 // R2 에 있는 파일들 지우기 (다른 주소는 무시, 실패해도 무시). 지울 주소는 filesSafeToDelete 로 고른 것만 넘긴다

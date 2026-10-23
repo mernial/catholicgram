@@ -25,9 +25,16 @@ export async function POST(request: Request) {
   try {
     const { data: myPosts } = await admin.from('posts').select('images, video_url, video_poster').eq('user_id', uid);
     const { data: me } = await admin.from('profiles').select('avatar_url').eq('id', uid).maybeSingle();
+    // 메시지·사연·건의에 붙인 사진, 내가 지운 메시지의 사진 (표·칸이 없으면 빈 목록)
+    const attachedOf = async (table: string, owner: string) =>
+      ((await admin.from(table).select('image_url').eq(owner, uid).not('image_url', 'is', null)).data || []).map(r => r.image_url as string);
+    const attachments = [
+      ...await attachedOf('messages', 'sender_id'), ...await attachedOf('letters', 'user_id'),
+      ...await attachedOf('feedback', 'user_id'), ...await attachedOf('deleted_messages', 'sender_id'),
+    ];
     // 글·프로필의 사진 주소는 아무 주소나 넣을 수 있으므로, 내 파일이고 다른 교우가 쓰지 않는 것만 지운다
     const safe = await filesSafeToDelete(admin,
-      [...(myPosts || []).flatMap(p => [...((p.images as string[] | null) || []), p.video_url, p.video_poster]), me?.avatar_url], uid, { userId: uid });
+      [...(myPosts || []).flatMap(p => [...((p.images as string[] | null) || []), p.video_url, p.video_poster]), me?.avatar_url, ...attachments], uid, { userId: uid });
     await deleteMedia(safe); // R2 에 있는 파일
     const postFiles = safe
       .map(url => url.split('/community-images/')[1]?.split('?')[0])
@@ -63,6 +70,12 @@ export async function POST(request: Request) {
     ['blocks', 'blocker_id'],
     ['blocks', 'blocked_id'],
     ['interest_events', 'user_id'],
+    // 관리자 보관함에 남은 내 기록 (지운 메시지·지운 사랑방 대화)
+    ['deleted_messages', 'sender_id'],
+    ['deleted_messages', 'receiver_id'],
+    ['lounge_trash', 'user_id'],
+    ['lounge_messages', 'user_id'],
+    ['app_sessions', 'user_id'],
     ['profiles', 'id'],
   ];
   for (const [table, column] of deletions) {

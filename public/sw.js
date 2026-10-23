@@ -43,7 +43,7 @@ const IMG_MAX = 500;
 const IMG_PATH = /\/storage\/v1\/object\/public\/(community-images|avatars|sponsor-banners)\//;
 // Cloudflare R2 저장소(Worker)의 사진 경로 (영상·음악 제외)
 const R2_IMG_PATH = /^\/(posts|posters|avatars|stories|dm|feedback|sponsor|m\/(community-images|avatars|sponsor-banners))\//;
-const isCachedImage = (url) => IMG_PATH.test(url.pathname) || (url.hostname.endsWith('.workers.dev') && R2_IMG_PATH.test(url.pathname));
+const isCachedImage = (url) => (url.hostname.endsWith('.supabase.co') && IMG_PATH.test(url.pathname)) || (url.hostname.endsWith('.workers.dev') && R2_IMG_PATH.test(url.pathname));
 let trimming = false;
 const trimImages = async () => {
   if (trimming) return;
@@ -149,7 +149,9 @@ const writePending = async (url) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin).href;
+  // 알림 주소는 우리 사이트 안만 연다 (다른 사이트 주소면 첫 화면으로)
+  const raw = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin);
+  const url = raw.origin === self.location.origin ? raw.href : new URL('/', self.location.origin).href;
   event.waitUntil((async () => {
     // 앞으로 가져오기는 누른 직후에만 허용되므로 기다리지 않고 바로. 갈 곳은 그사이에 적어 둔다.
     const saving = writePending(url);
