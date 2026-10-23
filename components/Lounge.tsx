@@ -370,20 +370,25 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     setMessages(prev => applyClear(data ? [...prev, data as LoungeMessage] : prev.filter(m => sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze')));
     setHasOlder(false);
   };
-  // 관리자: 교우 뱃지 달기·떼기
+  // 관리자: 교우 뱃지 달기·바꾸기·떼기 (이름을 누르거나 대화를 눌러서)
   const toggleBadge = async (userId: string) => {
     setMenuId(null);
     const name = authors[userId]?.baptismal_name || '이 교우';
     const setupMsg = '뱃지 기능을 준비 중이에요. (관리자: supabase/lounge-admin.sql 실행 필요)';
-    if (badges[userId]) {
-      if (!window.confirm(`${name}님의 뱃지 '${badges[userId]}'를 뗄까요?`)) return;
+    const cur = badges[userId];
+    const input = window.prompt(cur
+      ? `${name}님의 뱃지를 바꿀 수 있어요.\n(글자를 모두 지우고 확인하면 뱃지를 뗍니다)`
+      : `${name}님에게 달 뱃지를 적어 주세요.\n(예: ⭐ 봉사자, 🌹 레지오, 🙏 기도 지기)`, cur || '⭐ 사랑방 지기');
+    if (input === null) return; // 취소
+    const label = input.trim().slice(0, 20);
+    if (!label) {
+      if (!cur) return;
       const { error: err } = await supabase.from('lounge_badges').delete().eq('user_id', userId);
       if (err) { alert(isSetupError(err) ? setupMsg : err.message); return; }
       setBadges(prev => { const n = { ...prev }; delete n[userId]; return n; });
       return;
     }
-    const label = window.prompt(`${name}님에게 달 뱃지 (예: ⭐ 봉사자, 🌹 레지오)`, '⭐ 사랑방 지기')?.trim().slice(0, 20);
-    if (!label) return;
+    if (label === cur) return;
     const { error: err } = await supabase.from('lounge_badges').upsert({ user_id: userId, label });
     if (err) { alert(isSetupError(err) ? setupMsg : err.message); return; }
     setBadges(prev => ({ ...prev, [userId]: label }));
@@ -446,7 +451,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           <div className="flex items-center gap-1.5">
             <button onClick={toggleFreeze} className={`shrink-0 px-3 py-1.5 rounded-full text-[0.8125rem] font-bold ${frozen ? 'bg-sky-300 text-stone-900' : 'bg-white/15'}`}>{frozen ? '🌤 대화 다시 열기' : '❄️ 대화 얼리기'}</button>
             <button onClick={clearAll} className="shrink-0 px-3 py-1.5 rounded-full bg-white/15 text-[0.8125rem] font-bold">🧹 모두 지우기</button>
-            <span className="min-w-0 text-[0.6875rem] text-white/50 truncate">뱃지는 대화를 눌러서</span>
+            <span className="min-w-0 text-[0.6875rem] text-white/50 truncate">🏅 뱃지는 교우 이름을 눌러서</span>
           </div>
         </div>
       )}
@@ -544,8 +549,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                 <div className={`min-w-0 max-w-[78%] flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                   {!mine && !grouped && (
                     <span className="flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 mb-0.5 ml-1">
-                      {a?.baptismal_name || '교우'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
+                      {/* 관리자: 이름을 누르면 뱃지 달기·바꾸기·떼기 */}
+                      {isAdmin
+                        ? <button onClick={e => { e.stopPropagation(); toggleBadge(m.user_id); }} className="underline decoration-dotted decoration-stone-400 underline-offset-2" aria-label={`${a?.baptismal_name || '교우'}님 뱃지 ${badges[m.user_id] ? '바꾸기' : '달기'}`}>{a?.baptismal_name || '교우'}</button>
+                        : (a?.baptismal_name || '교우')}
+                      <RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
                       {badges[m.user_id] && <span className="text-[0.6875rem] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-px">{badges[m.user_id]}</span>}
+                      {isAdmin && !badges[m.user_id] && <button onClick={e => { e.stopPropagation(); toggleBadge(m.user_id); }} className="text-[0.6875rem] font-normal text-amber-700 border border-dashed border-amber-300 rounded-full px-1.5 py-px" aria-hidden="true" tabIndex={-1}>🏅+</button>}
                       {isAdmin && banned.has(m.user_id) && <span className="text-[0.6875rem] text-red-500 font-normal">(대화 금지)</span>}
                     </span>
                   )}
@@ -560,7 +570,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                     <div className={`mt-1 flex gap-1.5 ${mine ? 'justify-end' : ''}`} onClick={e => e.stopPropagation()}>
                       {(mine || isAdmin) && <button onClick={() => remove(m)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-red-600"><Icon name="trash" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />지우기</button>}
                       {!mine && <button onClick={() => { setMenuId(null); onReport({ type: 'lounge', id: m.id, userId: m.user_id, userName: a?.baptismal_name, preview: m.content }); }} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700"><Icon name="siren" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />신고</button>}
-                      {isAdmin && !mine && <button onClick={() => toggleBadge(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800">🏅 {badges[m.user_id] ? '뱃지 떼기' : '뱃지 달기'}</button>}
+                      {isAdmin && !mine && <button onClick={() => toggleBadge(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800">🏅 {badges[m.user_id] ? '뱃지 바꾸기' : '뱃지 달기'}</button>}
                       {isAdmin && !mine && <button onClick={() => toggleBan(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700">{banned.has(m.user_id) ? '대화 금지 풀기' : '대화 금지'}</button>}
                     </div>
                   )}
