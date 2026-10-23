@@ -1824,11 +1824,12 @@ export default function Home() {
       if (existing) next.delete(`${postId}:${type}`); else next.add(`${postId}:${type}`);
       return next;
     });
-    // 화면의 숫자에 ±1 하지 않고 post_reactions 테이블에서 실제 개수를 다시 센다
-    // (글의 숫자 칸은 DB 가 반응이 생기고 없어질 때 직접 센다 — 앱은 남의 글을 고칠 수 없음, supabase/security-hardening.sql)
-    const { count } = await supabase.from('post_reactions').select('*', { count: 'exact', head: true }).eq('post_id', postId).eq('reaction_type', type);
-    const newCount = count ?? 0;
-    const updateField = type === 'pray' ? { pray_count: newCount } : { like_count: newCount };
+    // 화면의 숫자에 ±1 하지 않고 글의 숫자 칸을 다시 읽는다
+    // (숫자 칸은 DB 가 반응이 생기고 없어질 때 직접 센다 — supabase/security-hardening.sql.
+    //  누가 어느 글에 반응했는지는 본인 것만 읽을 수 있다 — supabase/privacy-hardening.sql)
+    const { data: fresh } = await supabase.from('posts').select('pray_count, like_count').eq('id', postId).maybeSingle();
+    if (!fresh) return;
+    const updateField = type === 'pray' ? { pray_count: fresh.pray_count ?? 0 } : { like_count: fresh.like_count ?? 0 };
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
     setStoryPosts(prev => prev.map(p => p.id === postId ? { ...p, ...updateField } : p));
   };

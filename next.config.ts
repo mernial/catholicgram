@@ -11,7 +11,11 @@ const nextConfig: NextConfig = {
       source: '/:path*',
       headers: [
         { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
-        { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+        { key: 'Content-Security-Policy', value: "frame-ancestors 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" },
+        // 늘 https 로만 접속 (중간에서 엿보거나 바꿔치기 못 하게)
+        { key: 'Strict-Transport-Security', value: 'max-age=63072000; includeSubDomains' },
+        // 다른 사이트 창이 우리 앱 창을 건드리지 못하게 (우리가 연 팝업은 그대로)
+        { key: 'Cross-Origin-Opener-Policy', value: 'same-origin-allow-popups' },
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
         { key: 'Permissions-Policy', value: 'camera=(self), microphone=(self), geolocation=()' },

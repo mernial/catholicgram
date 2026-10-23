@@ -27,7 +27,7 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
 
   const handleClick = () => {
     supabase.rpc('record_banner_event', { p_id: banner.id, p_kind: 'click' }).then(() => {});
-    if (banner.link_url) window.open(banner.link_url, '_blank', 'noopener,noreferrer');
+    if (banner.link_url && /^https?:\/\//i.test(banner.link_url)) window.open(banner.link_url, '_blank', 'noopener,noreferrer'); // 웹 주소만 연다
   };
 
   // 피드: 일반 게시글과 같은 모양의 '광고 게시물'
