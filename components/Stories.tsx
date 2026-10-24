@@ -5,6 +5,7 @@ import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
 import { PHOTO_OPTIONS, uploadMedia } from '@/lib/upload';
 import Icon from '@/components/Icon';
+import { initial } from '@/lib/fancy-name';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
 // 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
@@ -200,7 +201,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
 
   const avatarOf = (a: { avatar_url?: string | null; baptismal_name?: string } | undefined, size: string) => a?.avatar_url
     ? <img loading="lazy" src={a.avatar_url} alt="" className={`${size} rounded-full object-cover`} />
-    : <span className={`${size} rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center`}>{a?.baptismal_name?.[0] || '교'}</span>;
+    : <span className={`${size} rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center`}>{initial(a?.baptismal_name, '교')}</span>;
 
   if (unavailable && !isAdmin) return null; // SQL 실행 전에는 일반 회원에게 숨김
 

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { SponsorBannerData } from '@/lib/sponsor';
+import { initial } from '@/lib/fancy-name';
 
 // 이번 접속에서 이미 노출을 기록한 배너 (같은 배너를 여러 번 세지 않음)
 const viewed = new Set<string>();
@@ -36,7 +37,7 @@ export default function SponsorBanner({ banner, variant }: { banner: SponsorBann
       <article ref={ref as unknown as React.RefObject<HTMLElement>} className="p-4 sm:p-5 bg-white flex flex-col gap-3">
         <button onClick={handleClick} className="flex items-center gap-2.5 text-left">
           <div className="w-9 h-9 rounded-full bg-amber-100 text-amber-800 border border-amber-200 flex items-center justify-center text-xs font-serif font-bold shrink-0">
-            {banner.sponsor_name[0]}
+            {initial(banner.sponsor_name)}
           </div>
           <div className="flex flex-col min-w-0">
             <span className="text-xs font-bold text-stone-800 truncate">{banner.sponsor_name}</span>

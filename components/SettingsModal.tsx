@@ -8,6 +8,7 @@ import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import { IconBadge } from '@/components/Icon';
+import { initial } from '@/lib/fancy-name';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -150,7 +151,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
               <div key={p.id} className="p-4 flex items-center gap-3">
                 {p.avatar_url
                   ? <img loading="lazy" src={p.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
-                  : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{p.baptismal_name?.[0]}</div>}
+                  : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{initial(p.baptismal_name)}</div>}
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</p>
                   {p.handle && <p className="text-xs text-stone-400">@{p.handle}</p>}

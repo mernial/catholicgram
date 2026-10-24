@@ -52,6 +52,7 @@ import LettersModal from '@/components/LettersModal';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
+import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -328,6 +329,7 @@ export default function Home() {
   const [setupError, setSetupError] = useState('');
   const [feastDayInput, setFeastDayInput] = useState('');
   const [nicknameInput, setNicknameInput] = useState('');   // 공개 닉네임 (baptismalName 은 비공개 실명)
+  const [showFancyName, setShowFancyName] = useState(false); // 닉네임 영어 글자를 필기체 등으로 꾸미기
   const [profileEditMode, setProfileEditMode] = useState(false); // 설정에서 프로필 정보 수정 중
   const [myRealName, setMyRealName] = useState('');
   const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
@@ -1253,6 +1255,7 @@ export default function Home() {
     setBaptismalName(myRealName);
     setFeastDayInput(profile.feast_day || '');
     setSetupError('');
+    setShowFancyName(false);
     setProfileEditMode(true);
     setShowSettings(false);
   };
@@ -2956,7 +2959,7 @@ export default function Home() {
                   <img loading="lazy" src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 </button>
               ) : (
-                <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{currentChatUser?.baptismal_name?.[0]}</div>
+                <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(currentChatUser?.baptismal_name)}</div>
               )}
               <div className="min-w-0">
                 <div className="flex items-center gap-1 min-w-0">
@@ -3128,7 +3131,7 @@ export default function Home() {
                       <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
                         {f.avatar_url
                           ? <img loading="lazy" src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
-                          : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{f.baptismal_name[0]}</div>}
+                          : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(f.baptismal_name)}</div>}
                         <span className="text-sm text-stone-800 truncate"><b>{f.baptismal_name}</b>님의 축일이에요</span>
                       </button>
                       <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
@@ -3317,7 +3320,7 @@ export default function Home() {
                 <div className="flex gap-3 px-4 pt-4 pb-2">
                   {profile?.avatar_url
                     ? <img src={profile.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
-                    : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center shrink-0">{profile?.baptismal_name?.[0] || '교'}</span>}
+                    : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center shrink-0">{initial(profile?.baptismal_name, '교')}</span>}
                   <textarea ref={captionRef} value={content} onChange={(e) => setContent(e.target.value)} placeholder="문구 입력... (기도, 묵상, 감사한 일을 나눠 주세요)" rows={5} className="flex-1 min-w-0 py-2 text-[1rem] leading-relaxed bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
                 </div>
                 <div className="px-4">
@@ -3421,7 +3424,7 @@ export default function Home() {
                     <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="shrink-0" aria-label={`${post.author_name}님 프로필`}>
                       {post.avatar_url
                         ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
-                        : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
+                        : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
                       <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
@@ -3522,7 +3525,7 @@ export default function Home() {
                   <img loading="lazy" src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-[5.5rem] h-[5.5rem] bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold">
-                    {viewingProfile?.baptismal_name ? viewingProfile.baptismal_name[0] : '교'}
+                    {initial(viewingProfile?.baptismal_name, '교')}
                   </div>
                 );
                 // 내 프로필: 사진을 누르면 프로필 사진 바꾸기
@@ -3732,7 +3735,7 @@ export default function Home() {
                         <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="self-start flex items-center gap-2">
                           {post.avatar_url
                             ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
-                            : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{post.author_name?.[0] || '교'}</span>}
+                            : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}
                           <span className="font-bold text-[0.9375rem]">{post.author_name}</span>
                         </button>
                         {post.content && (
@@ -3805,7 +3808,7 @@ export default function Home() {
                   {partner.avatar_url ? (
                     <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
                   ) : (
-                    <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{partner.baptismal_name[0]}</div>
+                    <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</div>
                   )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -3959,7 +3962,7 @@ export default function Home() {
               <div className="px-6 pt-8 pb-5 flex flex-col items-center text-center">
                 {u.avatar_url
                   ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-[#e6d9c3]" />
-                  : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{u.baptismal_name?.[0] || '교'}</span>}
+                  : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{initial(u.baptismal_name, '교')}</span>}
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
                   <RoleBadge type={u.badge_type} />
@@ -4171,7 +4174,7 @@ export default function Home() {
           const url = uid ? (uid === user?.id ? profile?.avatar_url : authorByUser[uid]?.avatar) : undefined;
           return url
             ? <img loading="lazy" src={url} alt="" className="w-9 h-9 rounded-full object-cover shrink-0" />
-            : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{name?.[0] || '교'}</span>;
+            : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{initial(name, '교')}</span>;
         };
         return (
           <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
@@ -4362,7 +4365,7 @@ export default function Home() {
                 <button key={p.id} onClick={() => openProfileCard({ id: p.id, name: p.baptismal_name, avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type })} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
                   {p.avatar_url
                     ? <img loading="lazy" src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
-                    : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{p.baptismal_name?.[0]}</span>}
+                    : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{initial(p.baptismal_name)}</span>}
                   <span className="min-w-0">
                     <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /></span>
                     <span className="block text-xs text-stone-400">@{p.handle}</span>
@@ -4654,7 +4657,7 @@ export default function Home() {
                     {r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
-                      <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{r.follower.baptismal_name[0]}</div>
+                      <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(r.follower.baptismal_name)}</div>
                     )}
                     <p className="text-[0.9375rem] text-stone-800 min-w-0">
                       <Icon name="userPlus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /><b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 회원님을 팔로우하기 시작했어요
@@ -4818,7 +4821,7 @@ export default function Home() {
                 style={{ ...pos, transition: viewerAnimating ? 'top 0.26s ease-out, bottom 0.26s ease-out' : 'none' }}
               >
                 <div className="p-4 flex items-center gap-2.5 border-b border-stone-100">
-                  {peek.avatar_url ? <img loading="lazy" src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{peek.author_name?.[0]}</span>}
+                  {peek.avatar_url ? <img loading="lazy" src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{initial(peek.author_name)}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
                 {thumb ? <div className="bg-black flex justify-center"><img loading="lazy" src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
@@ -4839,7 +4842,7 @@ export default function Home() {
                 {selectedPostDetail.avatar_url ? (
                   <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
-                  <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{(selectedPostDetail.author_name || '교')[0]}</div>
+                  <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{initial(selectedPostDetail.author_name, '교')}</div>
                 )}
                 <div>
                   <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
@@ -4926,7 +4929,7 @@ export default function Home() {
                       <span className="flex items-start gap-2">
                         {avatar
                           ? <img loading="lazy" src={avatar} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-                          : <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{(c.author_name || '교')[0]}</span>}
+                          : <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{initial(c.author_name, '교')}</span>}
                         <span className="min-w-0 text-[0.9375rem] text-stone-800 leading-snug"><b className="mr-1.5">{c.author_name || '교우'}</b><span className="whitespace-pre-wrap break-words line-clamp-3">{c.content}</span></span>
                       </span>
                     )}
@@ -5007,11 +5010,35 @@ export default function Home() {
                   type="text"
                   placeholder="예: 기쁨의미카엘"
                   value={nicknameInput}
-                  onChange={(e) => setNicknameInput(e.target.value)}
-                  maxLength={20}
+                  // 20글자까지: 꾸민 글자·이모지는 두 칸짜리라 maxLength 대신 글자 수로 자른다
+                  onChange={(e) => setNicknameInput(Array.from(e.target.value).slice(0, 20).join(''))}
                   required
                   className="w-full p-3 text-sm font-medium border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400 bg-stone-50"
                 />
+                <button type="button" onClick={() => setShowFancyName(v => !v)} className="mt-2 text-[0.8125rem] font-bold text-violet-700 flex items-center gap-1">
+                  ✍️ 영어 이름 필기체로 꾸미기 <span className="text-stone-400 font-normal">{showFancyName ? '▲' : '▼'}</span>
+                </button>
+                {showFancyName && (
+                  <div className="mt-2 p-3 rounded-xl bg-violet-50 border border-violet-100">
+                    {hasLatin(nicknameInput) ? (
+                      <>
+                        <p className="text-xs text-stone-500 mb-2">마음에 드는 모양을 누르세요</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[...FANCY_STYLES.map(f => ({ label: f.label, text: toFancy(nicknameInput, f.id) })), { label: '원래대로', text: toPlain(nicknameInput) }].map(o => (
+                            <button key={o.label} type="button" onClick={() => setNicknameInput(o.text)} aria-label={o.label}
+                              className={`p-2 rounded-lg border bg-white text-left ${nicknameInput === o.text ? 'border-violet-500 ring-2 ring-violet-200' : 'border-stone-200'}`}>
+                              <span className="block text-lg text-stone-900 truncate">{o.text}</span>
+                              <span className="block text-[0.75rem] text-stone-500">{o.label}{nicknameInput === o.text ? ' ✓' : ''}</span>
+                            </button>
+                          ))}
+                        </div>
+                        <p className="text-[0.75rem] text-stone-400 mt-2 leading-snug">영어 글자만 바뀌고 한글은 그대로예요. 오래된 휴대폰에서는 네모(□)로 보일 수 있어요.</p>
+                      </>
+                    ) : (
+                      <p className="text-xs text-stone-600 leading-relaxed">닉네임 칸에 영어로 이름을 쓰면 여기서 필기체로 바꿀 수 있어요.<br />예: <b>Maria</b> → 𝓜𝓪𝓻𝓲𝓪</p>
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">나만의 고유 핸들 (@아이디)</label>

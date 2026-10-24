@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import RoleBadge from '@/components/RoleBadge';
 import { formatFeastDay } from '@/lib/feast';
 import Icon from '@/components/Icon';
+import { initial } from '@/lib/fancy-name';
 
 export interface AdminMember {
   id: string;
@@ -224,7 +225,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                     <button onClick={() => m.handle && onOpenProfile(m.id)} className="flex items-center gap-3 text-left min-w-0">
                       {m.avatar_url
                         ? <img loading="lazy" src={m.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200 shrink-0" />
-                        : <div className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-serif font-bold shrink-0">{name[0]}</div>}
+                        : <div className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-serif font-bold shrink-0">{initial(name)}</div>}
                       <div className="min-w-0 flex-1">
                         <p className="text-[0.9375rem] font-bold text-stone-900 flex items-center gap-1 flex-wrap">
                           {sort !== 'joined' && sort !== 'name' && <span className="text-[0.75rem] font-bold text-stone-400">{idx + 1}.</span>}
