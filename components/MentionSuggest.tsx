@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { insertMention, typingMention } from '@/lib/mentions';
+import { initial } from '@/lib/fancy-name';
 
 interface Person { id: string; baptismal_name: string; handle: string; avatar_url?: string | null }
 type Field = HTMLTextAreaElement | HTMLInputElement;
@@ -97,7 +98,7 @@ export default function MentionSuggest({ value, onChange, excludeId, label = 'íƒ
         >
           {p.avatar_url
             ? <img loading="lazy" src={p.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" />
-            : <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[0.6875rem] font-bold">{p.baptismal_name?.[0]}</span>}
+            : <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-800 flex items-center justify-center text-[0.6875rem] font-bold">{initial(p.baptismal_name)}</span>}
           <b>{p.baptismal_name}</b><span className="text-blue-500">@{p.handle}</span>
         </button>
       ))}

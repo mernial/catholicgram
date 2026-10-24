@@ -8,6 +8,7 @@ import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
 import { InterestEvent, loadInterests, recordInterest, removeSearch } from '@/lib/interests';
 import Icon from '@/components/Icon';
+import { initial } from '@/lib/fancy-name';
 
 // 탐색 탭: 사람 / 게시글 / #해시태그 검색 + 내 활동 기반 맞춤 추천
 //
@@ -52,7 +53,7 @@ function Avatar({ p, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal
   const name = p.baptismal_name || p.author_name || '교';
   return p.avatar_url
     ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
-    : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{name[0]}</div>;
+    : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{initial(name)}</div>;
 }
 
 function Chip({ label, onClick, onRemove, active }: { label: string; onClick: () => void; onRemove?: () => void; active?: boolean }) {
@@ -278,7 +279,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
             <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 bg-black/45 text-white rounded-full pl-0.5 pr-1.5 py-0.5 max-w-[90%]">
               {post.avatar_url
                 ? <img loading="lazy" src={post.avatar_url} alt="" className="w-4 h-4 rounded-full object-cover" />
-                : <span className="w-4 h-4 rounded-full bg-white/80 text-stone-700 text-[0.6rem] flex items-center justify-center font-bold">{post.author_name?.[0]}</span>}
+                : <span className="w-4 h-4 rounded-full bg-white/80 text-stone-700 text-[0.6rem] flex items-center justify-center font-bold">{initial(post.author_name)}</span>}
               <span className="text-[0.6875rem] truncate">{post.author_name}</span>
             </span>
           )}
