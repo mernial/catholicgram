@@ -1613,7 +1613,6 @@ export default function Home() {
   // (휴대폰 브라우저는 사용자가 누른 순간에만 소리 재생을 허용하므로 누른 즉시 재생을 시작)
   const openPostViewer = (post: Post, imageIndex = 0) => {
     setViewerTextOpen(false);
-    setViewerComment(null);
     setSelectedPostDetail(post);
     setDetailImageIndex(imageIndex);
     const music = parsePostMusic(post.music);
@@ -2090,35 +2089,56 @@ export default function Home() {
       setTimeout(() => setHighlightCommentId(prev => (prev === commentId ? null : prev)), 3500);
     }
   };
-  // 알림에서: 글 자체를 크게 보기 (피드에 없으면 불러와서)
-  const openPostById = async (postId: string, focusText = false) => {
-    const known = posts.find(p => p.id === postId) || storyPosts.find(p => p.id === postId);
-    const p = known || await ensurePost(postId);
-    if (!p) { openPostComments(postId); return; }
-    openPostViewer(p);
-    if (focusText) scrollViewerTo('viewer-post-text'); // 글에서 언급됐을 때: 사진 아래 글 내용으로
+  // 알림에서: 홈 피드의 그 글로 화면을 옮기고 잠깐 테두리로 강조 (크게 보기 창을 띄우지 않는다)
+  // 피드에서 안 보이는 글(오래된 글·보기 거르기에 걸린 글)이어도 그 글은 피드에 넣어 보여 준다
+  const [focusPostId, setFocusPostId] = useState<string | null>(null);
+  const [highlightPostId, setHighlightPostId] = useState<string | null>(null);
+  const focusScrollRef = useRef<{ timers: ReturnType<typeof setTimeout>[]; stop: () => void } | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const focusFeedPost = (postId: string) => {
+    if (currentScreenRef.current.tab !== 'home') goToHome();
+    setFocusPostId(postId);
+    setHighlightPostId(postId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => setHighlightPostId(null), 4000);
+    focusScrollRef.current?.stop();
+    // 위쪽 사진들이 늦게 불러와지며 글 자리가 밀리므로 몇 번 맞춘다. 손으로 피드를 움직이면 그만 (댓글 창 안을 만지는 건 제외)
+    const main = mainScrollRef.current;
+    const onUser = (e: Event) => { if (!(e.target as Element | null)?.closest?.('[role="dialog"]')) stop(); };
+    const stop = () => {
+      timers.forEach(clearTimeout);
+      main?.removeEventListener('touchstart', onUser);
+      main?.removeEventListener('wheel', onUser);
+    };
+    const timers = [150, 500, 1100, 2000, 3000].map((ms, i) => setTimeout(() => {
+      document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: i === 0 ? 'auto' : 'smooth', block: 'start' });
+      if (i === 4) stop();
+    }, ms));
+    main?.addEventListener('touchstart', onUser, { passive: true });
+    main?.addEventListener('wheel', onUser, { passive: true });
+    focusScrollRef.current = { timers, stop };
   };
-  // 크게 보기 안에서 그 자리로 화면 옮기기 (사진이 크면 아래쪽이 처음엔 안 보임). 열리는 동안을 기다려 몇 번 시도.
-  const scrollViewerTo = (elementId: string) => {
-    [250, 600, 1200].forEach(ms => setTimeout(() => document.getElementById(elementId)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), ms));
+  // 글에서 언급된 알림 등: 그 글로 (지워진 글이면 댓글 창이라도)
+  const openPostById = async (postId: string) => {
+    if (storyPosts.some(p => p.id === postId)) { openPostComments(postId); return; }
+    const p = posts.find(x => x.id === postId) || await ensurePost(postId);
+    if (!p || (p as Post & { is_story?: boolean }).is_story) { openPostComments(postId); return; }
+    focusFeedPost(postId);
   };
 
-  // 댓글 알림: 그 글을 크게 열고, 글 안에 새 댓글을 보여 준다 (스토리 댓글·지워진 글은 댓글 창)
-  const [viewerComment, setViewerComment] = useState<{ postId: string; commentId?: string } | null>(null);
+  // 댓글 알림: 홈에서 그 글로 화면을 옮기고, 댓글이면 댓글 창을 바로 열어 그 댓글로 (스토리 댓글·지워진 글은 댓글 창만)
   const openPostFromAlert = async (postId: string, commentId?: string) => {
     if (storyPosts.some(p => p.id === postId)) { openPostComments(postId, commentId); return; }
     const p = posts.find(x => x.id === postId) || await ensurePost(postId);
     if (!p || (p as Post & { is_story?: boolean }).is_story) { openPostComments(postId, commentId); return; }
-    openPostViewer(p);
-    setViewerComment({ postId, commentId });
-    await loadCommentsFor(postId);
-    scrollViewerTo('viewer-new-comment'); // 사진 아래 새 댓글 상자로 바로
+    focusFeedPost(postId);
+    if (commentId) openPostComments(postId, commentId);
   };
 
-  // 알림 누르기: 글에서 언급 → 그 글 크게 보기, 댓글·답글·댓글 언급 → 그 글을 크게 + 그 댓글
+  // 알림 누르기: 글에서 언급 → 피드의 그 글로, 댓글·답글·댓글 언급 → 그 글로 가서 댓글 창의 그 댓글
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
-    if (n.mention === 'post') openPostById(n.post_id, true);
+    if (n.mention === 'post') openPostById(n.post_id);
     else openPostFromAlert(n.post_id, n.id);
   };
 
@@ -2335,7 +2355,7 @@ export default function Home() {
     if (deepLink.post) {
       openPostFromAlert(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
-      openPostById(deepLink.view, true);
+      openPostById(deepLink.view);
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
     } else if (deepLink.anon) {
@@ -3424,9 +3444,10 @@ export default function Home() {
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
               // 홈은 불러온 범위까지만 (다른 사람 공간에서 불러온 오래된 글이 중간에 끼지 않게)
+              // 알림으로 찾아간 글은 불러온 범위·보기 거르기와 상관없이 보인다
               const filtered = posts.filter(post => !blockedIds.has(post.user_id)
-                && (!feedHasMore || !feedOldest || post.created_at >= feedOldest)
-                && (feedFilter === 'all' || (feedFilter === 'media' ? hasMedia(post) : !hasMedia(post))));
+                && (post.id === focusPostId || ((!feedHasMore || !feedOldest || post.created_at >= feedOldest)
+                && (feedFilter === 'all' || (feedFilter === 'media' ? hasMedia(post) : !hasMedia(post))))));
               if (filtered.length === 0 && posts.length > 0) {
                 return <div className="py-16 text-center text-sm text-stone-400">{feedFilter === 'media' ? '아직 사진·영상 글이 없어요.' : '아직 글만 쓴 나눔이 없어요.'}</div>;
               }
@@ -3439,7 +3460,7 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                <article id={`post-${post.id}`} className="bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3]">
+                <article id={`post-${post.id}`} className={`bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3] scroll-mt-[calc(4rem+env(safe-area-inset-top))] transition-shadow duration-700 ${highlightPostId === post.id ? 'ring-4 ring-inset ring-amber-300' : ''}`}>
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
                     <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="shrink-0" aria-label={`${post.author_name}님 프로필`}>
@@ -4218,9 +4239,9 @@ export default function Home() {
                   )}
                 </div>
               )}
-              {/* 알림으로 열었으면: 어느 글의 댓글인지 (누르면 그 글을 크게) */}
+              {/* 알림으로 열었으면: 어느 글의 댓글인지 (누르면 창을 닫고 피드의 그 글로) */}
               {!sheetIsStory && sheetShowsPost && sheetPost && (
-                <button onClick={() => { setCommentSheetId(null); openPostViewer(sheetPost); }} className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4] text-left" aria-label="이 글 보기">
+                <button onClick={() => { setCommentSheetId(null); focusFeedPost(sheetPost.id); }} className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4] text-left" aria-label="이 글 보기">
                   {sheetPost.images?.[0] || sheetPost.video_poster
                     ? <img loading="lazy" src={sheetPost.images?.[0] || sheetPost.video_poster || ''} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
                     : <span className="w-12 h-12 rounded-lg bg-[#eadfcb] flex items-center justify-center text-xl shrink-0">📝</span>}
@@ -4950,27 +4971,6 @@ export default function Home() {
                   <div className="px-4 pt-3 flex items-center gap-x-3 gap-y-2 flex-wrap text-[0.875rem] font-medium">
                     {reactionButtons(live, () => { setSelectedPostDetail(null); openPostComments(live.id); })}
                   </div>
-                );
-              })()}
-              {/* 댓글 알림으로 열었으면: 새 댓글 (누르면 댓글 창에서 그 댓글로) */}
-              {viewerComment?.postId === selectedPostDetail.id && (() => {
-                const pid = selectedPostDetail.id;
-                const c = viewerComment.commentId ? (comments[pid] || []).find(x => x.id === viewerComment.commentId) : undefined;
-                const total = (comments[pid] || []).length;
-                const avatar = c?.user_id ? (c.user_id === user?.id ? profile?.avatar_url : authorByUser[c.user_id]?.avatar) : undefined;
-                return (
-                  <button id="viewer-new-comment" onClick={() => { setSelectedPostDetail(null); openPostComments(pid, viewerComment.commentId); }} className="mx-4 mt-3 scroll-my-24 p-3 rounded-2xl bg-amber-50 border-2 border-amber-200 text-left flex flex-col gap-1.5" aria-label="새 댓글 보기">
-                    <span className="text-[0.8125rem] font-bold text-amber-800">💬 {c ? '새 댓글' : '댓글'}{total > 0 ? ` · 모두 ${total}개` : ''}</span>
-                    {c && (
-                      <span className="flex items-start gap-2">
-                        {avatar
-                          ? <img loading="lazy" src={avatar} alt="" className="w-8 h-8 rounded-full object-cover shrink-0" />
-                          : <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{initial(c.author_name, '교')}</span>}
-                        <span className="min-w-0 text-[0.9375rem] text-stone-800 leading-snug"><b className="mr-1.5">{c.author_name || '교우'}</b><span className="whitespace-pre-wrap break-words line-clamp-3">{c.content}</span></span>
-                      </span>
-                    )}
-                    <span className="self-end text-[0.8125rem] font-bold text-stone-700">댓글 보기 · 답글 달기 ›</span>
-                  </button>
                 );
               })()}
               <div id="viewer-post-text" className="px-5 pb-5 pt-3 flex flex-col gap-2">
