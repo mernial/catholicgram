@@ -55,7 +55,8 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
   const videoTap = useDoubleTap(onTap, () => { if (onDoubleTap) { setBurst(Date.now()); onDoubleTap(); } else onTap(); });
 
   return (
-    <div className="relative bg-black [container-type:inline-size]">
+    // 넓은 화면(아이패드)에서는 영상이 화면보다 길어지지 않게 높이를 화면의 75%까지로
+    <div className="relative bg-black [container-type:inline-size] tablet:mx-auto tablet:w-[min(100%,calc(75dvh*0.8))]">
       <video
         ref={ref}
         src={poster ? src : `${src}#t=0.1`}

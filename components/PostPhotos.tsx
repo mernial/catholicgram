@@ -36,15 +36,17 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
         onScroll={e => { const el = e.currentTarget; setIndex(Math.round(el.scrollLeft / el.clientWidth)); }}
       >
         {images.map((img, i) => (
-          <img loading="lazy"
-            key={i}
-            src={img}
-            alt="게시물 사진"
-            className="w-full shrink-0 snap-center cursor-pointer bg-stone-100"
-            style={{ aspectRatio: String(frame), objectFit: photoFit(ratios[i], frame) }}
-            onLoad={e => { const r = naturalRatio(e.currentTarget); if (r) setRatios(prev => (prev[i] === r ? prev : { ...prev, [i]: r })); }}
-            onClick={tap}
-          />
+          // 아이패드처럼 넓은 화면: 사진이 화면보다 길어지지 않게 높이를 화면의 75%까지로 (양옆은 바탕색)
+          <div key={i} className="w-full shrink-0 snap-center flex justify-center bg-stone-100">
+            <img loading="lazy"
+              src={img}
+              alt="게시물 사진"
+              className="w-full tablet:w-[min(100%,calc(75dvh*var(--frame)))] cursor-pointer bg-stone-100"
+              style={{ aspectRatio: String(frame), objectFit: photoFit(ratios[i], frame), '--frame': frame } as React.CSSProperties}
+              onLoad={e => { const r = naturalRatio(e.currentTarget); if (r) setRatios(prev => (prev[i] === r ? prev : { ...prev, [i]: r })); }}
+              onClick={tap}
+            />
+          </div>
         ))}
       </div>
       <HeartBurst show={burst} />

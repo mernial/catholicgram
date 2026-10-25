@@ -2984,7 +2984,7 @@ export default function Home() {
       ref={mainScrollRef}
       // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
       style={visibleHeight ? { height: visibleHeight } : undefined}
-      className={`w-full max-w-xl mx-auto h-[100dvh] sm:border-x border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
+      className={`w-full max-w-xl tablet:max-w-none mx-auto h-[100dvh] sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
     >
       
       {/* 헤더 */}
@@ -3737,7 +3737,7 @@ export default function Home() {
       {activeTab === 'reels' && (() => {
         const reels = posts.filter(p => p.video_url && !blockedIds.has(p.user_id));
         return (
-          <div className="fixed inset-x-0 top-0 max-w-xl mx-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 bg-black">
+          <div className="fixed inset-x-0 top-0 max-w-xl tablet:max-w-none mx-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 bg-black">
             <p className="absolute top-0 left-0 z-10 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] text-white text-xl font-bold drop-shadow pointer-events-none">영상</p>
             {reels.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 text-white/80 text-center px-6">
@@ -4220,7 +4220,7 @@ export default function Home() {
         };
         return (
           <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
-            <div className="w-full max-w-xl h-[78dvh] bg-[#fdfaf5] rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
+            <div className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-[#fdfaf5] rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
               <div className="shrink-0 pt-2.5 pb-3 border-b border-[#eadfcb] relative">
                 <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
                 <p className="text-center font-bold text-stone-900 mt-2">댓글{(() => { const n = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).length; return n > 0 ? ` ${n}개` : ''; })()}</p>
@@ -5179,7 +5179,7 @@ export default function Home() {
 
       {/* 하단 네비게이션 */}
       {activeTab !== 'chat' && (
-        <nav className={`fixed bottom-0 left-0 right-0 max-w-xl mx-auto border-t flex items-center justify-around z-40 pb-safe ${activeTab === 'reels' ? 'bg-black border-white/10' : 'bg-white border-stone-200'}`}>
+        <nav className={`fixed bottom-0 left-0 right-0 max-w-xl tablet:max-w-none mx-auto border-t flex items-center justify-around z-40 pb-safe ${activeTab === 'reels' ? 'bg-black border-white/10' : 'bg-white border-stone-200'}`}>
           {(() => {
             // 인스타그램처럼: 홈 · 영상 · 메시지 · 탐색 · 내 공간 (새 글은 왼쪽 위 +)
             const dark = activeTab === 'reels';
