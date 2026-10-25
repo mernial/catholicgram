@@ -14,6 +14,10 @@ module.exports = {
   ],
   theme: {
     extend: {
+      // tablet: 아이패드 같은 큰 터치 화면 → 가운데 좁은 칸 대신 화면 가득 (컴퓨터는 그대로)
+      screens: {
+        tablet: { raw: '(min-width: 700px) and (any-pointer: coarse)' },
+      },
       // 글씨 크기: 55세 이상 이용자를 위해 기본보다 한 단계씩 크게
       // (rem 단위라 설정의 '글씨 크기'를 바꾸면 전체가 함께 커지고 작아짐)
       fontSize: {
