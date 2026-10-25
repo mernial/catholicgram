@@ -27,6 +27,7 @@ import AdminMembers from '@/components/AdminMembers';
 import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
+import PhotoZoom from '@/components/PhotoZoom';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
 import ReelVideo from '@/components/ReelVideo';
@@ -355,7 +356,9 @@ export default function Home() {
   const [feastPromptDismissed, setFeastPromptDismissed] = useState(true);
   const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
   
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
+  const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number } | null>(null);
+  const zoomPhoto = (url?: string | null) => setSelectedImage(url ? { images: [url], index: 0 } : null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [detailImageIndex, setDetailImageIndex] = useState(0);
   const [postMenuId, setPostMenuId] = useState<string | null>(null);
@@ -2632,7 +2635,8 @@ export default function Home() {
     }
   }, [anyModalOpen]);
   const closeAllModals = () => {
-    // 프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
+    // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
+    if (selectedImage) { setSelectedImage(null); return; }
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
@@ -2890,14 +2894,17 @@ export default function Home() {
     if (viewerDrag !== 0) { setViewerAnimating(true); setViewerDrag(0); } // 덜 밀었으면 제자리로
   };
 
-  // 크게 보기: 사진을 두 번 누르면 공감 (한 번 누르면 아무 일 없음)
+  // 크게 보기: 사진을 한 번 누르면 사진만 크게, 두 번 누르면 공감
   const [viewerBurst, setViewerBurst] = useState(0);
   const viewerDoubleTapLike = () => {
     if (!selectedPostDetail) return;
     setViewerBurst(Date.now());
     likeByDoubleTap(selectedPostDetail.id);
   };
-  const viewerImageTap = useDoubleTap(() => {}, viewerDoubleTapLike);
+  const viewerImageTap = useDoubleTap(() => {
+    const images = selectedPostDetail?.images || [];
+    if (images.length) setSelectedImage({ images, index: Math.min(detailImageIndex, images.length - 1) });
+  }, viewerDoubleTapLike);
 
   // 기도·공감·댓글·메시지 버튼 (피드와 크게 보기에서 같이 씀)
   // showCounts=false: 피드처럼 숫자는 버튼 아래 줄에 따로 보여 줄 때
@@ -3459,7 +3466,7 @@ export default function Home() {
                   {!post.video_url && post.images && post.images.length > 0 && (
                     <PostPhotos
                       images={post.images}
-                      onOpen={i => openPostViewer(post, i)}
+                      onOpen={i => setSelectedImage({ images: post.images || [], index: i })}
                       onDoubleTap={() => likeByDoubleTap(post.id)}
                       musicTitle={post.music_title}
                     />
@@ -3865,7 +3872,7 @@ export default function Home() {
                             <div className="mt-1.5 pt-1.5 border-t border-dashed border-stone-300">
                               <p className="text-[0.75rem] font-bold text-red-500">원래 내용 · 관리자만 보여요</p>
                               {original.image_url && (
-                                <img loading="lazy" src={original.image_url} alt="지운 사진" onClick={() => setSelectedImage(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
+                                <img loading="lazy" src={original.image_url} alt="지운 사진" onClick={() => zoomPhoto(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
                               )}
                               {original.content && !(original.image_url && original.content === PHOTO_ONLY_TEXT) && (
                                 <p className="mt-0.5 text-stone-600 whitespace-pre-wrap break-words">{original.content}</p>
@@ -3888,7 +3895,7 @@ export default function Home() {
                               <img loading="lazy"
                                 src={msg.image_url}
                                 alt="보낸 사진"
-                                onClick={e => { if (isMe) return; e.stopPropagation(); setSelectedImage(msg.image_url || null); }}
+                                onClick={e => { if (isMe) return; e.stopPropagation(); zoomPhoto(msg.image_url); }}
                                 className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
                               />
                             )}
@@ -3915,7 +3922,7 @@ export default function Home() {
                           {isMe && selectedMessageId === String(msg.id) && (
                             <div className={`flex justify-end gap-1.5 ${hearts.length ? 'mt-6' : 'mt-1'}`}>
                               {msg.image_url && (
-                                <button onClick={() => { setSelectedMessageId(null); setSelectedImage(msg.image_url || null); }} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 bg-white border border-stone-200 rounded-full px-3 py-1 shadow-sm">
+                                <button onClick={() => { setSelectedMessageId(null); zoomPhoto(msg.image_url); }} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 bg-white border border-stone-200 rounded-full px-3 py-1 shadow-sm">
                                   <Icon name="search" className="w-4 h-4" />크게 보기
                                 </button>
                               )}
@@ -4983,11 +4990,7 @@ export default function Home() {
         </div>
       )}
 
-      {selectedImage && (
-        <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 cursor-pointer" onClick={() => setSelectedImage(null)}>
-          <img loading="lazy" src={selectedImage} alt="확대 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
-        </div>
-      )}
+      {selectedImage && <PhotoZoom images={selectedImage.images} start={selectedImage.index} onClose={() => setSelectedImage(null)} />}
 
       {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
       {user && ((needsProfileSetup && !setupDismissed) || profileEditMode) && (
