@@ -431,6 +431,8 @@ export default function Home() {
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
   // 앱 사용 중 새 알림을 화면 위에 잠깐 보여주는 배너
   const [toast, setToast] = useState<{ key: string; icon: string; title: string; body: string; action: () => void } | null>(null);
+  const [updateReady, setUpdateReady] = useState(false); // 새 버전이 나왔는데 앱을 켜 둔 채라 아직 옛 화면일 때
+  const updateDismissedRef = useRef(false);
   const [alertSoundOn, setAlertSoundOn] = useState(true);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const sessionStartRef = useRef<number>(0);
@@ -608,6 +610,17 @@ export default function Home() {
       fetchNotices();
     };
     document.addEventListener('visibilitychange', onAppResume);
+    // 앱을 화면에 켜 둔 채로 쓰는 기기(아이패드 등)는 '다시 열기'가 없어 새 버전이 안 들어온다
+    // → 5분마다 확인해서 새 버전이면 '새로 고침' 띠를 띄운다 (쓰던 글이 날아가지 않게 저절로 새로고침하지는 않음)
+    const checkForUpdate = async () => {
+      if (document.visibilityState === 'hidden' || updateDismissedRef.current) return;
+      try {
+        const res = await fetch('/api/version', { cache: 'no-store' });
+        const { version } = await res.json();
+        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION) setUpdateReady(true);
+      } catch { /* 인터넷이 잠깐 끊겨도 다음에 다시 */ }
+    };
+    const updateTimer = setInterval(checkForUpdate, 5 * 60 * 1000);
     // 알림으로 앱이 앞으로 왔는데 화면 전환 신호가 늦거나 없을 때를 대비
     const onAppFocus = () => setTimeout(consumePendingLink, 300);
     window.addEventListener('focus', onAppFocus);
@@ -651,6 +664,7 @@ export default function Home() {
       window.removeEventListener('online', onOnline);
       activationEvents.forEach(ev => window.removeEventListener(ev, setupHistory, { capture: true }));
       clearInterval(intentionTimer);
+      clearInterval(updateTimer);
       document.removeEventListener('visibilitychange', onAppResume);
       window.removeEventListener('popstate', onPopState);
       clearInterval(bannerTimer);
@@ -4543,6 +4557,21 @@ export default function Home() {
             </span>
             {!toast.key.startsWith('exit') && <span className="text-[0.8125rem] text-blue-600 font-bold shrink-0">보기</span>}
           </button>
+        </div>
+      )}
+
+      {/* 새 버전 안내 띠: 켜 둔 채로 쓰던 기기에서 새 기능을 받으려면 한 번 새로 고침 */}
+      {updateReady && !toast && !anyModalOpen && (
+        <div className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] left-0 right-0 z-[94] flex justify-center px-3 pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-md bg-white/95 backdrop-blur border border-violet-200 shadow-xl rounded-2xl pl-4 pr-2 py-2.5 flex items-center gap-3 animate-[toastIn_0.25s_ease-out]">
+            <span className="text-2xl shrink-0">✨</span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-[0.9375rem] font-bold text-stone-900">앱이 새로 바뀌었어요</span>
+              <span className="block text-xs text-stone-600">새로 고침을 누르면 새 기능이 보여요</span>
+            </span>
+            <button onClick={async () => { await supabase.auth.getSession().catch(() => {}); window.location.reload(); }} className="shrink-0 bg-violet-600 text-white text-sm font-bold rounded-xl px-3 py-2">새로 고침</button>
+            <button onClick={() => { updateDismissedRef.current = true; setUpdateReady(false); }} className="shrink-0 text-stone-400 text-2xl leading-none px-1.5" aria-label="나중에">×</button>
+          </div>
         </div>
       )}
 
