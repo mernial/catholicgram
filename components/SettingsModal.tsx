@@ -127,6 +127,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>
             <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.app_metadata?.naver_id ? '네이버 계정' : user.email || (user.app_metadata?.provider === 'google' ? '구글 계정' : '카카오 계정')}</p>
+            {/* 기기마다 새 버전을 받았는지 비교할 때 보는 번호 */}
+            <p className="px-4 pb-4 -mt-3 text-[0.75rem] text-stone-300">앱 버전 {(process.env.NEXT_PUBLIC_APP_VERSION || 'dev').slice(0, 7)}</p>
           </div>
         ) : view === 'feast' ? (
           <div className="overflow-y-auto p-4 flex flex-col gap-3">
