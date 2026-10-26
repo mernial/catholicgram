@@ -4514,7 +4514,7 @@ export default function Home() {
                   {editPhotoLoading && <p className="text-[0.75rem] text-stone-500">사진을 불러오는 중...</p>}
                 </div>
               )}
-              <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full shrink-0 p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
               {user && <MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} />}
               {/* 이모티콘 바로 넣기 */}
               <div className="flex flex-wrap gap-1">
