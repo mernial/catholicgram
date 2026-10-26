@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { ReportTarget } from '@/components/ReportDialog';
@@ -35,6 +35,9 @@ interface AnonReply {
 }
 
 type Reaction = 'pray' | 'like' | 'cheer';
+
+// 쓰던 고민글 (회원별): 당겨서 새로고침·탭 이동으로 게시판이 다시 그려져도 지워지지 않게
+const drafts = new Map<string, string>();
 
 // 연한 동그라미 안 아이콘, 누르면 그림까지 색이 꽉 채워짐
 const REACTIONS: { key: Reaction; icon: IconName; label: string; count: keyof AnonPost; off: string; on: string; text: string }[] = [
@@ -98,7 +101,16 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   const [posts, setPosts] = useState<AnonPost[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
-  const [content, setContent] = useState('');
+  const [content, setContentState] = useState(() => (user && drafts.get(user.id)) || '');
+  const setContent = (v: string) => { setContentState(v); if (user) { if (v) drafts.set(user.id, v); else drafts.delete(user.id); } };
+  // 쓴 글이 모두 보이도록 글쓰기 칸이 글에 맞춰 늘어난다 (아주 길면 칸 안에서 스크롤)
+  const composeRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const el = composeRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [content, setupNeeded, user]);
   const [expiryHours, setExpiryHours] = useState(24);
   const [posting, setPosting] = useState(false);
   const [openReplies, setOpenReplies] = useState<{ [postId: string]: boolean }>({});
@@ -263,12 +275,13 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
         <>
           <form onSubmit={handlePost} className="p-4 bg-white border-b border-stone-200 flex flex-col gap-3">
             <textarea
+              ref={composeRef}
               value={content}
               onChange={(e) => setContent(e.target.value)}
               maxLength={2000}
               rows={3}
               placeholder="마음속 고민을 익명으로 나눠보세요..."
-              className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-violet-300"
+              className="w-full p-3.5 text-sm text-stone-900 bg-stone-50 border border-stone-200 rounded-2xl resize-none max-h-[45dvh] overflow-y-auto overscroll-contain focus:outline-none focus:ring-2 focus:ring-violet-300"
             />
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[0.8125rem] font-bold text-stone-500">⏳ 자동 삭제</span>
@@ -364,7 +377,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleReply(post.id); }}
                         maxLength={1000}
                         placeholder="따뜻한 답글을 익명으로 남겨주세요..."
-                        className="flex-1 text-xs border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
+                        className="flex-1 text-xs text-stone-900 border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
                       />
                       <button onClick={() => handleReply(post.id)} className="bg-violet-600 text-white text-xs px-3 py-2 rounded-xl">등록</button>
                     </div>
