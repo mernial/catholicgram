@@ -12,7 +12,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply'; id?: string };
+type NotifyBody = { type?: 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply'].includes(type)) {
+  if (!id || !type || !['test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -53,7 +53,13 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'letter_gift') {
+  if (type === 'tester_added') {
+    // 관리자가 테스터 신청자를 구글 플레이 테스터 목록에 등록함 → 신청한 분께 참여 방법 안내
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: signup } = await admin.from('tester_signups').select('user_id, status').eq('user_id', id).maybeSingle();
+    if (!signup || signup.status !== 'added') return Response.json({ skipped: 'not added' });
+    list.push({ recipientId: signup.user_id, payload: { title: '🎉 안드로이드 테스터 등록이 끝났어요', body: '눌러서 테스트 앱 설치 방법을 확인해 주세요 🙏', url: '/?tester=1', tag: 'tester-added' } });
+  } else if (type === 'letter_gift') {
     // 관리자가 사연을 선물 대상으로 뽑음 → 보낸 분께
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const { data: letter } = await admin.from('letters').select('id, user_id, gift').eq('id', id).maybeSingle();

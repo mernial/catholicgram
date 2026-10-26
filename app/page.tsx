@@ -46,6 +46,9 @@ import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import ClampText from '@/components/ClampText';
 import AdminStats from '@/components/AdminStats';
 import AdminUsage from '@/components/AdminUsage';
+import TesterSignup from '@/components/TesterSignup';
+import AdminTesters from '@/components/AdminTesters';
+import { TesterStatus, isAndroidDevice } from '@/lib/android-test';
 import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
@@ -74,7 +77,8 @@ const deepLinkFromSearch = (search: string) => {
   const reply = params.get('reply') || undefined;     // anon 과 함께: 그 답글로
   const letters = params.get('letters') === '1';      // 사연함 (관리자) / 보낸 사연
   const lounge = params.get('lounge') || undefined;   // 사랑방의 그 대화 (관리자 부름)
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge } : null;
+  const tester = params.get('tester') === '1';        // 안드로이드 테스터 신청 창 (구글 등록 완료 알림)
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -313,7 +317,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -354,6 +358,12 @@ export default function Home() {
   const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
   const [feastCardDismissed, setFeastCardDismissed] = useState(true);
   const [feastPromptDismissed, setFeastPromptDismissed] = useState(true);
+  // 안드로이드 테스터 모집 (구글 플레이 비공개 테스트): 신청 창, 관리자 목록, 내 신청 상태(표가 없으면 null), 홈 안내 카드
+  const [showTesterSignup, setShowTesterSignup] = useState(false);
+  const [showAdminTesters, setShowAdminTesters] = useState(false);
+  const [testerStatus, setTesterStatus] = useState<TesterStatus | null>(null);
+  const [isAndroid, setIsAndroid] = useState(false);
+  const [testerPromptDismissed, setTesterPromptDismissed] = useState(true);
   const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
@@ -2049,6 +2059,19 @@ export default function Home() {
     setFeastPromptDismissed(true);
     if (user) storageSet(`feastPromptDismissed:${user.id}`, '1');
   };
+  const dismissTesterPrompt = () => {
+    setTesterPromptDismissed(true);
+    if (user) storageSet(`testerPromptDismissed:${user.id}`, '1');
+  };
+  // 테스터 모집 카드: 안드로이드 폰에서, 아직 신청 안 했고 닫지 않았을 때만 (신청 표가 아직 없으면 안 보임)
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('tester_signups').select('status').eq('user_id', user.id).maybeSingle().then(({ data, error }) => {
+      setIsAndroid(isAndroidDevice());
+      setTesterPromptDismissed(storageGet(`testerPromptDismissed:${user.id}`) === '1');
+      setTesterStatus(error ? null : ((data?.status as TesterStatus | undefined) || 'none'));
+    });
+  }, [user]);
 
   const openNotifications = () => {
     if (!user) return;
@@ -2154,7 +2177,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -2330,7 +2353,7 @@ export default function Home() {
     if (link.view) hideAlert(`c:mp:${link.view}`);
     if (link.profile) hideAlert(`fu:${link.profile}`);
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
-      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.letters ? 'letters' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
+      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
     if (!key || !('serviceWorker' in navigator)) return;
     navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications()).then(list => {
@@ -2346,7 +2369,7 @@ export default function Home() {
   const closeOverlaysForLink = () => {
     setActionModalUser(null); setSelectedPostDetail(null); setSelectedImage(null); setAvatarPreview(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowNotices(false);
-    setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowAdminMembers(false); setPostMenuId(null);
+    setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowTesterSignup(false); setShowAdminTesters(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
   };
@@ -2375,6 +2398,8 @@ export default function Home() {
     } else if (deepLink.lounge) {
       setLoungeFocusId(deepLink.lounge);
       setShowLounge(true);
+    } else if (deepLink.tester) {
+      setShowTesterSignup(true);
     } else if (deepLink.letters) {
       setLettersStart('mine');
       setShowLetters(true);
@@ -2660,7 +2685,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2696,6 +2721,8 @@ export default function Home() {
     setFollowList(null);
     setShowAdminStats(false);
     setShowAdminUsage(false);
+    setShowTesterSignup(false);
+    setShowAdminTesters(false);
     setPostMenuId(null);
     setFabOpen(false);
     setCommentSheetId(null);
@@ -3200,6 +3227,14 @@ export default function Home() {
               <button onClick={dismissFeastPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
             </div>
           )}
+          {user && profile && isAndroid && testerStatus === 'none' && !testerPromptDismissed && (
+            <div className="mx-4 mt-3 p-3.5 rounded-2xl bg-white border border-emerald-200 flex items-center gap-3">
+              <IconBadge name="phone" tone="green" />
+              <p className="flex-1 text-xs text-stone-700 leading-snug"><b>안드로이드 앱 테스터를 모집해요</b><br />2주만 도와주시면 플레이 스토어에 올라가요 🙏</p>
+              <button onClick={() => setShowTesterSignup(true)} className="bg-emerald-700 text-white text-xs font-bold px-3 py-1.5 rounded-lg shrink-0">신청</button>
+              <button onClick={dismissTesterPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
+            </div>
+          )}
           {/* 글쓰기: 인스타그램 '새 게시물'처럼 전체 화면 (닫아도 쓰던 글은 남아 있음) */}
           {showComposer && (() => {
             const canShare = !loading && !videoStatus && !!(content.trim() || selectedFiles.length > 0 || selectedVideo);
@@ -3645,6 +3680,7 @@ export default function Home() {
                         <button onClick={() => setShowAdminMembers(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="users" className="w-3.5 h-3.5" />회원 명단</button>
                         <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
                         <button onClick={() => setShowAdminUsage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="stack" className="w-3.5 h-3.5" />데이터 사용량</button>
+                        <button onClick={() => setShowAdminTesters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5" />테스터 신청</button>
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
@@ -4067,6 +4103,7 @@ export default function Home() {
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
+          onOpenTester={testerStatus !== null ? () => { setShowSettings(false); setShowTesterSignup(true); } : undefined}
           onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined} />
       )}
 
@@ -4380,6 +4417,8 @@ export default function Home() {
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
       {showAdminUsage && isAdmin && <AdminUsage onClose={() => setShowAdminUsage(false)} />}
+      {showAdminTesters && isAdmin && <AdminTesters onClose={() => setShowAdminTesters(false)} sendPush={sendPush} />}
+      {showTesterSignup && user && <TesterSignup user={user} onClose={() => setShowTesterSignup(false)} onStatusChange={setTesterStatus} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
       {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}
       {showLetters && user && (

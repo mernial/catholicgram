@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: '개인정보처리방침 - 가톨릭
 export default function PrivacyPage() {
   const contact = ADMIN_EMAILS[0];
   return (
-    <LegalPage title="개인정보처리방침" updated="2026년 10월 23일">
+    <LegalPage title="개인정보처리방침" updated="2026년 10월 26일">
       <p>가톨릭그램(이하 &ldquo;서비스&rdquo;)은 이용자의 개인정보를 소중히 여기며, 「개인정보 보호법」 등 관련 법령을 준수합니다. 이 방침은 서비스가 어떤 정보를 어떻게 수집·이용·보관·파기하는지 안내합니다.</p>
 
       <section>
@@ -23,6 +23,7 @@ export default function PrivacyPage() {
             <tr><td>모두의 사랑방</td><td>사랑방 대화 내용과 보낸 시각, 운영자가 단 배지</td></tr>
             <tr><td>사연 보내기</td><td>사연 내용·사진, 이름 공개 여부, 방송 소개 동의 여부, 처리 상태(읽음·소개함·선물 대상)</td></tr>
             <tr><td>오늘의 기도지향</td><td>기도지향 제목·내용 (올린 사람은 운영자만 열람)</td></tr>
+            <tr><td>안드로이드 앱 테스터 신청</td><td>구글 계정 이메일, 동의 시각, 등록 상태 (신청한 경우에만 — 구글 플레이 비공개 테스트 등록용, 신청을 취소하거나 테스트가 끝나면 삭제)</td></tr>
             <tr><td>알림</td><td>푸시 알림 수신을 허용한 경우 기기별 알림 구독 정보</td></tr>
             <tr><td>자동 수집</td><td>접속 기록(접속·이용 시각, 기기별 임의 식별값, 앱 설치 여부), 브라우저/기기 정보 (이용 통계와 보안·장애 대응 목적)</td></tr>
           </tbody>
@@ -69,7 +70,7 @@ export default function PrivacyPage() {
             <tr><td>Cloudflare, Inc.</td><td>사진·영상 파일 저장 및 전송 (R2)</td></tr>
             <tr><td>Vercel Inc.</td><td>웹사이트 호스팅</td></tr>
             <tr><td>Kakao Corp.</td><td>카카오 로그인</td></tr>
-            <tr><td>Google LLC</td><td>구글 로그인, 게시물 음악(유튜브) 재생</td></tr>
+            <tr><td>Google LLC</td><td>구글 로그인, 게시물 음악(유튜브) 재생, 안드로이드 앱 테스트 (테스터 신청자가 동의한 구글 계정 이메일을 Google Play 테스터 목록에 등록)</td></tr>
             <tr><td>NAVER Corp.</td><td>네이버 로그인</td></tr>
             <tr><td>Google LLC, Apple Inc., Mozilla 등</td><td>푸시 알림 전달 (기기 브라우저에 따라)</td></tr>
           </tbody>
