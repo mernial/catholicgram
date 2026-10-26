@@ -37,6 +37,7 @@ export const viewport: Viewport = {
   viewportFit: 'cover', // 노치가 있는 폰에서 화면 끝까지 사용 (안전 영역은 pb-safe 등으로 피함)
   interactiveWidget: 'resizes-content', // 키보드가 올라오면 화면 높이를 줄여 입력창이 키보드 위에 보이게 (안드로이드)
   themeColor: '#FAF7F2',
+  colorScheme: 'only light', // 휴대폰 다크 모드가 화면 색을 억지로 바꿔 글씨가 바탕에 묻히지 않게
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

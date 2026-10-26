@@ -2830,9 +2830,20 @@ export default function Home() {
     if (!el) return;
     let start: { x: number; y: number } | null = null;
     let dist = 0;
+    // 글을 쓰는 중(입력칸을 누름·키보드가 올라옴)이거나 안쪽 칸이 스크롤된 상태에서 끌면 그 칸을 스크롤해야 한다
+    // (그대로 새로고침하면 쓰던 글이 지워지고, 칸 안의 앞줄도 볼 수 없음)
+    const isTextField = (n: Element | null) => !!n && (n.matches('textarea, [contenteditable="true"]')
+      || (n instanceof HTMLInputElement && !/^(checkbox|radio|button|submit|reset|range|file|image|color)$/.test(n.type)));
+    const typing = (t: EventTarget | null) => {
+      if (isTextField(document.activeElement)) return true;
+      for (let n = t instanceof Element ? t : null; n && n !== el; n = n.parentElement) {
+        if (isTextField(n) || n.scrollTop > 0) return true;
+      }
+      return false;
+    };
     const onStart = (e: TouchEvent) => {
       start = null; dist = 0;
-      if (pullCtx.current.blocked || el.scrollTop > 0 || e.touches.length !== 1) return;
+      if (pullCtx.current.blocked || el.scrollTop > 0 || e.touches.length !== 1 || typing(e.target)) return;
       start = { x: e.touches[0].clientX, y: e.touches[0].clientY };
     };
     const onMove = (e: TouchEvent) => {
