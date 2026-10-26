@@ -1694,19 +1694,29 @@ export default function Home() {
     e.target.value = '';
     if (picked.length === 0) return;
     clearVideo();
-    // 새 게시물 1단계: 고른 사진은 모두 아래 사진 칸에 미리보기로 모으고, 처음 것(여러 장 선택이면 들어갈 만큼)을 고른 상태로
+    // 새 게시물 1단계: 고른 사진은 모두 아래 사진 칸에 미리보기로 모은다
+    //  - 한 장만 골랐으면 그 사진을 고른 상태로
+    //  - 사진첩에서 여러 장을 한꺼번에 골랐으면 '여러 장 선택'으로 저절로 바꾸고, 고른 사진을 모두(최대 장수까지) 게시물에
     if (showComposer && composerStep === 'pick') {
       const items = picked.slice(0, 60).map(f => ({ file: f, url: URL.createObjectURL(f) }));
       setTray(prev => [...items, ...prev].slice(0, 80));
-      if (!composerMulti) {
+      if (!composerMulti && items.length === 1) {
         setSelectedFiles([items[0].file]); setPreviewUrls([items[0].url]); setComposerPhotoIdx(0);
-      } else {
-        const add = items.slice(0, Math.max(0, MAX_PHOTOS - selectedFiles.length));
-        if (add.length > 0) {
-          setSelectedFiles(prev => [...prev, ...add.map(t => t.file)]);
-          setPreviewUrls(prev => [...prev, ...add.map(t => t.url)]);
-          setComposerPhotoIdx(selectedFiles.length + add.length - 1);
-        }
+        return;
+      }
+      // 이미 '여러 장 선택' 중이면 고른 사진 뒤에 이어서, 아니면 이번에 고른 사진들로
+      const kept = composerMulti ? selectedFiles.length : 0;
+      const add = items.slice(0, Math.max(0, MAX_PHOTOS - kept));
+      if (!composerMulti) setComposerMulti(true);
+      if (add.length > 0) {
+        setSelectedFiles(prev => [...(composerMulti ? prev : []), ...add.map(t => t.file)]);
+        setPreviewUrls(prev => [...(composerMulti ? prev : []), ...add.map(t => t.url)]);
+        setComposerPhotoIdx(composerMulti ? kept : 0);
+      }
+      if (items.length > add.length) {
+        alert(add.length === 0
+          ? `사진은 한 게시물에 ${MAX_PHOTOS}장까지예요.\n이미 ${MAX_PHOTOS}장을 골랐어요. 아래 사진 칸에서 뺀 뒤 다시 골라 주세요.`
+          : `사진은 한 게시물에 ${MAX_PHOTOS}장까지예요.\n고른 사진 중 앞의 ${add.length}장을 넣었어요. 아래 사진 칸에서 바꿀 수 있어요.`);
       }
       return;
     }
@@ -3288,7 +3298,7 @@ export default function Home() {
                   </div>
                   <p className="px-4 pt-3 pb-4 text-[0.8125rem] text-white/50 leading-relaxed">
                     {tray.length === 0
-                      ? <>📱 <b className="text-white/80">사진첩 열기</b>에서 사진을 <b className="text-white/80">여러 장 한꺼번에</b> 고르면 여기에 미리보기로 모여요. 그중에서 올릴 사진을 누르세요.</>
+                      ? <>📱 <b className="text-white/80">사진첩 열기</b>에서 사진을 <b className="text-white/80">여러 장 한꺼번에</b> 고르면 고른 사진이 모두 한 게시물에 올라가요 ({MAX_PHOTOS}장까지).</>
                       : composerMulti ? `누르는 순서대로 번호가 붙어요 · ${MAX_PHOTOS}장까지 · 큰 사진을 한 번 더 누르면 빠져요` : '올릴 사진을 누르세요 · 여러 장을 올리려면 위의 \u2018여러 장 선택\u2019'}
                   </p>
                 </div>
