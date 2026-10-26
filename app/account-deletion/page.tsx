@@ -37,7 +37,7 @@ export default function AccountDeletionPage() {
           <li>프로필(이름·세례명, 핸들, 프로필 사진)과 로그인 정보</li>
           <li>작성한 게시글과 사진, 댓글, 기도/공감 표시</li>
           <li>주고받은 1:1 메시지, 팔로우 관계</li>
-          <li>익명 고민글과 답글, 건의사항, 신고·차단 내역, 알림 설정</li>
+          <li>익명 고민글과 답글, 건의사항, 신고·차단 내역, 알림 설정, 안드로이드 테스터 신청 정보</li>
         </ul>
         <p className="mt-2 text-xs text-stone-500">별도로 보관하는 데이터는 없습니다. (법령상 보관 의무가 있는 경우 제외)</p>
       </section>

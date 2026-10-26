@@ -13,7 +13,7 @@ import { initial } from '@/lib/fancy-name';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -23,6 +23,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
+  onOpenTester?: () => void;  // 안드로이드 앱 테스터 신청 (신청 표가 준비된 경우)
   onOpenStats?: () => void;   // 관리자에게만 전달
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
@@ -105,6 +106,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             )}
             {onEditProfile && (
               <button onClick={onEditProfile} className={row}><span className={label}><IconBadge name="pencil" />닉네임·핸들·실명 수정</span><span className="text-stone-300">›</span></button>
+            )}
+            {onOpenTester && (
+              <button onClick={onOpenTester} className={row}><span className={label}><IconBadge name="phone" tone="green" />안드로이드 앱 테스터 신청</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => { setFeastInput(feastDay); setView('feast'); }} className={row}>
               <span className={label}><IconBadge name="calendar" tone="gold" />나의 축일</span>

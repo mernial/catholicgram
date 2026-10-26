@@ -1,0 +1,151 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
+import { IconBadge } from '@/components/Icon';
+import { PLAY_STORE_URL, TESTER_JOIN_URL, TesterStatus, isAndroidDevice, isValidEmail } from '@/lib/android-test';
+
+// 안드로이드 앱 테스터 신청: 회원이 동의하고 플레이 스토어 구글 계정을 적어 낸다 (supabase/android-testers.sql)
+// 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다
+export default function TesterSignup({ user, onClose, onStatusChange }: {
+  user: User;
+  onClose: () => void;
+  onStatusChange?: (status: TesterStatus) => void;
+}) {
+  const [status, setStatus] = useState<TesterStatus | null>(null);
+  const [savedEmail, setSavedEmail] = useState('');
+  const [email, setEmail] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [setupNeeded, setSetupNeeded] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(true);
+
+  useEffect(() => {
+    supabase.from('tester_signups').select('google_email, status').eq('user_id', user.id).maybeSingle().then(({ data, error }) => {
+      setIsAndroid(isAndroidDevice());
+      if (error) { setSetupNeeded(true); setStatus('none'); return; }
+      const s = (data?.status as TesterStatus) || 'none';
+      setStatus(s);
+      setSavedEmail(data?.google_email || '');
+      // 구글 로그인으로 가입한 분은 그 Gmail 을 미리 채워 둔다 (다를 수 있으니 확인하게)
+      setEmail(data?.google_email || (/@gmail\.com$/i.test(user.email || '') ? user.email! : ''));
+    });
+  }, [user.id, user.email]);
+
+  const apply = (s: TesterStatus) => { setStatus(s); onStatusChange?.(s); };
+
+  const submit = async () => {
+    const value = email.trim().toLowerCase();
+    if (!isValidEmail(value) || !consent) return;
+    setSaving(true);
+    const { error } = await supabase.from('tester_signups').upsert(
+      { user_id: user.id, google_email: value, status: 'requested', consent_at: new Date().toISOString() },
+      { onConflict: 'user_id' },
+    );
+    setSaving(false);
+    if (error) { alert('신청하지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+    setSavedEmail(value);
+    setEditing(false);
+    apply('requested');
+  };
+
+  const cancel = async () => {
+    if (!window.confirm('테스터 신청을 취소할까요?\n적어 주신 이메일도 함께 지워져요.')) return;
+    const { error } = await supabase.from('tester_signups').delete().eq('user_id', user.id);
+    if (error) { alert('취소하지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+    setSavedEmail(''); setConsent(false); setEditing(false);
+    apply('none');
+  };
+
+  const step = (n: number, text: React.ReactNode) => (
+    <li className="flex gap-2.5"><span className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center justify-center shrink-0">{n}</span><span className="text-sm text-stone-700 leading-relaxed">{text}</span></li>
+  );
+  const showForm = status === 'none' || editing;
+  const valid = isValidEmail(email.trim());
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white w-full sm:w-[28rem] max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-4" onClick={e => e.stopPropagation()} role="dialog" aria-label="안드로이드 앱 테스터 신청">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-stone-900 flex items-center gap-2"><IconBadge name="phone" tone="green" />안드로이드 앱 테스터</h2>
+          <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-2" aria-label="닫기">×</button>
+        </div>
+
+        {status === null && <p className="py-10 text-center text-sm text-stone-400">불러오는 중...</p>}
+        {status !== null && setupNeeded && <p className="py-8 text-center text-sm text-stone-500 leading-relaxed">테스터 신청을 준비하고 있어요.<br />조금 뒤에 다시 열어 주세요.</p>}
+
+        {status !== null && !setupNeeded && showForm && (
+          <>
+            <p className="text-sm text-stone-700 leading-relaxed">
+              가톨릭그램이 <b>구글 플레이 스토어</b>에 정식으로 올라가려면, 안드로이드 휴대폰을 쓰는 교우 <b>12명 이상</b>이 <b>2주 동안</b> 앱을 시험해 주셔야 해요. 도와주시면 큰 힘이 돼요 🙏
+            </p>
+            <div className="rounded-2xl bg-stone-50 border border-stone-200 p-3.5 flex flex-col gap-2">
+              <p className="text-xs font-bold text-stone-500">이렇게 진행돼요</p>
+              <ol className="flex flex-col gap-2">
+                {step(1, <>아래에 <b>플레이 스토어에 쓰는 구글 계정</b>을 적어 주세요</>)}
+                {step(2, <>관리자가 구글에 등록하면 <b>알림</b>이 가요</>)}
+                {step(3, <>알림을 눌러 안내대로 <b>앱을 설치</b>해요</>)}
+                {step(4, <><b>14일 동안 지우지 말고</b> 가끔 열어 주세요</>)}
+              </ol>
+              <p className="text-xs text-stone-500">갤럭시 등 <b>안드로이드 휴대폰</b>만 참여할 수 있어요. 아이폰은 참여할 수 없어요.</p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="tester-email" className="text-[0.8125rem] font-bold text-stone-600">플레이 스토어에 쓰는 구글 계정 (Gmail)</label>
+              <input id="tester-email" type="email" inputMode="email" autoComplete="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="예: maria1234@gmail.com"
+                className="w-full p-3 text-sm border border-stone-300 rounded-xl bg-stone-50 focus:outline-none focus:ring-2 focus:ring-emerald-400" />
+              <p className="text-xs text-stone-500 leading-snug">모르시면: 플레이 스토어 앱 → 오른쪽 위 <b>동그란 프로필 사진</b>을 누르면 이메일이 보여요.</p>
+              {email.trim() && !valid && <p className="text-xs text-red-600">이메일 주소를 다시 확인해 주세요.</p>}
+            </div>
+            <label className="flex items-start gap-2.5 text-sm text-stone-700 leading-snug cursor-pointer">
+              <input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} className="mt-0.5 w-5 h-5 accent-emerald-700 shrink-0" />
+              <span>이 이메일을 <b>구글 플레이 테스터 목록</b>에 등록하는 데 동의해요. <span className="text-stone-500">(테스트에만 쓰고, 신청을 취소하거나 테스트가 끝나면 지워요)</span></span>
+            </label>
+            <div className="flex gap-2">
+              {editing && <button onClick={() => { setEditing(false); setEmail(savedEmail); }} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm font-bold text-stone-600">그만두기</button>}
+              <button onClick={submit} disabled={!valid || !consent || saving} className="flex-1 py-3 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:bg-stone-300">{saving ? '보내는 중...' : editing ? '고친 이메일로 다시 신청' : '테스터 신청하기'}</button>
+            </div>
+          </>
+        )}
+
+        {status === 'requested' && !editing && (
+          <>
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center">
+              <p className="text-2xl">✅</p>
+              <p className="font-bold text-stone-900 mt-1">신청했어요. 감사해요!</p>
+              <p className="text-sm text-stone-700 mt-1 break-all">{savedEmail}</p>
+              <p className="text-xs text-stone-600 mt-2 leading-relaxed">관리자가 구글에 등록하면 <b>알림</b>으로 알려 드릴게요.<br />그때 알림을 눌러 앱을 설치해 주세요.</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => { setConsent(false); setEditing(true); }} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm font-bold text-stone-700">이메일 고치기</button>
+              <button onClick={cancel} className="flex-1 py-3 rounded-xl border border-red-200 text-sm font-bold text-red-600">신청 취소</button>
+            </div>
+          </>
+        )}
+
+        {status === 'added' && !editing && (
+          <>
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
+              <p className="font-bold text-stone-900">🎉 등록이 끝났어요! 이제 앱을 설치해 주세요</p>
+              <p className="text-xs text-stone-600 mt-1 break-all">플레이 스토어가 <b>{savedEmail}</b> 계정으로 로그인되어 있어야 해요.</p>
+            </div>
+            {!isAndroid && <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3">아래 단계는 <b>안드로이드 휴대폰</b>의 가톨릭그램에서 이 화면을 다시 열어서 해 주세요.</p>}
+            <ol className="flex flex-col gap-3">
+              {step(1, <>
+                아래 단추를 눌러 열린 화면에서 <b>&lsquo;테스터 되기&rsquo;</b>를 눌러요.
+                <a href={TESTER_JOIN_URL} target="_blank" rel="noopener noreferrer" className="mt-2 block w-full py-3 rounded-xl bg-emerald-700 text-white text-sm font-bold text-center">① 테스트 참여하기</a>
+              </>)}
+              {step(2, <>
+                그다음 플레이 스토어에서 <b>설치</b>를 누르고, 앱을 열어 로그인해요.
+                <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 block w-full py-3 rounded-xl border border-emerald-700 text-emerald-800 text-sm font-bold text-center">② 플레이 스토어에서 설치</a>
+              </>)}
+              {step(3, <><b>14일 동안 지우지 말고</b> 가끔 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
+            </ol>
+            <button onClick={() => { setConsent(false); setEditing(true); }} className="self-center text-xs text-stone-500 underline">구글 계정 이메일이 달라요 (고치기)</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
