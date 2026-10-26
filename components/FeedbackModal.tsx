@@ -329,7 +329,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
               rows={6}
               maxLength={2000}
               placeholder={category === 'bug' ? '어떤 화면에서 무엇을 했을 때 문제가 생겼는지 적어주세요. (휴대폰 종류도 알려주시면 좋아요)' : '자유롭게 적어주세요...'}
-              className="w-full p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="w-full shrink-0 p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
             {/* 사진 첨부 (화면 캡처 등 한 장) */}
             {photo ? (

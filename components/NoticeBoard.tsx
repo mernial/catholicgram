@@ -112,7 +112,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
         {editing ? (
           <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
             <input value={title} onChange={e => setTitle(e.target.value.slice(0, 60))} placeholder="공지 제목 (예: 10월 성지순례 안내)" className="w-full px-3.5 py-3 text-sm font-bold border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
-            <textarea value={content} onChange={e => setContent(e.target.value.slice(0, 2000))} rows={10} placeholder="공지 내용" className="w-full p-3.5 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+            <textarea value={content} onChange={e => setContent(e.target.value.slice(0, 2000))} rows={10} placeholder="공지 내용" className="w-full shrink-0 p-3.5 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
             <p className="text-right text-xs text-stone-400 -mt-2">{content.length}/2000</p>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={popup} onChange={e => setPopup(e.target.checked)} className="w-5 h-5" /> <span>앱에 들어오면 팝업으로 띄우기 <span className="text-xs text-stone-400">(올린 뒤 하루 동안, 다시 보지 않기 전까지)</span></span></label>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="w-5 h-5" /> <span>홈 화면 맨 위에 보이기 <span className="text-xs text-stone-400">(올린 뒤 하루 동안)</span></span></label>
