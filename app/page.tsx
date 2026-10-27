@@ -22,6 +22,7 @@ import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
@@ -208,7 +209,15 @@ interface GroupChatRow { id: string; name: string; member_count: number; last_me
 interface AdminGroupRow { id: string; name: string; created_at: string; last_message_at: string; member_count: number; member_names: string | null; message_count: number; last_message: string | null; last_sender: string | null }
 // anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; }
+// 휴대폰 알림창에 남은 그 대화(채팅·단체방)의 알림을 닫는다 (대화방을 열었을 때)
+const closeOsNotifications = (tag: string) => {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications({ tag })).then(list => (list || []).forEach(n => n.close())).catch(() => {});
+};
+// 메시지 감정 표시 (supabase/message-extras.sql) — 두 번 누르면 하트, 꾹 누르면 고르기
+const MESSAGE_EMOJIS = ['❤️', '👍', '😊', '😂', '😮', '😢', '🙏'] as const;
+const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
 
@@ -304,6 +313,8 @@ export default function Home() {
   const myHandleRef = useRef<string | null>(null);
   const [notificationsClearedAt, setNotificationsClearedAt] = useState<string | null>(null);
   const [hiddenAlerts, setHiddenAlerts] = useState<Set<string>>(new Set());
+  const [readAlerts, setReadAlerts] = useState<Set<string>>(new Set());     // 눌러서 확인한 알림 (흐리게 남고, '확인한 알림 지우기'로 지움)
+  const [feastClearedAt, setFeastClearedAt] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
   const [storageBlocked, setStorageBlocked] = useState(false);
@@ -396,6 +407,7 @@ export default function Home() {
   const [groupChats, setGroupChats] = useState<GroupChatRow[]>([]);  // 내 단체 채팅방 (안 읽은 수 포함)
   const [openGroup, setOpenGroup] = useState<{ id: string; adminView: boolean } | null>(null); // 열려 있는 단체 채팅방 (관리자는 몰래 읽기)
   const [showNewChat, setShowNewChat] = useState(false);              // 새 채팅: 교우 찾아 1:1 · 단체방 만들기
+  const [switchingAccount, setSwitchingAccount] = useState(false);    // '다른 계정으로 로그인': 로그인 창에서 계정을 새로 고르게
   const [messagesView, setMessagesView] = useState<'mine' | 'allGroups'>('mine'); // 관리자: 모든 단체 채팅방 보기
   const [adminGroups, setAdminGroups] = useState<AdminGroupRow[] | null>(null);
   const [loungeNew, setLoungeNew] = useState(0);
@@ -439,6 +451,7 @@ export default function Home() {
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
   const pushAlertRef = useRef<(url: string, title: string, body: string) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
+  const viewingRef = useRef<(url: string) => boolean>(() => false); // 이 알림 주소의 대화방(1:1·단체)을 지금 보고 있는지 (아래에서 채움)
   const pushToastAtRef = useRef(0); // 푸시 내용을 배너로 띄운 시각 (같은 알림을 배너로 또 띄우지 않게)
   const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
@@ -493,7 +506,7 @@ export default function Home() {
     // 네이버 로그인 실패 안내
     const loginError = new URLSearchParams(window.location.search).get('login_error');
     if (loginError) {
-      window.history.replaceState(null, '', window.location.pathname);
+      window.history.replaceState(window.history.state, '', window.location.pathname); // Next.js 표시는 남긴다 (아래 설명)
       if (loginError !== 'naver_cancelled') {
         setTimeout(() => alert(loginError === 'naver_not_configured'
           ? '네이버 로그인은 준비 중이에요. 카카오나 구글로 로그인해주세요.'
@@ -523,6 +536,8 @@ export default function Home() {
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
         // 앱을 보고 있을 때 온 알림: 휴대폰 알림음 대신 '찬미예수님'
         if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/'), String(e.data.title || ''), String(e.data.body || '')); return; }
+        // 서비스 워커: '이 알림의 대화를 지금 보고 있나요?' → 보고 있으면 휴대폰 알림을 띄우지 않는다
+        if (e.data?.type === 'viewing?') { e.ports?.[0]?.postMessage(viewingRef.current(String(e.data.url || ''))); return; }
         if (e.data?.type !== 'open-url') return;
         e.ports?.[0]?.postMessage('ok');
         linkLog('message', String(e.data.url || '').replace(/^https?:\/\/[^/]+/, ''));
@@ -551,7 +566,9 @@ export default function Home() {
     const initialLink = deepLinkFromSearch(window.location.search);
     if (initialLink) {
       const search = window.location.search;
-      window.history.replaceState(null, '', '/');
+      // 주소만 깨끗이 하고 Next.js 가 남긴 표시(__NA)는 그대로 둔다. 지우면 그 뒤 기록에도 표시가 빠져,
+      // 알림으로 연 뒤 창을 닫거나 뒤로가기를 할 때 Next.js 가 페이지를 새로 불러와 홈으로 가 버린다
+      window.history.replaceState(window.history.state, '', '/');
       if (new URLSearchParams(search).has('n')) {
         if (claimLink(search)) { setDeepLink(initialLink); clearPendingLink(); }
         // 휴대폰·컴퓨터가 앱을 예전 알림 주소로 다시 띄운 경우: 그 주소는 무시하고, 방금 누른 알림이 적어 둔 곳이 있으면 그리로
@@ -749,6 +766,30 @@ export default function Home() {
     }
     return () => clearInterval(interval);
   }, [activeTab, currentChatUser, user]);
+
+  // 대화방에 들어가면 늘 마지막 메시지(맨 아래)부터: 사진·키보드 때문에 늦게 길어져도 2초 남짓 동안은
+  // 계속 맨 아래로 붙인다. 그 사이 손으로 만지면(위로 올려 읽기 시작하면) 바로 멈춘다
+  useEffect(() => {
+    if (activeTab !== 'chat' || !currentChatUser) return;
+    const list = chatStick.listRef.current;
+    let touched = false;
+    const stop = () => { touched = true; };
+    list?.addEventListener('touchstart', stop, { passive: true });
+    list?.addEventListener('wheel', stop, { passive: true });
+    list?.addEventListener('pointerdown', stop);
+    const timers = [60, 300, 700, 1200, 2000, 3000].map(ms => setTimeout(() => { if (!touched) chatStick.toBottom(false); }, ms));
+    // 그 대화의 휴대폰 알림이 알림창에 남아 있으면 닫는다
+    closeOsNotifications(`chat-${currentChatUser.id}`);
+    return () => {
+      timers.forEach(clearTimeout);
+      list?.removeEventListener('touchstart', stop);
+      list?.removeEventListener('wheel', stop);
+      list?.removeEventListener('pointerdown', stop);
+    };
+  }, [activeTab === 'chat', currentChatUser?.id]);
+
+  // 다른 대화방으로 가거나 나가면 답장·고치기·메뉴는 접는다
+  useEffect(() => { setReplyTo(null); setEditingMessage(null); setMessageSheet(null); }, [currentChatUser?.id, activeTab === 'chat']);
 
   // 새 메시지가 오면: 맨 아래를 보고 있었거나 내가 보낸 것이면 맨 아래로 (위로 올려 읽는 중이면 그대로)
   useEffect(() => {
@@ -1079,7 +1120,17 @@ export default function Home() {
     const { data, error } = await supabase.rpc('admin_group_chats');
     setAdminGroups(error ? [] : (data || []) as AdminGroupRow[]);
   };
+  viewingRef.current = (url: string) => {
+    if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+    const q = new URL(url, window.location.origin).searchParams;
+    const chatWith = q.get('chat'), group = q.get('group');
+    const cur = currentScreenRef.current;
+    if (chatWith) return cur.tab === 'chat' && cur.chatUser?.id === chatWith;
+    if (group) return !!openGroup && !openGroup.adminView && openGroup.id === group;
+    return false;
+  };
   const openGroupChat = (id: string, adminView = false) => {
+    closeOsNotifications(`group-${id}`);
     if (!user) { setShowAuthModal(true); return; }
     if (!adminView && !requireProfile()) return;
     setShowNewChat(false);
@@ -1141,56 +1192,111 @@ export default function Home() {
     if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
   };
 
-  // 메시지 하트: 두 번 누르면 그 메시지 밑에 하트 (다시 두 번 누르면 취소). 대화하는 두 사람 모두 보임
-  const [messageHearts, setMessageHearts] = useState<Record<string, string[]>>({}); // 메시지 id → 하트 누른 사람들
-  const [heartPop, setHeartPop] = useState<string | null>(null);
+  // 메시지 감정 표시: 두 번 누르면 하트(다시 두 번 누르면 취소), 꾹 누르면 ❤️👍😊😂😮😢🙏 중에서 고르기. 한 사람이 한 메시지에 하나
+  const [messageHearts, setMessageHearts] = useState<Record<string, { user_id: string; emoji: string }[]>>({}); // 메시지 id → 감정 표시
+  const [heartPop, setHeartPop] = useState<{ id: string; emoji: string } | null>(null);
   const lastMessageTap = useRef<{ id: string; at: number } | null>(null);
-  const savingHearts = useRef<Set<string>>(new Set()); // 저장 중인 하트는 새로고침 결과로 덮지 않음
+  const savingHearts = useRef<Set<string>>(new Set()); // 저장 중인 표시는 새로고침 결과로 덮지 않음
   const loadMessageHearts = async (ids: (string | number)[]) => {
     if (ids.length === 0) return;
-    const { data, error } = await supabase.from('message_reactions').select('message_id, user_id').in('message_id', ids);
-    if (error) return; // SQL 실행 전이면 조용히
-    const next: Record<string, string[]> = {};
-    (data || []).forEach(r => { const k = String(r.message_id); next[k] = [...(next[k] || []), r.user_id]; });
+    let rows: { message_id: string | number; user_id: string; emoji?: string }[] | null = null;
+    const first = await supabase.from('message_reactions').select('message_id, user_id, emoji').in('message_id', ids);
+    if (!first.error) rows = first.data;
+    // 감정 표시(emoji) 칸이 아직 없으면(SQL 실행 전) 예전처럼 하트만
+    else if (first.error.code === '42703' || /emoji/.test(first.error.message)) {
+      const second = await supabase.from('message_reactions').select('message_id, user_id').in('message_id', ids);
+      if (!second.error) rows = second.data;
+    }
+    if (!rows) return; // 하트 SQL 실행 전이면 조용히
+    const next: Record<string, { user_id: string; emoji: string }[]> = {};
+    rows.forEach(r => {
+      const k = String(r.message_id);
+      next[k] = [...(next[k] || []), { user_id: r.user_id, emoji: r.emoji || '❤️' }];
+    });
     setMessageHearts(prev => {
       savingHearts.current.forEach(k => { next[k] = prev[k] || []; });
       return next;
     });
   };
-  const toggleMessageHeart = async (messageId: string | number) => {
+  // 내 감정 표시를 정하기: 같은 것을 다시 고르면 취소
+  const setMessageReaction = async (messageId: string | number, emoji: string) => {
     if (!user) return;
     const key = String(messageId);
-    const mine = (messageHearts[key] || []).includes(user.id);
-    setMessageHearts(prev => ({ ...prev, [key]: mine ? (prev[key] || []).filter(u => u !== user.id) : [...(prev[key] || []), user.id] }));
-    if (!mine) { setHeartPop(key); setTimeout(() => setHeartPop(p => (p === key ? null : p)), 700); }
+    const before = messageHearts[key] || [];
+    const mineBefore = before.find(r => r.user_id === user.id)?.emoji;
+    const remove = mineBefore === emoji;
+    setMessageHearts(prev => ({ ...prev, [key]: [...(prev[key] || []).filter(r => r.user_id !== user.id), ...(remove ? [] : [{ user_id: user.id, emoji }])] }));
+    if (!remove) { setHeartPop({ id: key, emoji }); setTimeout(() => setHeartPop(p => (p?.id === key ? null : p)), 700); }
     savingHearts.current.add(key);
-    const { error } = mine
+    const { error } = remove
       ? await supabase.from('message_reactions').delete().eq('message_id', messageId).eq('user_id', user.id)
-      : await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id });
+      : emoji === '❤️' && !mineBefore
+        ? await supabase.from('message_reactions').insert({ message_id: messageId, user_id: user.id }) // 하트는 감정 표시 SQL 전에도 됨
+        : await supabase.from('message_reactions').upsert({ message_id: messageId, user_id: user.id, emoji }, { onConflict: 'message_id,user_id' });
     savingHearts.current.delete(key);
     if (error && error.code !== '23505') {
-      setMessageHearts(prev => ({ ...prev, [key]: mine ? [...(prev[key] || []), user.id] : (prev[key] || []).filter(u => u !== user.id) }));
+      setMessageHearts(prev => ({ ...prev, [key]: before }));
       if (error.code === '42P01' || error.code === 'PGRST205') alert('메시지 하트 기능을 준비 중이에요. (관리자: supabase/message-hearts.sql 실행 필요)');
+      else if (error.code === '42703' || error.code === 'PGRST204' || /emoji/.test(error.message)) alert(MESSAGE_EXTRAS_HINT);
     }
   };
+  const toggleMessageHeart = (messageId: string | number) => setMessageReaction(messageId, '❤️');
   // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지 → 하트).
-  // 내 메시지를 한 번만 누르면 밑에 '삭제' 단추가 나옴
-  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  // 내 메시지를 한 번 누르거나, 어떤 메시지든 꾹 누르면 메뉴(감정 표시·답장·고치기·삭제)
+  const [messageSheet, setMessageSheet] = useState<Message | null>(null);
   const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const onMessageTap = (messageId: string | number, mine: boolean) => {
-    const key = String(messageId);
+  const longPress = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; fired: boolean } | null>(null);
+  const onMessageTap = (msg: Message, mine: boolean) => {
+    if (longPress.current?.fired) { longPress.current = null; return; } // 꾹 누른 뒤 손을 뗀 것
+    const key = String(msg.id);
     const now = Date.now();
     const last = lastMessageTap.current;
     if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
-    if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(messageId); return; }
+    if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(msg.id); return; }
     lastMessageTap.current = { id: key, at: now };
-    if (mine) singleTapTimer.current = setTimeout(() => setSelectedMessageId(prev => (prev === key ? null : key)), 360);
-    else setSelectedMessageId(null);
+    if (mine) singleTapTimer.current = setTimeout(() => setMessageSheet(msg), 360);
+  };
+  const messagePressHandlers = (msg: Message) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (longPress.current) clearTimeout(longPress.current.timer);
+      const timer = setTimeout(() => {
+        if (longPress.current) longPress.current.fired = true;
+        if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+        try { navigator.vibrate?.(15); } catch { /* 무시 */ }
+        setMessageSheet(msg);
+      }, 450);
+      longPress.current = { timer, x: e.clientX, y: e.clientY, fired: false };
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const lp = longPress.current;
+      if (lp && !lp.fired && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) { clearTimeout(lp.timer); longPress.current = null; } // 스크롤하는 중
+    },
+    onPointerUp: () => { const lp = longPress.current; if (lp && !lp.fired) { clearTimeout(lp.timer); longPress.current = null; } },
+    onPointerCancel: () => { const lp = longPress.current; if (lp) clearTimeout(lp.timer); longPress.current = null; },
+    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setMessageSheet(msg); }, // 컴퓨터 오른쪽 단추·길게 누르기 메뉴 대신
+  });
+  // 답장: 특정 메시지를 골라 그 메시지에 대한 답이라고 표시 / 고치기: 내 메시지 내용 바꾸기 (하루 안에)
+  const [replyTo, setReplyTo] = useState<Message | null>(null);
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const messageInputRef = useRef<HTMLInputElement>(null);
+  const canEditMessage = (m: Message) => m.sender_id === user?.id && !m.deleted_at && m.content !== PHOTO_ONLY_TEXT && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
+  const startReply = (m: Message) => { setMessageSheet(null); setEditingMessage(null); setReplyTo(m); setTimeout(() => messageInputRef.current?.focus(), 50); };
+  const startEditMessage = (m: Message) => { setMessageSheet(null); setReplyTo(null); setEditingMessage(m); setMessageInput(m.content); setTimeout(() => messageInputRef.current?.focus(), 50); };
+  const cancelEditMessage = () => { setEditingMessage(null); setMessageInput(''); };
+  // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
+  const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
+  const jumpToMessage = (id: string | number) => {
+    const el = document.getElementById(`dm-${id}`);
+    if (!el) return;
+    chatStick.atBottom.current = false;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setFlashMessageId(String(id));
+    setTimeout(() => setFlashMessageId(f => (f === String(id) ? null : f)), 1600);
   };
   // 내가 보낸 메시지 지우기 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
   const deleteMessage = async (msg: Message) => {
     if (!window.confirm(msg.image_url ? '이 사진을 삭제할까요?\n상대방 화면에서도 지워져요.' : '이 메시지를 삭제할까요?\n상대방 화면에서도 지워져요.')) return;
-    setSelectedMessageId(null);
+    setMessageSheet(null);
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch('/api/messages', {
       method: 'POST',
@@ -1214,12 +1320,32 @@ export default function Home() {
     e.preventDefault();
     if (!user || !currentChatUser || !messageInput.trim()) return;
     const newMsg = messageInput.trim();
+    // 내 메시지 고치기
+    if (editingMessage) {
+      const target = editingMessage;
+      const { error } = await supabase.rpc('edit_my_message', { p_id: String(target.id), p_content: newMsg });
+      if (error) {
+        alert(error.code === 'PGRST202' || error.code === '42883' ? MESSAGE_EXTRAS_HINT : /[가-힣]/.test(error.message) ? error.message.replace(/^.*?: /, '') : `고치지 못했어요.\n(${error.message})`);
+        return;
+      }
+      setChatMessages(prev => prev.map(m => (m.id === target.id ? { ...m, content: newMsg, edited_at: new Date().toISOString() } : m)));
+      setEditingMessage(null);
+      setMessageInput('');
+      return;
+    }
+    const reply = replyTo;
     setMessageInput('');
-    const { data: sent, error } = await supabase.from('messages')
-      .insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg })
-      .select('id').single();
+    setReplyTo(null);
+    const row = { sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg, ...(reply ? { reply_to: reply.id } : {}) };
+    let { data: sent, error } = await supabase.from('messages').insert(row).select('id').single();
+    // 답장 칸이 아직 없으면(SQL 실행 전) 답장 표시 없이라도 보낸다
+    if (error && reply && (error.code === '42703' || error.code === 'PGRST204')) {
+      ({ data: sent, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg }).select('id').single());
+      if (!error) alert(MESSAGE_EXTRAS_HINT);
+    }
     if (error) {
       setMessageInput(newMsg); // 보내지 못한 내용은 입력창에 되돌려 둔다
+      setReplyTo(reply);
       alert(`메시지를 보내지 못했습니다.\n(${error.message})`);
       return;
     }
@@ -1259,13 +1385,27 @@ export default function Home() {
   const handleKakaoLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'kakao', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true },
+      provider: 'kakao', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true, ...(switchingAccount ? { queryParams: { prompt: 'login' } } : {}) },
     });
     if (error || !data?.url) {
       alert('로그인을 시작하지 못했습니다. 잠시 후 다시 시도해주세요.');
       return;
     }
     window.location.href = data.url;
+  };
+
+  // 내 공간: 로그아웃 · 다른 계정으로 로그인 (로그아웃한 뒤 로그인 창을 열고, 카카오·구글·네이버 모두 계정을 새로 고르게 한다)
+  const logout = async () => {
+    if (!window.confirm('로그아웃할까요?')) return;
+    await signOutAndClear();
+    goToHome();
+  };
+  const switchAccount = async () => {
+    if (!window.confirm('지금 계정에서 로그아웃하고 다른 계정으로 로그인할까요?')) return;
+    await signOutAndClear();
+    goToHome();
+    setSwitchingAccount(true);
+    setShowAuthModal(true);
   };
 
   const handleGoogleLogin = async (e: React.MouseEvent) => {
@@ -1926,6 +2066,8 @@ export default function Home() {
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
     setNotificationsClearedAt(storageGet(`notificationsClearedAt:${userId}`));
     try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
+    try { setReadAlerts(new Set(JSON.parse(storageGet(`notificationsRead:${userId}`) || '[]'))); } catch { /* 무시 */ }
+    setFeastClearedAt(storageGet(`feastClearedAt:${userId}`));
     const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, p.content || '']));
     const mentionQuery = (table: 'posts' | 'comments', cols: string) => myHandle
       ? supabase.from(table).select(cols).ilike('content', `%@${myHandle}%`).neq('user_id', userId)
@@ -2083,30 +2225,32 @@ export default function Home() {
   // 지운 알림인지
   const isAlertHidden = (key: string, at?: string) =>
     hiddenAlerts.has(key) || isAlertExpired(at) || (!!notificationsClearedAt && !!at && new Date(at) <= new Date(notificationsClearedAt));
-  const hideAlert = (key: string) => {
-    if (!user) return;
-    setHiddenAlerts(prev => {
-      // 아직 목록을 안 불러왔어도(알림을 눌러 막 열린 경우) 저장된 것과 합친다
+  // 알림 표시 저장 (지운 알림 / 확인한 알림): 아직 목록을 안 불러왔어도(알림을 눌러 막 열린 경우) 저장된 것과 합친다
+  const addAlertKeys = (kind: 'Hidden' | 'Read', keys: string[]) => {
+    if (!user || keys.length === 0) return;
+    (kind === 'Hidden' ? setHiddenAlerts : setReadAlerts)(prev => {
       let stored: string[] = [];
-      try { stored = JSON.parse(storageGet(`notificationsHidden:${user.id}`) || '[]'); } catch { /* 무시 */ }
-      const next = new Set([...stored, ...prev]); next.add(key);
-      storageSet(`notificationsHidden:${user.id}`, JSON.stringify(Array.from(next).slice(-500)));
+      try { stored = JSON.parse(storageGet(`notifications${kind}:${user.id}`) || '[]'); } catch { /* 무시 */ }
+      const next = new Set([...stored, ...prev, ...keys]);
+      storageSet(`notifications${kind}:${user.id}`, JSON.stringify(Array.from(next).slice(-500)));
       return next;
     });
   };
-  // 확인한 알림은 바로 지운다: 그 글(고민글)의 알림을 모두 목록에서 뺀다
-  const hideAlertsForPost = (postId: string, anon: boolean) =>
-    notifications.filter(n => n.post_id === postId && !!n.anon === anon).forEach(n => hideAlert(`c:${n.id}`));
+  const hideAlert = (key: string) => addAlertKeys('Hidden', [key]);
+  // 알림을 눌러 확인해도 목록에는 남긴다 (흐리게) — 지우기 전까지, 3일이 지나면 저절로 사라짐
+  const markAlertRead = (...keys: string[]) => addAlertKeys('Read', keys);
+  // '확인한 알림 지우기': 눌러 본 알림만 지우고, 아직 확인하지 않은 알림은 남긴다. 오늘 축일 안내도 접는다
   const clearSeenAlerts = () => {
     if (!user) return;
+    addAlertKeys('Hidden', Array.from(readAlerts));
     const now = new Date().toISOString();
-    setNotificationsClearedAt(now);
-    storageSet(`notificationsClearedAt:${user.id}`, now);
+    setFeastClearedAt(now);
+    storageSet(`feastClearedAt:${user.id}`, now);
   };
 
   const listedFollows = followRequests.filter(r => !blockedIds.has(r.follower.id) && !isAlertHidden(`f:${r.id}`, r.created_at) && !hiddenAlerts.has(`fu:${r.follower.id}`));
   const listedComments = notifications.filter(n => !isAlertHidden(`c:${n.id}`, n.created_at));
-  const feastCleared = !!notificationsClearedAt && todayKst(new Date(notificationsClearedAt)) === todayKst();
+  const feastCleared = [feastClearedAt, notificationsClearedAt].some(at => !!at && todayKst(new Date(at)) === todayKst());
 
   // 축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
   const isMyFeastToday = !!profile?.feast_day && todayFeastKeys().includes(profile.feast_day);
@@ -2243,8 +2387,7 @@ export default function Home() {
   // 알림 누르기: 글에서 언급 → 피드의 그 글로, 댓글·답글·댓글 언급 → 그 글로 가서 댓글 창의 그 댓글
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
-    hideAlert(`c:${n.id}`);
-    hideAlertsForPost(n.post_id, !!n.anon);
+    markAlertRead(`c:${n.id}`);
     if (n.anon) { setAnonFocusId(n.post_id); setAnonFocusReply(n.id.slice(2)); goToTab('anon'); }
     else if (n.mention === 'post') openPostById(n.post_id);
     else openPostFromAlert(n.post_id, n.id);
@@ -2424,12 +2567,11 @@ export default function Home() {
 
   // 휴대폰 알림을 눌러 들어온 곳: 앱 알림 목록(♡)에서 그 알림을 지우고, 같은 곳을 가리키는 휴대폰 알림도 닫는다
   const dismissAlertsFor = (link: NonNullable<typeof deepLink>) => {
-    if (link.comment) hideAlert(`c:${link.comment}`);
-    if (link.view) hideAlert(`c:mp:${link.view}`);
-    if (link.profile) hideAlert(`fu:${link.profile}`);
-    if (link.reply) hideAlert(`c:a:${link.reply}`);
-    if (link.post) hideAlertsForPost(link.post, false);
-    if (link.anon) hideAlertsForPost(link.anon, true);
+    // 앱 알림 목록(♡)에서는 지우지 않고 '확인함'으로만 표시한다 (지우기 전까지 남고, 3일이 지나면 저절로 사라짐)
+    markAlertRead(...[
+      link.comment && `c:${link.comment}`, link.view && `c:mp:${link.view}`,
+      link.profile && `fu:${link.profile}`, link.reply && `c:a:${link.reply}`,
+    ].filter((k): k is string => !!k));
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
       : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.group ? `group:${l.group}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
@@ -2515,9 +2657,7 @@ export default function Home() {
     pushAlertRef.current = (url: string, title: string, body: string) => {
       refreshAlerts(user.id);
       // 지금 그 사람과 대화 중이면 메시지마다 음성·배너는 생략
-      const chatWith = new URL(url, window.location.origin).searchParams.get('chat');
-      const cur = currentScreenRef.current;
-      if (chatWith && cur.tab === 'chat' && cur.chatUser?.id === chatWith) return;
+      if (viewingRef.current(url)) return;
       // 어디서 온 알림인지 앱 화면 위 배너로도 보여 준다 (컴퓨터에서는 휴대폰 알림이 구석에 조용히 떠서 놓치기 쉬움)
       // 제목 앞 그림(💌 새 사연, 🙋 관리자 호출 …)은 배너 그림으로 쓴다. 누르면 그 글·대화로.
       const m = title.match(/^(\S+)\s+(.+)$/);
@@ -2769,7 +2909,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2819,6 +2959,7 @@ export default function Home() {
     if (!reportTarget && !actionModalUser) setShowLounge(false);
     if (!reportTarget && !actionModalUser && !showNewChat) setOpenGroup(null);
     setShowNewChat(false);
+    setMessageSheet(null);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
@@ -3781,6 +3922,10 @@ export default function Home() {
                     </button>
                     <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="w-10 shrink-0 rounded-lg bg-stone-100 text-stone-900 hover:bg-stone-200 flex items-center justify-center" aria-label="설정"><Icon name="gear" className="w-5 h-5" /></button>
                   </div>
+                  <div className="mt-1.5 flex gap-1.5">
+                    <button onClick={switchAccount} className="flex-1 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50">🔄 다른 계정으로 로그인</button>
+                    <button onClick={logout} className="flex-1 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50"><Icon name="signout" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />로그아웃</button>
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {isAdmin && (
                       <>
@@ -4116,7 +4261,7 @@ export default function Home() {
                 const lastReadMineIndex = chatMessages.reduce((last, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : last), -1);
                 const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
                 return (
-                  <div key={msg.id} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} id={`dm-${msg.id}`} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
                     {isMe && (
                       <div className="flex flex-col items-end text-[0.75rem] leading-tight shrink-0">
                         {!msg.read_at ? (
@@ -4124,6 +4269,7 @@ export default function Home() {
                         ) : i === lastReadMineIndex ? (
                           <span className="text-stone-400">읽음</span>
                         ) : null}
+                        {msg.edited_at && !msg.deleted_at && <span className="text-stone-400">수정됨</span>}
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
@@ -4147,15 +4293,26 @@ export default function Home() {
                         </div>
                       );
                     })() : (() => {
-                      const hearts = messageHearts[String(msg.id)] || [];
-                      const iHearted = !!user && hearts.includes(user.id);
+                      const reactions = messageHearts[String(msg.id)] || [];
+                      // 같은 감정끼리 모아서 (❤️ 2 😂 1)
+                      const grouped = MESSAGE_EMOJIS.map(e => ({ e, n: reactions.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
+                      const quoted = msg.reply_to != null ? chatMessages.find(m => String(m.id) === String(msg.reply_to)) : undefined;
                       return (
-                        <div className={`max-w-[75%] ${hearts.length ? 'mb-4' : ''}`}>
+                        <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
                           <div className="relative">
                           <div
-                            onClick={() => onMessageTap(msg.id, isMe)}
-                            className={`px-4 py-2 rounded-2xl text-[1rem] select-none [touch-action:manipulation] cursor-pointer ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                            onClick={() => onMessageTap(msg, isMe)}
+                            {...messagePressHandlers(msg)}
+                            className={`px-4 py-2 rounded-2xl text-[1rem] select-none [-webkit-touch-callout:none] [touch-action:manipulation] cursor-pointer transition-shadow ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
+                            {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
+                            {msg.reply_to != null && (
+                              <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
+                                className={`block w-full text-left -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${isMe ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
+                                <span className="block font-bold">↩️ {quoted ? (quoted.sender_id === user?.id ? '나' : currentChatUser?.baptismal_name || '상대') : '이전 메시지'}에게 답장</span>
+                                <span className="block line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.image_url && quoted.content === PHOTO_ONLY_TEXT ? '📷 사진' : quoted.content}</span>
+                              </button>
+                            )}
                             {msg.image_url && (
                               <img loading="lazy"
                                 src={msg.image_url}
@@ -4166,40 +4323,27 @@ export default function Home() {
                             )}
                             {!(msg.image_url && msg.content === PHOTO_ONLY_TEXT) && msg.content}
                           </div>
-                          {/* 두 번 누르면 잠깐 큰 하트 */}
-                          {heartPop === String(msg.id) && (
+                          {/* 감정을 고르면 잠깐 크게 */}
+                          {heartPop?.id === String(msg.id) && (
                             <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
-                              <Icon name="heart" fill className="w-10 h-10 text-rose-500 drop-shadow" />
+                              {heartPop.emoji === '❤️' ? <Icon name="heart" fill className="w-10 h-10 text-rose-500 drop-shadow" /> : <span className="text-4xl drop-shadow">{heartPop.emoji}</span>}
                             </span>
                           )}
-                          {/* 메시지 밑 하트 (누르면 내 하트 취소/추가) */}
-                          {hearts.length > 0 && (
+                          {/* 메시지 밑 감정 표시 (누르면 고르기) */}
+                          {grouped.length > 0 && (
                             <button
-                              onClick={() => toggleMessageHeart(msg.id)}
-                              aria-label={iHearted ? '하트 취소' : '하트'}
-                              className={`absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.75rem] text-stone-600`}
+                              onClick={() => setMessageSheet(msg)}
+                              aria-label={`감정 표시 ${grouped.map(g => `${g.e} ${g.n}`).join(', ')} · 눌러서 고르기`}
+                              className={`absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.8125rem] leading-none text-stone-600`}
                             >
-                              <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" />{hearts.length > 1 && hearts.length}
+                              {grouped.map(g => <span key={g.e} className="inline-flex items-center">{g.e === '❤️' ? <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" /> : g.e}{g.n > 1 && <span className="ml-0.5 text-[0.75rem]">{g.n}</span>}</span>)}
                             </button>
                           )}
                           </div>
-                          {/* 내 메시지를 한 번 누르면: 삭제 단추 */}
-                          {isMe && selectedMessageId === String(msg.id) && (
-                            <div className={`flex justify-end gap-1.5 ${hearts.length ? 'mt-6' : 'mt-1'}`}>
-                              {msg.image_url && (
-                                <button onClick={() => { setSelectedMessageId(null); zoomPhoto(msg.image_url); }} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 bg-white border border-stone-200 rounded-full px-3 py-1 shadow-sm">
-                                  <Icon name="search" className="w-4 h-4" />크게 보기
-                                </button>
-                              )}
-                              <button onClick={() => deleteMessage(msg)} className="inline-flex items-center gap-1 text-[0.8125rem] font-bold text-red-600 bg-white border border-red-200 rounded-full px-3 py-1 shadow-sm">
-                                <Icon name="trash" className="w-4 h-4" />삭제
-                              </button>
-                            </div>
-                          )}
                         </div>
                       );
                     })()}
-                    {!isMe && <span className="text-[0.75rem] text-stone-400 shrink-0">{time}</span>}
+                    {!isMe && <span className="text-[0.75rem] leading-tight text-stone-400 shrink-0 flex flex-col">{msg.edited_at && !msg.deleted_at && <span>수정됨</span>}<span>{time}</span></span>}
                   </div>
                 );
               })
@@ -4207,17 +4351,57 @@ export default function Home() {
             <div ref={messagesEndRef} />
             </div>
           </div>
-          <form onSubmit={sendMessage} className="shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white border-t border-stone-200 flex gap-2">
+          {(replyTo || editingMessage) && (() => {
+            const m = (editingMessage || replyTo)!;
+            return (
+              <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
+                <div className="flex-1 min-w-0 border-l-4 border-blue-400 pl-2.5 py-0.5">
+                  <p className="text-[0.8125rem] font-bold text-blue-700">{editingMessage ? '✏️ 메시지 고치는 중' : `↩️ ${m.sender_id === user?.id ? '내 메시지' : `${currentChatUser?.baptismal_name || '상대'}님 메시지`}에 답장`}</p>
+                  <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{m.image_url && m.content === PHOTO_ONLY_TEXT ? '📷 사진' : m.content}</p>
+                </div>
+                <button type="button" onClick={() => (editingMessage ? cancelEditMessage() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editingMessage ? '고치기 그만두기' : '답장 그만두기'}>×</button>
+              </div>
+            );
+          })()}
+          <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진 보내기">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*" className="hidden" disabled={sendingPhoto} onChange={sendPhotoMessage} />
             </label>
-            <input type="text" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder="메시지 입력..." className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </form>
+          {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 감정 표시 · 답장 · 고치기 · 복사 · 삭제 */}
+          {messageSheet && (() => {
+            const m = messageSheet;
+            const mine = m.sender_id === user?.id;
+            const myEmoji = (messageHearts[String(m.id)] || []).find(r => r.user_id === user?.id)?.emoji;
+            const sheetBtn = 'w-full px-4 py-3.5 text-left text-[1rem] font-bold text-stone-800 bg-white active:bg-stone-50';
+            return (
+              <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center" onClick={() => setMessageSheet(null)}>
+                <div className="w-full sm:w-96 bg-white rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3" onClick={e => e.stopPropagation()} role="dialog" aria-label="메시지 메뉴">
+                  <p className="px-1 text-[0.875rem] text-stone-500 line-clamp-2">{m.image_url && m.content === PHOTO_ONLY_TEXT ? '📷 사진' : m.content}</p>
+                  <div className="flex justify-between bg-stone-100 rounded-2xl p-1.5" role="group" aria-label="감정 표시">
+                    {MESSAGE_EMOJIS.map(e => (
+                      <button key={e} onClick={() => { setMessageSheet(null); setMessageReaction(m.id, e); }} aria-pressed={myEmoji === e} aria-label={`${e} 표시${myEmoji === e ? ' 취소' : ''}`}
+                        className={`w-11 h-11 rounded-full text-[1.5rem] flex items-center justify-center ${myEmoji === e ? 'bg-white shadow ring-2 ring-blue-400' : ''}`}>{e}</button>
+                    ))}
+                  </div>
+                  <div className="flex flex-col divide-y divide-stone-100 rounded-2xl border border-stone-200 overflow-hidden">
+                    <button onClick={() => startReply(m)} className={sheetBtn}>↩️ 답장하기</button>
+                    {canEditMessage(m) && <button onClick={() => startEditMessage(m)} className={sheetBtn}>✏️ 고치기 (오타 수정)</button>}
+                    {m.content && m.content !== PHOTO_ONLY_TEXT && <button onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); setMessageSheet(null); }} className={sheetBtn}>📋 복사하기</button>}
+                    {m.image_url && <button onClick={() => { setMessageSheet(null); zoomPhoto(m.image_url); }} className={sheetBtn}>🔍 사진 크게 보기</button>}
+                    {mine && <button onClick={() => deleteMessage(m)} className={`${sheetBtn} !text-red-600`}>🗑 삭제</button>}
+                  </div>
+                  <button onClick={() => setMessageSheet(null)} className="py-2.5 text-stone-500 font-bold">닫기</button>
+                </div>
+              </div>
+            );
+          })()}
         </section>
       )}
 
@@ -4942,8 +5126,8 @@ export default function Home() {
                 </div>
               ))}
               {listedFollows.map(r => (
-                <div key={r.id} className={`p-4 flex items-center gap-3 ${r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
-                  <button onClick={() => { setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
+                <div key={r.id} className={`p-4 flex items-center gap-3 ${readAlerts.has(`f:${r.id}`) || readAlerts.has(`fu:${r.follower.id}`) ? 'opacity-55' : r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
+                  <button onClick={() => { markAlertRead(`f:${r.id}`); setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
@@ -4972,7 +5156,7 @@ export default function Home() {
                 <div className="p-10 text-center text-stone-400 text-sm">새 알림이 없습니다.</div>
               ) : (
                 listedComments.map(n => (
-                  <div key={n.id} className="relative">
+                  <div key={n.id} className={`relative ${readAlerts.has(`c:${n.id}`) ? 'opacity-55' : ''}`}>
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
@@ -5018,12 +5202,12 @@ export default function Home() {
 
       {/* 로그인 모달 */}
       {showAuthModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowAuthModal(false)}>
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => { setShowAuthModal(false); setSwitchingAccount(false); }}>
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl flex flex-col gap-5 border border-stone-200" onClick={e => e.stopPropagation()}>
             <div className="text-center">
               <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-14 h-14 rounded-2xl shadow-md mx-auto" />
               <h2 className="font-serif font-bold text-xl text-stone-900 mt-2">가톨릭그램</h2>
-              <p className="text-xs text-stone-500 mt-1.5">카카오·구글·네이버 계정으로 간편하게 시작하세요</p>
+              <p className="text-xs text-stone-500 mt-1.5">{switchingAccount ? '로그인할 다른 계정을 골라 주세요' : '카카오·구글·네이버 계정으로 간편하게 시작하세요'}</p>
             </div>
 
             {isKakaoInApp && (
@@ -5057,7 +5241,7 @@ export default function Home() {
                 Google로 시작하기
               </button>
               <a
-                href="/api/auth/naver/start"
+                href={switchingAccount ? '/api/auth/naver/start?switch=1' : '/api/auth/naver/start'}
                 className="w-full flex items-center justify-center gap-3 bg-[#03C75A] text-white py-3 rounded-xl text-sm font-semibold hover:bg-[#02b350] transition-colors"
               >
                 <span className="w-5 h-5 flex items-center justify-center font-black text-base leading-none">N</span>

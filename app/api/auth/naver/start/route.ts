@@ -13,6 +13,8 @@ export async function GET(request: Request) {
   authorize.searchParams.set('client_id', clientId);
   authorize.searchParams.set('redirect_uri', `${origin}/api/auth/naver/callback`);
   authorize.searchParams.set('state', state);
+  // '다른 계정으로 로그인': 네이버에 이미 로그인돼 있어도 아이디·비밀번호를 다시 묻게
+  if (new URL(request.url).searchParams.get('switch') === '1') authorize.searchParams.set('auth_type', 'reauthenticate');
   return new Response(null, {
     status: 302,
     headers: {
