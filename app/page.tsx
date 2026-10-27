@@ -159,6 +159,8 @@ const consumePendingLink = async (staleSearch?: string, retried = false): Promis
   } catch { /* 무시 */ }
 };
 
+const ALERT_KEEP_MS = 3 * 24 * 60 * 60 * 1000; // 알림 보관 기간 (3일)
+
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
 const isStorageAvailable = () => {
@@ -2008,16 +2010,18 @@ export default function Home() {
     fetchFeastFriends(userId);
   };
 
+  // 알림은 3일만 보관: 그보다 오래된 댓글·답글·언급·팔로우 알림은 목록과 숫자에서 뺀다 (안 읽은 메시지는 그대로)
+  const isAlertExpired = (at?: string) => !!at && Date.now() - new Date(at).getTime() > ALERT_KEEP_MS;
   const unreadCommentCount = !user ? 0 : notifications.filter(n =>
-    !notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen)
+    !isAlertExpired(n.created_at) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
-    r.created_at && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
+    r.created_at && !isAlertExpired(r.created_at) && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
   ).length;
   // 지운 알림인지
   const isAlertHidden = (key: string, at?: string) =>
-    hiddenAlerts.has(key) || (!!notificationsClearedAt && !!at && new Date(at) <= new Date(notificationsClearedAt));
+    hiddenAlerts.has(key) || isAlertExpired(at) || (!!notificationsClearedAt && !!at && new Date(at) <= new Date(notificationsClearedAt));
   const hideAlert = (key: string) => {
     if (!user) return;
     setHiddenAlerts(prev => {

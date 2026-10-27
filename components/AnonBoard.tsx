@@ -183,7 +183,9 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   const toggleReplies = (postId: string) => {
     const next = !openReplies[postId];
     setOpenReplies(prev => ({ ...prev, [postId]: next }));
-    if (next) fetchReplies(postId);
+    // 펼친 답글이 화면 밖이면 보이는 곳까지 내려 준다 (답글을 불러온 뒤)
+    if (next) fetchReplies(postId).then(() => requestAnimationFrame(() =>
+      document.getElementById(`anon-replies-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })));
   };
 
   // 알림으로 들어온 고민글: 답글을 펼치고 그 글로 이동해 잠깐 강조
@@ -348,7 +350,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                 </div>
 
                 {openReplies[post.id] && (
-                  <div className="mt-1 pt-3 border-t border-stone-100 flex flex-col gap-2.5">
+                  <div id={`anon-replies-${post.id}`} className="mt-1 pt-3 border-t border-stone-100 flex flex-col gap-2.5 scroll-mb-24">
                     {(replies[post.id] || []).map(reply => (
                       <div key={reply.id} id={`anon-reply-${reply.id}`} className={`text-xs p-2.5 rounded-xl flex flex-col gap-1.5 transition-colors duration-700 ${highlightReplyId === reply.id ? 'bg-amber-100 ring-2 ring-amber-300' : reply.is_post_author ? 'bg-violet-50/70' : 'bg-stone-100/70'}`}>
                         <div className="flex items-center justify-between">
