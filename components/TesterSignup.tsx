@@ -142,6 +142,11 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
               </>)}
               {step(3, <><b>14일 동안 지우지 말고</b> 가끔 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
             </ol>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-stone-700 leading-relaxed">
+              <p className="font-bold text-amber-900">&lsquo;App not available&rsquo;(앱을 사용할 수 없음)이 나오면</p>
+              <p className="mt-1">· 그 화면 <b>오른쪽 위 동그란 사진</b>을 눌러 <b className="break-all">{savedEmail}</b> 계정으로 바꾼 뒤 다시 ①을 눌러요.</p>
+              <p>· 구글 검토가 아직 안 끝났을 수 있어요. <b>하루쯤 뒤</b>에 다시 ①을 눌러 주세요.</p>
+            </div>
             <button onClick={() => { setConsent(false); setEditing(true); }} className="self-center text-xs text-stone-500 underline">구글 계정 이메일이 달라요 (고치기)</button>
           </>
         )}

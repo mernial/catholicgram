@@ -46,7 +46,7 @@ export default function AdminTesters({ onClose, sendPush }: {
     if (!copied) return;
     const ids = copied.ids.filter(id => pending.some(p => p.user_id === id));
     if (ids.length === 0) return;
-    if (!window.confirm(`Play Console 테스터 목록에 ${ids.length}명을 붙여넣고 저장하셨나요?\n'등록함'으로 표시하면 그분들께 설치 안내 알림이 가요.`)) return;
+    if (!window.confirm(`Play Console 테스터 목록에 ${ids.length}명을 붙여넣고 저장하셨나요?\n비공개 테스트 검토도 끝나 '게시됨'인가요?\n'등록함'으로 표시하면 그분들께 설치 안내 알림이 가요.`)) return;
     setBusy(true);
     const { error } = await supabase.from('tester_signups').update({ status: 'added' }).in('user_id', ids);
     setBusy(false);
@@ -93,7 +93,8 @@ export default function AdminTesters({ onClose, sendPush }: {
                 <p className="text-sm font-bold text-stone-800">새 신청 {pending.length}명 등록하기</p>
                 <ol className="text-xs text-stone-600 leading-relaxed list-decimal pl-4">
                   <li>아래 <b>새 신청 이메일 복사</b>를 눌러요</li>
-                  <li>Play Console → 비공개 테스트 → <b>테스터</b> → 이메일 목록에 <b>붙여넣고 저장</b>해요</li>
+                  <li>Play Console → 비공개 테스트 → <b>테스터</b> → 이메일 목록에 <b>붙여넣고 저장</b>해요 (목록 앞 <b>☑ 체크</b>도 확인)</li>
+                  <li>Play Console <b>게시 개요</b>에서 검토가 끝나 <b>게시됨</b>인지 확인해요 (검토 전에 알리면 신청자에게 &lsquo;App not available&rsquo;이 떠요)</li>
                   <li>여기서 <b>&lsquo;등록함&rsquo;으로 표시</b>를 누르면 신청자에게 설치 안내 알림이 가요</li>
                 </ol>
                 <div className="flex gap-2">
