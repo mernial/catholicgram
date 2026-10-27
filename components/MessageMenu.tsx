@@ -1,11 +1,14 @@
 'use client';
 
+import { useState } from 'react';
 import { SWIPE_REPLY } from '@/lib/use-press-gestures';
 
 // 메시지·댓글을 꾹 누르면 그 자리에 뜨는 메뉴: 바로 위에 감정 표시 줄, 바로 아래에 할 일(답장·고치기·삭제 …)
 // 위에 자리가 없으면 둘 다 아래로, 아래에 자리가 없으면 메뉴를 위로. 내 것은 오른쪽, 남의 것은 왼쪽에 맞춘다.
 // 꾹 눌러 고르는 감정 (1:1 메시지·단체 채팅방·댓글 같은 줄). 하트가 기본(두 번 누르기)
 export const REACTION_EMOJIS = ['❤️', '👍', '😊', '😂', '😮', '😢', '🙏'] as const;
+// 감정 줄 끝의 ＋ 를 누르면 더 고를 수 있는 감정 (메시지·단체방·사랑방. 서버도 이 목록만 받음 — supabase/chat-media-menu.sql)
+export const MORE_EMOJIS = ['✅', '👏', '🙌', '🥰', '😍', '😆', '🤗', '🙂', '😭', '😥', '😡', '😱', '🎉', '🌹', '🌸', '💐', '🎂', '🍀', '⛪', '✝️', '🕊️', '📿', '💪', '👌'] as const;
 
 export interface MenuAnchor { top: number; bottom: number; left: number; right: number }
 export interface MenuAction { label: string; run: () => void; danger?: boolean }
@@ -15,26 +18,57 @@ export const anchorOf = (el: Element | null | undefined): MenuAnchor | null => {
   return r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null;
 };
 
-export default function MessageMenu({ anchor, alignRight, emojis, selected = [], onEmoji, actions, onClose, label = '메시지 메뉴' }: {
+export default function MessageMenu({ anchor, alignRight, emojis, moreEmojis, selected = [], onEmoji, actions, onClose, label = '메시지 메뉴' }: {
   anchor: MenuAnchor | null;
   alignRight: boolean;
   emojis?: readonly string[];
+  moreEmojis?: readonly string[];  // 있으면 감정 줄 끝에 ＋ (누르면 더 많은 감정)
   selected?: string[];          // 내가 이미 고른 감정 (다시 누르면 취소)
   onEmoji?: (emoji: string) => void;
   actions: MenuAction[];
   onClose: () => void;
   label?: string;
 }) {
+  const [more, setMore] = useState(false);
   const vw = window.innerWidth, vh = window.innerHeight, gap = 8, edge = 12;
   const a = anchor || { top: vh / 2 - 24, bottom: vh / 2 + 24, left: edge, right: vw - edge };
   const showBar = !!emojis?.length && !!onEmoji;
-  const barW = Math.min(vw - edge * 2, (emojis?.length || 0) * 44 + 16), barH = showBar ? 56 : 0;
-  const menuW = Math.min(vw - edge * 2, 220), menuH = actions.length * 53;
+  const plus = showBar && !!moreEmojis?.length;
+  const barW = Math.min(vw - edge * 2, ((emojis?.length || 0) + (plus ? 1 : 0)) * 44 + 16), barH = showBar ? 56 : 0;
+  const menuW = Math.min(vw - edge * 2, 220), menuH = actions.length * 49;
   const fitX = (w: number) => Math.max(edge, Math.min(vw - w - edge, alignRight ? a.right - w : a.left));
   let barTop = a.top - barH - gap;
   let menuTop = a.bottom + gap;
   if (showBar && barTop < edge) { barTop = Math.min(a.bottom + gap, vh - barH - menuH - gap - edge); menuTop = barTop + barH + gap; }
   else if (menuTop + menuH > vh - edge) menuTop = Math.max(edge, (showBar ? barTop : a.top) - menuH - gap);
+  const emojiButton = (e: string, big = false) => {
+    const on = selected.includes(e);
+    return (
+      <button key={e} onClick={() => { onClose(); onEmoji!(e); }} aria-pressed={on} aria-label={`${e} 표시${on ? ' 취소' : ''}`}
+        className={`${big ? 'w-11 h-11' : 'w-10 h-10'} rounded-full text-[1.5rem] leading-none flex items-center justify-center active:scale-110 ${on ? 'bg-blue-100 ring-2 ring-blue-400' : ''}`}>{e}</button>
+    );
+  };
+  // ＋ 를 누르면: 모든 감정을 바둑판으로 (메뉴 대신)
+  if (more && showBar) {
+    const all = [...(emojis || []), ...(moreEmojis || [])];
+    const cols = Math.min(6, Math.floor((vw - edge * 2 - 16) / 48));
+    const gridW = cols * 48 + 16, gridH = Math.ceil(all.length / cols) * 48 + 56;
+    const top = Math.max(edge, Math.min(vh - gridH - edge, a.top - barH - gap));
+    return (
+      <div className="fixed inset-0 z-[95]" onClick={onClose} role="dialog" aria-label="감정 더 고르기">
+        <div className="absolute inset-0 bg-black/25" />
+        <div onClick={e => e.stopPropagation()} className="absolute bg-white rounded-3xl shadow-xl p-2" style={{ top, left: Math.max(edge, Math.min(vw - gridW - edge, alignRight ? a.right - gridW : a.left)), width: gridW }}>
+          <div className="flex items-center justify-between px-2 pb-1">
+            <span className="text-[0.9375rem] font-bold text-stone-700">감정 고르기</span>
+            <button onClick={() => setMore(false)} className="h-9 px-3 rounded-full text-[0.875rem] text-stone-500" aria-label="감정 고르기 닫기">‹ 돌아가기</button>
+          </div>
+          <div role="group" aria-label="감정 표시" className="grid" style={{ gridTemplateColumns: `repeat(${cols}, 48px)` }}>
+            {all.map(e => <span key={e} className="w-12 h-12 flex items-center justify-center">{emojiButton(e, true)}</span>)}
+          </div>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="fixed inset-0 z-[95]" onClick={onClose} role="dialog" aria-label={label}>
       <div className="absolute inset-0 bg-black/25" />
@@ -43,20 +77,18 @@ export default function MessageMenu({ anchor, alignRight, emojis, selected = [],
         <div role="group" aria-label="감정 표시" onClick={e => e.stopPropagation()}
           className="absolute flex items-center justify-between bg-white rounded-full shadow-xl px-2 py-1.5"
           style={{ top: barTop, left: fitX(barW), width: barW }}>
-          {emojis!.map(e => {
-            const on = selected.includes(e);
-            return (
-              <button key={e} onClick={() => { onClose(); onEmoji!(e); }} aria-pressed={on} aria-label={`${e} 표시${on ? ' 취소' : ''}`}
-                className={`w-10 h-10 rounded-full text-[1.5rem] leading-none flex items-center justify-center active:scale-110 ${on ? 'bg-blue-100 ring-2 ring-blue-400' : ''}`}>{e}</button>
-            );
-          })}
+          {emojis!.map(e => emojiButton(e))}
+          {plus && (
+            <button onClick={() => setMore(true)} aria-label="감정 더 보기"
+              className={`w-10 h-10 rounded-full text-[1.5rem] leading-none flex items-center justify-center bg-stone-100 text-stone-600 ${moreEmojis!.some(e => selected.includes(e)) ? 'ring-2 ring-blue-400' : ''}`}>＋</button>
+          )}
         </div>
       )}
       {actions.length > 0 && (
         <div onClick={e => e.stopPropagation()} className="absolute bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col divide-y divide-stone-100"
           style={{ top: menuTop, left: fitX(menuW), width: menuW }}>
           {actions.map(act => (
-            <button key={act.label} onClick={act.run} className={`w-full px-4 py-3.5 text-left text-[1rem] font-bold active:bg-stone-50 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>{act.label}</button>
+            <button key={act.label} onClick={act.run} className={`w-full px-4 py-3 text-left text-[1rem] font-bold active:bg-stone-50 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>{act.label}</button>
           ))}
         </div>
       )}

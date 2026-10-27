@@ -19,6 +19,11 @@ const MEDIA_COLUMNS: { table: string; cols: string[]; arrayCol?: string }[] = [
   { table: 'profiles', cols: ['avatar_url'] },
   { table: 'messages', cols: ['image_url'] },
   { table: 'deleted_messages', cols: ['image_url'] },
+  // 대화방 사진 묶음·단체방·사랑방 사진 (supabase/chat-media-menu.sql 뒤에 생기는 칸 — 따로 읽어 없으면 그것만 건너뜀)
+  { table: 'messages', cols: [], arrayCol: 'images' },
+  { table: 'deleted_messages', cols: [], arrayCol: 'images' },
+  { table: 'group_chat_messages', cols: ['image_url'], arrayCol: 'images' },
+  { table: 'lounge_messages', cols: ['image_url'], arrayCol: 'images' },
   { table: 'feedback', cols: ['image_url'] },
   { table: 'letters', cols: ['image_url'] },
   { table: 'sponsor_banners', cols: ['image_url'] },

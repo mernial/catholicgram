@@ -41,5 +41,7 @@ export async function uploadPhoto(file: File, prefix: string): Promise<string> {
 export const PHOTO_ONLY_TEXT = '📷 사진';
 // 동영상만 보낸 메시지 (메시지의 image_url 칸에 영상 주소가 들어감 — 주소 끝이 .mp4·.mov 등이면 영상으로 보여 준다)
 export const VIDEO_ONLY_TEXT = '🎬 동영상';
-export const isMediaOnlyText = (t?: string | null) => t === PHOTO_ONLY_TEXT || t === VIDEO_ONLY_TEXT;
+// 사진 여러 장을 묶어 보낸 메시지 (예: '📷 사진 5장')
+export const photoBundleText = (n: number) => `${PHOTO_ONLY_TEXT} ${n}장`;
+export const isMediaOnlyText = (t?: string | null) => !!t && (t === PHOTO_ONLY_TEXT || t === VIDEO_ONLY_TEXT || /^📷 사진 \d+장$/.test(t));
 export const isVideoUrl = (u?: string | null) => !!u && /\.(mp4|mov|m4v|webm)(?:[?#]|$)/i.test(u);

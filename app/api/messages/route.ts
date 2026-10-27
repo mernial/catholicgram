@@ -26,10 +26,13 @@ export async function POST(request: Request) {
   if (msg.deleted_at) return Response.json({ ok: true });
 
   // 1) 관리자용으로 원래 내용 보관 (표가 없으면 지우지 않음 → 관리자가 내용을 잃지 않게)
-  const { error: keepError } = await admin.from('deleted_messages').insert({
+  const kept: Record<string, unknown> = {
     message_id: String(msg.id), sender_id: msg.sender_id, receiver_id: msg.receiver_id,
     content: msg.content, image_url: msg.image_url ?? null, sent_at: msg.created_at,
-  });
+  };
+  let { error: keepError } = await admin.from('deleted_messages').insert(msg.images?.length ? { ...kept, images: msg.images } : kept);
+  // 묶음 사진 칸이 아직 없으면(supabase/chat-media-menu.sql 실행 전) 첫 사진만이라도 보관
+  if (keepError && msg.images?.length && /images|schema cache/i.test(keepError.message)) ({ error: keepError } = await admin.from('deleted_messages').insert(kept));
   if (keepError) {
     return Response.json({ error: /does not exist|schema cache/i.test(keepError.message)
       ? '메시지 삭제 기능을 준비 중이에요. (관리자: supabase/message-delete.sql 실행 필요)'
@@ -38,6 +41,7 @@ export async function POST(request: Request) {
   // 2) 대화에서는 내용 비우고 삭제 표시 (하트도 정리)
   const changes: Record<string, unknown> = { content: '', deleted_at: new Date().toISOString() };
   if ('image_url' in msg) changes.image_url = null;
+  if ('images' in msg) changes.images = null;
   const { error } = await admin.from('messages').update(changes).eq('id', msg.id);
   if (error) return Response.json({ error: '삭제하지 못했어요.' }, { status: 500 });
   await admin.from('message_reactions').delete().eq('message_id', msg.id); // 표가 없어도 무시
