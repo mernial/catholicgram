@@ -56,6 +56,7 @@
 - 내 공간 단추를 두 칸씩 맞춤: 회색(프로필 편집·메시지 / 내 댓글·설정), 테두리(다른 계정으로 로그인·로그아웃). '내 댓글'(`components/MyComments`, 아래에서 올라오는 창): 내가 단 댓글을 최근 순 30개씩(그 글의 사진·작성자·글 한 줄, 답글은 ↳, 지워진 글은 '지워졌거나 볼 수 없는 글'), 누르면 `openPostFromAlert`로 그 글의 그 댓글. 내 공간에서만 보임
 - 1:1 메시지 삭제: 내 메시지를 상대가 아직 안 읽었으면(`read_at` 없음) 꾹 누르기 메뉴에 '모두에게서 삭제', 늘 '내 화면에서만 삭제'(`dmHidden`). 서버(`app/api/messages`)도 읽은 메시지는 409로 거절, 그사이 읽혔으면 '내 화면에서만 지울까요?'
 - 채팅 입력칸 엔터(`lib/use-enter-send`, 1:1·단체방·사랑방 공통): 휴대폰·태블릿(화면 자판)은 엔터 = 줄바꿈·보내기 단추로 전송, 컴퓨터(`(hover: hover) and (pointer: fine)`)만 엔터 = 보내기·쉬프트+엔터 = 줄바꿈. 입력칸이 글에 맞춰 늘어남(최대 `max-h-32`). 1:1 입력칸은 `<input>` → `<textarea>`, 말풍선 `whitespace-pre-wrap`. 예전엔 아이패드처럼 큰 화면(700px 이상)도 엔터 = 보내기였음
+- 양 이모티콘 24개(`public/stickers/sheep/01~24.webp`, 운영자가 준 그림을 잘라 배경 투명 256px, `lib/stickers.ts`): 1:1·단체방·사랑방 입력칸 옆 😊 → 아래 이모티콘 칸(`components/StickerPanel`), 한 번 누르면 미리 보기·'보내기'(같은 것을 한 번 더 눌러도 보냄), 쓰던 글은 그대로. 메시지 글은 `[양 이모티콘] 안녕!`(예전 앱·휴대폰 알림·목록에서도 읽힘)이고 이 글과 똑같으면 말풍선 대신 그림(`parseSticker`/`StickerImage`). 이모티콘은 복사·고치기 없음. SQL 필요 없음
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
