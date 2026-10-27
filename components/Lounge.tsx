@@ -13,7 +13,8 @@ import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type Me
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 
@@ -314,6 +315,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     setSending(true);
     const reply = replyTo;
     setReplyTo(null);
+    typing.stop();
     let { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500), ...(reply ? { reply_to: reply.id } : {}) })
       .select('*').single();
     // 답장 칸이 아직 없으면(SQL 실행 전) 답장 표시 없이라도 보낸다
@@ -498,6 +500,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: m => { if (canWriteRef.current) startReply(m); },
   });
+  // 입력 중 표시 (관리자가 몰래 보는 중이면 알리지 않음)
+  const typing = useTyping('lounge', user.id, !stealth);
   // 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩)
   const media = useChatMedia({
     userId: user.id,
@@ -772,6 +776,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
       {!trash && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
 
+      {!trash && <TypingIndicator typers={typing.typers.filter(t => !blockedIds.has(t.id))} lookup={id => (authors[id] ? { name: authors[id].baptismal_name, avatar: authors[id].avatar_url ?? null } : undefined)} />}
       {!trash && media.bar}
       {media.choice}
       {!trash && capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
@@ -815,7 +820,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           <textarea
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value.slice(0, 500))}
+            onChange={e => { setInput(e.target.value.slice(0, 500)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
             enterKeyHint={enterSends ? 'send' : 'enter'}

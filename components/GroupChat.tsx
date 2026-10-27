@@ -10,7 +10,8 @@ import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
@@ -294,6 +295,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     }
     const reply = replyTo;
     setReplyTo(null);
+    typing.stop();
     const row = { chat_id: chatId, content: text.slice(0, 1000), ...(reply ? { reply_to: reply.id } : {}) };
     let { data, error: err } = await supabase.from('group_chat_messages').insert(row).select('*').single();
     // 답장 칸이 아직 없으면(SQL 다시 실행 전) 답장 표시 없이라도 보낸다
@@ -391,6 +393,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
   const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : m.content);
 
+  // 입력 중 표시 (관리자 보기는 보기만, 알리지 않음)
+  const typing = useTyping(`group:${chatId}`, user.id, !adminView);
   // 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩)
   const media = useChatMedia({
     userId: user.id,
@@ -554,6 +558,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
       <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} />
 
+      <TypingIndicator typers={typing.typers} lookup={id => (people[id] ? { name: people[id].baptismal_name, avatar: people[id].avatar_url ?? null } : undefined)} />
       {media.bar}
       {media.choice}
       {capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
@@ -579,7 +584,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           <textarea
             ref={inputRef}
             value={input}
-            onChange={e => setInput(e.target.value.slice(0, 1000))}
+            onChange={e => { setInput(e.target.value.slice(0, 1000)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
             enterKeyHint={enterSends ? 'send' : 'enter'}

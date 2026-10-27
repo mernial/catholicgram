@@ -38,11 +38,14 @@
 - 게시글 사진 10장까지(`MAX_PHOTOS`, 서버 `app/api/posts` 고치기도 10). 1:1 메시지: 사진·동영상을 여러 개 한꺼번에 골라 하나씩 차례로 보냄(개수 제한 없음, 글은 첫 번째와 함께, 휴대폰 알림은 한 번). 동영상은 `messages.image_url`에 영상 주소(`isVideoUrl`로 구분, 글 자리 `VIDEO_ONLY_TEXT`), 12MB 넘으면 720p로 줄이고 45MB 넘으면 못 보냄 — SQL 필요 없음
 - 영상 탭(`components/ReelVideo.tsx`): 화면에 들어오면 처음부터 저절로 재생(소리와 함께가 막히면 소리 없이, 그것도 막히면 ▶ 표시), 한 번 누르면 멈춤/재생, 두 번 누르면 공감, 왼쪽 위 '소리 켜기/끄기' 단추, 위아래 한 화면 안의 영상은 미리 받아 둠(`preload=auto`). 예전엔 누르면 소리만 바뀌어 재생이 막힌 휴대폰에서 영상이 멈춰 있었음
 - 답장 표시(1:1·단체방 말풍선 안): 상자·'○○에게 답장' 없이 원래 글 한 줄(흐리게) + ↵ (운영자 요청)
-- 카톡식 꾹 누르기 메뉴 (1:1·단체방·사랑방, `supabase/chat-media-menu.sql` 실행 필요): 감정 줄 끝 ＋(더 고르는 24개, `MORE_EMOJIS` — 서버 check 목록과 같아야 함), 복사·선택 복사(`components/ChatSheets`)·답장·고치기·책갈피(이 휴대폰에만, `lib/chat-actions` `useBookmarks`, 머리줄 🔖)·캡처·삭제(내 것=모두에게서, 남의 것=내 화면에서만 `useHiddenMessages`). 사랑방도 감정 표시(`lounge_reactions`)·답장(`lounge_messages.reply_to`)·밀어서 답장·두 번 하트 (관리자 몰래 보기 중엔 감정 못 함)
+- 카톡식 꾹 누르기 메뉴 (1:1·단체방·사랑방, `supabase/chat-media-menu.sql` — 2026-10-27 운영자 실행함): 감정 줄 끝 ＋(더 고르는 24개, `MORE_EMOJIS` — 서버 check 목록과 같아야 함), 복사·선택 복사(`components/ChatSheets`)·답장·고치기·책갈피(이 휴대폰에만, `lib/chat-actions` `useBookmarks`, 머리줄 🔖)·캡처·삭제(내 것=모두에게서, 남의 것=내 화면에서만 `useHiddenMessages`). 사랑방도 감정 표시(`lounge_reactions`)·답장(`lounge_messages.reply_to`)·밀어서 답장·두 번 하트 (관리자 몰래 보기 중엔 감정 못 함)
   - 캡처(`components/ChatCapture`): '대화 골라서'(줄 눌러 고름) 또는 '지금 화면' → 말풍선을 캔버스로 직접 그린 PNG → 공유하기(`navigator.share` 파일)·복사하기(`ClipboardItem`)·사진으로 저장
 - 사진·동영상 (1:1·단체방·사랑방 공통 `components/ChatMedia`): 사진 2장 넘게 고르면 '묶어서 한 번에'(한 메시지 `images[]`, 바둑판 9칸+N, 누르면 넘겨 보기) / '한 장씩'. 단체방·사랑방도 이제 사진·동영상(`image_url`). 지운 묶음 사진은 관리자 보관(`deleted_messages.images`, `lounge_trash.images` 트리거 `lounge_trash_media`)
 - 대화방을 위로 올려 보면 오른쪽 아래 ↓ '최근 대화로' 단추(새 대화 수 함께, `JumpToLatest`). 메시지 목록은 '👤 개인 메시지 / 👥 단체 메시지(사랑방·단체방)' 탭(관리자는 '🔒 모든 단체방'까지)
 - 글쓰기를 ✕로 닫거나 다른 화면으로 가면 쓰던 글을 버림(쓰던 게 있으면 '작성하던 게시글이 취소됩니다' 확인, `leaveComposer`/`composerOpenRef`). 예전엔 닫아도 남아서 다시 열면 쓰던 곳부터 나왔음
+- 메시지 요청·대화방 나가기 (`supabase/dm-requests.sql` 실행 필요, 표 `dm_threads` = 내 쪽 수락한 때·나간 때, 자기 줄만 읽고 씀): 상대만 보냈고 내가 보낸 적도 수락한 적도 없는 1:1 대화는 '메시지 요청'(목록 맨 위 📩 칸) — 수락 전에는 읽음 표시 안 함(`isRequestThread`, `markMessagesRead` 막음)·하트·답장·입력 중 알림도 안 함, 아래 막대에 수락·거절·차단. 목록 '✏️ 대화방 정리 (나가기)': 1:1은 나간 때 앞의 대화를 내 화면에서 숨김(`afterLeft`, 상대 화면은 그대로), 단체방은 `leave_group_chat`
+- 입력 중 표시 (`lib/typing.ts`, Supabase 실시간 방송 `typing:dm:…`/`typing:group:id`/`typing:lounge`, 저장 안 함): 2초마다 알리고 4.5초 지나면 지움, 여럿이면 프로필 사진 겹쳐 'N명이 입력 중'(`TypingIndicator`). 관리자 몰래 보기·단체방 관리자 보기는 알리지 않음
+- 익명 고민상담은 탭 대신 아래에서 올라오는 창(`showAnon`, `components/BottomSheet`), 예전 주소·알림의 'anon' 탭은 창으로 연다. 아래로 끌어 닫기 공통 `lib/sheet-drag.ts`(손잡이·제목줄은 마우스로도, 내용은 맨 위일 때 손가락으로 당기면): 고민상담·사연함·알림창(알림창 위쪽 끌기는 원래 `alertDrag`, `data-no-sheet-drag`)
 - 보고 있는 대화(1:1·단체)의 휴대폰 알림은 띄우지 않음: SW가 앱에 'viewing?' 물어봄(`askViewing`/`viewingRef`), 애플 기기는 알림을 꼭 띄워야 해서 소리 없이 띄우고 바로 닫음. 대화방 들어가면 2~3초 동안 맨 아래에 붙임
 - 알림으로 연 화면에서 창을 닫거나 뒤로가기 하면 페이지가 새로 불려 홈으로 가던 문제: 시작할 때 주소를 지우는 `replaceState`가 Next.js 기록 표시(`__NA`)를 지웠음 → `window.history.state`를 남기고 주소만 바꿈
 - 건의함 글이 사라진 이유: 탈퇴하면 `app/api/account/delete`가 그 교우의 건의·신고도 지움 (개인정보처리방침대로). 되살릴 수 없음
