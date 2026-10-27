@@ -538,7 +538,11 @@ export default function Home() {
     if (initialLink) {
       const search = window.location.search;
       window.history.replaceState(null, '', '/');
-      if (new URLSearchParams(search).has('n')) { if (claimLink(search)) setDeepLink(initialLink); clearPendingLink(); }
+      if (new URLSearchParams(search).has('n')) {
+        if (claimLink(search)) { setDeepLink(initialLink); clearPendingLink(); }
+        // 휴대폰·컴퓨터가 앱을 예전 알림 주소로 다시 띄운 경우: 그 주소는 무시하고, 방금 누른 알림이 적어 둔 곳이 있으면 그리로
+        else consumePendingLink();
+      }
       else consumePendingLink(search);
     } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
 
@@ -4813,8 +4817,8 @@ export default function Home() {
                   </div>
                 ))
               )}
-              {/* 문제 찾기용: 알림을 눌렀을 때 어떤 길로 열렸는지 */}
-              <div className="p-4">
+              {/* 문제 찾기용 (관리자만): 알림을 눌렀을 때 어떤 길로 열렸는지 */}
+              {isAdmin && <div className="p-4">
                 <button onClick={async () => {
                   if (linkLogText !== null) { setLinkLogText(null); return; }
                   const t = (ms: number) => new Date(ms).toLocaleTimeString('en-GB');
@@ -4837,7 +4841,7 @@ export default function Home() {
                   alert('10초 뒤에 알림이 와요.\n\n· 휴대폰: 홈 버튼을 눌러 앱을 잠깐 내려 두세요. (앱을 끄지는 마세요)\n· 컴퓨터: 이 창을 그대로 두면 화면 위에 알림 배너가 떠요.\n\n알림(배너)을 누르면 최근 댓글이 달린 글이 열리고, 그 댓글로 화면이 바로 가는지 봐 주세요.');
                 }} className="ml-3 text-[0.75rem] text-blue-600 underline">테스트 알림 보내기</button>
                 {linkLogText !== null && <pre className="mt-2 p-2 bg-stone-50 border border-stone-200 rounded-lg text-[0.6875rem] leading-snug text-stone-700 whitespace-pre-wrap break-all">{linkLogText}</pre>}
-              </div>
+              </div>}
             </div>
           </div>
         </div>
