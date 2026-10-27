@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
@@ -2840,6 +2840,10 @@ export default function Home() {
     if (activeTab === 'chat') setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), 50);
   }, [visibleHeight, activeTab]);
   const scrollToTop = () => mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  // 화면 스크롤은 홈과 같은 칸을 쓴다 → 홈에서 내려간 채로 내 공간(다른 교우 공간)을 열면 중간부터 보였음. 공간은 늘 맨 위에서 시작
+  useLayoutEffect(() => {
+    if (activeTab === 'profile') mainScrollRef.current?.scrollTo({ top: 0 });
+  }, [activeTab, viewingUserId]);
 
   // 홈·탐색을 한 번 더 누르면(두 번 누르면) 맨 위로 올라가며 새로 고침
   const [refreshState, setRefreshState] = useState<'' | 'loading' | 'done'>('');
