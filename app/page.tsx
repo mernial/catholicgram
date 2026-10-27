@@ -17,6 +17,7 @@ import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, t
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
 import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
+import { useFlipList } from '@/lib/use-flip-list';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -2425,7 +2426,7 @@ export default function Home() {
     if (!sheet) return;
     const big = sheet.getBoundingClientRect().height >= alertSheetMax() - 4;
     sheet.style.transition = 'min-height 0.25s';
-    sheet.style.minHeight = big ? '' : `${alertSheetMax()}px`;
+    sheet.style.minHeight = big ? (alertBaseH.current ? `${alertBaseH.current}px` : '') : `${alertSheetMax()}px`; // 원래대로 = 처음 열린 크기
   };
   const alertDragStart = (e: React.PointerEvent<HTMLElement>) => {
     const sheet = alertSheetRef.current;
@@ -2457,6 +2458,17 @@ export default function Home() {
     sheet.style.transition = 'transform 0.2s';
     sheet.style.transform = '';
   };
+  // 알림을 지워도 창은 줄어들지 않는다: 창이 커질 때마다 그 높이를 최소 높이로 붙잡아 두고,
+  // 지운 알림 아래 줄들은 스르륵 올라온다 (useFlipList)
+  const alertListRef = useFlipList<HTMLDivElement>(showNotifications);
+  const alertBaseH = useRef(0); // 알림이 많아져 저절로 커진 높이 (손잡이로 '원래대로' 돌아갈 크기)
+  useLayoutEffect(() => {
+    const sheet = alertSheetRef.current;
+    if (!showNotifications || !sheet) { alertBaseH.current = 0; return; }
+    if (alertDrag.current || sheet.getAnimations?.().some(a => a.playState === 'running')) return; // 끄는 중·커지는 중에는 그대로
+    const h = sheet.offsetHeight;
+    if (h > (parseFloat(sheet.style.minHeight) || 0)) { sheet.style.minHeight = `${h}px`; alertBaseH.current = Math.max(alertBaseH.current, h); }
+  });
 
   const openNotifications = () => {
     if (!user) return;
@@ -5421,15 +5433,15 @@ export default function Home() {
                 {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
               </div>
             )}
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
+            <div ref={alertListRef} className="relative flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
               {isMyFeastToday && !feastCleared && (
-                <div className="p-4 bg-amber-50/60">
+                <div data-flip-key="feast-me" className="p-4 bg-amber-50/60">
                   <p className="text-[0.9375rem] text-stone-800">🎉 <b>{profile?.baptismal_name}</b>님, 오늘 축일을 축하드립니다!</p>
                   <p className="text-xs text-stone-600 mt-1">주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏</p>
                 </div>
               )}
               {!feastCleared && visibleFeastFriends.map(f => (
-                <div key={`feast-${f.id}`} className="p-4 flex items-center gap-3 bg-amber-50/60">
+                <div key={`feast-${f.id}`} data-flip-key={`feast-${f.id}`} className="p-4 flex items-center gap-3 bg-amber-50/60">
                   <button onClick={() => { setShowNotifications(false); goToProfile(f.id); }} className="flex-1 text-left min-w-0 text-[0.9375rem] text-stone-800">
                     🎉 오늘은 <b>{f.baptismal_name}</b>님의 축일이에요
                   </button>
@@ -5437,7 +5449,7 @@ export default function Home() {
                 </div>
               ))}
               {listedFollows.map(r => (
-                <div key={r.id} className={`p-4 flex items-center gap-3 ${readAlerts.has(`f:${r.id}`) || readAlerts.has(`fu:${r.follower.id}`) ? 'opacity-55' : r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
+                <div key={r.id} data-flip-key={`f:${r.id}`} className={`p-4 flex items-center gap-3 ${readAlerts.has(`f:${r.id}`) || readAlerts.has(`fu:${r.follower.id}`) ? 'opacity-55' : r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { markAlertRead(`f:${r.id}`); setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
                     {r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
@@ -5455,7 +5467,7 @@ export default function Home() {
                 </div>
               ))}
               {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
-                <button key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
+                <button key={`msg-${u.partner.id}`} data-flip-key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
                   <p className="text-[0.9375rem] text-stone-800">
                     <Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-600" /><b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[0.75rem] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
                   </p>
@@ -5467,7 +5479,7 @@ export default function Home() {
                 <div className="p-10 text-center text-stone-400 text-sm">새 알림이 없습니다.</div>
               ) : (
                 listedComments.map(n => (
-                  <div key={n.id} className={`relative ${readAlerts.has(`c:${n.id}`) ? 'opacity-55' : ''}`}>
+                  <div key={n.id} data-flip-key={`c:${n.id}`} className={`relative ${readAlerts.has(`c:${n.id}`) ? 'opacity-55' : ''}`}>
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">

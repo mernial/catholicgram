@@ -50,6 +50,7 @@
 - 알림으로 연 화면에서 창을 닫거나 뒤로가기 하면 페이지가 새로 불려 홈으로 가던 문제: 시작할 때 주소를 지우는 `replaceState`가 Next.js 기록 표시(`__NA`)를 지웠음 → `window.history.state`를 남기고 주소만 바꿈
 - 건의함 글이 사라진 이유: 탈퇴하면 `app/api/account/delete`가 그 교우의 건의·신고도 지움 (개인정보처리방침대로). 되살릴 수 없음
 - 메시지 목록: 대화방 줄을 왼쪽으로 밀면 빨간 '나가기'(`components/SwipeRow`, 한 번에 한 줄만 열림, 열린 채 다른 줄을 누르면 닫기만, 스크롤하면 닫힘). 예전 '✏️ 대화방 정리' 단추는 없앰. 개인/단체 탭은 흰 칸이 미끄러지는 한 줄 칸(이모티콘 없이 '개인'·'단체', 관리자는 '모든 단체방')
+- 알림창: 알림을 지워도 창 크기는 그대로(창이 커질 때마다 그 높이를 `minHeight`로 붙잡음, 손잡이 '원래대로'도 처음 열린 크기 `alertBaseH`), 지운 줄 아래 알림들은 스르륵 올라옴(`lib/use-flip-list`, 줄마다 `data-flip-key`)
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
