@@ -7,7 +7,12 @@ import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
 import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@/components/NewChat';
-import MessageMenu, { REACTION_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
+import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
+import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
 
@@ -15,7 +20,8 @@ import { usePressGestures } from '@/lib/use-press-gestures';
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
 // 관리자 보기(adminView): 모든 방을 읽기만 한다 — 글쓰기·읽음 표시·입장 안내·감정 표시가 없어 교우들에게 보이지 않는다.
 // 손동작은 1:1 메시지와 같다: 꾹 누르기 = 그 자리 메뉴(위에 감정, 아래에 답장·고치기…), 두 번 누르기 = 하트, 옆으로 밀기 = 답장
-interface GroupMessage { id: string; chat_id: string; user_id: string | null; content: string; kind: 'text' | 'system'; created_at: string; reply_to?: string | null; edited_at?: string | null }
+interface GroupMessage { id: string; chat_id: string; user_id: string | null; content: string; kind: 'text' | 'system'; created_at: string; reply_to?: string | null; edited_at?: string | null; image_url?: string | null; images?: string[] | null }
+const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS];
 interface Member { user_id: string; joined_at: string }
 interface Reaction { user_id: string; emoji: string }
 
@@ -26,7 +32,7 @@ const PAGE = 80;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 
-export default function GroupChat({ user, chatId, adminView = false, blockedIds, onClose, onOpenProfile, onReport, onSent, onChanged }: {
+export default function GroupChat({ user, chatId, adminView = false, blockedIds, onClose, onOpenProfile, onReport, onSent, onChanged, onZoom }: {
   user: User;
   chatId: string;
   adminView?: boolean;                       // 관리자: 몰래 읽기만
@@ -36,6 +42,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   onReport: (target: ReportTarget) => void;
   onSent?: (messageId: string) => void;      // 휴대폰 알림 보내기
   onChanged?: () => void;                    // 방 이름·인원·나가기 → 목록 새로 고침
+  onZoom?: (images: string[], index: number) => void; // 사진 크게 보기
 }) {
   const [name, setName] = useState('');
   const [members, setMembers] = useState<Member[]>([]);
@@ -333,7 +340,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     }
   };
 
-  const canEdit = (m: GroupMessage) => m.user_id === user.id && m.kind === 'text' && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
+  const canEdit = (m: GroupMessage) => m.user_id === user.id && m.kind === 'text' && !isMediaOnlyText(m.content) && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
   const startReply = (m: GroupMessage) => { setMenuMsg(null); setEditing(null); setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 50); };
   const startEdit = (m: GroupMessage) => { setMenuMsg(null); setReplyTo(null); setEditing(m); setInput(m.content); setTimeout(() => inputRef.current?.focus(), 50); };
   const cancelEdit = () => { setEditing(null); setInput(''); };
@@ -384,6 +391,48 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
   const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : m.content);
 
+  // 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩)
+  const media = useChatMedia({
+    userId: user.id,
+    getText: () => inputRef.current?.value ?? input,
+    clearText: () => setInput(''),
+    insert: async row => {
+      const { data, error: err } = await supabase.from('group_chat_messages').insert({ chat_id: chatId, ...row }).select('*').single();
+      if (!err && data) { atBottomRef.current = true; addMessages([data as GroupMessage]); }
+      return { id: (data as GroupMessage | null)?.id ?? null, error: err };
+    },
+    onSent: id => onSent?.(String(id)),
+  });
+
+  // 카톡식 메뉴: 복사 · 선택 복사 · 책갈피 · 캡처 · 내 화면에서만 지우기 (이 휴대폰에만 저장)
+  const [selectCopy, setSelectCopy] = useState<string | null>(null);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const bookmarks = useBookmarks(user.id, `group:${chatId}`);
+  const hiddenMsgs = useHiddenMessages(user.id, `group:${chatId}`);
+  const [captureAsk, setCaptureAsk] = useState<string | null>(null);
+  const [capturePick, setCapturePick] = useState<Set<string> | null>(null);
+  const [captured, setCaptured] = useState<Blob | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const makeCapture = async (ids: string[]) => {
+    const pick = messages.filter(m => ids.includes(m.id) && !hiddenMsgs.hidden.has(m.id));
+    if (pick.length === 0) { alert('캡처할 메시지가 없어요.'); return; }
+    setCapturing(true);
+    try {
+      const items: CaptureItem[] = pick.map(m => {
+        const blockedMsg = !!m.user_id && blockedIds.has(m.user_id);
+        return {
+          id: m.id, system: m.kind === 'system', mine: m.user_id === user.id, name: m.user_id === user.id ? undefined : nameOf(m.user_id), time: m.created_at,
+          text: blockedMsg ? '차단한 교우의 메시지예요' : isMediaOnlyText(m.content) ? '' : m.content,
+          photos: blockedMsg ? undefined : m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
+          video: !blockedMsg && isVideoUrl(m.image_url),
+        };
+      });
+      setCaptured(await renderCapture(items, `👥 ${name || '단체 채팅방'}`, { mine: '#047857', bg: '#eef1ea' }));
+      setCapturePick(null);
+    } catch { alert('캡처하지 못했어요. 잠시 후 다시 해 주세요.'); }
+    finally { setCapturing(false); }
+  };
+
   return (
     <div className="fixed inset-0 z-[75] bg-[#eef1ea] flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
@@ -394,6 +443,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           <h2 className="font-bold text-[1.0625rem] text-stone-900 truncate">👥 {name || '단체 채팅방'}</h2>
           <p className="text-[0.8125rem] text-stone-500">{members.length}명 함께하는 중 <span className="text-stone-400">▾ 누구?</span></p>
         </button>
+        {bookmarks.list.length > 0 && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}>🔖</button>}
         <button onClick={() => setShowMembers(true)} className="w-11 h-11 flex items-center justify-center text-stone-600" aria-label="채팅방 메뉴">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>
@@ -427,12 +477,21 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             const blocked = !!m.user_id && blockedIds.has(m.user_id);
             const grouped = !newDay && prev && prev.kind === 'text' && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
             const rs = reactions[m.id] || [];
-            const counts = REACTION_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
+            const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
             const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
+            if (hiddenMsgs.hidden.has(m.id)) return null; // 내 화면에서만 지운 메시지
+            const picked = !!capturePick?.has(m.id);
             return (
               <div key={m.id} id={`gm-${m.id}`}>
                 {dayLine}
-                <div className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''}`}>
+                <div className={`relative flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
+                  {/* 대화 골라서 캡처하는 중: 줄을 누르면 고르기 */}
+                  {capturePick && (
+                    <button type="button" onClick={() => setCapturePick(prev => { const n = new Set(prev); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })}
+                      className="absolute inset-0 z-10 flex items-center" aria-pressed={picked} aria-label={picked ? '캡처에서 빼기' : '캡처할 메시지로 고르기'}>
+                      <span className={`ml-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[0.8125rem] font-bold ${picked ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white/90 border-stone-400'}`}>{picked ? '✓' : ''}</span>
+                    </button>
+                  )}
                   {!mine && (grouped ? <span className="w-10 shrink-0" /> : (
                     <button onClick={() => m.user_id && onOpenProfile(m.user_id)} className="shrink-0 self-start" aria-label={`${a?.baptismal_name || '교우'}님 공간`}>
                       {a?.avatar_url
@@ -463,7 +522,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                               <span aria-hidden="true" className="shrink-0">↵</span>
                             </button>
                           )}
-                          {blocked ? '차단한 교우의 메시지예요' : m.content}
+                          {/* 사진(묶음이면 바둑판)·동영상 */}
+                          {!blocked && <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />}
+                          {blocked ? '차단한 교우의 메시지예요' : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
                         </div>
                         {/* 감정을 고르면 잠깐 크게 */}
                         {heartPop?.id === m.id && (
@@ -480,7 +541,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           </button>
                         )}
                       </div>
-                      <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">{m.edited_at && <span className="text-stone-400">수정됨</span>}<span>{timeOf(m.created_at)}</span></span>
+                      <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">{m.edited_at && <span className="text-stone-400">수정됨</span>}{bookmarks.has(m.id) && <span aria-label="책갈피">🔖</span>}<span>{timeOf(m.created_at)}</span></span>
                     </div>
                   </div>
                 </div>
@@ -490,11 +551,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         </div>
       </div>
 
-      {newBelow > 0 && (
-        <button onClick={() => scrollToBottom(true)} className="absolute left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] px-4 py-2 rounded-full bg-stone-900/85 text-white text-[0.875rem] font-bold shadow-lg">새 대화 {newBelow}개 ↓</button>
-      )}
+      {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
+      <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} />
 
-      {canWrite && (replyTo || editing) && (() => {
+      {media.bar}
+      {media.choice}
+      {capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
+      {canWrite && !capturePick && (replyTo || editing) && (() => {
         const m = (editing || replyTo)!;
         return (
           <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
@@ -506,8 +569,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           </div>
         );
       })()}
-      {canWrite && (
+      {canWrite && !capturePick && (
         <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2`}>
+          {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
+          <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
+            {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
+            <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
+          </label>
           <textarea
             ref={inputRef}
             value={input}
@@ -539,18 +607,40 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const mine = m.user_id === user.id;
         const myEmoji = (reactions[m.id] || []).find(r => r.user_id === user.id)?.emoji;
         const close = () => setMenuMsg(null);
+        const blockedMsg = !!m.user_id && blockedIds.has(m.user_id);
+        const text = blockedMsg || isMediaOnlyText(m.content) ? '' : m.content;
         return (
           <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close}
-            emojis={canWrite ? REACTION_EMOJIS : undefined} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
+            emojis={canWrite ? REACTION_EMOJIS : undefined} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
             actions={[
-              ...(canWrite ? [{ label: '↩️ 답장하기', run: () => startReply(m) }] : []),
-              ...(canWrite && canEdit(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEdit(m) }] : []),
-              ...(!mine && m.user_id ? [{ label: '👤 프로필 보기', run: () => { close(); onOpenProfile(m.user_id!); } }] : []),
-              ...(!mine && !adminView && m.user_id ? [{ label: '🚨 신고', run: () => { close(); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: people[m.user_id!]?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); } }] : []),
-              ...(mine && !adminView ? [{ label: '🗑 지우기', run: () => remove(m), danger: true }] : []),
+              ...(text ? [
+                { label: '복사', run: async () => { close(); toast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
+                { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
+              ] : []),
+              ...(canWrite ? [{ label: '답장', run: () => startReply(m) }] : []),
+              ...(canWrite && canEdit(m) ? [{ label: '고치기', run: () => startEdit(m) }] : []),
+              { label: bookmarks.has(m.id) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); bookmarks.toggle({ id: m.id, text: text || (isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: nameOf(m.user_id), at: m.created_at }); } },
+              { label: '캡처', run: () => { close(); setCaptureAsk(m.id); } },
+              ...(adminView && !mine && m.user_id ? [{ label: '프로필 보기', run: () => { close(); onOpenProfile(m.user_id!); } }] : []),
+              ...(!mine && !adminView && m.user_id ? [{ label: '신고', run: () => { close(); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: people[m.user_id!]?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); } }] : []),
+              ...(mine && !adminView
+                ? [{ label: '삭제', run: () => remove(m), danger: true }]
+                : [{ label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.')) hiddenMsgs.hide(m.id); }, danger: true }]),
             ]} />
         );
       })()}
+
+      {captureAsk && (
+        <CaptureChoice onClose={() => setCaptureAsk(null)}
+          onPick={() => { setCapturePick(new Set([captureAsk])); setCaptureAsk(null); }}
+          onScreen={() => { setCaptureAsk(null); makeCapture(visibleIds(listRef.current, 'gm-')); }} />
+      )}
+      {captured && <CapturePreview blob={captured} title={`단체 채팅방 ${name}`} onClose={() => setCaptured(null)} />}
+      {selectCopy !== null && <SelectCopySheet text={selectCopy} onClose={() => setSelectCopy(null)} />}
+      {showBookmarks && (
+        <BookmarkSheet items={bookmarks.list} onClose={() => setShowBookmarks(false)} onRemove={bookmarks.remove}
+          onJump={id => { setShowBookmarks(false); if (document.getElementById(`gm-${id}`)) setTimeout(() => jumpTo(id), 50); else alert('지금 불러온 대화에 없는 메시지예요. 위로 올려 \'이전 대화 더 보기\'를 눌러 주세요.'); }} />
+      )}
 
       {/* 참여한 교우 · 초대 · 이름 바꾸기 · 나가기 */}
       {showMembers && (

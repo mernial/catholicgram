@@ -9,6 +9,13 @@ import type { ReportTarget } from '@/components/ReportDialog';
 import MentionSuggest from '@/components/MentionSuggest';
 import { extractMentions } from '@/lib/mentions';
 import { initial } from '@/lib/fancy-name';
+import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import { usePressGestures } from '@/lib/use-press-gestures';
+import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn } from '@/components/ChatMedia';
+import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
+import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -17,9 +24,11 @@ import { initial } from '@/lib/fancy-name';
 // 사랑방 대화는 휴대폰 알림·알림음이 없다. 다만 '@관리자'로 부르면 관리자에게만, '@아이디'로 부르면 그 교우에게만 휴대폰 알림이 간다.
 // 관리자는 기본으로 몰래 들어오고(위쪽 '들어왔다고 알리기'), 대화 얼리기·모두 지우기·교우 뱃지를 쓸 수 있다 (supabase/lounge-admin.sql).
 
-interface LoungeMessage { id: string; user_id: string; content: string; created_at: string; is_admin?: boolean }
+interface LoungeMessage { id: string; user_id: string; content: string; created_at: string; is_admin?: boolean; reply_to?: string | null; image_url?: string | null; images?: string[] | null }
+interface Reaction { user_id: string; emoji: string }
+const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS];
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; badge_type?: string | null }
-interface Trashed { id: string; user_id: string | null; content: string | null; created_at: string | null; deleted_at: string; deleted_by: string | null }
+interface Trashed { id: string; user_id: string | null; content: string | null; created_at: string | null; deleted_at: string; deleted_by: string | null; image_url?: string | null; images?: string[] | null }
 
 const PAGE = 80;
 const SETUP_HINT = '사랑방을 준비 중이에요. (관리자: supabase/lounge.sql 실행 필요)';
@@ -66,7 +75,7 @@ const withCall = (text: string, mine: boolean) => text.split(/(@[0-9A-Za-z_가-�
 
 export const loungeSeenKey = (userId: string) => `loungeSeenAt:${userId}`;
 
-export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, onlineIds = [], stealth = false, onReveal, onClose, onOpenProfile, onReport, onCallAdmin, onMention, onAnnounce }: {
+export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0, onlineIds = [], stealth = false, onReveal, onClose, onOpenProfile, onReport, onCallAdmin, onMention, onAnnounce, onZoom }: {
   user: User;
   isAdmin: boolean;
   blockedIds: Set<string>;
@@ -81,6 +90,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   onAnnounce?: (messageId: string) => Promise<string>; // 관리자: 모든 교우에게 휴대폰 알림 → 결과 문구
   stealth?: boolean;                     // 관리자 몰래 들어가기: 들어왔다는 안내 없이, 참여 인원에도 안 잡힘
   onReveal?: () => void;                 // 몰래 보다가 '들어왔다고 알리기'
+  onZoom?: (images: string[], index: number) => void; // 사진 크게 보기
 }) {
   const [messages, setMessages] = useState<LoungeMessage[]>([]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
@@ -89,7 +99,20 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [hasOlder, setHasOlder] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menuMsg, setMenuMsg] = useState<LoungeMessage | null>(null);   // 꾹 누른 글 (그 자리 메뉴)
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const setMenuId = (id: null) => { void id; setMenuMsg(null); };        // 메뉴 닫기 (예전 이름)
+  const [replyTo, setReplyTo] = useState<LoungeMessage | null>(null);
+  const [reactions, setReactions] = useState<Record<string, Reaction[]>>({});
+  const [heartPop, setHeartPop] = useState<{ id: string; emoji: string } | null>(null);
+  const [selectCopy, setSelectCopy] = useState<string | null>(null);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  const bookmarks = useBookmarks(user.id, 'lounge');
+  const hiddenMsgs = useHiddenMessages(user.id, 'lounge');
+  const [captureAsk, setCaptureAsk] = useState<string | null>(null);
+  const [capturePick, setCapturePick] = useState<Set<string> | null>(null);
+  const [captured, setCaptured] = useState<Blob | null>(null);
+  const [capturing, setCapturing] = useState(false);
   const [newBelow, setNewBelow] = useState(0);         // 위로 올려 보는 중에 새로 온 대화 수
   const [banned, setBanned] = useState<Set<string>>(new Set());
   const [trash, setTrash] = useState<Trashed[] | null>(null);
@@ -289,11 +312,19 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     // 입력창은 바로 비운다: 보내는 동안 이어서 친 글자가 나중에 지워지지 않게 (못 보내면 되돌림)
     setInput('');
     setSending(true);
-    const { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) })
+    const reply = replyTo;
+    setReplyTo(null);
+    let { data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500), ...(reply ? { reply_to: reply.id } : {}) })
       .select('*').single();
+    // 답장 칸이 아직 없으면(SQL 실행 전) 답장 표시 없이라도 보낸다
+    if (err && reply && isMissingColumn(err)) {
+      ({ data, error: err } = await supabase.from('lounge_messages').insert({ content: text.slice(0, 500) }).select('*').single());
+      if (!err) alert(MEDIA_SETUP_HINT);
+    }
     setSending(false);
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err) {
+      setReplyTo(reply);
       setInput(cur => (cur.trim() ? cur : raw));
       alert(isSetupError(err) ? SETUP_HINT : /천천히|제한|멈췄/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
       return;
@@ -410,6 +441,95 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     loadAuthors((data || []).map(t => t.user_id).filter(Boolean) as string[]);
   };
 
+  // ── 꾹 누르기 메뉴 · 감정 표시 · 답장 · 사진 · 책갈피 · 캡처 (1:1 메시지·단체방과 같게) ──
+  // 감정 표시: 5초마다 오늘 대화의 감정을 다시 읽는다 (SQL 실행 전이면 조용히 그만)
+  const reactionsMissing = useRef(false);
+  const savingReactions = useRef<Set<string>>(new Set());
+  const loadReactions = async (ids: string[]) => {
+    if (ids.length === 0 || reactionsMissing.current) return;
+    const { data, error: err } = await supabase.from('lounge_reactions').select('message_id, user_id, emoji').in('message_id', ids);
+    if (err) { if (isSetupError(err) || isMissingColumn(err)) reactionsMissing.current = true; return; }
+    setReactions(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { if (!savingReactions.current.has(id)) delete next[id]; });
+      (data as (Reaction & { message_id: string })[]).forEach(r => {
+        if (savingReactions.current.has(r.message_id)) return;
+        next[r.message_id] = [...(next[r.message_id] || []), { user_id: r.user_id, emoji: r.emoji }];
+      });
+      return next;
+    });
+  };
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState !== 'hidden') loadReactions(messagesRef.current.slice(-PAGE).map(m => m.id)); };
+    const first = setTimeout(tick, 600);
+    const t = setInterval(tick, 5000);
+    return () => { clearTimeout(first); clearInterval(t); };
+  }, []);
+  const react = async (m: LoungeMessage, emoji: string) => {
+    const before = reactions[m.id] || [];
+    const off = before.find(r => r.user_id === user.id)?.emoji === emoji;
+    setReactions(prev => ({ ...prev, [m.id]: [...(prev[m.id] || []).filter(r => r.user_id !== user.id), ...(off ? [] : [{ user_id: user.id, emoji }])] }));
+    if (!off) { setHeartPop({ id: m.id, emoji }); setTimeout(() => setHeartPop(p => (p?.id === m.id ? null : p)), 700); }
+    savingReactions.current.add(m.id);
+    const { error: err } = off
+      ? await supabase.from('lounge_reactions').delete().eq('message_id', m.id).eq('user_id', user.id)
+      : await supabase.from('lounge_reactions').upsert({ message_id: m.id, user_id: user.id, emoji }, { onConflict: 'message_id,user_id' });
+    savingReactions.current.delete(m.id);
+    if (err) {
+      setReactions(prev => ({ ...prev, [m.id]: before }));
+      alert(isSetupError(err) || isMissingColumn(err) ? MEDIA_SETUP_HINT : '감정 표시를 하지 못했어요. (대화가 멈췄거나 제한됐을 수 있어요)');
+    }
+  };
+  const startReply = (m: LoungeMessage) => { setMenuMsg(null); setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 50); };
+  const jumpTo = (id: string) => {
+    const el = document.getElementById(`lounge-${id}`);
+    if (!el) { alert('지금 화면에 없는 대화예요.'); return; }
+    atBottomRef.current = false;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setHighlightId(id);
+    setTimeout(() => setHighlightId(h => (h === id ? null : h)), 1600);
+  };
+  const openMenu = (m: LoungeMessage, el: Element | null) => { setMenuAnchor(anchorOf(el)); setMenuMsg(m); };
+  const canWriteRef = useRef(true);
+  const gestures = usePressGestures<LoungeMessage>({
+    keyOf: m => m.id,
+    onTap: (m, el) => { if (m.user_id === user.id) openMenu(m, el); },
+    onDoubleTap: m => { if (canWriteRef.current && !stealth) react(m, '❤️'); },
+    onLongPress: (m, el) => openMenu(m, el),
+    onSwipe: m => { if (canWriteRef.current) startReply(m); },
+  });
+  // 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩)
+  const media = useChatMedia({
+    userId: user.id,
+    getText: () => inputRef.current?.value ?? input,
+    clearText: () => setInput(''),
+    insert: async row => {
+      const { data, error: err } = await supabase.from('lounge_messages').insert(row).select('*').single();
+      if (!err && data) { atBottomRef.current = true; addMessages([data as LoungeMessage]); }
+      return { id: (data as LoungeMessage | null)?.id ?? null, error: err };
+    },
+  });
+  const authorName = (id: string) => (id === user.id ? '나' : authors[id]?.baptismal_name || '교우');
+  const makeCapture = async (ids: string[]) => {
+    const pick = messages.filter(m => ids.includes(m.id) && !hiddenMsgs.hidden.has(m.id) && !blockedIds.has(m.user_id));
+    if (pick.length === 0) { alert('캡처할 대화가 없어요.'); return; }
+    setCapturing(true);
+    try {
+      const items: CaptureItem[] = pick.map(m => {
+        const sk = sysKind(m);
+        return {
+          id: m.id, system: !!sk, mine: m.user_id === user.id, name: m.user_id === user.id ? undefined : authorName(m.user_id), time: m.created_at,
+          text: sk === 'enter' ? `🙋 관리자 ${authorName(m.user_id)}님이 들어왔어요` : sk ? SYS_TEXT[sk] : isMediaOnlyText(m.content) ? '' : m.content,
+          photos: m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
+          video: isVideoUrl(m.image_url),
+        };
+      });
+      setCaptured(await renderCapture(items, '💬 모두의 사랑방', { mine: '#4d6a45', bg: '#f4efe6' }));
+      setCapturePick(null);
+    } catch { alert('캡처하지 못했어요. 잠시 후 다시 해 주세요.'); }
+    finally { setCapturing(false); }
+  };
+
   // 관리자 글(위 칸)과 교우 대화(아래 칸). SQL 실행 전(is_admin 없음)에는 관리자 본인 글만 위로
   const isAdminMsg = (m: LoungeMessage) => m.is_admin === true || (m.is_admin === undefined && isAdmin && m.user_id === user.id);
   const today = messages.filter(m => m.created_at >= dayStart);
@@ -418,6 +538,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   // 얼림: 오늘 마지막 얼림/다시 엶 안내가 '얼림'이면
   const lastFreeze = [...today].reverse().find(m => sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze');
   const frozen = !!lastFreeze && sysKind(lastFreeze) === 'freeze';
+  canWriteRef.current = !frozen || isAdmin;
   const lastClearAt = [...today].reverse().find(m => sysKind(m) === 'clear')?.created_at || '';
   const shown = today.filter(m => (isEnter(m) || !isAdminMsg(m)) && !blockedIds.has(m.user_id) && !(isEnter(m) && m.created_at < lastClearAt));
   const adminRef = useRef<HTMLDivElement>(null);
@@ -452,6 +573,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <p className="text-[0.8125rem] font-bold text-emerald-700"><span className={`inline-block w-2 h-2 rounded-full mr-1 align-middle ${online > 0 ? 'bg-emerald-500' : 'bg-stone-300'}`} />👥 지금 {online}명 함께하는 중</p>
           )}
         </div>
+        {bookmarks.list.length > 0 && !trash && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}>🔖</button>}
         {isAdmin && <button onClick={openTrash} className="px-2.5 py-1.5 mr-1 rounded-lg border border-stone-200 text-[0.75rem] text-stone-600">{trash ? '대화로' : '지운 대화'}</button>}
       </div>
       {isAdmin && showWho && (
@@ -493,6 +615,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <div key={t.id} className="bg-white rounded-xl border border-stone-200 p-3">
               <p className="text-[0.8125rem] font-bold text-stone-800">{(t.user_id && authors[t.user_id]?.baptismal_name) || '교우'} <span className="font-normal text-stone-400">· {t.created_at ? `${dayOf(t.created_at)} ${timeOf(t.created_at)}` : ''}</span></p>
               <p className="text-[0.9375rem] text-stone-700 whitespace-pre-wrap break-words mt-1">{t.content}</p>
+              {(t.image_url || t.images?.length) && <ChatMediaView imageUrl={t.image_url} images={t.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="mt-1.5" />}
               <p className="text-[0.75rem] text-red-500 mt-1">{t.deleted_by && t.deleted_by === t.user_id ? '본인이 지움' : '관리자가 지움'} · {dayOf(t.deleted_at)} {timeOf(t.deleted_at)}</p>
             </div>
           ))}
@@ -531,7 +654,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col" onClick={() => setMenuId(null)}>
+      }} className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col">
         {/* 대화가 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
@@ -562,10 +685,23 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             </div>
           );
           const grouped = !newDay && prev && !isEnter(prev) && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
+          if (hiddenMsgs.hidden.has(m.id)) return null; // 내 화면에서만 지운 글
+          const rs = reactions[m.id] || [];
+          const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
+          const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
+          const picked = !!capturePick?.has(m.id);
+          const announceMsg = m.content.startsWith('📢') && m.is_admin;
           return (
             <div key={m.id} id={`lounge-${m.id}`} className={highlightId === m.id ? 'rounded-2xl ring-4 ring-amber-300/70 bg-amber-50/60 transition-all' : ''}>
               {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
-              <div className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''}`}>
+              <div className={`relative flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
+                {/* 대화 골라서 캡처하는 중: 줄을 누르면 고르기 */}
+                {capturePick && (
+                  <button type="button" onClick={() => setCapturePick(p => { const n = new Set(p); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })}
+                    className="absolute inset-0 z-10 flex items-center" aria-pressed={picked} aria-label={picked ? '캡처에서 빼기' : '캡처할 대화로 고르기'}>
+                    <span className={`ml-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[0.8125rem] font-bold ${picked ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white/90 border-stone-400'}`}>{picked ? '✓' : ''}</span>
+                  </button>
+                )}
                 {!mine && (
                   grouped ? <span className="w-10 shrink-0" /> : (
                     <button onClick={() => onOpenProfile(m.user_id)} className="shrink-0 self-start" aria-label={`${a?.baptismal_name || '교우'}님 공간`}>
@@ -588,21 +724,41 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       {isAdmin && banned.has(m.user_id) && <span className="text-[0.6875rem] text-red-500 font-normal">(대화 금지)</span>}
                     </span>
                   )}
-                  <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''}`}>
-                    <button
-                      onClick={e => { e.stopPropagation(); setMenuId(menuId === m.id ? null : m.id); }}
-                      className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${m.content.startsWith('📢') && m.is_admin ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}
-                    >{withCall(m.content, mine && !(m.content.startsWith('📢') && m.is_admin))}</button>
-                    <span className="shrink-0 text-[0.6875rem] text-stone-500 pb-0.5">{timeOf(m.created_at)}</span>
-                  </div>
-                  {menuId === m.id && (
-                    <div className={`mt-1 flex gap-1.5 ${mine ? 'justify-end' : ''}`} onClick={e => e.stopPropagation()}>
-                      {(mine || isAdmin) && <button onClick={() => remove(m)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-red-600"><Icon name="trash" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />지우기</button>}
-                      {!mine && <button onClick={() => { setMenuId(null); onReport({ type: 'lounge', id: m.id, userId: m.user_id, userName: a?.baptismal_name, preview: m.content }); }} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700"><Icon name="siren" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />신고</button>}
-                      {isAdmin && !mine && <button onClick={() => openBadgeEdit(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-amber-200 text-amber-800">🏅 {badges[m.user_id] ? '뱃지 바꾸기' : '뱃지 달기'}</button>}
-                      {isAdmin && !mine && <button onClick={() => toggleBan(m.user_id)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700">{banned.has(m.user_id) ? '대화 금지 풀기' : '대화 금지'}</button>}
+                  <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''} ${counts.length ? 'mb-4' : ''}`}>
+                    <div className="relative min-w-0">
+                      {/* 옆으로 미는 중: 드러나는 답장 표시 */}
+                      {gestures.swipe?.id === m.id && <SwipeHint dx={gestures.swipe.dx} />}
+                      <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
+                        {...gestures.bind(m)}
+                        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
+                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                        {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
+                        {m.reply_to && (
+                          <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
+                            aria-label={`${quoted ? authorName(quoted.user_id) : '이전 대화'}에게 답장 · 눌러서 원래 글 보기`}
+                            className={`flex max-w-full items-center gap-1 text-left font-normal mb-0.5 text-[0.8125rem] leading-snug ${mine && !announceMsg ? 'text-white/70' : 'text-stone-400'}`}>
+                            <span className="min-w-0 truncate">{quoted ? (blockedIds.has(quoted.user_id) ? '차단한 교우의 글' : quoted.content) : '이전 대화의 글'}</span>
+                            <span aria-hidden="true" className="shrink-0">↵</span>
+                          </button>
+                        )}
+                        <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />
+                        {(m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
+                      </div>
+                      {heartPop?.id === m.id && (
+                        <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
+                          {heartPop.emoji === '❤️' ? <Icon name="heart" fill className="w-10 h-10 text-rose-500 drop-shadow" /> : <span className="text-4xl drop-shadow">{heartPop.emoji}</span>}
+                        </span>
+                      )}
+                      {counts.length > 0 && (
+                        <button onClick={e => openMenu(m, e.currentTarget.parentElement?.querySelector('[data-bubble]') ?? e.currentTarget)}
+                          aria-label={`감정 표시 ${counts.map(c => `${c.e} ${c.n}`).join(', ')} · 눌러서 고르기`}
+                          className={`absolute -bottom-4 ${mine ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.8125rem] leading-none text-stone-600`}>
+                          {counts.map(c => <span key={c.e} className="inline-flex items-center">{c.e === '❤️' ? <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" /> : c.e}{c.n > 1 && <span className="ml-0.5 text-[0.75rem]">{c.n}</span>}</span>)}
+                        </button>
+                      )}
                     </div>
-                  )}
+                    <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">{bookmarks.has(m.id) && <span aria-label="책갈피">🔖</span>}<span>{timeOf(m.created_at)}</span></span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -613,13 +769,24 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       </div>
       )}
 
-      {newBelow > 0 && !trash && (
-        <button onClick={() => scrollToBottom(true)} className="absolute left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] px-4 py-2 rounded-full bg-stone-900/85 text-white text-[0.875rem] font-bold shadow-lg">새 대화 {newBelow}개 ↓</button>
-      )}
+      {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
+      {!trash && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
 
+      {!trash && media.bar}
+      {media.choice}
+      {!trash && capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
       {/* 입력 */}
-      {!trash && (
+      {!trash && !capturePick && (
         <div className="shrink-0 bg-white border-t border-stone-200">
+        {replyTo && (
+          <div className="px-3 pt-2 flex items-start gap-2">
+            <div className="flex-1 min-w-0 border-l-4 border-[#4d6a45] pl-2.5 py-0.5">
+              <p className="text-[0.8125rem] font-bold text-[#3d5636]">↩️ {replyTo.user_id === user.id ? '내 글' : `${authorName(replyTo.user_id)}님 글`}에 답장</p>
+              <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{replyTo.content}</p>
+            </div>
+            <button type="button" onClick={() => setReplyTo(null)} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="답장 그만두기">×</button>
+          </div>
+        )}
         {notice && <p className="px-4 pt-2 text-[0.8125rem] font-bold text-amber-700">{notice}</p>}
         {isAdmin && onAnnounce && (
           <div className="px-3 pt-2 flex items-center gap-2">
@@ -640,6 +807,11 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
         {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={setInput} excludeId={user.id} label="부르기" /></div>}
         <form onSubmit={send} className="px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
+          {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
+          <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending || (frozen && !isAdmin) ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
+            {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
+            <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || (frozen && !isAdmin) || !!error} onChange={media.onPick} />
+          </label>
           <textarea
             ref={inputRef}
             value={input}
@@ -666,6 +838,48 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
         </div>
+      )}
+
+      {/* 대화를 꾹 누르면(내 글은 한 번 눌러도): 그 글 바로 위에 감정 표시, 아래에 복사 · 선택 복사 · 답장 · 책갈피 · 캡처 · 신고 · 삭제 */}
+      {menuMsg && (() => {
+        const m = menuMsg;
+        const mine = m.user_id === user.id;
+        const close = () => setMenuMsg(null);
+        const myEmoji = (reactions[m.id] || []).find(r => r.user_id === user.id)?.emoji;
+        const text = isMediaOnlyText(m.content) ? '' : m.content;
+        const writable = !frozen || isAdmin;
+        return (
+          <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close} label="사랑방 메뉴"
+            emojis={writable && !stealth ? REACTION_EMOJIS : undefined} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
+            actions={[
+              ...(text ? [
+                { label: '복사', run: async () => { close(); toast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
+                { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
+              ] : []),
+              ...(writable ? [{ label: '답장', run: () => startReply(m) }] : []),
+              { label: bookmarks.has(m.id) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); bookmarks.toggle({ id: m.id, text: text || (isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: authorName(m.user_id), at: m.created_at }); } },
+              { label: '캡처', run: () => { close(); setCaptureAsk(m.id); } },
+              ...(!mine ? [{ label: '신고', run: () => { close(); onReport({ type: 'lounge', id: m.id, userId: m.user_id, userName: authors[m.user_id]?.baptismal_name, preview: m.content }); } }] : []),
+              ...(isAdmin && !mine ? [
+                { label: `🏅 ${badges[m.user_id] ? '뱃지 바꾸기' : '뱃지 달기'}`, run: () => { close(); openBadgeEdit(m.user_id); } },
+                { label: banned.has(m.user_id) ? '대화 금지 풀기' : '대화 금지', run: () => { close(); toggleBan(m.user_id); } },
+              ] : []),
+              ...(mine || isAdmin
+                ? [{ label: mine ? '삭제' : '삭제 (관리자)', run: () => { close(); remove(m); }, danger: true }]
+                : [{ label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 글을 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.')) hiddenMsgs.hide(m.id); }, danger: true }]),
+            ]} />
+        );
+      })()}
+      {captureAsk && (
+        <CaptureChoice onClose={() => setCaptureAsk(null)}
+          onPick={() => { setCapturePick(new Set([captureAsk])); setCaptureAsk(null); }}
+          onScreen={() => { setCaptureAsk(null); makeCapture(visibleIds(listRef.current, 'lounge-')); }} />
+      )}
+      {captured && <CapturePreview blob={captured} title="모두의 사랑방" onClose={() => setCaptured(null)} />}
+      {selectCopy !== null && <SelectCopySheet text={selectCopy} onClose={() => setSelectCopy(null)} />}
+      {showBookmarks && (
+        <BookmarkSheet items={bookmarks.list} onClose={() => setShowBookmarks(false)} onRemove={bookmarks.remove}
+          onJump={id => { setShowBookmarks(false); if (document.getElementById(`lounge-${id}`)) setTimeout(() => jumpTo(id), 50); else alert('오늘 대화에 없는 글이에요. 사랑방 대화는 매일 자정에 새로 시작돼요.'); }} />
       )}
 
       {/* 관리자: 뱃지 달기·바꾸기·떼기 */}

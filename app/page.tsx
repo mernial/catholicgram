@@ -11,7 +11,11 @@ import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import GroupChat from '@/components/GroupChat';
 import NewChat from '@/components/NewChat';
-import MessageMenu, { REACTION_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
+import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { useStickToBottom } from '@/lib/stick-bottom';
 import ExploreTab from '@/components/ExploreTab';
@@ -215,7 +219,7 @@ interface GroupChatRow { id: string; name: string; member_count: number; last_me
 interface AdminGroupRow { id: string; name: string; created_at: string; last_message_at: string; member_count: number; member_names: string | null; message_count: number; last_message: string | null; last_sender: string | null }
 // anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; images?: string[] | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; }
 // 휴대폰 알림창에 남은 그 대화(채팅·단체방)의 알림을 닫는다 (대화방을 열었을 때)
 const closeOsNotifications = (tag: string) => {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -223,6 +227,7 @@ const closeOsNotifications = (tag: string) => {
 };
 // 메시지 감정 표시 (supabase/message-extras.sql) — 두 번 누르면 하트, 꾹 누르면 고르기
 const MESSAGE_EMOJIS = REACTION_EMOJIS;
+const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS]; // 감정 표시를 모아 보여 줄 때의 순서
 const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
@@ -414,7 +419,7 @@ export default function Home() {
   const [openGroup, setOpenGroup] = useState<{ id: string; adminView: boolean } | null>(null); // 열려 있는 단체 채팅방 (관리자는 몰래 읽기)
   const [showNewChat, setShowNewChat] = useState(false);              // 새 채팅: 교우 찾아 1:1 · 단체방 만들기
   const [switchingAccount, setSwitchingAccount] = useState(false);    // '다른 계정으로 로그인': 로그인 창에서 계정을 새로 고르게
-  const [messagesView, setMessagesView] = useState<'mine' | 'allGroups'>('mine'); // 관리자: 모든 단체 채팅방 보기
+  const [messagesView, setMessagesView] = useState<'dm' | 'group' | 'allGroups'>('dm'); // 메시지 목록: 개인 / 단체 (관리자: 모든 단체방)
   const [adminGroups, setAdminGroups] = useState<AdminGroupRow[] | null>(null);
   const [loungeNew, setLoungeNew] = useState(0);
   const [loungeOnlineIds, setLoungeOnlineIds] = useState<string[]>([]); // 지금 사랑방에 들어와 있는 교우 (실시간)
@@ -795,7 +800,7 @@ export default function Home() {
   }, [activeTab === 'chat', currentChatUser?.id]);
 
   // 다른 대화방으로 가거나 나가면 답장·고치기·메뉴는 접는다
-  useEffect(() => { setReplyTo(null); setEditingMessage(null); setMessageSheet(null); }, [currentChatUser?.id, activeTab === 'chat']);
+  useEffect(() => { setReplyTo(null); setEditingMessage(null); setMessageSheet(null); setDmCapture(null); setCaptureAsk(null); }, [currentChatUser?.id, activeTab === 'chat']);
 
   // 새 메시지가 오면: 맨 아래를 보고 있었거나 내가 보낸 것이면 맨 아래로 (위로 올려 읽는 중이면 그대로)
   useEffect(() => {
@@ -816,6 +821,7 @@ export default function Home() {
 
   // 새 화면으로 이동하면서 이동 기록을 남긴다 (같은 화면이면 기록을 늘리지 않음)
   const navigate = (st: ScreenState) => {
+    if (composerOpenRef.current && !leaveComposer()) return; // 글을 쓰다가 다른 화면으로: 취소할지 묻고 버림
     const cur = currentScreenRef.current;
     const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
     // 아직 기록을 깔기 전(첫 터치 전)이면 지금 칸만 바꿔 둔다 → 첫 터치 때 그 위에 기록을 깐다
@@ -966,6 +972,23 @@ export default function Home() {
     if (activeTab !== 'home') goToHome();
     setComposerStep('pick');
     setShowComposer(true);
+    composerOpenRef.current = true;
+  };
+  // 글쓰기를 닫거나(✕) 다른 화면으로 가면 쓰던 글은 버린다 — 쓰던 것이 있으면 '작성하던 게시글이 취소됩니다' 확인 (운영자 요청)
+  const composerOpenRef = useRef(false);
+  const discardComposer = () => {
+    composerOpenRef.current = false;
+    setShowComposer(false);
+    setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
+    tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
+    setComposerStep('pick'); setComposerMulti(false); setComposerPhotoIdx(0);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+  const leaveComposer = () => {
+    const hasDraft = !!(content.trim() || selectedFiles.length || selectedVideo);
+    if (hasDraft && !window.confirm('작성하던 게시글이 취소됩니다.')) return false;
+    discardComposer();
+    return true;
   };
 
   // 내가 팔로우하는 교우 (홈 피드에서 그분들 글을 먼저)
@@ -1337,59 +1360,50 @@ export default function Home() {
     if (sent) sendPush('message', sent.id);
   };
 
-  // 메시지로 사진·동영상 보내기: 여러 개를 한꺼번에 골라도 하나씩 차례로 보낸다 (개수 제한 없음).
-  // 입력칸에 쓴 글이 있으면 첫 번째와 함께. 상대에게 가는 휴대폰 알림은 한 번만.
-  const [mediaSending, setMediaSending] = useState<{ done: number; total: number; note?: string } | null>(null);
-  const sendingPhoto = !!mediaSending;
-  // 영상: 12MB 넘으면 720p로 줄이고(영상 길이만큼 걸림, 모든 휴대폰에서 재생되는 mp4), 45MB 넘으면 못 보냄
-  const uploadChatVideo = async (file: File, onShrink: (ratio: number) => void) => {
-    let video: Blob = file;
-    if (file.size > SHRINK_OVER_MB * 1024 * 1024) {
-      const shrunk = await shrinkVideo(file, onShrink).catch(() => null);
-      if (shrunk && shrunk.size < file.size) video = shrunk;
-    }
-    if (video.size > MAX_VIDEO_MB * 1024 * 1024) throw new Error('too-big');
-    const ext = video.type.includes('webm') ? 'webm' : video.type.includes('quicktime') ? 'mov' : 'mp4';
-    const rand = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
-    return uploadMedia(video, { kind: 'videos', ext, contentType: video.type || 'video/mp4', bucket: 'post-videos', path: `${user!.id}/dm_${Date.now()}_${rand}.${ext}` });
-  };
-  const sendMediaMessages = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const isVideoFile = (f: File) => f.type.startsWith('video/') || /\.(mov|mp4|m4v|webm)$/i.test(f.name);
-    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/') || isVideoFile(f) || /\.(heic|heif|jpe?g|png|webp|gif)$/i.test(f.name));
-    e.target.value = '';
-    if (files.length === 0 || !user || !currentChatUser || mediaSending) return;
-    const to = currentChatUser.id;
-    let text = messageInput.trim();
-    let firstId: string | number | null = null;
-    const failed: { name: string; why: string }[] = [];
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      const video = isVideoFile(file);
-      setMediaSending({ done: i, total: files.length, note: video ? '동영상 올리는 중' : undefined });
-      try {
-        const url = video
-          ? await uploadChatVideo(file, r => setMediaSending({ done: i, total: files.length, note: `동영상 줄이는 중 ${Math.round(r * 100)}%` }))
-          : await uploadPhoto(file, 'dm');
-        const { data: sent, error } = await supabase.from('messages')
-          .insert({ sender_id: user.id, receiver_id: to, content: text || (video ? VIDEO_ONLY_TEXT : PHOTO_ONLY_TEXT), image_url: url })
-          .select('id').single();
-        if (error) {
-          if (error.code === '42703' || error.code === 'PGRST204') { alert('사진 보내기를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)'); break; }
-          throw new Error(error.message);
-        }
-        if (text) { text = ''; setMessageInput(''); } // 글은 첫 번째와 함께 한 번만
-        if (firstId === null && sent) firstId = sent.id;
-        fetchChatMessages(to); // 보내는 대로 하나씩 보이게
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '';
-        failed.push({ name: video ? '동영상' : '사진', why: msg === 'too-big' ? `너무 커요 (${MAX_VIDEO_MB}MB까지)` : /bucket|not found/i.test(msg) ? '영상 저장소 준비 중' : '올리지 못함' });
-      }
-    }
-    setMediaSending(null);
-    if (firstId !== null) sendPush('message', String(firstId));
-    if (failed.length) {
-      alert(`${files.length}개 중 ${failed.length}개를 보내지 못했어요.\n${failed.slice(0, 5).map(f => `· ${f.name}: ${f.why}`).join('\n')}${failed.length > 5 ? '\n…' : ''}\n잠시 후 다시 보내 주세요.`);
-    }
+  // 메시지로 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩 고르기 — components/ChatMedia)
+  const dmMedia = useChatMedia({
+    userId: user?.id,
+    getText: () => messageInput,
+    clearText: () => setMessageInput(''),
+    insert: async row => {
+      const to = currentChatUser?.id;
+      if (!user || !to) return { id: null, error: { message: '대화 상대가 없어요' } };
+      const { data, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: to, ...row }).select('id').single();
+      if (!error) fetchChatMessages(to); // 보내는 대로 하나씩 보이게
+      return { id: data?.id ?? null, error };
+    },
+    onSent: id => sendPush('message', String(id)),
+  });
+  const sendingPhoto = dmMedia.sending;
+
+  // 꾹 눌러 고르는 카톡식 메뉴: 복사 · 선택 복사 · 책갈피 · 캡처 · 내 화면에서만 지우기 (components/ChatSheets·ChatCapture)
+  const [selectCopy, setSelectCopy] = useState<string | null>(null);
+  const [showDmBookmarks, setShowDmBookmarks] = useState(false);
+  const dmRoom = currentChatUser ? `dm:${currentChatUser.id}` : null;
+  const dmBookmarks = useBookmarks(user?.id, dmRoom);
+  const dmHidden = useHiddenMessages(user?.id, dmRoom);
+  const [captureAsk, setCaptureAsk] = useState<string | null>(null);        // 캡처를 누른 메시지
+  const [dmCapture, setDmCapture] = useState<Set<string> | null>(null);     // 대화 골라서 캡처하는 중
+  const [captured, setCaptured] = useState<{ blob: Blob; title: string } | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const dmCaptureItem = (m: Message): CaptureItem => ({
+    id: String(m.id),
+    name: m.sender_id === user?.id ? undefined : currentChatUser?.baptismal_name || '상대',
+    mine: m.sender_id === user?.id,
+    time: m.created_at,
+    text: m.deleted_at ? '삭제된 메시지' : isMediaOnlyText(m.content) ? '' : m.content,
+    photos: m.deleted_at ? undefined : m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
+    video: !m.deleted_at && isVideoUrl(m.image_url),
+  });
+  const makeDmCapture = async (ids: string[]) => {
+    const pick = chatMessages.filter(m => ids.includes(String(m.id)) && !dmHidden.hidden.has(String(m.id)));
+    if (pick.length === 0) { alert('캡처할 메시지가 없어요.'); return; }
+    setCapturing(true);
+    try {
+      setCaptured({ blob: await renderCapture(pick.map(dmCaptureItem), `${currentChatUser?.baptismal_name || '교우'}님과의 대화`, { mine: '#5f7d55', bg: '#f5f5f4' }), title: '가톨릭그램 대화' });
+      setDmCapture(null);
+    } catch { alert('캡처하지 못했어요. 잠시 후 다시 해 주세요.'); }
+    finally { setCapturing(false); }
   };
 
   const handleKakaoLogin = async (e: React.MouseEvent) => {
@@ -1666,6 +1680,7 @@ export default function Home() {
       tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowComposer(false);
+      composerOpenRef.current = false;
       fetchPosts(); goToHome();
     }
     setLoading(false);
@@ -2675,7 +2690,7 @@ export default function Home() {
     } else if (deepLink.group) {
       // 단체 채팅방 알림: 뒤로가기를 하면 대화 목록으로 오도록 목록 위에 연다
       if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' });
-      setMessagesView('mine');
+      setMessagesView('group');
       openGroupChat(deepLink.group);
     } else if (deepLink.tester) {
       setShowTesterSignup(true);
@@ -3007,7 +3022,7 @@ export default function Home() {
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
     // 문구 쓰기 단계에서 뒤로 → 사진 고르기 단계로
-    if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) { if (showComposer && composerStep === 'write') setComposerStep('pick'); else setShowComposer(false); }
+    if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) { if (showComposer && composerStep === 'write') setComposerStep('pick'); else if (showComposer) leaveComposer(); }
     setFeedMenuOpen(false);
     setEditingPhotoIdx(null);
     if (showEditVideoEditor) setShowEditVideoEditor(false); else if (editPhotoEditor) setEditPhotoEditor(null); else setEditingPostId(null);
@@ -3367,7 +3382,10 @@ export default function Home() {
           </div>
         ) : null}
         {activeTab === 'chat' && currentChatUser ? (
-          <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
+          <div className="flex items-center">
+            {dmBookmarks.list.length > 0 && <button onClick={() => setShowDmBookmarks(true)} className="w-10 h-10 flex items-center justify-center text-lg" aria-label={`책갈피 ${dmBookmarks.list.length}개 보기`}>🔖</button>}
+            <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
+          </div>
         ) : (
           <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             {/* 인스타그램처럼: 왼쪽 + · 가운데 이름 ▾ · 오른쪽 ♡ */}
@@ -3552,7 +3570,7 @@ export default function Home() {
               <button onClick={dismissTesterPrompt} className="text-stone-400 hover:text-stone-700 text-lg leading-none px-1" aria-label="닫기">×</button>
             </div>
           )}
-          {/* 글쓰기: 인스타그램 '새 게시물'처럼 전체 화면 (닫아도 쓰던 글은 남아 있음) */}
+          {/* 글쓰기: 인스타그램 '새 게시물'처럼 전체 화면 (닫거나 다른 화면으로 가면 쓰던 글은 '작성하던 게시글이 취소됩니다' 확인 후 버림) */}
           {showComposer && (() => {
             const canShare = !loading && !videoStatus && !!(content.trim() || selectedFiles.length > 0 || selectedVideo);
             const shownIdx = Math.min(composerPhotoIdx, Math.max(0, previewUrls.length - 1));
@@ -3570,7 +3588,7 @@ export default function Home() {
               <>
                 {/* 1단계 (인스타그램처럼 어두운 화면): ✕ · 새 게시물 · 다음 */}
                 <div className="shrink-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2">
-                  <button type="button" onClick={() => setShowComposer(false)} className="w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
+                  <button type="button" onClick={() => leaveComposer()} className="w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
                   <h2 className="font-bold text-[1.125rem]">새 게시물</h2>
                   <button type="button" onClick={() => setComposerStep('write')} className="px-3 h-11 text-[1.0625rem] font-bold text-[#4a9dff]">다음</button>
                 </div>
@@ -3658,7 +3676,7 @@ export default function Home() {
                 <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
                   <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
                     <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
-                    <button type="button" onClick={() => { setShowComposer(false); setStoryPickRequest(n => n + 1); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
+                    <button type="button" onClick={() => { if (leaveComposer()) setStoryPickRequest(n => n + 1); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
                     <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
                   </div>
                 </div>
@@ -4169,7 +4187,7 @@ export default function Home() {
 
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
-        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline} onlineIds={loungeOnlineIds}
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline} onlineIds={loungeOnlineIds} onZoom={(images, index) => setSelectedImage({ images, index })}
           stealth={isAdmin && loungeStealth} onReveal={() => setLoungeStealth(false)}
           onCallAdmin={id => sendPush('lounge_call', id)}
           onMention={id => sendPush('lounge_mention', id)}
@@ -4187,7 +4205,7 @@ export default function Home() {
       )}
       {/* 단체 채팅방 (관리자는 '모든 단체방'에서 몰래 읽기만) */}
       {openGroup && user && (
-        <GroupChat key={openGroup.id} user={user} chatId={openGroup.id} adminView={openGroup.adminView && isAdmin} blockedIds={blockedIds}
+        <GroupChat key={openGroup.id} user={user} chatId={openGroup.id} adminView={openGroup.adminView && isAdmin} blockedIds={blockedIds} onZoom={(images, index) => setSelectedImage({ images, index })}
           onClose={() => { setOpenGroup(null); fetchGroupChats(); }}
           onOpenProfile={id => openProfileCard({ id })}
           onReport={t => setReportTarget(t)}
@@ -4214,14 +4232,23 @@ export default function Home() {
               <Icon name="pencil" className="w-4 h-4" />새 채팅
             </button>
           </div>
-          {isAdmin && (
-            <div className="px-4 pt-3 pb-2 border-b border-stone-100 grid grid-cols-2 gap-1" role="tablist" aria-label="메시지 보기">
-              {([['mine', '내 대화'], ['allGroups', '🔒 모든 단체방']] as const).map(([k, label]) => (
-                <button key={k} role="tab" aria-selected={messagesView === k} onClick={() => { setMessagesView(k); if (k === 'allGroups') fetchAdminGroups(); }}
-                  className={`py-2 rounded-xl text-[0.875rem] font-bold ${messagesView === k ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}>{label}</button>
-              ))}
-            </div>
-          )}
+          {/* 개인 메시지 / 단체 메시지(사랑방·단체 채팅방) 나눠 보기 (관리자는 모든 단체방도) */}
+          {(() => {
+            const dmUnread = unreadMessageCount;
+            const groupUnread = groupChats.reduce((sum, g) => sum + (g.unread || 0), 0) + loungeNew;
+            const tabs: [typeof messagesView, string, number][] = [['dm', '👤 개인 메시지', dmUnread], ['group', '👥 단체 메시지', groupUnread], ...(isAdmin ? [['allGroups', '🔒 모든 단체방', 0] as [typeof messagesView, string, number]] : [])];
+            return (
+              <div className={`px-4 pt-3 pb-2 border-b border-stone-100 grid gap-1 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`} role="tablist" aria-label="메시지 보기">
+                {tabs.map(([k, label, n]) => (
+                  <button key={k} role="tab" aria-selected={messagesView === k} onClick={() => { setMessagesView(k); if (k === 'allGroups') fetchAdminGroups(); }}
+                    className={`relative py-2.5 rounded-xl text-[0.875rem] font-bold ${messagesView === k ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}>
+                    {label}
+                    {n > 0 && <span className="absolute -top-1.5 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[0.75rem] font-bold flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
           {isAdmin && messagesView === 'allGroups' ? (
             // 관리자: 모든 단체 채팅방 (들어가서 읽어도 교우들에게 표시되지 않고, 글은 쓸 수 없음)
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
@@ -4245,8 +4272,8 @@ export default function Home() {
             </div>
           ) : (
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
-            {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 */}
-            <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
+            {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 (단체 메시지 칸 맨 위) */}
+            {messagesView === 'group' && <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
               <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
@@ -4259,17 +4286,17 @@ export default function Home() {
               {loungeNew > 0
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
                 : <span className="text-stone-400 text-xl shrink-0">›</span>}
-            </button>
+            </button>}
             {(() => {
-              // 단체 채팅방과 1:1 대화를 최근 대화 순으로 함께
-              const items = [
-                ...groupChats.map(g => ({ at: g.last_message_at, group: g, partner: null })),
-                ...chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => ({ at: partner.lastAt || '', group: null, partner })),
-              ].sort((a, b) => b.at.localeCompare(a.at));
+              // 개인: 1:1 대화 / 단체: 단체 채팅방 — 최근 대화 순
+              const items = messagesView === 'group'
+                ? groupChats.map(g => ({ at: g.last_message_at, group: g, partner: null }))
+                : chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => ({ at: partner.lastAt || '', group: null, partner }));
+              items.sort((a, b) => b.at.localeCompare(a.at));
               if (items.length === 0) return (
                 <div className="p-10 text-center text-stone-400 text-sm leading-relaxed">
-                  아직 주고받은 메시지가 없습니다.<br />
-                  <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ 새 채팅 시작하기</button>
+                  {messagesView === 'group' ? '아직 들어가 있는 단체 채팅방이 없어요.' : '아직 주고받은 1:1 메시지가 없어요.'}<br />
+                  <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ {messagesView === 'group' ? '단체 채팅방 만들기' : '새 채팅 시작하기'}</button>
                 </div>
               );
               return items.map(({ group: g, partner }) => g ? (
@@ -4317,7 +4344,9 @@ export default function Home() {
       {/* 4. 1:1 실시간 채팅방 탭 */}
       {activeTab === 'chat' && (
         // 채팅방: 화면 높이에 맞춰 메시지만 스크롤되고 입력창은 항상 맨 아래에 보임
-        <section className="flex-1 min-h-0 flex flex-col bg-stone-100">
+        <section className="relative flex-1 min-h-0 flex flex-col bg-stone-100">
+          {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' */}
+          {!dmCapture && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
           <div ref={chatStick.listRef} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
             {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
             <div ref={chatStick.contentRef} className="mt-auto flex flex-col gap-3">
@@ -4329,8 +4358,18 @@ export default function Home() {
                 // 내가 보낸 메시지 중 상대가 읽은 마지막 메시지에만 '읽음' 표시
                 const lastReadMineIndex = chatMessages.reduce((last, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : last), -1);
                 const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
+                const mid = String(msg.id);
+                if (dmHidden.hidden.has(mid)) return null; // 내 화면에서만 지운 메시지
+                const picked = !!dmCapture?.has(mid);
                 return (
-                  <div key={msg.id} id={`dm-${msg.id}`} className={`flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} id={`dm-${msg.id}`} className={`relative flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
+                    {/* 대화 골라서 캡처하는 중: 줄을 누르면 고르기 */}
+                    {dmCapture && (
+                      <button type="button" onClick={() => setDmCapture(prev => { const n = new Set(prev); if (n.has(mid)) n.delete(mid); else n.add(mid); return n; })}
+                        className="absolute inset-0 z-10 flex items-center" aria-pressed={picked} aria-label={picked ? '캡처에서 빼기' : '캡처할 메시지로 고르기'}>
+                        <span className={`ml-0.5 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[0.8125rem] font-bold ${picked ? 'bg-amber-500 border-amber-500 text-white' : 'bg-white/90 border-stone-400'}`}>{picked ? '✓' : ''}</span>
+                      </button>
+                    )}
                     {isMe && (
                       <div className="flex flex-col items-end text-[0.75rem] leading-tight shrink-0">
                         {!msg.read_at ? (
@@ -4339,6 +4378,7 @@ export default function Home() {
                           <span className="text-stone-400">읽음</span>
                         ) : null}
                         {msg.edited_at && !msg.deleted_at && <span className="text-stone-400">수정됨</span>}
+                        {dmBookmarks.has(mid) && <span aria-label="책갈피">🔖</span>}
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
@@ -4365,7 +4405,7 @@ export default function Home() {
                     })() : (() => {
                       const reactions = messageHearts[String(msg.id)] || [];
                       // 같은 감정끼리 모아서 (❤️ 2 😂 1)
-                      const grouped = MESSAGE_EMOJIS.map(e => ({ e, n: reactions.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
+                      const grouped = ALL_EMOJIS.map(e => ({ e, n: reactions.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
                       const quoted = msg.reply_to != null ? chatMessages.find(m => String(m.id) === String(msg.reply_to)) : undefined;
                       return (
                         <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
@@ -4386,18 +4426,8 @@ export default function Home() {
                                 <span aria-hidden="true" className="shrink-0">↵</span>
                               </button>
                             )}
-                            {msg.image_url && (isVideoUrl(msg.image_url)
-                              // 동영상: 누르면 재생 (말풍선 메뉴는 꾹 누르기로)
-                              ? <video src={`${msg.image_url}#t=0.1`} controls playsInline preload="metadata" aria-label="보낸 동영상"
-                                  onClick={e => e.stopPropagation()}
-                                  className="block -mx-2 -mt-0.5 mb-1 w-[min(60vw,16rem)] max-h-80 rounded-xl bg-black" />
-                              : <img loading="lazy"
-                                  src={msg.image_url}
-                                  alt="보낸 사진"
-                                  onClick={e => { if (isMe) return; e.stopPropagation(); zoomPhoto(msg.image_url); }}
-                                  className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
-                                />
-                            )}
+                            {/* 사진(묶음이면 바둑판)·동영상: 누르면 크게 보기·재생 (메뉴는 꾹 누르기로) */}
+                            <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index })} className="-mx-2 -mt-0.5 mb-1" />
                             {!(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
@@ -4420,7 +4450,7 @@ export default function Home() {
                         </div>
                       );
                     })()}
-                    {!isMe && <span className="text-[0.75rem] leading-tight text-stone-400 shrink-0 flex flex-col">{msg.edited_at && !msg.deleted_at && <span>수정됨</span>}<span>{time}</span></span>}
+                    {!isMe && <span className="text-[0.75rem] leading-tight text-stone-400 shrink-0 flex flex-col">{msg.edited_at && !msg.deleted_at && <span>수정됨</span>}{dmBookmarks.has(mid) && <span aria-label="책갈피">🔖</span>}<span>{time}</span></span>}
                   </div>
                 );
               })
@@ -4429,17 +4459,10 @@ export default function Home() {
             </div>
           </div>
           {/* 사진·동영상 보내는 중 (여러 개면 몇 번째인지) */}
-          {mediaSending && (
-            <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-t border-stone-200" role="status" aria-live="polite">
-              <p className="text-[0.8125rem] font-bold text-blue-700">
-                📤 {mediaSending.total > 1 ? `${mediaSending.total}개 중 ${mediaSending.done + 1}번째 보내는 중` : '보내는 중'}{mediaSending.note ? ` · ${mediaSending.note}` : ''}
-              </p>
-              <div className="mt-1 h-1.5 rounded-full bg-stone-100 overflow-hidden">
-                <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.round((mediaSending.done / mediaSending.total) * 100)}%` }} />
-              </div>
-            </div>
-          )}
-          {(replyTo || editingMessage) && (() => {
+          {dmMedia.bar}
+          {dmMedia.choice}
+          {dmCapture && <CaptureBar count={dmCapture.size} busy={capturing} onCancel={() => setDmCapture(null)} onDone={() => makeDmCapture(Array.from(dmCapture))} />}
+          {!dmCapture && (replyTo || editingMessage) && (() => {
             const m = (editingMessage || replyTo)!;
             return (
               <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
@@ -4451,31 +4474,51 @@ export default function Home() {
               </div>
             );
           })()}
-          <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
+          {!dmCapture && <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
-              <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={sendMediaMessages} />
+              <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
             </label>
             <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
-          </form>
-          {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 그 메시지 바로 위에 감정 표시, 아래에 답장 · 고치기 · 삭제 */}
+          </form>}
+          {captureAsk && (
+            <CaptureChoice onClose={() => setCaptureAsk(null)}
+              onPick={() => { setDmCapture(new Set([captureAsk])); setCaptureAsk(null); }}
+              onScreen={() => { setCaptureAsk(null); makeDmCapture(visibleIds(chatStick.listRef.current, 'dm-')); }} />
+          )}
+          {captured && <CapturePreview blob={captured.blob} title={captured.title} onClose={() => setCaptured(null)} />}
+          {selectCopy !== null && <SelectCopySheet text={selectCopy} onClose={() => setSelectCopy(null)} />}
+          {showDmBookmarks && (
+            <BookmarkSheet items={dmBookmarks.list} onClose={() => setShowDmBookmarks(false)} onRemove={dmBookmarks.remove}
+              onJump={id => { setShowDmBookmarks(false); if (document.getElementById(`dm-${id}`)) setTimeout(() => jumpToMessage(id), 50); else alert('지금 불러온 대화에 없는 메시지예요.'); }} />
+          )}
+          {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 그 메시지 바로 위에 감정 표시, 아래에 복사 · 선택 복사 · 답장 · 고치기 · 책갈피 · 캡처 · 삭제 */}
           {messageSheet && (() => {
             const m = messageSheet;
             const mine = m.sender_id === user?.id;
             const myEmoji = (messageHearts[String(m.id)] || []).find(r => r.user_id === user?.id)?.emoji;
             const close = () => setMessageSheet(null);
+            const mid = String(m.id);
+            const text = isMediaOnlyText(m.content) ? '' : m.content;
             return (
-              <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={MESSAGE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
+              <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={MESSAGE_EMOJIS} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
                 onEmoji={e => setMessageReaction(m.id, e)} onClose={close}
                 actions={[
-                  { label: '↩️ 답장하기', run: () => startReply(m) },
-                  ...(canEditMessage(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEditMessage(m) }] : []),
-                  ...(m.image_url && !isVideoUrl(m.image_url) ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
-                  ...(mine ? [{ label: '🗑 삭제', run: () => deleteMessage(m), danger: true }] : []),
+                  ...(text ? [
+                    { label: '복사', run: async () => { close(); showToast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
+                    { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
+                  ] : []),
+                  { label: '답장', run: () => startReply(m) },
+                  ...(canEditMessage(m) ? [{ label: '고치기', run: () => startEditMessage(m) }] : []),
+                  { label: dmBookmarks.has(mid) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); dmBookmarks.toggle({ id: mid, text: text || (isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: mine ? '나' : currentChatUser?.baptismal_name || '상대', at: m.created_at }); } },
+                  { label: '캡처', run: () => { close(); setCaptureAsk(mid); } },
+                  mine
+                    ? { label: '삭제', run: () => deleteMessage(m), danger: true }
+                    : { label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n상대방 화면에는 그대로 남아요.')) dmHidden.hide(mid); }, danger: true },
                 ]} />
             );
           })()}
