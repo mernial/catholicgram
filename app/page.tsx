@@ -2919,6 +2919,8 @@ export default function Home() {
     if (activeTab !== tab) go();
     if (again) refreshFeed();
   };
+  // 메시지·내 공간도 보고 있을 때 한 번 더 누르면 맨 위로 올라가며 새로 고침 (홈처럼)
+  const tapTabRefresh = (on: boolean, go: () => void) => { if (on) pullRefresh(); else go(); };
 
   // 아래로 많이 내려가면 + 버튼 바로 위에 '맨 위로' 버튼 (앱 안쪽 스크롤 기준)
   const [showToTop, setShowToTop] = useState(false);
@@ -5297,7 +5299,7 @@ export default function Home() {
                   <Icon name="film" fill={activeTab === 'reels'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">영상</span>
                 </button>
-                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } goToTab('messages'); }} className={`${cls} ${tone(msgOn)}`} aria-label={unreadMessageCount > 0 ? `메시지 (안 읽은 ${unreadMessageCount}개)` : '메시지'}>
+                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } tapTabRefresh(msgOn, () => goToTab('messages')); }} className={`${cls} ${tone(msgOn)}`} aria-label={unreadMessageCount > 0 ? `메시지 (안 읽은 ${unreadMessageCount}개)` : '메시지'}>
                   <span className="relative">
                     <Icon name="send" fill={msgOn} className="w-7 h-7" />
                     {unreadMessageCount > 0 && (
@@ -5310,7 +5312,7 @@ export default function Home() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
                   <span className="text-[0.75rem] font-medium">탐색</span>
                 </button>
-                <button onClick={() => { if (!user) setShowAuthModal(true); else goToProfile(user.id); }} className={`${cls} ${tone(meOn)}`}>
+                <button onClick={() => { if (!user) setShowAuthModal(true); else tapTabRefresh(meOn, () => goToProfile(user.id)); }} className={`${cls} ${tone(meOn)}`}>
                   {profile?.avatar_url
                     ? <img loading="lazy" src={profile.avatar_url} alt="" className={`w-7 h-7 rounded-full object-cover ${meOn ? (dark ? 'ring-2 ring-white' : 'ring-2 ring-stone-900') : ''}`} />
                     : <svg viewBox="0 0 24 24" fill={meOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
