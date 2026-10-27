@@ -32,8 +32,8 @@
 - 내 공간에 '🔄 다른 계정으로 로그인'·'로그아웃' (카카오 prompt=login, 구글 select_account, 네이버 auth_type=reauthenticate)
 - 1:1 메시지 (`supabase/message-extras.sql` 실행 필요, message-hearts.sql 다음): 꾹 누르면 그 메시지 바로 위에 감정 줄(❤️👍😊😂😮😢🙏)·아래에 메뉴(답장·고치기·삭제, `messageAnchor`), 옆으로 60px 넘게 밀면 답장(`swipe`, 말풍선 `touch-action: pan-y`), 두 번 누르면 하트, 답장(`messages.reply_to`, 같은 대화만), 내 메시지 고치기 24시간 안(`edit_my_message`, 원래 내용은 관리자만 보는 `message_edits`)
 - 같은 손동작을 단체 채팅방·게시글 댓글에도: 공통 부품 `lib/use-press-gestures.ts`(누르기·두 번·꾹·밀기, 꾹 누른 뒤 따라오는 누름 0.3초 버림)와 `components/MessageMenu.tsx`(그 자리 메뉴, `REACTION_EMOJIS`)
-  - 단체방(`supabase/group-chats.sql` 다시 실행 필요): `reply_to`·`edited_at`, `group_chat_reactions`(한 사람 한 개, 5초마다 다시 읽음), `edit_group_message`(24시간, 원래 내용은 관리자만 보는 `group_message_edits`). 관리자 보기는 감정·답장·두 번 누르기 없이 메뉴에 '프로필 보기'만
-  - 댓글(`supabase/comment-reactions.sql` 다시 실행 필요): `reaction_type`에 thumbs·smile·laugh·wow·sad 추가(여러 개 고를 수 있음, ❤️=like 🙏=pray). 꾹 = 메뉴(답글·수정·삭제·신고), 두 번 = 공감, 밀기 = 답글. 원래 단추들은 그대로
+  - 단체방(`supabase/group-chats.sql` 새 부분, 2026-10-27 운영자 실행함): `reply_to`·`edited_at`, `group_chat_reactions`(한 사람 한 개, 5초마다 다시 읽음), `edit_group_message`(24시간, 원래 내용은 관리자만 보는 `group_message_edits`). 관리자 보기는 감정·답장·두 번 누르기 없이 메뉴에 '프로필 보기'만
+  - 댓글(`supabase/comment-reactions.sql` 새 감정 종류, 2026-10-27 운영자 실행함): `reaction_type`에 thumbs·smile·laugh·wow·sad 추가(여러 개 고를 수 있음, ❤️=like 🙏=pray). 꾹 = 메뉴(답글·수정·삭제·신고), 두 번 = 공감, 밀기 = 답글. 원래 단추들은 그대로
 - 알림창(휴대폰): 위쪽 손잡이·제목줄을 위로 끌면 창이 커지고 놓은 높이 그대로(최대 화면 92%, 알림이 적어도), 아래로 90px 넘게 끌면 닫힘, 손잡이를 누르면 크게↔원래대로 (`alertDrag`, 제목줄 단추 위에서 시작해도 끌림)
 - 보고 있는 대화(1:1·단체)의 휴대폰 알림은 띄우지 않음: SW가 앱에 'viewing?' 물어봄(`askViewing`/`viewingRef`), 애플 기기는 알림을 꼭 띄워야 해서 소리 없이 띄우고 바로 닫음. 대화방 들어가면 2~3초 동안 맨 아래에 붙임
 - 알림으로 연 화면에서 창을 닫거나 뒤로가기 하면 페이지가 새로 불려 홈으로 가던 문제: 시작할 때 주소를 지우는 `replaceState`가 Next.js 기록 표시(`__NA`)를 지웠음 → `window.history.state`를 남기고 주소만 바꿈
