@@ -39,3 +39,7 @@ export async function uploadPhoto(file: File, prefix: string): Promise<string> {
 
 // 사진만 보낸 메시지·건의의 글 자리 표시 (목록 미리보기·알림에 '📷 사진'으로 보임)
 export const PHOTO_ONLY_TEXT = '📷 사진';
+// 동영상만 보낸 메시지 (메시지의 image_url 칸에 영상 주소가 들어감 — 주소 끝이 .mp4·.mov 등이면 영상으로 보여 준다)
+export const VIDEO_ONLY_TEXT = '🎬 동영상';
+export const isMediaOnlyText = (t?: string | null) => t === PHOTO_ONLY_TEXT || t === VIDEO_ONLY_TEXT;
+export const isVideoUrl = (u?: string | null) => !!u && /\.(mp4|mov|m4v|webm)(?:[?#]|$)/i.test(u);

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
+import { isVideoUrl } from '@/lib/upload';
 
 interface Item { id: string; sender_name: string; receiver_name: string; content: string | null; image_url: string | null; sent_at: string | null; deleted_at: string }
 
@@ -47,8 +48,9 @@ export default function DeletedMessages({ onClose }: { onClose: () => void }) {
             <div key={it.id} className="p-4 flex flex-col gap-1.5">
               <p className="text-[0.8125rem] text-stone-500"><b className="text-stone-800">{it.sender_name}</b> → {it.receiver_name}</p>
               {it.content && <p className="text-[0.9375rem] text-stone-900 whitespace-pre-wrap bg-stone-50 rounded-xl px-3 py-2">{it.content}</p>}
-              {it.image_url && (
-                <button onClick={() => setZoom(it.image_url)} className="self-start"><img loading="lazy" src={it.image_url} alt="지운 사진" className="max-h-40 rounded-xl border border-stone-200 object-cover" /></button>
+              {it.image_url && (isVideoUrl(it.image_url)
+                ? <video src={`${it.image_url}#t=0.1`} controls playsInline preload="metadata" className="self-start w-56 max-h-40 rounded-xl border border-stone-200 bg-black" />
+                : <button onClick={() => setZoom(it.image_url)} className="self-start"><img loading="lazy" src={it.image_url} alt="지운 사진" className="max-h-40 rounded-xl border border-stone-200 object-cover" /></button>
               )}
               <p className="text-xs text-stone-400">보낸 때 {when(it.sent_at)} · 지운 때 {when(it.deleted_at)}</p>
             </div>

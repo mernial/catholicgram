@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       changes.music = typeof c.music === 'string' && c.music ? c.music.slice(0, 300) : null;
       changes.music_title = changes.music && typeof c.music_title === 'string' ? c.music_title.slice(0, 200) : null;
     }
-    // 사진 바꾸기 (빼기·추가·편집): 최대 5장, 주소만 받음
+    // 사진 바꾸기 (빼기·추가·편집): 최대 10장(화면의 MAX_PHOTOS), 주소만 받음
     let removedImages: string[] = [];
     if (Array.isArray(c.images)) {
       if (post.video_url) return Response.json({ error: '영상 글은 사진을 바꿀 수 없어요.' }, { status: 400 });
@@ -53,7 +53,7 @@ export async function POST(request: Request) {
         return u.startsWith(`${supabaseUrl}/storage/v1/object/public/community-images/`);
       };
       const imgs = c.images.filter((u): u is string => typeof u === 'string' && /^https:\/\//.test(u) && u.length <= 600
-        && (current.includes(u) || ownUpload(u))).slice(0, 5);
+        && (current.includes(u) || ownUpload(u))).slice(0, 10);
       if (imgs.length !== c.images.length) return Response.json({ error: 'bad images' }, { status: 400 });
       changes.images = imgs;
       removedImages = current.filter(u => !imgs.includes(u));
