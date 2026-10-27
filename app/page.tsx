@@ -2863,7 +2863,11 @@ export default function Home() {
   const PULL_TRIGGER = 70;
   const pullRefresh = () => {
     if (activeTab === 'anon') setAnonKey(k => k + 1);
-    if (activeTab === 'profile' && viewingUserId) { fetchViewingProfile(viewingUserId); fetchFollowData(viewingUserId); }
+    if (activeTab === 'profile' && viewingUserId) {
+      // 공간: 이름·사진, 팔로워 수, 그 사람 글(사진 칸), 태그됨을 보고 있으면 태그된 글까지
+      fetchViewingProfile(viewingUserId); fetchFollowData(viewingUserId); fetchUserPosts(viewingUserId);
+      if (profileTab === 'tagged' && viewingProfile?.handle) fetchMentionPosts(viewingProfile.handle);
+    }
     if (activeTab === 'messages') { fetchChatPartners(); if (user) { fetchUnreadMessages(user.id); fetchLoungeNew(user.id); } }
     refreshFeed();
   };
