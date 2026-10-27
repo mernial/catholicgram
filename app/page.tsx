@@ -65,6 +65,7 @@ import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
 import LettersModal from '@/components/LettersModal';
+import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
 import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
@@ -1458,7 +1459,7 @@ export default function Home() {
     goToTab('messages');
   };
   // 메시지 목록에서 대화방 나가기 (1:1은 내 화면에서만 지움 · 단체방은 방에서 나감)
-  const [editingChatList, setEditingChatList] = useState(false);
+  const [swipedRow, setSwipedRow] = useState<string | null>(null); // 메시지 목록에서 옆으로 밀어 '나가기'가 나온 줄
   const leaveDmThread = async (p: { id: string; baptismal_name: string; isRequest?: boolean }) => {
     if (!window.confirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`)) return;
     const now = new Date().toISOString();
@@ -4323,7 +4324,7 @@ export default function Home() {
       )}
       {activeTab === 'messages' && (
         <section className="flex-1 bg-white flex flex-col">
-          <div className="p-4 border-b border-stone-200 flex items-center gap-2">
+          <div className="px-4 pt-4 pb-3 flex items-center gap-2">
             <button onClick={() => user && goToProfile(user.id)} className="text-stone-600 hover:text-black -ml-1" aria-label="내 공간으로">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
@@ -4334,31 +4335,29 @@ export default function Home() {
               <Icon name="pencil" className="w-4 h-4" />새 채팅
             </button>
           </div>
-          {/* 개인 메시지 / 단체 메시지(사랑방·단체 채팅방) 나눠 보기 (관리자는 모든 단체방도) */}
+          {/* 개인 / 단체(사랑방·단체 채팅방) 나눠 보기 (관리자는 모든 단체방도): 흰 칸이 미끄러지는 한 줄 칸 */}
           {(() => {
             const dmUnread = unreadMessageCount;
             const groupUnread = groupChats.reduce((sum, g) => sum + (g.unread || 0), 0) + loungeNew;
-            const tabs: [typeof messagesView, string, number][] = [['dm', '👤 개인 메시지', dmUnread], ['group', '👥 단체 메시지', groupUnread], ...(isAdmin ? [['allGroups', '🔒 모든 단체방', 0] as [typeof messagesView, string, number]] : [])];
+            const tabs: [typeof messagesView, string, number][] = [['dm', '개인', dmUnread], ['group', '단체', groupUnread], ...(isAdmin ? [['allGroups', '모든 단체방', 0] as [typeof messagesView, string, number]] : [])];
+            const at = Math.max(0, tabs.findIndex(([k]) => k === messagesView));
             return (
-              <div className={`px-4 pt-3 pb-2 border-b border-stone-100 grid gap-1 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`} role="tablist" aria-label="메시지 보기">
-                {tabs.map(([k, label, n]) => (
-                  <button key={k} role="tab" aria-selected={messagesView === k} onClick={() => { setMessagesView(k); if (k === 'allGroups') fetchAdminGroups(); }}
-                    className={`relative py-2.5 rounded-xl text-[0.875rem] font-bold ${messagesView === k ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}>
-                    {label}
-                    {n > 0 && <span className="absolute -top-1.5 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-[0.75rem] font-bold flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
-                  </button>
-                ))}
+              <div className="px-4 pb-3 border-b border-stone-100">
+                <div className={`relative grid p-1 rounded-full bg-stone-100 ${isAdmin ? 'grid-cols-3' : 'grid-cols-2'}`} role="tablist" aria-label="메시지 보기">
+                  <span aria-hidden="true" className="absolute top-1 bottom-1 left-1 rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.12)] transition-transform duration-300 ease-out"
+                    style={{ width: `calc((100% - 0.5rem) / ${tabs.length})`, transform: `translateX(${at * 100}%)` }} />
+                  {tabs.map(([k, label, n]) => (
+                    <button key={k} role="tab" aria-selected={messagesView === k} onClick={() => { setMessagesView(k); setSwipedRow(null); if (k === 'allGroups') fetchAdminGroups(); }}
+                      aria-label={n > 0 ? `${label} 메시지 · 안 읽은 ${n}개` : `${label} 메시지`}
+                      className={`relative z-[1] py-2 rounded-full text-[0.9375rem] tracking-tight inline-flex items-center justify-center gap-1.5 transition-colors ${messagesView === k ? 'text-stone-900 font-bold' : 'text-stone-500 font-medium'}`}>
+                      {label}
+                      {n > 0 && <span className="min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-red-500 text-white text-[0.6875rem] font-bold leading-none flex items-center justify-center">{n > 99 ? '99+' : n}</span>}
+                    </button>
+                  ))}
+                </div>
               </div>
             );
           })()}
-          {/* 대화방 정리: 지우고 싶은 대화방에서 나가기 */}
-          {messagesView !== 'allGroups' && (messagesView === 'group' ? groupChats.length > 0 : chatPartners.length > 0) && (
-            <div className="px-4 py-1.5 flex justify-end border-b border-stone-100">
-              <button onClick={() => setEditingChatList(v => !v)} className={`px-3 py-1.5 rounded-full text-[0.8125rem] font-bold ${editingChatList ? 'bg-stone-900 text-white' : 'text-stone-600 border border-stone-200'}`} aria-pressed={editingChatList}>
-                {editingChatList ? '✓ 정리 끝내기' : '✏️ 대화방 정리 (나가기)'}
-              </button>
-            </div>
-          )}
           {isAdmin && messagesView === 'allGroups' ? (
             // 관리자: 모든 단체 채팅방 (들어가서 읽어도 교우들에게 표시되지 않고, 글은 쓸 수 없음)
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
@@ -4381,7 +4380,7 @@ export default function Home() {
               ))}
             </div>
           ) : (
-          <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+          <div className="flex-1 overflow-y-auto divide-y divide-stone-100" onScroll={() => { if (swipedRow) setSwipedRow(null); }}>
             {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 (단체 메시지 칸 맨 위) */}
             {messagesView === 'group' && <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
               <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
@@ -4411,12 +4410,14 @@ export default function Home() {
                   <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ {messagesView === 'group' ? '단체 채팅방 만들기' : '새 채팅 시작하기'}</button>
                 </div>
               );
-              const leaveBtn = (onLeave: () => void) => editingChatList && (
-                <button onClick={onLeave} className="shrink-0 mr-3 px-3.5 py-2 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[0.875rem] font-bold">나가기</button>
-              );
-              return items.map(({ group: g, partner }, idx) => g ? (
-                <div key={`g-${g.id}`} className="flex items-center">
-                <button onClick={() => openGroupChat(g.id)} className="flex-1 min-w-0 p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+              // 왼쪽으로 밀면 빨간 '나가기' (components/SwipeRow)
+              const swipe = (key: string, onLeave: () => void) => ({
+                open: swipedRow === key, anyOpen: swipedRow !== null,
+                onOpen: () => setSwipedRow(key), onClose: () => setSwipedRow(null), onAction: onLeave,
+              });
+              return <>{items.map(({ group: g, partner }, idx) => g ? (
+                <SwipeRow key={`g-${g.id}`} {...swipe(`g-${g.id}`, () => leaveGroupFromList(g))}>
+                <button onClick={() => openGroupChat(g.id)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
                   <span className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xl shrink-0">👥</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -4431,15 +4432,14 @@ export default function Home() {
                     ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{g.unread > 99 ? '99+' : g.unread}</span>
                     : null}
                 </button>
-                {leaveBtn(() => leaveGroupFromList(g))}
-                </div>
+                </SwipeRow>
               ) : partner && (
             <div key={`dm-${partner.id}`}>
             {/* 메시지 요청 칸 머리 / 대화 칸 머리 */}
             {partner.isRequest && idx === 0 && <p className="px-4 py-2 bg-amber-50 text-[0.8125rem] font-bold text-amber-900 leading-snug">📩 메시지 요청 {requestCount}개 · 수락하기 전에는 읽어도 상대방이 몰라요</p>}
             {!partner.isRequest && idx === requestCount && requestCount > 0 && <p className="px-4 py-2 bg-stone-50 text-[0.8125rem] font-bold text-stone-500">대화</p>}
-            <div className="flex items-center">
-            <button onClick={() => openChatRoom(partner)} className="flex-1 min-w-0 p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+            <SwipeRow {...swipe(`dm-${partner.id}`, () => leaveDmThread(partner))}>
+            <button onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
               {partner.avatar_url ? (
                 <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
               ) : (
@@ -4458,10 +4458,11 @@ export default function Home() {
                 return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
               })()}
             </button>
-            {leaveBtn(() => leaveDmThread(partner))}
+            </SwipeRow>
             </div>
-            </div>
-              ));
+              ))}
+              <p className="px-4 py-5 text-center text-[0.8125rem] text-stone-400">대화방을 왼쪽으로 밀면 나갈 수 있어요</p>
+              </>;
             })()}
           </div>
           )}

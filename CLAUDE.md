@@ -49,6 +49,7 @@
 - 보고 있는 대화(1:1·단체)의 휴대폰 알림은 띄우지 않음: SW가 앱에 'viewing?' 물어봄(`askViewing`/`viewingRef`), 애플 기기는 알림을 꼭 띄워야 해서 소리 없이 띄우고 바로 닫음. 대화방 들어가면 2~3초 동안 맨 아래에 붙임
 - 알림으로 연 화면에서 창을 닫거나 뒤로가기 하면 페이지가 새로 불려 홈으로 가던 문제: 시작할 때 주소를 지우는 `replaceState`가 Next.js 기록 표시(`__NA`)를 지웠음 → `window.history.state`를 남기고 주소만 바꿈
 - 건의함 글이 사라진 이유: 탈퇴하면 `app/api/account/delete`가 그 교우의 건의·신고도 지움 (개인정보처리방침대로). 되살릴 수 없음
+- 메시지 목록: 대화방 줄을 왼쪽으로 밀면 빨간 '나가기'(`components/SwipeRow`, 한 번에 한 줄만 열림, 열린 채 다른 줄을 누르면 닫기만, 스크롤하면 닫힘). 예전 '✏️ 대화방 정리' 단추는 없앰. 개인/단체 탭은 흰 칸이 미끄러지는 한 줄 칸(이모티콘 없이 '개인'·'단체', 관리자는 '모든 단체방')
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
