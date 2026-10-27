@@ -1242,38 +1242,78 @@ export default function Home() {
   };
   const toggleMessageHeart = (messageId: string | number) => setMessageReaction(messageId, '❤️');
   // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지 → 하트).
-  // 내 메시지를 한 번 누르거나, 어떤 메시지든 꾹 누르면 메뉴(감정 표시·답장·고치기·삭제)
+  // 내 메시지를 한 번 누르거나, 어떤 메시지든 꾹 누르면 그 메시지 바로 위에 감정 표시, 아래에 메뉴(답장·고치기·삭제)
   const [messageSheet, setMessageSheet] = useState<Message | null>(null);
+  const [messageAnchor, setMessageAnchor] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null); // 그 메시지 자리
+  const openMessageMenu = (msg: Message, el: Element | null) => {
+    const r = el?.getBoundingClientRect();
+    setMessageAnchor(r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null);
+    setMessageSheet(msg);
+  };
   const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPress = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; fired: boolean } | null>(null);
-  const onMessageTap = (msg: Message, mine: boolean) => {
+  // 옆으로 밀어 답장: 손가락을 따라 메시지가 움직이고, 충분히(SWIPE_REPLY) 밀었다 놓으면 그 메시지에 답장
+  const SWIPE_REPLY = 60;
+  const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
+  const swipeRef = useRef<{ id: string; x: number; y: number; dx: number; active: boolean; done: boolean } | null>(null);
+  const onMessageTap = (msg: Message, mine: boolean, el: Element) => {
     if (longPress.current?.fired) { longPress.current = null; return; } // 꾹 누른 뒤 손을 뗀 것
+    if (swipeRef.current?.done) { swipeRef.current = null; return; }   // 밀어서 답장한 뒤 손을 뗀 것
     const key = String(msg.id);
     const now = Date.now();
     const last = lastMessageTap.current;
     if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
     if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(msg.id); return; }
     lastMessageTap.current = { id: key, at: now };
-    if (mine) singleTapTimer.current = setTimeout(() => setMessageSheet(msg), 360);
+    if (mine) singleTapTimer.current = setTimeout(() => openMessageMenu(msg, el), 360);
   };
   const messagePressHandlers = (msg: Message) => ({
-    onPointerDown: (e: React.PointerEvent) => {
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
+      const el = e.currentTarget;
       if (longPress.current) clearTimeout(longPress.current.timer);
       const timer = setTimeout(() => {
         if (longPress.current) longPress.current.fired = true;
         if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+        swipeRef.current = null; setSwipe(null);
         try { navigator.vibrate?.(15); } catch { /* 무시 */ }
-        setMessageSheet(msg);
+        openMessageMenu(msg, el);
       }, 450);
       longPress.current = { timer, x: e.clientX, y: e.clientY, fired: false };
+      swipeRef.current = { id: String(msg.id), x: e.clientX, y: e.clientY, dx: 0, active: false, done: false };
     },
-    onPointerMove: (e: React.PointerEvent) => {
+    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
       const lp = longPress.current;
-      if (lp && !lp.fired && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) { clearTimeout(lp.timer); longPress.current = null; } // 스크롤하는 중
+      if (lp && !lp.fired && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) { clearTimeout(lp.timer); longPress.current = null; } // 움직이면 꾹 누르기가 아님
+      const sw = swipeRef.current;
+      if (!sw || sw.id !== String(msg.id) || sw.done || lp?.fired) return;
+      const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+      if (!sw.active) {
+        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+          sw.active = true;
+          try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 무시 */ }
+        } else {
+          if (Math.abs(dy) > 12) swipeRef.current = null; // 위아래로 스크롤하는 중
+          return;
+        }
+      }
+      sw.dx = Math.max(-90, Math.min(90, dx));
+      setSwipe({ id: sw.id, dx: sw.dx });
     },
-    onPointerUp: () => { const lp = longPress.current; if (lp && !lp.fired) { clearTimeout(lp.timer); longPress.current = null; } },
-    onPointerCancel: () => { const lp = longPress.current; if (lp) clearTimeout(lp.timer); longPress.current = null; },
-    onContextMenu: (e: React.MouseEvent) => { e.preventDefault(); setMessageSheet(msg); }, // 컴퓨터 오른쪽 단추·길게 누르기 메뉴 대신
+    onPointerUp: () => {
+      const lp = longPress.current;
+      if (lp && !lp.fired) { clearTimeout(lp.timer); longPress.current = null; }
+      const sw = swipeRef.current;
+      if (sw?.active) {
+        if (Math.abs(sw.dx) >= SWIPE_REPLY) { try { navigator.vibrate?.(10); } catch { /* 무시 */ } startReply(msg); }
+        sw.active = false; sw.done = true; // 이어서 오는 '누름'은 무시
+        setSwipe(null);
+      } else swipeRef.current = null;
+    },
+    onPointerCancel: () => {
+      const lp = longPress.current; if (lp) clearTimeout(lp.timer); longPress.current = null;
+      swipeRef.current = null; setSwipe(null);
+    },
+    onContextMenu: (e: React.MouseEvent<HTMLElement>) => { e.preventDefault(); openMessageMenu(msg, e.currentTarget); }, // 컴퓨터 오른쪽 단추·길게 누르기 메뉴 대신
   });
   // 답장: 특정 메시지를 골라 그 메시지에 대한 답이라고 표시 / 고치기: 내 메시지 내용 바꾸기 (하루 안에)
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -4300,10 +4340,17 @@ export default function Home() {
                       return (
                         <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
                           <div className="relative">
+                          {/* 옆으로 미는 중: 드러나는 답장 표시 */}
+                          {swipe?.id === String(msg.id) && (
+                            <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${swipe.dx > 0 ? 'left-1' : 'right-1'} w-8 h-8 rounded-full flex items-center justify-center text-base ${Math.abs(swipe.dx) >= SWIPE_REPLY ? 'bg-blue-500 text-white' : 'bg-white text-stone-500 shadow'}`}
+                              style={{ opacity: Math.min(1, Math.abs(swipe.dx) / SWIPE_REPLY) }}>↩</span>
+                          )}
                           <div
-                            onClick={() => onMessageTap(msg, isMe)}
+                            data-bubble
+                            onClick={e => onMessageTap(msg, isMe, e.currentTarget)}
                             {...messagePressHandlers(msg)}
-                            className={`px-4 py-2 rounded-2xl text-[1rem] select-none [-webkit-touch-callout:none] [touch-action:manipulation] cursor-pointer transition-shadow ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                            style={{ transform: swipe?.id === String(msg.id) ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === String(msg.id) ? 'none' : 'transform 0.2s' }}
+                            className={`relative px-4 py-2 rounded-2xl text-[1rem] select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
@@ -4332,7 +4379,7 @@ export default function Home() {
                           {/* 메시지 밑 감정 표시 (누르면 고르기) */}
                           {grouped.length > 0 && (
                             <button
-                              onClick={() => setMessageSheet(msg)}
+                              onClick={e => openMessageMenu(msg, e.currentTarget.parentElement?.querySelector('[data-bubble]') ?? e.currentTarget)}
                               aria-label={`감정 표시 ${grouped.map(g => `${g.e} ${g.n}`).join(', ')} · 눌러서 고르기`}
                               className={`absolute -bottom-4 ${isMe ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.8125rem] leading-none text-stone-600`}
                             >
@@ -4374,30 +4421,45 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </form>
-          {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 감정 표시 · 답장 · 고치기 · 복사 · 삭제 */}
+          {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 그 메시지 바로 위에 감정 표시, 아래에 답장 · 고치기 · 삭제 */}
           {messageSheet && (() => {
             const m = messageSheet;
             const mine = m.sender_id === user?.id;
             const myEmoji = (messageHearts[String(m.id)] || []).find(r => r.user_id === user?.id)?.emoji;
-            const sheetBtn = 'w-full px-4 py-3.5 text-left text-[1rem] font-bold text-stone-800 bg-white active:bg-stone-50';
+            const close = () => setMessageSheet(null);
+            const actions: { label: string; run: () => void; danger?: boolean }[] = [
+              { label: '↩️ 답장하기', run: () => startReply(m) },
+              ...(canEditMessage(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEditMessage(m) }] : []),
+              ...(m.image_url ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
+              ...(mine ? [{ label: '🗑 삭제', run: () => deleteMessage(m), danger: true }] : []),
+            ];
+            // 자리 잡기: 감정 줄은 메시지 위(자리가 없으면 아래), 메뉴는 메시지 아래(자리가 없으면 위). 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 맞춤
+            const vw = window.innerWidth, vh = window.innerHeight, gap = 8, edge = 12;
+            const a = messageAnchor || { top: vh / 2 - 24, bottom: vh / 2 + 24, left: edge, right: vw - edge };
+            const barW = Math.min(vw - edge * 2, 7 * 44 + 16), barH = 56;
+            const menuW = Math.min(vw - edge * 2, 220), menuH = actions.length * 53;
+            const fitX = (w: number) => Math.max(edge, Math.min(vw - w - edge, mine ? a.right - w : a.left));
+            let barTop = a.top - barH - gap;
+            let menuTop = a.bottom + gap;
+            if (barTop < edge) { barTop = Math.min(a.bottom + gap, vh - barH - menuH - gap - edge); menuTop = barTop + barH + gap; }
+            else if (menuTop + menuH > vh - edge) menuTop = Math.max(edge, barTop - menuH - gap);
             return (
-              <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center" onClick={() => setMessageSheet(null)}>
-                <div className="w-full sm:w-96 bg-white rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3" onClick={e => e.stopPropagation()} role="dialog" aria-label="메시지 메뉴">
-                  <p className="px-1 text-[0.875rem] text-stone-500 line-clamp-2">{m.image_url && m.content === PHOTO_ONLY_TEXT ? '📷 사진' : m.content}</p>
-                  <div className="flex justify-between bg-stone-100 rounded-2xl p-1.5" role="group" aria-label="감정 표시">
-                    {MESSAGE_EMOJIS.map(e => (
-                      <button key={e} onClick={() => { setMessageSheet(null); setMessageReaction(m.id, e); }} aria-pressed={myEmoji === e} aria-label={`${e} 표시${myEmoji === e ? ' 취소' : ''}`}
-                        className={`w-11 h-11 rounded-full text-[1.5rem] flex items-center justify-center ${myEmoji === e ? 'bg-white shadow ring-2 ring-blue-400' : ''}`}>{e}</button>
-                    ))}
-                  </div>
-                  <div className="flex flex-col divide-y divide-stone-100 rounded-2xl border border-stone-200 overflow-hidden">
-                    <button onClick={() => startReply(m)} className={sheetBtn}>↩️ 답장하기</button>
-                    {canEditMessage(m) && <button onClick={() => startEditMessage(m)} className={sheetBtn}>✏️ 고치기 (오타 수정)</button>}
-                    {m.content && m.content !== PHOTO_ONLY_TEXT && <button onClick={() => { navigator.clipboard?.writeText(m.content).catch(() => {}); setMessageSheet(null); }} className={sheetBtn}>📋 복사하기</button>}
-                    {m.image_url && <button onClick={() => { setMessageSheet(null); zoomPhoto(m.image_url); }} className={sheetBtn}>🔍 사진 크게 보기</button>}
-                    {mine && <button onClick={() => deleteMessage(m)} className={`${sheetBtn} !text-red-600`}>🗑 삭제</button>}
-                  </div>
-                  <button onClick={() => setMessageSheet(null)} className="py-2.5 text-stone-500 font-bold">닫기</button>
+              <div className="fixed inset-0 z-[80]" onClick={close} role="dialog" aria-label="메시지 메뉴">
+                <div className="absolute inset-0 bg-black/25" />
+                {messageAnchor && <div aria-hidden="true" className="absolute rounded-2xl ring-4 ring-white/90 pointer-events-none" style={{ top: a.top, left: a.left, width: a.right - a.left, height: a.bottom - a.top }} />}
+                <div role="group" aria-label="감정 표시" onClick={e => e.stopPropagation()}
+                  className="absolute flex items-center justify-between bg-white rounded-full shadow-xl px-2 py-1.5 animate-fade-in"
+                  style={{ top: barTop, left: fitX(barW), width: barW }}>
+                  {MESSAGE_EMOJIS.map(e => (
+                    <button key={e} onClick={() => { close(); setMessageReaction(m.id, e); }} aria-pressed={myEmoji === e} aria-label={`${e} 표시${myEmoji === e ? ' 취소' : ''}`}
+                      className={`w-10 h-10 rounded-full text-[1.5rem] leading-none flex items-center justify-center active:scale-110 ${myEmoji === e ? 'bg-blue-100 ring-2 ring-blue-400' : ''}`}>{e}</button>
+                  ))}
+                </div>
+                <div onClick={e => e.stopPropagation()} className="absolute bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col divide-y divide-stone-100"
+                  style={{ top: menuTop, left: fitX(menuW), width: menuW }}>
+                  {actions.map(act => (
+                    <button key={act.label} onClick={act.run} className={`w-full px-4 py-3.5 text-left text-[1rem] font-bold active:bg-stone-50 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>{act.label}</button>
+                  ))}
                 </div>
               </div>
             );
