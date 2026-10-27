@@ -30,7 +30,7 @@
 - 새 채팅·단체 채팅방 (`supabase/group-chats.sql` 실행 필요): 메시지 화면 '새 채팅'에서 @아이디·이름으로 찾아 1:1 또는 여러 명과 단체방(`components/NewChat.tsx`, `components/GroupChat.tsx`). 방 만들기·초대·나가기·이름·읽음은 RPC로만, 서로 차단한 교우는 초대 불가, 나중에 들어온 교우는 들어온 뒤 대화만. 관리자는 메시지 화면 '🔒 모든 단체방'에서 모든 방을 읽기만(글쓰기·읽음·입장 표시 없음, DB에서도 막힘) — 개인정보처리방침·약관에 '운영자 열람 가능' 고지. 알림 `type=group_message`, 딥링크 `?group=`
 - 알림: 눌러 확인해도 목록에 남김(흐리게, `readAlerts`/`notificationsRead:`), '확인한 알림 지우기'는 확인한 것만 지움, 3일 지나면 자동 삭제 (#202의 '확인하면 바로 지움'을 되돌림)
 - 내 공간에 '🔄 다른 계정으로 로그인'·'로그아웃' (카카오 prompt=login, 구글 select_account, 네이버 auth_type=reauthenticate)
-- 1:1 메시지 (`supabase/message-extras.sql` 실행 필요, message-hearts.sql 다음): 꾹 누르면 메뉴(❤️👍😊😂😮😢🙏 감정 표시·답장·고치기·복사·삭제), 두 번 누르면 하트, 답장(`messages.reply_to`, 같은 대화만), 내 메시지 고치기 24시간 안(`edit_my_message`, 원래 내용은 관리자만 보는 `message_edits`)
+- 1:1 메시지 (`supabase/message-extras.sql` 실행 필요, message-hearts.sql 다음): 꾹 누르면 그 메시지 바로 위에 감정 줄(❤️👍😊😂😮😢🙏)·아래에 메뉴(답장·고치기·삭제, `messageAnchor`), 옆으로 60px 넘게 밀면 답장(`swipe`, 말풍선 `touch-action: pan-y`), 두 번 누르면 하트, 답장(`messages.reply_to`, 같은 대화만), 내 메시지 고치기 24시간 안(`edit_my_message`, 원래 내용은 관리자만 보는 `message_edits`)
 - 보고 있는 대화(1:1·단체)의 휴대폰 알림은 띄우지 않음: SW가 앱에 'viewing?' 물어봄(`askViewing`/`viewingRef`), 애플 기기는 알림을 꼭 띄워야 해서 소리 없이 띄우고 바로 닫음. 대화방 들어가면 2~3초 동안 맨 아래에 붙임
 - 알림으로 연 화면에서 창을 닫거나 뒤로가기 하면 페이지가 새로 불려 홈으로 가던 문제: 시작할 때 주소를 지우는 `replaceState`가 Next.js 기록 표시(`__NA`)를 지웠음 → `window.history.state`를 남기고 주소만 바꿈
 - 건의함 글이 사라진 이유: 탈퇴하면 `app/api/account/delete`가 그 교우의 건의·신고도 지움 (개인정보처리방침대로). 되살릴 수 없음
