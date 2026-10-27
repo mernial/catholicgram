@@ -66,6 +66,7 @@ import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
 import LettersModal from '@/components/LettersModal';
+import MyComments from '@/components/MyComments';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
@@ -441,6 +442,7 @@ export default function Home() {
   const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null); // 프로필 사진 크게 보기 // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
+  const [showMyComments, setShowMyComments] = useState(false); // 내 공간 → 내 댓글 모아 보기
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
   // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
@@ -2794,7 +2796,7 @@ export default function Home() {
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowNotices(false);
     setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowTesterSignup(false); setShowAdminTesters(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
-    setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
+    setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
   };
 
@@ -3128,7 +3130,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -3174,6 +3176,7 @@ export default function Home() {
     setShowDeletedMessages(false);
     setShowMediaStorage(false);
     setShowLetters(false);
+    setShowMyComments(false);
     // 사랑방·단체 채팅방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
     if (!reportTarget && !actionModalUser) { setShowLounge(false); setShowAnon(false); }
     if (!reportTarget && !actionModalUser && !showNewChat) setOpenGroup(null);
@@ -4131,22 +4134,25 @@ export default function Home() {
               )}
             </div>
 
-            {/* 버튼: 회색 넓은 단추 */}
+            {/* 버튼: 두 칸씩 나란히 — 회색 단추(프로필 편집·메시지·내 댓글·설정), 테두리 단추(다른 계정으로 로그인·로그아웃) */}
             {(() => {
               const btn = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-stone-100 text-stone-900 hover:bg-stone-200 transition-colors inline-flex items-center justify-center gap-1.5';
+              const ico = 'w-[1.1em] h-[1.1em] shrink-0';
+              const sub = 'min-h-[2.25rem] px-2 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50 inline-flex items-center justify-center gap-1.5 leading-tight';
               return viewingUserId === user?.id ? (
                 <>
-                  <div className="mt-3 flex gap-1.5">
-                    <button onClick={openProfileEdit} className={btn}>프로필 편집</button>
-                    <button onClick={() => goToTab('messages')} className={`${btn} relative`}>
-                      메시지
+                  <div className="mt-3 grid grid-cols-2 gap-1.5">
+                    <button onClick={openProfileEdit} className={btn}><Icon name="pencil" className={ico} />프로필 편집</button>
+                    <button onClick={() => goToTab('messages')} className={btn}>
+                      <Icon name="send" className={ico} />메시지
                       {messageBadgeCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>}
                     </button>
-                    <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="w-10 shrink-0 rounded-lg bg-stone-100 text-stone-900 hover:bg-stone-200 flex items-center justify-center" aria-label="설정"><Icon name="gear" className="w-5 h-5" /></button>
+                    <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="chat" className={ico} />내 댓글</button>
+                    <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className={btn}><Icon name="gear" className={ico} />설정</button>
                   </div>
-                  <div className="mt-1.5 flex gap-1.5">
-                    <button onClick={switchAccount} className="flex-1 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50">🔄 다른 계정으로 로그인</button>
-                    <button onClick={logout} className="flex-1 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50"><Icon name="signout" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />로그아웃</button>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+                    <button onClick={switchAccount} className={sub}><Icon name="users" className={ico} />다른 계정으로 로그인</button>
+                    <button onClick={logout} className={sub}><Icon name="signout" className={ico} />로그아웃</button>
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {isAdmin && (
@@ -4316,6 +4322,12 @@ export default function Home() {
         );
       })()}
 
+      {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
+      {showMyComments && user && (
+        <BottomSheet label="내 댓글" title="내 댓글" subtitle="내가 단 댓글을 모아 봤어요 · 나만 볼 수 있어요" onClose={() => setShowMyComments(false)} tone="bg-white">
+          <MyComments userId={user.id} onOpen={(postId, commentId) => { setShowMyComments(false); openPostFromAlert(postId, commentId); }} />
+        </BottomSheet>
+      )}
       {showAnon && (
         <BottomSheet label="익명 고민상담" onClose={() => setShowAnon(false)} tone="bg-[#fbfaf7]">
         <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} focusReplyId={anonFocusReply} onFocused={() => { setAnonFocusId(null); setAnonFocusReply(null); }} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
