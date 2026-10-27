@@ -25,6 +25,7 @@
 - #198·#199 테스터 안내: 'App not available'일 때 할 일 안내, 관리자 화면에 '게시됨 확인' 단계와 '등록한 N명에게 설치 안내 다시 보내기'
 - #200 아동 안전 표준 페이지 `/child-safety` (Play 제출 전 검사 '불완전한 아동 안전 표준 선언' 해결용, 이용약관에서 링크)
 - 내 공간·교우 공간은 늘 맨 위에서 시작 (홈과 같은 스크롤 칸을 써서 홈에서 내려간 채로 열면 중간부터 보였음, `useLayoutEffect` [activeTab, viewingUserId]). 공간에서 당겨서 새로고침·아이콘 다시 누르기 때 그 사람 글(`fetchUserPosts`)과 태그된 글도 다시 불러옴
+- 접속 통계 등 스크롤 창에서 테두리 상자가 2px로 눌려 잘리던 문제 → `globals.css`: `.overflow-y-auto.flex-col > :is(.overflow-hidden, .overflow-x-auto, textarea) { flex-shrink: 0 }` (스크롤 세로 칸 안의 이런 칸은 최소 높이가 0이라 눌림)
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
