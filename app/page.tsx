@@ -4380,9 +4380,10 @@ export default function Home() {
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
                               <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
-                                className={`block w-full text-left -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${isMe ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
-                                <span className="block font-bold">↩️ {quoted ? (quoted.sender_id === user?.id ? '나' : currentChatUser?.baptismal_name || '상대') : '이전 메시지'}에게 답장</span>
-                                <span className="line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.content}</span>
+                                aria-label={`${quoted ? (quoted.sender_id === user?.id ? '내' : `${currentChatUser?.baptismal_name || '상대'}님`) : '이전'} 메시지에 답장 · 눌러서 원래 메시지 보기`}
+                                className={`flex max-w-full items-center gap-1 text-left mb-0.5 text-[0.8125rem] leading-snug ${isMe ? 'text-white/70' : 'text-stone-400'}`}>
+                                <span className="min-w-0 truncate">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.content}</span>
+                                <span aria-hidden="true" className="shrink-0">↵</span>
                               </button>
                             )}
                             {msg.image_url && (isVideoUrl(msg.image_url)
