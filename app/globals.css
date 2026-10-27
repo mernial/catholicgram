@@ -25,6 +25,12 @@ input, textarea, select {
   min-width: 0;
 }
 
+/* 스크롤되는 세로 칸(flex-col) 안의 테두리 상자(overflow-hidden)·가로 스크롤 줄·글 칸은 줄어들지 않게.
+   이런 칸은 최소 높이가 0이라, 내용이 창보다 길면 납작하게 눌려 잘리고 스크롤도 안 됐음 (접속 통계 날짜 표 등) */
+.overflow-y-auto.flex-col > :is(.overflow-hidden, .overflow-x-auto, textarea) {
+  flex-shrink: 0;
+}
+
 /* 노치·홈 버튼 영역(아이폰 등) 피하기 */
 .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
 .pt-safe { padding-top: env(safe-area-inset-top); }
