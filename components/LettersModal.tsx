@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import { uploadPhoto } from '@/lib/upload';
+import { useSheetDrag } from '@/lib/sheet-drag';
 
 // 사연 보내기 (supabase/letters.sql)
 // 교우: 사연 쓰기 + 내가 보낸 사연과 상태 보기 — 사연은 관리자에게만 전달됨
@@ -46,6 +47,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   onSent: (id: string) => void;    // 관리자에게 알림 보내기
   onChanged?: () => void;          // 관리자: 새 사연 수 다시 세기
 }) {
+  const sheet = useSheetDrag(onClose); // 아래로 끌어내리면 닫힘
   const [view, setView] = useState<'write' | 'mine' | 'inbox'>(isAdmin ? 'inbox' : startView || 'write');
   const [handles, setHandles] = useState<Record<string, string>>({}); // 관리자: 보낸 분 @아이디
   const [items, setItems] = useState<Letter[] | null>(null);
@@ -164,8 +166,9 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
         </div>
       )}
 
-      <div className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
+      <div ref={sheet.sheetRef} className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+        <div {...sheet.handleProps} className="shrink-0 pt-2.5 flex justify-center cursor-grab touch-none" aria-hidden="true"><span className="w-12 h-1.5 rounded-full bg-stone-300" /></div>
+        <div {...sheet.handleProps} className="px-4 pb-4 pt-2 border-b border-stone-100 flex items-center justify-between shrink-0 cursor-grab">
           <div>
             <h2 className="font-bold text-stone-900 text-lg">💌 {isAdmin ? '사연함' : '사연 보내기'}</h2>
             <p className="text-xs text-stone-400 mt-0.5">{isAdmin ? '교우들이 보낸 사연 · 관리자만 보여요' : '운영자에게만 전달돼요 · 유튜브 방송에서 소개될 수 있어요'}</p>

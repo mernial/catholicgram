@@ -86,3 +86,27 @@ export function JumpToLatest({ listRef, newCount = 0, onJump, className = 'botto
     </button>
   );
 }
+
+// 입력 중 표시: 한 사람이면 '○○님이 입력 중', 여러 사람이면 프로필 사진을 겹쳐 '○명이 입력 중' (점 세 개가 움직임)
+export function TypingIndicator({ typers, lookup }: {
+  typers: { id: string; name: string; avatar: string | null }[];
+  lookup?: (id: string) => { name?: string; avatar?: string | null } | undefined; // 화면에 이미 있는 이름·사진
+}) {
+  if (typers.length === 0) return null;
+  const list = typers.map(t => ({ ...t, name: lookup?.(t.id)?.name || t.name, avatar: lookup?.(t.id)?.avatar ?? t.avatar }));
+  const dots = (
+    <span className="inline-flex items-center gap-0.5 ml-1" aria-hidden="true">
+      {[0, 1, 2].map(i => <span key={i} className="w-1.5 h-1.5 rounded-full bg-stone-400 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />)}
+    </span>
+  );
+  return (
+    <div className="shrink-0 px-4 py-1.5 flex items-center gap-2 text-[0.8125rem] text-stone-500" role="status" aria-live="polite">
+      <span className="flex -space-x-2">
+        {list.slice(0, 4).map(t => t.avatar
+          ? <img key={t.id} src={t.avatar} alt="" className="w-7 h-7 rounded-full object-cover border-2 border-white" />
+          : <span key={t.id} className="w-7 h-7 rounded-full bg-stone-300 text-stone-700 text-[0.75rem] font-bold flex items-center justify-center border-2 border-white">{(t.name || '교').slice(0, 1)}</span>)}
+      </span>
+      <span>{list.length === 1 ? `${list[0].name}님이 입력 중` : `${list.length}명이 입력 중`}{dots}</span>
+    </div>
+  );
+}

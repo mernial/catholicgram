@@ -14,7 +14,10 @@ import NewChat from '@/components/NewChat';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import BottomSheet from '@/components/BottomSheet';
+import { useSheetDrag } from '@/lib/sheet-drag';
+import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { useStickToBottom } from '@/lib/stick-bottom';
@@ -228,6 +231,7 @@ const closeOsNotifications = (tag: string) => {
 // 메시지 감정 표시 (supabase/message-extras.sql) — 두 번 누르면 하트, 꾹 누르면 고르기
 const MESSAGE_EMOJIS = REACTION_EMOJIS;
 const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS]; // 감정 표시를 모아 보여 줄 때의 순서
+const DM_REQUEST_HINT = '메시지 요청·대화방 나가기를 준비 중이에요. (관리자: supabase/dm-requests.sql 실행 필요)';
 const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
@@ -434,6 +438,7 @@ export default function Home() {
   const [storyViewerOpen, setStoryViewerOpen] = useState(false); // 스토리 화면 가득 보기
   const [avatarPreview, setAvatarPreview] = useState<{ url: string; name: string } | null>(null); // 프로필 사진 크게 보기 // 홈 피드: 인스타그램처럼 전체
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
+  const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
   // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
@@ -485,7 +490,12 @@ export default function Home() {
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const sessionStartRef = useRef<number>(0);
 
-  const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string })[]>([]);
+  const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string; isRequest?: boolean })[]>([]);
+  // 1:1 대화방 상태 (supabase/dm-requests.sql): 수락한 때 · 나간 때 — 표가 없으면(SQL 실행 전) 요청·나가기 없이 예전처럼
+  const [dmThreads, setDmThreads] = useState<Record<string, { accepted_at: string | null; left_at: string | null }>>({});
+  const [dmThreadsReady, setDmThreadsReady] = useState(false);
+  const dmThreadsRef = useRef({ map: dmThreads, ready: dmThreadsReady, checked: false });
+  dmThreadsRef.current = { ...dmThreadsRef.current, map: dmThreads, ready: dmThreadsReady };
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
   const [messageInput, setMessageInput] = useState('');
@@ -754,8 +764,8 @@ export default function Home() {
 
   // 고민상담을 열면 새 글 표시를 지운다
   useEffect(() => {
-    if (activeTab === 'anon' && user) { storageSet(`anonSeenAt:${user.id}`, new Date().toISOString()); setAnonUnread(0); }
-  }, [activeTab, user?.id]);
+    if (showAnon && user) { storageSet(`anonSeenAt:${user.id}`, new Date().toISOString()); setAnonUnread(0); }
+  }, [showAnon, user?.id]);
   // 영상 탭·태그됨은 필요할 때 따로 불러온다
   useEffect(() => { if (activeTab === 'reels') fetchVideoPosts(); }, [activeTab]);
   useEffect(() => {
@@ -811,6 +821,7 @@ export default function Home() {
 
   // --- 화면 이동 + 뒤로가기 ---
   const applyScreen = (st: ScreenState) => {
+    if (st.tab === 'anon') { setShowAnon(true); st = { ...st, tab: 'home' }; } // 고민상담은 이제 창으로 연다
     currentScreenRef.current = st;
     if (st.tab === 'chat' && !st.chatUser) { setActiveTab('messages'); storageSet('activeTab', 'messages'); return; }
     setActiveTab(st.tab);
@@ -1110,20 +1121,62 @@ export default function Home() {
       .then(({ data, error }) => { if (!error && data && profileCardIdRef.current === target.id) setActionUserBio((data as { bio?: string | null }).bio || ''); });
   };
 
+  // ── 메시지 요청 · 대화방 나가기 ──
+  const fetchDmThreads = async () => {
+    if (!user) return;
+    dmThreadsRef.current.checked = true;
+    const { data, error } = await supabase.from('dm_threads').select('partner_id, accepted_at, left_at').eq('user_id', user.id);
+    if (error) { setDmThreadsReady(false); dmThreadsRef.current.ready = false; return; }
+    const map = Object.fromEntries((data || []).map(r => [r.partner_id as string, { accepted_at: r.accepted_at as string | null, left_at: r.left_at as string | null }]));
+    setDmThreads(map); setDmThreadsReady(true);
+    dmThreadsRef.current = { ...dmThreadsRef.current, map, ready: true };
+  };
+  const saveDmThread = async (partnerId: string, patch: { accepted_at?: string | null; left_at?: string | null }) => {
+    if (!user) return false;
+    const next = { ...(dmThreadsRef.current.map[partnerId] || { accepted_at: null, left_at: null }), ...patch };
+    const { error } = await supabase.from('dm_threads').upsert({ user_id: user.id, partner_id: partnerId, ...next, updated_at: new Date().toISOString() }, { onConflict: 'user_id,partner_id' });
+    if (error) {
+      alert(error.code === '42P01' || error.code === 'PGRST205' || /dm_threads/.test(error.message) ? DM_REQUEST_HINT : `저장하지 못했어요.\n(${error.message})`);
+      return false;
+    }
+    const map = { ...dmThreadsRef.current.map, [partnerId]: next };
+    dmThreadsRef.current = { ...dmThreadsRef.current, map, ready: true };
+    setDmThreads(map); setDmThreadsReady(true);
+    return true;
+  };
+  // 나간 뒤의 대화만 (나가기 전 대화는 내 화면에서 보이지 않음)
+  const afterLeft = (partnerId: string, iso: string) => { const l = dmThreadsRef.current.map[partnerId]?.left_at; return !l || iso > l; };
+  // 메시지 요청: 상대만 보냈고, 내가 (나간 뒤로) 보낸 적도 수락한 적도 없는 대화 — 수락 전에는 읽음 표시를 하지 않는다
+  const isRequestThread = (partnerId: string, msgs: { sender_id: string; created_at: string }[]) => {
+    const { map, ready } = dmThreadsRef.current;
+    if (!ready || !user) return false;
+    const t = map[partnerId];
+    const left = t?.left_at || '';
+    if (t?.accepted_at && t.accepted_at >= left) return false;
+    const after = msgs.filter(m => !left || m.created_at > left);
+    return after.some(m => m.sender_id === partnerId) && !after.some(m => m.sender_id === user.id);
+  };
+
   const fetchChatPartners = async () => {
     if (!user) return;
-    const { data } = await supabase.from('messages').select('*').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`).order('created_at', { ascending: false });
+    const [{ data }] = await Promise.all([
+      supabase.from('messages').select('*').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`).order('created_at', { ascending: false }),
+      fetchDmThreads(),
+    ]);
     if (!data || data.length === 0) { setChatPartners([]); return; }
 
-    // 상대별 가장 최근 메시지 (data는 최신순)
+    // 상대별 가장 최근 메시지 (data는 최신순) · 나간 대화방은 그 뒤 메시지만
     const latest = new Map<string, { content: string; created_at: string }>();
+    const byPartner = new Map<string, { sender_id: string; created_at: string }[]>();
     data.forEach(m => {
       const partnerId = m.sender_id === user.id ? m.receiver_id : m.sender_id;
-      if (partnerId && !latest.has(partnerId)) latest.set(partnerId, { content: m.deleted_at ? '삭제된 메시지' : m.content, created_at: m.created_at });
+      if (!partnerId || !afterLeft(partnerId, m.created_at)) return;
+      if (!latest.has(partnerId)) latest.set(partnerId, { content: m.deleted_at ? '삭제된 메시지' : m.content, created_at: m.created_at });
+      byPartner.set(partnerId, [...(byPartner.get(partnerId) || []), m]);
     });
 
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(latest.keys()));
-    const list = (profiles || []).map(p => ({ ...p, lastMessage: latest.get(p.id)?.content, lastAt: latest.get(p.id)?.created_at }));
+    const list = (profiles || []).map(p => ({ ...p, lastMessage: latest.get(p.id)?.content, lastAt: latest.get(p.id)?.created_at, isRequest: isRequestThread(p.id, byPartner.get(p.id) || []) }));
     list.sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''));
     setChatPartners(list);
   };
@@ -1169,12 +1222,15 @@ export default function Home() {
 
   const fetchChatMessages = async (partnerId: string) => {
     if (!user) return;
-    const { data, error } = await supabase.from('messages').select('*')
+    if (!dmThreadsRef.current.checked) await fetchDmThreads();
+    const { data: all, error } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .order('created_at', { ascending: true });
+    const data = all ? all.filter(m => afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
     if (data) {
       setChatMessages(data);
-      if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
+      // 메시지 요청이면 수락하기 전까지 읽음 표시를 하지 않는다 (상대가 읽었는지 모르게)
+      if (!isRequestThread(partnerId, data) && data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
       loadMessageHearts(data.slice(-200).map(m => m.id));
       loadDeletedOriginals(data.filter(m => m.deleted_at).map(m => String(m.id)));
     }
@@ -1218,7 +1274,7 @@ export default function Home() {
       const fresh = data.filter(m => !seen.has(String(m.id)));
       return fresh.length ? [...prev, ...fresh] : prev;
     });
-    if (data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
+    if (!isRequestThread(partnerId, [...list, ...data]) && data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
   };
 
   // 메시지 감정 표시: 두 번 누르면 하트(다시 두 번 누르면 취소), 꾹 누르면 ❤️👍😊😂😮😢🙏 중에서 고르기. 한 사람이 한 메시지에 하나
@@ -1275,12 +1331,13 @@ export default function Home() {
   const [messageAnchor, setMessageAnchor] = useState<MenuAnchor | null>(null); // 그 메시지 자리
   const openMessageMenu = (msg: Message, el: Element | null) => { setMessageAnchor(anchorOf(el)); setMessageSheet(msg); };
   // 한 번(내 메시지만)·두 번(하트)·꾹 누르기(메뉴)·옆으로 밀기(답장) — 단체 채팅방·댓글과 같은 손동작 (lib/use-press-gestures)
+  const dmRequestRef = useRef(false); // 메시지 요청을 아직 수락하지 않음 → 하트·답장 안 됨 (읽은 것이 드러나지 않게)
   const dmGestures = usePressGestures<Message>({
     keyOf: m => String(m.id),
     onTap: (m, el) => { if (m.sender_id === user?.id) openMessageMenu(m, el); },
-    onDoubleTap: m => toggleMessageHeart(m.id),
+    onDoubleTap: m => { if (!dmRequestRef.current) toggleMessageHeart(m.id); },
     onLongPress: (m, el) => openMessageMenu(m, el),
-    onSwipe: m => startReply(m),
+    onSwipe: m => { if (!dmRequestRef.current) startReply(m); },
   });
   // 답장: 특정 메시지를 골라 그 메시지에 대한 답이라고 표시 / 고치기: 내 메시지 내용 바꾸기 (하루 안에)
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -1343,6 +1400,7 @@ export default function Home() {
     const reply = replyTo;
     setMessageInput('');
     setReplyTo(null);
+    dmTyping.stop();
     const row = { sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg, ...(reply ? { reply_to: reply.id } : {}) };
     let { data: sent, error } = await supabase.from('messages').insert(row).select('id').single();
     // 답장 칸이 아직 없으면(SQL 실행 전) 답장 표시 없이라도 보낸다
@@ -1375,6 +1433,46 @@ export default function Home() {
     onSent: id => sendPush('message', String(id)),
   });
   const sendingPhoto = dmMedia.sending;
+  const dmRequest = activeTab === 'chat' && !!currentChatUser && isRequestThread(currentChatUser.id, chatMessages);
+  dmRequestRef.current = dmRequest;
+  // 입력 중 표시 (요청을 수락하기 전에는 내가 치는 것도 알리지 않음)
+  const dmTyping = useTyping(activeTab === 'chat' && currentChatUser && user ? `dm:${[user.id, currentChatUser.id].sort().join(':')}` : null, user?.id, !dmRequest);
+  // 메시지 요청 수락 · 거절 · 차단
+  const acceptDmRequest = async () => {
+    const p = currentChatUser;
+    if (!p || !(await saveDmThread(p.id, { accepted_at: new Date().toISOString() }))) return;
+    markMessagesRead(p.id); // 수락하면 그때 읽음 표시
+    fetchChatPartners();
+    showToast('수락했어요. 이제 답장할 수 있어요');
+  };
+  const declineDmRequest = async (alsoBlock = false) => {
+    const p = currentChatUser;
+    if (!p) return;
+    if (!window.confirm(alsoBlock
+      ? `${p.baptismal_name}님을 차단할까요?\n메시지 요청이 지워지고, 앞으로 메시지를 받지 않아요.`
+      : `${p.baptismal_name}님의 메시지 요청을 거절할까요?\n대화방이 목록에서 사라져요. 상대방에게는 알리지 않아요.`)) return;
+    if (!(await saveDmThread(p.id, { left_at: new Date().toISOString(), accepted_at: null }))) return;
+    if (alsoBlock) await blockUser(p.id);
+    setChatPartners(prev => prev.filter(x => x.id !== p.id));
+    setUnreadMessages(prev => prev.filter(u => u.partner.id !== p.id));
+    goToTab('messages');
+  };
+  // 메시지 목록에서 대화방 나가기 (1:1은 내 화면에서만 지움 · 단체방은 방에서 나감)
+  const [editingChatList, setEditingChatList] = useState(false);
+  const leaveDmThread = async (p: { id: string; baptismal_name: string; isRequest?: boolean }) => {
+    if (!window.confirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`)) return;
+    const now = new Date().toISOString();
+    // 수락했던 대화는 나중에 다시 메시지가 오면 바로 보이고, 요청이던 대화는 다시 요청으로
+    if (!(await saveDmThread(p.id, { left_at: now, accepted_at: p.isRequest ? null : now }))) return;
+    setChatPartners(prev => prev.filter(x => x.id !== p.id));
+    setUnreadMessages(prev => prev.filter(u => u.partner.id !== p.id));
+  };
+  const leaveGroupFromList = async (g: GroupChatRow) => {
+    if (!window.confirm(`'${g.name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`)) return;
+    const { error } = await supabase.rpc('leave_group_chat', { p_chat: g.id });
+    if (error) { alert('나가지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+    setGroupChats(prev => prev.filter(x => x.id !== g.id));
+  };
 
   // 꾹 눌러 고르는 카톡식 메뉴: 복사 · 선택 복사 · 책갈피 · 캡처 · 내 화면에서만 지우기 (components/ChatSheets·ChatCapture)
   const [selectCopy, setSelectCopy] = useState<string | null>(null);
@@ -2155,7 +2253,7 @@ export default function Home() {
       .order('created_at', { ascending: false }).limit(100);
     if (!data || data.length === 0) { setUnreadMessages([]); return; }
     const grouped = new Map<string, { count: number; lastMessage: string; lastAt: string }>();
-    data.forEach(m => {
+    data.filter(m => afterLeft(m.sender_id, m.created_at)).forEach(m => {
       const g = grouped.get(m.sender_id);
       if (g) g.count += 1;
       else grouped.set(m.sender_id, { count: 1, lastMessage: m.content || '삭제된 메시지', lastAt: m.created_at });
@@ -2317,6 +2415,8 @@ export default function Home() {
   // 알림창(휴대폰): 위쪽 손잡이·제목줄을 위로 끌면 창이 커지고 놓은 높이 그대로 (알림이 적어도 넓게 보기),
   // 아래로 많이 끌면 닫힘, 손잡이를 누르면 크게 ↔ 원래대로
   const alertSheetRef = useRef<HTMLDivElement>(null);
+  // 알림 내용이 맨 위일 때 손가락으로 아래로 당겨도 닫힘 (위쪽 손잡이 끌기는 아래 alertDrag)
+  const alertPull = useSheetDrag(() => setShowNotifications(false), showNotifications);
   const alertDrag = useRef<{ y: number; h: number; down: number; moved: boolean; onHandle: boolean; id: number } | null>(null);
   const alertSheetMax = () => Math.round(window.innerHeight * 0.92);
   const toggleAlertSheet = () => {
@@ -2456,7 +2556,7 @@ export default function Home() {
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
     markAlertRead(`c:${n.id}`);
-    if (n.anon) { setAnonFocusId(n.post_id); setAnonFocusReply(n.id.slice(2)); goToTab('anon'); }
+    if (n.anon) { setAnonFocusId(n.post_id); setAnonFocusReply(n.id.slice(2)); setShowAnon(true); }
     else if (n.mention === 'post') openPostById(n.post_id);
     else openPostFromAlert(n.post_id, n.id);
   };
@@ -2660,7 +2760,7 @@ export default function Home() {
     setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowTesterSignup(false); setShowAdminTesters(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
-    setOpenGroup(null); setShowNewChat(false);
+    setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
   };
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
@@ -2683,7 +2783,7 @@ export default function Home() {
     } else if (deepLink.anon) {
       setAnonFocusId(deepLink.anon);
       setAnonFocusReply(deepLink.reply || null);
-      goToTab('anon');
+      setShowAnon(true);
     } else if (deepLink.lounge) {
       setLoungeFocusId(deepLink.lounge);
       setShowLounge(true);
@@ -2993,7 +3093,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -3040,7 +3140,7 @@ export default function Home() {
     setShowMediaStorage(false);
     setShowLetters(false);
     // 사랑방·단체 채팅방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
-    if (!reportTarget && !actionModalUser) setShowLounge(false);
+    if (!reportTarget && !actionModalUser) { setShowLounge(false); setShowAnon(false); }
     if (!reportTarget && !actionModalUser && !showNewChat) setOpenGroup(null);
     setShowNewChat(false);
     setMessageSheet(null);
@@ -3426,7 +3526,7 @@ export default function Home() {
                     )}
                   </button>
                   {/* 고민상담 (익명 게시판) — 새 글 수 */}
-                  <button onClick={() => goToTab('anon')} className={`relative ${activeTab === 'anon' ? 'text-violet-700' : 'text-stone-800'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
+                  <button onClick={() => setShowAnon(true)} className={`relative ${showAnon ? 'text-violet-700' : 'text-stone-800'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
                     <Icon name="dove" className="w-6 h-6" />
                     {anonUnread > 0 && activeTab !== 'anon' && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-violet-600 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{anonUnread > 9 ? '9+' : anonUnread}</span>
@@ -4181,8 +4281,10 @@ export default function Home() {
         );
       })()}
 
-      {activeTab === 'anon' && (
+      {showAnon && (
+        <BottomSheet label="익명 고민상담" onClose={() => setShowAnon(false)} tone="bg-[#fbfaf7]">
         <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} focusReplyId={anonFocusReply} onFocused={() => { setAnonFocusId(null); setAnonFocusReply(null); }} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
+        </BottomSheet>
       )}
 
       {/* 3. 메시지 목록 탭 */}
@@ -4249,6 +4351,14 @@ export default function Home() {
               </div>
             );
           })()}
+          {/* 대화방 정리: 지우고 싶은 대화방에서 나가기 */}
+          {messagesView !== 'allGroups' && (messagesView === 'group' ? groupChats.length > 0 : chatPartners.length > 0) && (
+            <div className="px-4 py-1.5 flex justify-end border-b border-stone-100">
+              <button onClick={() => setEditingChatList(v => !v)} className={`px-3 py-1.5 rounded-full text-[0.8125rem] font-bold ${editingChatList ? 'bg-stone-900 text-white' : 'text-stone-600 border border-stone-200'}`} aria-pressed={editingChatList}>
+                {editingChatList ? '✓ 정리 끝내기' : '✏️ 대화방 정리 (나가기)'}
+              </button>
+            </div>
+          )}
           {isAdmin && messagesView === 'allGroups' ? (
             // 관리자: 모든 단체 채팅방 (들어가서 읽어도 교우들에게 표시되지 않고, 글은 쓸 수 없음)
             <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
@@ -4292,15 +4402,21 @@ export default function Home() {
               const items = messagesView === 'group'
                 ? groupChats.map(g => ({ at: g.last_message_at, group: g, partner: null }))
                 : chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => ({ at: partner.lastAt || '', group: null, partner }));
-              items.sort((a, b) => b.at.localeCompare(a.at));
+              // 메시지 요청은 맨 위에 따로 모은다
+              items.sort((a, b) => Number(!!b.partner?.isRequest) - Number(!!a.partner?.isRequest) || b.at.localeCompare(a.at));
+              const requestCount = items.filter(x => x.partner?.isRequest).length;
               if (items.length === 0) return (
                 <div className="p-10 text-center text-stone-400 text-sm leading-relaxed">
                   {messagesView === 'group' ? '아직 들어가 있는 단체 채팅방이 없어요.' : '아직 주고받은 1:1 메시지가 없어요.'}<br />
                   <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ {messagesView === 'group' ? '단체 채팅방 만들기' : '새 채팅 시작하기'}</button>
                 </div>
               );
-              return items.map(({ group: g, partner }) => g ? (
-                <button key={`g-${g.id}`} onClick={() => openGroupChat(g.id)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+              const leaveBtn = (onLeave: () => void) => editingChatList && (
+                <button onClick={onLeave} className="shrink-0 mr-3 px-3.5 py-2 rounded-xl bg-red-50 border border-red-200 text-red-600 text-[0.875rem] font-bold">나가기</button>
+              );
+              return items.map(({ group: g, partner }, idx) => g ? (
+                <div key={`g-${g.id}`} className="flex items-center">
+                <button onClick={() => openGroupChat(g.id)} className="flex-1 min-w-0 p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
                   <span className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xl shrink-0">👥</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -4315,8 +4431,15 @@ export default function Home() {
                     ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{g.unread > 99 ? '99+' : g.unread}</span>
                     : null}
                 </button>
+                {leaveBtn(() => leaveGroupFromList(g))}
+                </div>
               ) : partner && (
-            <button key={`dm-${partner.id}`} onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+            <div key={`dm-${partner.id}`}>
+            {/* 메시지 요청 칸 머리 / 대화 칸 머리 */}
+            {partner.isRequest && idx === 0 && <p className="px-4 py-2 bg-amber-50 text-[0.8125rem] font-bold text-amber-900 leading-snug">📩 메시지 요청 {requestCount}개 · 수락하기 전에는 읽어도 상대방이 몰라요</p>}
+            {!partner.isRequest && idx === requestCount && requestCount > 0 && <p className="px-4 py-2 bg-stone-50 text-[0.8125rem] font-bold text-stone-500">대화</p>}
+            <div className="flex items-center">
+            <button onClick={() => openChatRoom(partner)} className="flex-1 min-w-0 p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
               {partner.avatar_url ? (
                 <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
               ) : (
@@ -4326,6 +4449,7 @@ export default function Home() {
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
                   <RoleBadge type={partner.badge_type} />
+                  {partner.isRequest && <span className="shrink-0 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">요청</span>}
                 </div>
                 <p className={`text-xs mt-0.5 line-clamp-1 ${unreadMessages.some(u => u.partner.id === partner.id) ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>{partner.lastMessage || `@${partner.handle}`}</p>
               </div>
@@ -4334,6 +4458,9 @@ export default function Home() {
                 return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
               })()}
             </button>
+            {leaveBtn(() => leaveDmThread(partner))}
+            </div>
+            </div>
               ));
             })()}
           </div>
@@ -4458,11 +4585,12 @@ export default function Home() {
             <div ref={messagesEndRef} />
             </div>
           </div>
+          <TypingIndicator typers={dmTyping.typers} lookup={id => (id === currentChatUser?.id ? { name: currentChatUser.baptismal_name, avatar: currentChatUser.avatar_url || null } : undefined)} />
           {/* 사진·동영상 보내는 중 (여러 개면 몇 번째인지) */}
           {dmMedia.bar}
           {dmMedia.choice}
           {dmCapture && <CaptureBar count={dmCapture.size} busy={capturing} onCancel={() => setDmCapture(null)} onDone={() => makeDmCapture(Array.from(dmCapture))} />}
-          {!dmCapture && (replyTo || editingMessage) && (() => {
+          {!dmCapture && !dmRequest && (replyTo || editingMessage) && (() => {
             const m = (editingMessage || replyTo)!;
             return (
               <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
@@ -4474,13 +4602,25 @@ export default function Home() {
               </div>
             );
           })()}
-          {!dmCapture && <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
+          {/* 메시지 요청: 수락하기 전에는 답장할 수 없고, 읽었는지 상대방이 알 수 없다 */}
+          {dmRequest && !dmCapture && (
+            <div className="shrink-0 bg-white border-t border-stone-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]" role="region" aria-label="메시지 요청">
+              <p className="font-bold text-[1rem] text-stone-900">📩 {currentChatUser?.baptismal_name}님의 메시지 요청</p>
+              <p className="text-[0.8125rem] text-stone-500 mt-0.5 leading-snug">수락하면 답장할 수 있어요. 수락하기 전에는 메시지를 읽었는지 상대방이 알 수 없어요.</p>
+              <div className="grid grid-cols-3 gap-2 mt-3">
+                <button onClick={acceptDmRequest} className="py-3 rounded-xl bg-stone-900 text-white font-bold">수락</button>
+                <button onClick={() => declineDmRequest()} className="py-3 rounded-xl border-2 border-stone-200 text-stone-700 font-bold">거절</button>
+                <button onClick={() => declineDmRequest(true)} className="py-3 rounded-xl border-2 border-red-200 text-red-600 font-bold">차단</button>
+              </div>
+            </div>
+          )}
+          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
             </label>
-            <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
@@ -4505,14 +4645,14 @@ export default function Home() {
             const mid = String(m.id);
             const text = isMediaOnlyText(m.content) ? '' : m.content;
             return (
-              <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={MESSAGE_EMOJIS} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
+              <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={dmRequest ? undefined : MESSAGE_EMOJIS} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
                 onEmoji={e => setMessageReaction(m.id, e)} onClose={close}
                 actions={[
                   ...(text ? [
                     { label: '복사', run: async () => { close(); showToast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
                     { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
                   ] : []),
-                  { label: '답장', run: () => startReply(m) },
+                  ...(dmRequest ? [] : [{ label: '답장', run: () => startReply(m) }]),
                   ...(canEditMessage(m) ? [{ label: '고치기', run: () => startEditMessage(m) }] : []),
                   { label: dmBookmarks.has(mid) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); dmBookmarks.toggle({ id: mid, text: text || (isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: mine ? '나' : currentChatUser?.baptismal_name || '상대', at: m.created_at }); } },
                   { label: '캡처', run: () => { close(); setCaptureAsk(mid); } },
@@ -5248,9 +5388,9 @@ export default function Home() {
       {/* 댓글 알림 목록 */}
       {showNotifications && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowNotifications(false)}>
-          <div ref={alertSheetRef} className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+          <div ref={el => { alertSheetRef.current = el; alertPull.sheetRef.current = el; }} className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
             {/* 위로 끌면 크게 (휴대폰) */}
-            <div onPointerDown={alertDragStart} onPointerMove={alertDragMove} onPointerUp={alertDragEnd} onPointerCancel={alertDragEnd} className="shrink-0 touch-none sm:touch-auto">
+            <div data-no-sheet-drag onPointerDown={alertDragStart} onPointerMove={alertDragMove} onPointerUp={alertDragEnd} onPointerCancel={alertDragEnd} className="shrink-0 touch-none sm:touch-auto">
             <div data-sheet-handle role="button" tabIndex={0} aria-label="알림창 크게 보기 · 위로 끌어 올리면 커져요" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAlertSheet(); } }}
               className="sm:hidden pt-3 pb-2 flex justify-center cursor-grab">
               <span className="w-12 h-1.5 rounded-full bg-stone-300" />
