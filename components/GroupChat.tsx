@@ -443,7 +443,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   return (
-    <div className="fixed inset-0 z-[75] bg-[#eef1ea] flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
+    <div className="fixed inset-0 z-[75] bg-blue-50 flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -522,7 +522,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                         <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                           {...gestures.bind(m)}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-emerald-700 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -582,7 +582,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       })()}
       {canWrite && !capturePick && (
         <>
-        {!editing && <StickerAbove picker={stickerPick} text={input} sendClass="bg-emerald-700" />}
+        {!editing && <StickerAbove picker={stickerPick} text={input} sendClass="bg-blue-600" />}
         <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
@@ -605,7 +605,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             aria-label="단체 채팅방에 보낼 말"
             onFocus={() => stickerPick.setOpen(false)}
           />
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-emerald-700 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
         </form>
         {stickerPick.open && !editing && <StickerPanel picker={stickerPick} />}
         </>
@@ -662,7 +662,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             </div>
             {canWrite && (
               <div className="shrink-0 px-4 py-3 grid grid-cols-2 gap-2 border-b border-stone-100">
-                <button onClick={() => { setShowMembers(false); setShowInvite(true); }} className="py-2.5 rounded-xl bg-emerald-700 text-white text-[0.9375rem] font-bold">➕ 교우 초대</button>
+                <button onClick={() => { setShowMembers(false); setShowInvite(true); }} className="py-2.5 rounded-xl bg-blue-600 text-white text-[0.9375rem] font-bold">➕ 교우 초대</button>
                 <button onClick={rename} className="py-2.5 rounded-xl border border-stone-300 text-stone-700 text-[0.9375rem] font-bold">✏️ 방 이름 바꾸기</button>
               </div>
             )}

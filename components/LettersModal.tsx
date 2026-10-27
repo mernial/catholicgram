@@ -143,7 +143,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
       )}
       {/* 관리자: 방송에서 읽기 좋게 크게 */}
       {reading && (
-        <div className="fixed inset-0 z-[91] bg-[#fdfaf5] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[91] bg-white flex flex-col" onClick={e => e.stopPropagation()}>
           <div className="shrink-0 flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 border-b border-stone-200">
             <button onClick={() => setReading(null)} className="text-[1rem] text-stone-600 px-1">← 목록</button>
             <span className={`text-[0.8125rem] font-bold px-2.5 py-1 rounded-full border ${STATUS[reading.status].className}`}>{STATUS[reading.status].label}</span>

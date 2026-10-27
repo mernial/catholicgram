@@ -3,7 +3,7 @@
 import { useSheetDrag } from '@/lib/sheet-drag';
 
 // 아래에서 올라오는 창 (사연 보내기·알림창과 같은 모양). 아래로 끌어내리거나 바깥·× 를 누르면 닫힌다
-export default function BottomSheet({ label, onClose, children, title, subtitle, tone = 'bg-[#fdfaf5]', z = 'z-[78]' }: {
+export default function BottomSheet({ label, onClose, children, title, subtitle, tone = 'bg-white', z = 'z-[78]' }: {
   label: string;
   onClose: () => void;
   children: React.ReactNode;

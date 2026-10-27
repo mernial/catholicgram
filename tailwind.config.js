@@ -1,6 +1,10 @@
 /** @type {import('tailwindcss').Config} */
 
 // 둥근 글꼴 (app/layout.tsx 의 나눔스퀘어라운드) + 휴대폰 기본 글꼴 대체
+// 화면 색(테마)에 따라 바뀌는 색: app/globals.css 의 [data-theme] 변수 (R G B) — 투명도(/50 등)도 그대로 쓸 수 있게
+const themed = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+const themedScale = (name) => Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map(k => [k, themed(`${name}-${k}`)]));
+
 const roundFont = [
   'var(--font-round)', 'NanumSquareRound', 'Apple SD Gothic Neo', 'Noto Sans KR',
   'Malgun Gothic', 'system-ui', 'sans-serif',
@@ -34,20 +38,13 @@ module.exports = {
         sans: roundFont,
         serif: roundFont, // 제목/로고도 같은 둥근 글꼴로
       },
-      // 앱 배색: 단순하고 자연스러운 색
-      // 기존 클래스 이름은 그대로 두고 색만 바꿔서 모든 화면에 한 번에 적용
+      // 앱 배색: 기존 클래스 이름은 그대로 두고 색만 바꿔서 모든 화면에 한 번에 적용
+      // white(흰 칸)·stone(바탕·글자)·blue(주요 단추·내 메시지·링크)는 고른 화면 색(lib/theme.ts)을 따른다
+      // 기본(세이지 & 스톤): 따뜻한 흰색 · 아이보리·모래색 · 차분한 세이지 그린
       colors: {
-        white: '#FFFDF9',            // 순백 대신 따뜻한 흰색
-        // 회색 → 아이보리·모래색 계열
-        stone: {
-          50: '#FAF7F2', 100: '#F3EEE6', 200: '#E7DFD3', 300: '#D4C9B8', 400: '#A99D8B',
-          500: '#857A6A', 600: '#685F52', 700: '#514A40', 800: '#3B352E', 900: '#2A2621', 950: '#1A1714',
-        },
-        // 파란색(주요 버튼, 내 메시지, 링크) → 차분한 세이지 그린
-        blue: {
-          50: '#F1F5EE', 100: '#E1EAD9', 200: '#C5D5B8', 300: '#A3BB91', 400: '#7F9C6C',
-          500: '#5F7D55', 600: '#4E6946', 700: '#40563A', 800: '#354631', 900: '#2C3A29', 950: '#1D271B',
-        },
+        white: themed('white'),
+        stone: themedScale('stone'),
+        blue: themedScale('blue'),
         // 보라(익명 고민상담) → 부드러운 라벤더
         violet: {
           50: '#F6F3F8', 100: '#ECE6F1', 200: '#DACFE4', 300: '#BFADD0', 400: '#9F88B6',
