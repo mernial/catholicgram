@@ -6,7 +6,9 @@
 export const dynamic = 'force-dynamic';
 
 const PACKAGE = 'com.catholicgram.android'; // 지금 플레이에 올린 앱 (예전 초안 com.catholicgram.app 은 쓰지 않음)
-const FINGERPRINTS: string[] = [];
+const FINGERPRINTS: string[] = [
+  '90:F1:89:E8:4A:6B:5B:AB:BD:B3:22:45:BE:F1:A7:8B:AF:19:01:6E:51:01:41:4A:99:E1:A2:96:B7:E9:95:46', // Play 앱 서명 키 (2026-10-27 운영자 확인)
+];
 
 export function GET() {
   const fingerprints = Array.from(new Set([
