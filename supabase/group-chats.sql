@@ -1,5 +1,6 @@
 -- 단체 채팅방: 교우가 방을 만들고 원하는 교우를 초대해 함께 대화한다
--- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전)
+-- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전 — 새 기능이 생기면 다시 실행)
+--  * 답장·감정 표시·내 메시지 고치기(하루 안)도 1:1 메시지와 같게 된다
 --
 --  * 방에 들어와 있는 교우만 대화를 읽고 쓸 수 있다. 나중에 초대된 교우는 들어온 뒤의 대화만 본다.
 --  * 방 만들기·초대·나가기·이름 바꾸기·읽음 표시는 서버 함수로만 한다 (남의 방에 마음대로 들어가지 못하게).
@@ -38,6 +39,9 @@ create table if not exists public.group_chat_messages (
   created_at timestamptz not null default now()
 );
 create index if not exists group_chat_messages_chat_idx on public.group_chat_messages (chat_id, created_at desc);
+-- 답장(어떤 메시지에 대한 답인지)·고친 때 — 1:1 메시지와 같게
+alter table public.group_chat_messages add column if not exists reply_to uuid references public.group_chat_messages(id) on delete set null;
+alter table public.group_chat_messages add column if not exists edited_at timestamptz;
 
 ------------------------------------------------------------
 -- 도움 함수
@@ -89,6 +93,10 @@ begin
     end if;
     new.user_id := auth.uid();
     new.kind := 'text';
+  end if;
+  -- 답장: 같은 방(그리고 내가 볼 수 있는) 메시지만 가리킬 수 있다
+  if new.reply_to is not null and not exists (select 1 from group_chat_messages r where r.id = new.reply_to and r.chat_id = new.chat_id) then
+    new.reply_to := null;
   end if;
   new.created_at := now();
   new.content := btrim(new.content);
@@ -287,6 +295,78 @@ revoke execute on function public.create_group_chat(text, uuid[]), public.invite
 grant execute on function public.create_group_chat(text, uuid[]), public.invite_to_group_chat(uuid, uuid[]),
   public.leave_group_chat(uuid), public.rename_group_chat(uuid, text), public.mark_group_chat_read(uuid),
   public.my_group_chats(), public.admin_group_chats() to authenticated;
+
+------------------------------------------------------------
+-- 감정 표시 (꾹 눌러 ❤️👍😊😂😮😢🙏, 두 번 누르면 하트) — 한 사람이 한 메시지에 하나. 관리자는 보기만
+------------------------------------------------------------
+create table if not exists public.group_chat_reactions (
+  message_id uuid not null references public.group_chat_messages(id) on delete cascade,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  emoji text not null default '❤️' check (emoji in ('❤️', '👍', '😊', '😂', '😮', '😢', '🙏')),
+  created_at timestamptz not null default now(),
+  primary key (message_id, user_id)
+);
+alter table public.group_chat_reactions enable row level security;
+
+create or replace function public.group_message_chat(m uuid)
+returns uuid language sql stable security definer set search_path = public as $$
+  select chat_id from group_chat_messages where id = m;
+$$;
+
+revoke all on public.group_chat_reactions from anon;
+grant select, insert, delete on public.group_chat_reactions to authenticated;
+grant update (emoji) on public.group_chat_reactions to authenticated;
+
+drop policy if exists "group reactions read" on public.group_chat_reactions;
+create policy "group reactions read" on public.group_chat_reactions for select to authenticated
+using (public.group_joined_at(public.group_message_chat(message_id)) is not null or public.group_is_admin());
+drop policy if exists "group reactions add" on public.group_chat_reactions;
+create policy "group reactions add" on public.group_chat_reactions for insert to authenticated
+with check (user_id = auth.uid() and public.group_joined_at(public.group_message_chat(message_id)) is not null);
+drop policy if exists "group reactions change" on public.group_chat_reactions;
+create policy "group reactions change" on public.group_chat_reactions for update to authenticated
+using (user_id = auth.uid())
+with check (user_id = auth.uid() and public.group_joined_at(public.group_message_chat(message_id)) is not null);
+drop policy if exists "group reactions remove" on public.group_chat_reactions;
+create policy "group reactions remove" on public.group_chat_reactions for delete to authenticated
+using (user_id = auth.uid());
+
+------------------------------------------------------------
+-- 내 메시지 고치기: 보낸 사람이 하루 안에만. 원래 내용은 관리자만 보는 group_message_edits 에 남긴다
+------------------------------------------------------------
+create table if not exists public.group_message_edits (
+  id uuid primary key default gen_random_uuid(),
+  message_id uuid not null,
+  chat_id uuid,
+  user_id uuid,
+  old_content text,
+  new_content text,
+  edited_at timestamptz not null default now()
+);
+alter table public.group_message_edits enable row level security;
+revoke all on public.group_message_edits from anon;
+revoke insert, update, delete on public.group_message_edits from authenticated;
+drop policy if exists "group message edits admin read" on public.group_message_edits;
+create policy "group message edits admin read" on public.group_message_edits for select to authenticated
+using (public.group_is_admin());
+
+create or replace function public.edit_group_message(p_id uuid, p_content text)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  m record;
+  c text := left(btrim(coalesce(p_content, '')), 1000);
+begin
+  select id, chat_id, user_id, content, kind, created_at into m from group_chat_messages where id = p_id;
+  if not found or m.user_id is distinct from auth.uid() or m.kind <> 'text' then raise exception '내가 보낸 메시지만 고칠 수 있어요'; end if;
+  if group_joined_at(m.chat_id) is null then raise exception '이 채팅방에 들어와 있지 않아요'; end if;
+  if m.created_at < now() - interval '24 hours' then raise exception '보낸 지 하루가 지난 메시지는 고칠 수 없어요'; end if;
+  if c = '' then raise exception '내용을 적어 주세요'; end if;
+  if c = m.content then return; end if;
+  insert into group_message_edits (message_id, chat_id, user_id, old_content, new_content) values (m.id, m.chat_id, m.user_id, m.content, c);
+  update group_chat_messages set content = c, edited_at = now() where id = m.id;
+end $$;
+revoke execute on function public.edit_group_message(uuid, text) from public, anon;
+grant execute on function public.edit_group_message(uuid, text) to authenticated;
 
 ------------------------------------------------------------
 -- 실시간: 새 대화·지운 대화를 바로 받는다

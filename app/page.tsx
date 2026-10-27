@@ -11,6 +11,8 @@ import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import GroupChat from '@/components/GroupChat';
 import NewChat from '@/components/NewChat';
+import MessageMenu, { REACTION_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
+import { usePressGestures } from '@/lib/use-press-gestures';
 import { useStickToBottom } from '@/lib/stick-bottom';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
@@ -192,6 +194,10 @@ interface Post {
 }
 
 interface Comment { id: string; post_id: string; content: string; author_name: string; created_at: string; user_id?: string; reply_to_user_id?: string | null; reply_to_name?: string | null; parent_id?: string | null; edited_at?: string | null; }
+// 댓글 감정: 꾹 눌러 고르는 그림 ↔ 저장하는 이름 (supabase/comment-reactions.sql). 한 사람이 여러 개 고를 수 있다
+const COMMENT_REACTION_TYPES: Record<string, string> = { '❤️': 'like', '👍': 'thumbs', '😊': 'smile', '😂': 'laugh', '😮': 'wow', '😢': 'sad', '🙏': 'pray' };
+interface CommentReactions { n: Record<string, number>; mine: string[] }   // 종류별 수, 내가 고른 것
+const NO_REACTIONS: CommentReactions = { n: {}, mine: [] };
 // 안드로이드 크롬 등에서 '앱 설치' 창을 띄우기 위한 이벤트 (표준 타입에 없음)
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -216,7 +222,7 @@ const closeOsNotifications = (tag: string) => {
   navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications({ tag })).then(list => (list || []).forEach(n => n.close())).catch(() => {});
 };
 // 메시지 감정 표시 (supabase/message-extras.sql) — 두 번 누르면 하트, 꾹 누르면 고르기
-const MESSAGE_EMOJIS = ['❤️', '👍', '😊', '😂', '😮', '😢', '🙏'] as const;
+const MESSAGE_EMOJIS = REACTION_EMOJIS;
 const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
@@ -359,9 +365,9 @@ export default function Home() {
   const [myRealName, setMyRealName] = useState('');
   const [viewingRealName, setViewingRealName] = useState(''); // 관리자만
   // 댓글 답글 대상 (게시물별)
-  // 게시물별 댓글 수, 댓글별 🙏/❤️ (mine: 내가 누른 것)
+  // 게시물별 댓글 수, 댓글별 감정(🙏 기도 · ❤️ 공감 · 꾹 눌러 고른 👍😊😂😮😢)
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
-  const [commentReactions, setCommentReactions] = useState<Record<string, { pray: number; like: number; myPray: boolean; myLike: boolean }>>({});
+  const [commentReactions, setCommentReactions] = useState<Record<string, CommentReactions>>({});
   const [openIntentionId, setOpenIntentionId] = useState<string | null>(null); // 기도지향 목록에서 펼쳐 본 것
   // 오늘의 기도지향 (한국 시간 기준 오늘 것만)
   // 기도지향: 교우에게는 올린 사람 없이(is_mine 만), 관리자에게만 user_id·이름
@@ -1195,7 +1201,6 @@ export default function Home() {
   // 메시지 감정 표시: 두 번 누르면 하트(다시 두 번 누르면 취소), 꾹 누르면 ❤️👍😊😂😮😢🙏 중에서 고르기. 한 사람이 한 메시지에 하나
   const [messageHearts, setMessageHearts] = useState<Record<string, { user_id: string; emoji: string }[]>>({}); // 메시지 id → 감정 표시
   const [heartPop, setHeartPop] = useState<{ id: string; emoji: string } | null>(null);
-  const lastMessageTap = useRef<{ id: string; at: number } | null>(null);
   const savingHearts = useRef<Set<string>>(new Set()); // 저장 중인 표시는 새로고침 결과로 덮지 않음
   const loadMessageHearts = async (ids: (string | number)[]) => {
     if (ids.length === 0) return;
@@ -1244,76 +1249,15 @@ export default function Home() {
   // 한 번 누름과 두 번 누름 구분 (두 번 = 0.35초 안에 같은 메시지 → 하트).
   // 내 메시지를 한 번 누르거나, 어떤 메시지든 꾹 누르면 그 메시지 바로 위에 감정 표시, 아래에 메뉴(답장·고치기·삭제)
   const [messageSheet, setMessageSheet] = useState<Message | null>(null);
-  const [messageAnchor, setMessageAnchor] = useState<{ top: number; bottom: number; left: number; right: number } | null>(null); // 그 메시지 자리
-  const openMessageMenu = (msg: Message, el: Element | null) => {
-    const r = el?.getBoundingClientRect();
-    setMessageAnchor(r ? { top: r.top, bottom: r.bottom, left: r.left, right: r.right } : null);
-    setMessageSheet(msg);
-  };
-  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const longPress = useRef<{ timer: ReturnType<typeof setTimeout>; x: number; y: number; fired: boolean } | null>(null);
-  // 옆으로 밀어 답장: 손가락을 따라 메시지가 움직이고, 충분히(SWIPE_REPLY) 밀었다 놓으면 그 메시지에 답장
-  const SWIPE_REPLY = 60;
-  const [swipe, setSwipe] = useState<{ id: string; dx: number } | null>(null);
-  const swipeRef = useRef<{ id: string; x: number; y: number; dx: number; active: boolean; done: boolean } | null>(null);
-  const onMessageTap = (msg: Message, mine: boolean, el: Element) => {
-    if (longPress.current?.fired) { longPress.current = null; return; } // 꾹 누른 뒤 손을 뗀 것
-    if (swipeRef.current?.done) { swipeRef.current = null; return; }   // 밀어서 답장한 뒤 손을 뗀 것
-    const key = String(msg.id);
-    const now = Date.now();
-    const last = lastMessageTap.current;
-    if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
-    if (last && last.id === key && now - last.at < 350) { lastMessageTap.current = null; toggleMessageHeart(msg.id); return; }
-    lastMessageTap.current = { id: key, at: now };
-    if (mine) singleTapTimer.current = setTimeout(() => openMessageMenu(msg, el), 360);
-  };
-  const messagePressHandlers = (msg: Message) => ({
-    onPointerDown: (e: React.PointerEvent<HTMLElement>) => {
-      const el = e.currentTarget;
-      if (longPress.current) clearTimeout(longPress.current.timer);
-      const timer = setTimeout(() => {
-        if (longPress.current) longPress.current.fired = true;
-        if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
-        swipeRef.current = null; setSwipe(null);
-        try { navigator.vibrate?.(15); } catch { /* 무시 */ }
-        openMessageMenu(msg, el);
-      }, 450);
-      longPress.current = { timer, x: e.clientX, y: e.clientY, fired: false };
-      swipeRef.current = { id: String(msg.id), x: e.clientX, y: e.clientY, dx: 0, active: false, done: false };
-    },
-    onPointerMove: (e: React.PointerEvent<HTMLElement>) => {
-      const lp = longPress.current;
-      if (lp && !lp.fired && Math.hypot(e.clientX - lp.x, e.clientY - lp.y) > 10) { clearTimeout(lp.timer); longPress.current = null; } // 움직이면 꾹 누르기가 아님
-      const sw = swipeRef.current;
-      if (!sw || sw.id !== String(msg.id) || sw.done || lp?.fired) return;
-      const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
-      if (!sw.active) {
-        if (Math.abs(dx) > 12 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-          sw.active = true;
-          try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* 무시 */ }
-        } else {
-          if (Math.abs(dy) > 12) swipeRef.current = null; // 위아래로 스크롤하는 중
-          return;
-        }
-      }
-      sw.dx = Math.max(-90, Math.min(90, dx));
-      setSwipe({ id: sw.id, dx: sw.dx });
-    },
-    onPointerUp: () => {
-      const lp = longPress.current;
-      if (lp && !lp.fired) { clearTimeout(lp.timer); longPress.current = null; }
-      const sw = swipeRef.current;
-      if (sw?.active) {
-        if (Math.abs(sw.dx) >= SWIPE_REPLY) { try { navigator.vibrate?.(10); } catch { /* 무시 */ } startReply(msg); }
-        sw.active = false; sw.done = true; // 이어서 오는 '누름'은 무시
-        setSwipe(null);
-      } else swipeRef.current = null;
-    },
-    onPointerCancel: () => {
-      const lp = longPress.current; if (lp) clearTimeout(lp.timer); longPress.current = null;
-      swipeRef.current = null; setSwipe(null);
-    },
-    onContextMenu: (e: React.MouseEvent<HTMLElement>) => { e.preventDefault(); openMessageMenu(msg, e.currentTarget); }, // 컴퓨터 오른쪽 단추·길게 누르기 메뉴 대신
+  const [messageAnchor, setMessageAnchor] = useState<MenuAnchor | null>(null); // 그 메시지 자리
+  const openMessageMenu = (msg: Message, el: Element | null) => { setMessageAnchor(anchorOf(el)); setMessageSheet(msg); };
+  // 한 번(내 메시지만)·두 번(하트)·꾹 누르기(메뉴)·옆으로 밀기(답장) — 단체 채팅방·댓글과 같은 손동작 (lib/use-press-gestures)
+  const dmGestures = usePressGestures<Message>({
+    keyOf: m => String(m.id),
+    onTap: (m, el) => { if (m.sender_id === user?.id) openMessageMenu(m, el); },
+    onDoubleTap: m => toggleMessageHeart(m.id),
+    onLongPress: (m, el) => openMessageMenu(m, el),
+    onSwipe: m => startReply(m),
   });
   // 답장: 특정 메시지를 골라 그 메시지에 대한 답이라고 표시 / 고치기: 내 메시지 내용 바꾸기 (하루 안에)
   const [replyTo, setReplyTo] = useState<Message | null>(null);
@@ -2768,36 +2712,52 @@ export default function Home() {
     if (data.length === 0) return;
     const { data: reactions } = await supabase.from('comment_reactions').select('comment_id, user_id, reaction_type').in('comment_id', data.map(c => c.id));
     const next: typeof commentReactions = {};
-    data.forEach(c => { next[c.id] = { pray: 0, like: 0, myPray: false, myLike: false }; });
+    data.forEach(c => { next[c.id] = { n: {}, mine: [] }; });
     (reactions || []).forEach(r => {
       const entry = next[r.comment_id];
       if (!entry) return;
-      if (r.reaction_type === 'pray') { entry.pray += 1; if (r.user_id === user?.id) entry.myPray = true; }
-      else { entry.like += 1; if (r.user_id === user?.id) entry.myLike = true; }
+      entry.n[r.reaction_type] = (entry.n[r.reaction_type] || 0) + 1;
+      if (r.user_id === user?.id) entry.mine.push(r.reaction_type);
     });
     setCommentReactions(prev => ({ ...prev, ...next }));
   };
 
-  const toggleCommentReaction = async (commentId: string, type: 'pray' | 'like') => {
+  // type: like(❤️) · pray(🙏) · thumbs · smile · laugh · wow · sad — 누를 때마다 켜고 끈다
+  const toggleCommentReaction = async (commentId: string, type: string) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    const current = commentReactions[commentId] || { pray: 0, like: 0, myPray: false, myLike: false };
-    const mine = type === 'pray' ? current.myPray : current.myLike;
+    const mine = (commentReactions[commentId] || NO_REACTIONS).mine.includes(type);
     const apply = (on: boolean) => setCommentReactions(prev => {
-      const c = prev[commentId] || { pray: 0, like: 0, myPray: false, myLike: false };
-      return { ...prev, [commentId]: type === 'pray'
-        ? { ...c, myPray: on, pray: Math.max(0, c.pray + (on ? 1 : -1)) }
-        : { ...c, myLike: on, like: Math.max(0, c.like + (on ? 1 : -1)) } };
+      const c = prev[commentId] || NO_REACTIONS;
+      if (c.mine.includes(type) === on) return prev;
+      return { ...prev, [commentId]: { n: { ...c.n, [type]: Math.max(0, (c.n[type] || 0) + (on ? 1 : -1)) }, mine: on ? [...c.mine, type] : c.mine.filter(t => t !== type) } };
     });
     apply(!mine); // 먼저 화면에 반영
+    if (!mine) {
+      const emoji = Object.keys(COMMENT_REACTION_TYPES).find(e => COMMENT_REACTION_TYPES[e] === type) || '❤️';
+      setCommentPop({ id: commentId, emoji });
+      setTimeout(() => setCommentPop(p => (p?.id === commentId ? null : p)), 700);
+    }
     const { error } = mine
       ? await supabase.from('comment_reactions').delete().eq('comment_id', commentId).eq('user_id', user.id).eq('reaction_type', type)
       : await supabase.from('comment_reactions').insert({ comment_id: commentId, user_id: user.id, reaction_type: type });
     if (error && error.code !== '23505') {
       apply(mine);
       if (error.code === '42P01' || error.code === 'PGRST205') alert('댓글 기도/공감 기능을 준비 중이에요. (관리자: supabase/comment-reactions.sql 실행 필요)');
+      else if (error.code === '23514') alert('이 감정 표시를 준비 중이에요. (관리자: supabase/comment-reactions.sql 다시 실행 필요)');
     }
   };
+  // 댓글도 메시지와 같은 손동작: 꾹 누르기 = 그 자리 메뉴(위에 감정, 아래에 답글·수정·삭제·신고), 두 번 누르기 = 공감(❤️), 옆으로 밀기 = 답글
+  type SheetComment = Comment & { _rootId?: string };
+  const [commentMenu, setCommentMenu] = useState<{ c: SheetComment; anchor: MenuAnchor | null } | null>(null);
+  const [commentPop, setCommentPop] = useState<{ id: string; emoji: string } | null>(null);
+  useEffect(() => { setCommentMenu(null); }, [commentSheetId]);
+  const commentGestures = usePressGestures<SheetComment>({
+    keyOf: c => c.id,
+    onDoubleTap: c => toggleCommentReaction(c.id, 'like'),
+    onLongPress: (c, el) => setCommentMenu({ c, anchor: anchorOf(el) }),
+    onSwipe: c => { if (c.user_id) tagUserInComments(commentSheetId || c.post_id, c.user_id, authorName(c), c._rootId); },
+  });
 
   // 댓글 창 열기 (인스타그램처럼 아래에서 올라옴). 열 때마다 새로 불러온다
   const toggleCommentBox = async (postId: string) => {
@@ -4341,15 +4301,10 @@ export default function Home() {
                         <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
                           <div className="relative">
                           {/* 옆으로 미는 중: 드러나는 답장 표시 */}
-                          {swipe?.id === String(msg.id) && (
-                            <span aria-hidden="true" className={`pointer-events-none absolute top-1/2 -translate-y-1/2 ${swipe.dx > 0 ? 'left-1' : 'right-1'} w-8 h-8 rounded-full flex items-center justify-center text-base ${Math.abs(swipe.dx) >= SWIPE_REPLY ? 'bg-blue-500 text-white' : 'bg-white text-stone-500 shadow'}`}
-                              style={{ opacity: Math.min(1, Math.abs(swipe.dx) / SWIPE_REPLY) }}>↩</span>
-                          )}
+                          {dmGestures.swipe?.id === String(msg.id) && <SwipeHint dx={dmGestures.swipe.dx} />}
                           <div
                             data-bubble
-                            onClick={e => onMessageTap(msg, isMe, e.currentTarget)}
-                            {...messagePressHandlers(msg)}
-                            style={{ transform: swipe?.id === String(msg.id) ? `translateX(${swipe.dx}px)` : undefined, transition: swipe?.id === String(msg.id) ? 'none' : 'transform 0.2s' }}
+                            {...dmGestures.bind(msg)}
                             className={`relative px-4 py-2 rounded-2xl text-[1rem] select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
@@ -4357,7 +4312,7 @@ export default function Home() {
                               <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
                                 className={`block w-full text-left -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${isMe ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
                                 <span className="block font-bold">↩️ {quoted ? (quoted.sender_id === user?.id ? '나' : currentChatUser?.baptismal_name || '상대') : '이전 메시지'}에게 답장</span>
-                                <span className="block line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.image_url && quoted.content === PHOTO_ONLY_TEXT ? '📷 사진' : quoted.content}</span>
+                                <span className="line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.image_url && quoted.content === PHOTO_ONLY_TEXT ? '📷 사진' : quoted.content}</span>
                               </button>
                             )}
                             {msg.image_url && (
@@ -4427,41 +4382,15 @@ export default function Home() {
             const mine = m.sender_id === user?.id;
             const myEmoji = (messageHearts[String(m.id)] || []).find(r => r.user_id === user?.id)?.emoji;
             const close = () => setMessageSheet(null);
-            const actions: { label: string; run: () => void; danger?: boolean }[] = [
-              { label: '↩️ 답장하기', run: () => startReply(m) },
-              ...(canEditMessage(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEditMessage(m) }] : []),
-              ...(m.image_url ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
-              ...(mine ? [{ label: '🗑 삭제', run: () => deleteMessage(m), danger: true }] : []),
-            ];
-            // 자리 잡기: 감정 줄은 메시지 위(자리가 없으면 아래), 메뉴는 메시지 아래(자리가 없으면 위). 내 메시지는 오른쪽, 상대 메시지는 왼쪽에 맞춤
-            const vw = window.innerWidth, vh = window.innerHeight, gap = 8, edge = 12;
-            const a = messageAnchor || { top: vh / 2 - 24, bottom: vh / 2 + 24, left: edge, right: vw - edge };
-            const barW = Math.min(vw - edge * 2, 7 * 44 + 16), barH = 56;
-            const menuW = Math.min(vw - edge * 2, 220), menuH = actions.length * 53;
-            const fitX = (w: number) => Math.max(edge, Math.min(vw - w - edge, mine ? a.right - w : a.left));
-            let barTop = a.top - barH - gap;
-            let menuTop = a.bottom + gap;
-            if (barTop < edge) { barTop = Math.min(a.bottom + gap, vh - barH - menuH - gap - edge); menuTop = barTop + barH + gap; }
-            else if (menuTop + menuH > vh - edge) menuTop = Math.max(edge, barTop - menuH - gap);
             return (
-              <div className="fixed inset-0 z-[80]" onClick={close} role="dialog" aria-label="메시지 메뉴">
-                <div className="absolute inset-0 bg-black/25" />
-                {messageAnchor && <div aria-hidden="true" className="absolute rounded-2xl ring-4 ring-white/90 pointer-events-none" style={{ top: a.top, left: a.left, width: a.right - a.left, height: a.bottom - a.top }} />}
-                <div role="group" aria-label="감정 표시" onClick={e => e.stopPropagation()}
-                  className="absolute flex items-center justify-between bg-white rounded-full shadow-xl px-2 py-1.5 animate-fade-in"
-                  style={{ top: barTop, left: fitX(barW), width: barW }}>
-                  {MESSAGE_EMOJIS.map(e => (
-                    <button key={e} onClick={() => { close(); setMessageReaction(m.id, e); }} aria-pressed={myEmoji === e} aria-label={`${e} 표시${myEmoji === e ? ' 취소' : ''}`}
-                      className={`w-10 h-10 rounded-full text-[1.5rem] leading-none flex items-center justify-center active:scale-110 ${myEmoji === e ? 'bg-blue-100 ring-2 ring-blue-400' : ''}`}>{e}</button>
-                  ))}
-                </div>
-                <div onClick={e => e.stopPropagation()} className="absolute bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col divide-y divide-stone-100"
-                  style={{ top: menuTop, left: fitX(menuW), width: menuW }}>
-                  {actions.map(act => (
-                    <button key={act.label} onClick={act.run} className={`w-full px-4 py-3.5 text-left text-[1rem] font-bold active:bg-stone-50 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>{act.label}</button>
-                  ))}
-                </div>
-              </div>
+              <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={MESSAGE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
+                onEmoji={e => setMessageReaction(m.id, e)} onClose={close}
+                actions={[
+                  { label: '↩️ 답장하기', run: () => startReply(m) },
+                  ...(canEditMessage(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEditMessage(m) }] : []),
+                  ...(m.image_url ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
+                  ...(mine ? [{ label: '🗑 삭제', run: () => deleteMessage(m), danger: true }] : []),
+                ]} />
             );
           })()}
         </section>
@@ -4737,18 +4666,24 @@ export default function Home() {
                   </div>
                 )}
                 {list.map(c => {
-                  const r = commentReactions[c.id] || { pray: 0, like: 0, myPray: false, myLike: false };
+                  const r = commentReactions[c.id] || NO_REACTIONS;
+                  const pray = r.n.pray || 0, like = r.n.like || 0, myPray = r.mine.includes('pray'), myLike = r.mine.includes('like');
+                  // 꾹 눌러 고른 다른 감정 (👍 2 😂 1 …)
+                  const extras = REACTION_EMOJIS.map(e => ({ e, n: r.n[COMMENT_REACTION_TYPES[e]] || 0 })).filter(x => x.e !== '❤️' && x.e !== '🙏' && x.n > 0);
+                  const nameLine = (
+                    <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
+                      <b className="text-stone-900">{authorName(c)}</b>
+                      {c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" showLabel={false} />}
+                      <span className="text-stone-400">{timeAgo(c.created_at)}{c.edited_at && ' · 수정됨'}</span>
+                    </p>
+                  );
                   return (
                     <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c._isReply ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
                       <button onClick={() => { if (c.user_id) openProfileCard({ id: c.user_id, name: authorName(c) }); }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 프로필`}>{avatarOf(c.user_id, authorName(c))}</button>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
-                          <b className="text-stone-900">{authorName(c)}</b>
-                          {c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" showLabel={false} />}
-                          <span className="text-stone-400">{timeAgo(c.created_at)}{c.edited_at && ' · 수정됨'}</span>
-                        </p>
                         {editingCommentId === c.id ? (
                           <div className="flex flex-col gap-1.5 mt-1">
+                            {nameLine}
                             <textarea value={editCommentText} onChange={e => setEditCommentText(e.target.value)} rows={2} autoFocus className="w-full text-[0.9375rem] border border-stone-300 rounded-lg px-2.5 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
                             <div className="flex justify-end gap-1.5">
                               <button onClick={() => setEditingCommentId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
@@ -4756,15 +4691,35 @@ export default function Home() {
                             </div>
                           </div>
                         ) : (
-                          <p className="text-[0.9375rem] text-stone-800 leading-relaxed whitespace-pre-wrap break-words">
-                            {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
-                            <HashtagText text={c.content} onTag={t => { setCommentSheetId(null); openHashtag(t); }} onMention={h => { setCommentSheetId(null); goToHandle(h); }} />
-                          </p>
+                          <div className="relative">
+                            {/* 옆으로 미는 중: 드러나는 답글 표시 */}
+                            {commentGestures.swipe?.id === c.id && <SwipeHint dx={commentGestures.swipe.dx} />}
+                            <div data-comment {...commentGestures.bind(c)} className="relative select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer">
+                              {nameLine}
+                              <p className="text-[0.9375rem] text-stone-800 leading-relaxed whitespace-pre-wrap break-words">
+                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
+                                <HashtagText text={c.content} onTag={t => { setCommentSheetId(null); openHashtag(t); }} onMention={h => { setCommentSheetId(null); goToHandle(h); }} />
+                              </p>
+                            </div>
+                            {/* 감정을 고르면 잠깐 크게 */}
+                            {commentPop?.id === c.id && (
+                              <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
+                                {commentPop.emoji === '❤️' ? <Icon name="heart" fill className="w-9 h-9 text-rose-500 drop-shadow" /> : <span className="text-4xl drop-shadow">{commentPop.emoji}</span>}
+                              </span>
+                            )}
+                          </div>
                         )}
                         {editingCommentId !== c.id && (
-                          <div className="mt-1 flex items-center gap-3 text-[0.8125rem] font-semibold text-stone-500">
+                          <div className="mt-1 flex items-center flex-wrap gap-x-3 gap-y-1 text-[0.8125rem] font-semibold text-stone-500">
                             {user && c.user_id && <button onClick={() => tagUserInComments(sid, c.user_id!, authorName(c), c._rootId)}>답글 달기</button>}
-                            <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 ${r.myPray ? 'text-amber-700' : ''}`}><Icon name="pray" fill={r.myPray} className="w-4 h-4" />기도{r.pray > 0 && ` ${r.pray}`}</button>
+                            <button onClick={() => toggleCommentReaction(c.id, 'pray')} className={`inline-flex items-center gap-1 ${myPray ? 'text-amber-700' : ''}`}><Icon name="pray" fill={myPray} className="w-4 h-4" />기도{pray > 0 && ` ${pray}`}</button>
+                            {extras.length > 0 && (
+                              <button onClick={e => setCommentMenu({ c, anchor: anchorOf(e.currentTarget.closest('[id^="comment-"]')?.querySelector('[data-comment]') ?? e.currentTarget) })}
+                                aria-label={`감정 표시 ${extras.map(x => `${x.e} ${x.n}`).join(', ')} · 눌러서 고르기`}
+                                className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 font-normal text-stone-600 leading-none">
+                                {extras.map(x => <span key={x.e}>{x.e}{x.n > 1 && <span className="ml-0.5 text-[0.75rem]">{x.n}</span>}</span>)}
+                              </button>
+                            )}
                             {user && c.user_id === user.id && <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}>수정</button>}
                             {user && (c.user_id === user.id || isAdmin || sheetPost?.user_id === user.id) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
                             {user && c.user_id !== user.id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-stone-400">신고</button>}
@@ -4772,14 +4727,31 @@ export default function Home() {
                         )}
                       </div>
                       {/* 오른쪽 하트 (공감) */}
-                      <button onClick={() => toggleCommentReaction(c.id, 'like')} className="shrink-0 self-start pt-1 w-8 flex flex-col items-center text-[0.75rem] text-stone-500" aria-label={`공감 ${r.like}`}>
-                        <Icon name="heart" fill={r.myLike} className={`w-[1.125rem] h-[1.125rem] ${r.myLike ? 'text-rose-500' : 'text-stone-400'}`} />
-                        {r.like > 0 && r.like}
+                      <button onClick={() => toggleCommentReaction(c.id, 'like')} className="shrink-0 self-start pt-1 w-8 flex flex-col items-center text-[0.75rem] text-stone-500" aria-label={`공감 ${like}`}>
+                        <Icon name="heart" fill={myLike} className={`w-[1.125rem] h-[1.125rem] ${myLike ? 'text-rose-500' : 'text-stone-400'}`} />
+                        {like > 0 && like}
                       </button>
                     </div>
                   );
                 })}
               </div>
+              {/* 댓글을 꾹 누르면: 그 댓글 바로 위에 감정 표시(여러 개 고를 수 있음), 아래에 답글 · 수정 · 삭제 · 신고 */}
+              {commentMenu && (() => {
+                const c = commentMenu.c;
+                const mineC = !!user && c.user_id === user.id;
+                const close = () => setCommentMenu(null);
+                return (
+                  <MessageMenu anchor={commentMenu.anchor} alignRight={false} label="댓글 메뉴" onClose={close}
+                    emojis={REACTION_EMOJIS} selected={REACTION_EMOJIS.filter(e => (commentReactions[c.id] || NO_REACTIONS).mine.includes(COMMENT_REACTION_TYPES[e]))}
+                    onEmoji={e => toggleCommentReaction(c.id, COMMENT_REACTION_TYPES[e])}
+                    actions={[
+                      ...(c.user_id ? [{ label: '↩️ 답글 달기', run: () => { close(); tagUserInComments(sid, c.user_id!, authorName(c), c._rootId); } }] : []),
+                      ...(mineC ? [{ label: '✏️ 수정', run: () => { close(); setEditingCommentId(c.id); setEditCommentText(c.content); } }] : []),
+                      ...(user && !mineC ? [{ label: '🚨 신고', run: () => { close(); setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content }); } }] : []),
+                      ...(user && (mineC || isAdmin || sheetPost?.user_id === user.id) ? [{ label: '🗑 삭제', run: () => { close(); deleteComment(c); }, danger: true }] : []),
+                    ]} />
+                );
+              })()}
               {/* 입력칸 */}
               <div className="shrink-0 border-t border-[#eadfcb] px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-[#fdfaf5] flex flex-col gap-1.5">
                 {replyTargets[sid] && (

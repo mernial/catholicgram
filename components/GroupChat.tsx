@@ -7,13 +7,20 @@ import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
 import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@/components/NewChat';
+import MessageMenu, { REACTION_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { initial } from '@/lib/fancy-name';
+import { usePressGestures } from '@/lib/use-press-gestures';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
-// 관리자 보기(adminView): 모든 방을 읽기만 한다 — 글쓰기·읽음 표시·입장 안내가 없어 교우들에게 보이지 않는다.
-interface GroupMessage { id: string; chat_id: string; user_id: string | null; content: string; kind: 'text' | 'system'; created_at: string }
+// 관리자 보기(adminView): 모든 방을 읽기만 한다 — 글쓰기·읽음 표시·입장 안내·감정 표시가 없어 교우들에게 보이지 않는다.
+// 손동작은 1:1 메시지와 같다: 꾹 누르기 = 그 자리 메뉴(위에 감정, 아래에 답장·고치기…), 두 번 누르기 = 하트, 옆으로 밀기 = 답장
+interface GroupMessage { id: string; chat_id: string; user_id: string | null; content: string; kind: 'text' | 'system'; created_at: string; reply_to?: string | null; edited_at?: string | null }
 interface Member { user_id: string; joined_at: string }
+interface Reaction { user_id: string; emoji: string }
+
+const EXTRAS_HINT = '단체 채팅방 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/group-chats.sql 다시 실행 필요)';
+const isMissing = (e: { code?: string; message?: string } | null) => !!e && ['42703', '42P01', '42883', 'PGRST202', 'PGRST204', 'PGRST205'].includes(e.code || '');
 
 const PAGE = 80;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
@@ -39,7 +46,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const [hasOlder, setHasOlder] = useState(false);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [menuId, setMenuId] = useState<string | null>(null);
+  const [menuMsg, setMenuMsg] = useState<GroupMessage | null>(null);   // 꾹 누른 메시지 (그 자리 메뉴)
+  const [menuAnchor, setMenuAnchor] = useState<MenuAnchor | null>(null);
+  const [replyTo, setReplyTo] = useState<GroupMessage | null>(null);
+  const [editing, setEditing] = useState<GroupMessage | null>(null);
+  const [reactions, setReactions] = useState<Record<string, Reaction[]>>({});
+  const [heartPop, setHeartPop] = useState<{ id: string; emoji: string } | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [newBelow, setNewBelow] = useState(0);
@@ -83,6 +96,34 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     if (need.length === 0) return;
     const { data } = await supabase.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type').in('id', need);
     if (data) setPeople(prev => ({ ...prev, ...Object.fromEntries((data as ChatPerson[]).map(p => [p.id, p])) }));
+  };
+
+  // 감정 표시 불러오기 (저장 중인 것은 덮지 않음). 실시간 대신 5초마다 다시 확인
+  const savingReactions = useRef<Set<string>>(new Set());
+  const reactionsMissing = useRef(false);
+  const loadReactions = async (ids: string[]) => {
+    if (ids.length === 0 || reactionsMissing.current) return;
+    const { data, error: err } = await supabase.from('group_chat_reactions').select('message_id, user_id, emoji').in('message_id', ids);
+    if (err && isMissing(err)) reactionsMissing.current = true; // SQL 다시 실행 전이면 조용히, 더 묻지 않음
+    if (err || !data) return;
+    setReactions(prev => {
+      const next = { ...prev };
+      ids.forEach(id => { if (!savingReactions.current.has(id)) delete next[id]; });
+      (data as (Reaction & { message_id: string })[]).forEach(r => {
+        if (savingReactions.current.has(r.message_id)) return;
+        next[r.message_id] = [...(next[r.message_id] || []), { user_id: r.user_id, emoji: r.emoji }];
+      });
+      return next;
+    });
+  };
+  const textIds = (rows: GroupMessage[]) => rows.filter(r => r.kind === 'text').map(r => r.id);
+  // 고친 메시지 내용 바꿔 넣기
+  const applyEdits = (rows: { id: string; content: string; edited_at: string | null }[]) => {
+    if (rows.length === 0) return;
+    const byId = new Map(rows.map(r => [r.id, r]));
+    setMessages(prev => prev.some(m => byId.has(m.id) && (byId.get(m.id)!.content !== m.content || byId.get(m.id)!.edited_at !== m.edited_at))
+      ? prev.map(m => (byId.has(m.id) ? { ...m, content: byId.get(m.id)!.content, edited_at: byId.get(m.id)!.edited_at } : m))
+      : prev);
   };
 
   const loadRoom = async () => {
@@ -138,9 +179,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       setMessages(rows);
       setHasOlder((data || []).length === PAGE);
       loadPeople(rows.map(r => r.user_id));
+      loadReactions(textIds(rows));
       markRead();
       setTimeout(() => scrollToBottom(), 50);
     })();
+    setReplyTo(null); setEditing(null); setMenuMsg(null);
     return () => { if (readTimer.current) clearTimeout(readTimer.current); markRead(); onChanged?.(); };
   }, [chatId]);
 
@@ -152,18 +195,30 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         addMessages([payload.new as GroupMessage]);
         markReadSoon();
       })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'group_chat_messages', filter: `chat_id=eq.${chatId}` }, payload => {
+        const r = payload.new as GroupMessage;
+        if (r?.id) applyEdits([{ id: r.id, content: r.content, edited_at: r.edited_at ?? null }]);
+      })
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'group_chat_messages' }, payload => {
         const id = (payload.old as { id?: string }).id;
         if (id) setMessages(prev => prev.filter(m => m.id !== id));
       })
       .subscribe(status => { live = status === 'SUBSCRIBED'; });
     const poll = setInterval(async () => {
-      if (live || document.visibilityState === 'hidden') return;
+      if (document.visibilityState === 'hidden') return;
+      const shown = textIds(messagesRef.current).slice(-PAGE);
+      loadReactions(shown);
+      if (live) return;
       const last = messagesRef.current[messagesRef.current.length - 1];
       let q = supabase.from('group_chat_messages').select('*').eq('chat_id', chatId).order('created_at', { ascending: true }).limit(50);
       if (last) q = q.gt('created_at', last.created_at);
       const { data } = await q;
       if (data && data.length) { addMessages(data as GroupMessage[]); markReadSoon(); }
+      // 실시간이 안 될 때: 고친 메시지도 확인
+      if (shown.length) {
+        const { data: edited } = await supabase.from('group_chat_messages').select('id, content, edited_at').in('id', shown).not('edited_at', 'is', null);
+        if (edited) applyEdits(edited as { id: string; content: string; edited_at: string | null }[]);
+      }
     }, 5000);
     return () => { clearInterval(poll); supabase.removeChannel(channel); };
   }, [chatId]);
@@ -192,6 +247,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     atBottomRef.current = false;
     setMessages(prev => [...rows, ...prev]);
     loadPeople(rows.map(r => r.user_id));
+    loadReactions(textIds(rows));
     requestAnimationFrame(() => { if (el) el.scrollTop = el.scrollHeight - before; });
   };
 
@@ -214,11 +270,35 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     if (keepKeyboard && composingRef.current && ta) { ta.blur(); ta.focus(); composingRef.current = false; }
     setInput('');
     setSending(true);
-    const { data, error: err } = await supabase.from('group_chat_messages').insert({ chat_id: chatId, content: text.slice(0, 1000) }).select('*').single();
+    // 내 메시지 고치기
+    if (editing) {
+      const target = editing;
+      const { error: err } = await supabase.rpc('edit_group_message', { p_id: target.id, p_content: text.slice(0, 1000) });
+      setSending(false);
+      if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
+      if (err) {
+        setInput(cur => (cur.trim() ? cur : raw));
+        alert(isMissing(err) ? EXTRAS_HINT : /[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : `고치지 못했어요.\n(${err.message})`);
+        return;
+      }
+      setEditing(null);
+      applyEdits([{ id: target.id, content: text.slice(0, 1000), edited_at: new Date().toISOString() }]);
+      return;
+    }
+    const reply = replyTo;
+    setReplyTo(null);
+    const row = { chat_id: chatId, content: text.slice(0, 1000), ...(reply ? { reply_to: reply.id } : {}) };
+    let { data, error: err } = await supabase.from('group_chat_messages').insert(row).select('*').single();
+    // 답장 칸이 아직 없으면(SQL 다시 실행 전) 답장 표시 없이라도 보낸다
+    if (err && reply && isMissing(err)) {
+      ({ data, error: err } = await supabase.from('group_chat_messages').insert({ chat_id: chatId, content: text.slice(0, 1000) }).select('*').single());
+      if (!err) alert(EXTRAS_HINT);
+    }
     setSending(false);
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err || !data) {
       setInput(cur => (cur.trim() ? cur : raw));
+      setReplyTo(reply);
       alert(err && isGroupSetupError(err) ? GROUP_SETUP_HINT : err && /[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err?.message || ''})`);
       return;
     }
@@ -228,12 +308,57 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   const remove = async (m: GroupMessage) => {
-    setMenuId(null);
+    setMenuMsg(null);
     if (!window.confirm('이 메시지를 지울까요?\n다른 교우들에게도 보이지 않게 돼요.')) return;
     const { error: err } = await supabase.from('group_chat_messages').delete().eq('id', m.id);
     if (err) { alert('지우지 못했어요.'); return; }
     setMessages(prev => prev.filter(x => x.id !== m.id));
   };
+
+  // 감정 표시: 같은 것을 다시 고르면 취소, 다른 것을 고르면 바꿈 (한 사람이 한 메시지에 하나)
+  const react = async (m: GroupMessage, emoji: string) => {
+    const before = reactions[m.id] || [];
+    const mineBefore = before.find(r => r.user_id === user.id)?.emoji;
+    const off = mineBefore === emoji;
+    setReactions(prev => ({ ...prev, [m.id]: [...(prev[m.id] || []).filter(r => r.user_id !== user.id), ...(off ? [] : [{ user_id: user.id, emoji }])] }));
+    if (!off) { setHeartPop({ id: m.id, emoji }); setTimeout(() => setHeartPop(p => (p?.id === m.id ? null : p)), 700); }
+    savingReactions.current.add(m.id);
+    const { error: err } = off
+      ? await supabase.from('group_chat_reactions').delete().eq('message_id', m.id).eq('user_id', user.id)
+      : await supabase.from('group_chat_reactions').upsert({ message_id: m.id, user_id: user.id, emoji }, { onConflict: 'message_id,user_id' });
+    savingReactions.current.delete(m.id);
+    if (err) {
+      setReactions(prev => ({ ...prev, [m.id]: before }));
+      alert(isMissing(err) ? EXTRAS_HINT : '감정 표시를 하지 못했어요. 잠시 후 다시 해 주세요.');
+    }
+  };
+
+  const canEdit = (m: GroupMessage) => m.user_id === user.id && m.kind === 'text' && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
+  const startReply = (m: GroupMessage) => { setMenuMsg(null); setEditing(null); setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 50); };
+  const startEdit = (m: GroupMessage) => { setMenuMsg(null); setReplyTo(null); setEditing(m); setInput(m.content); setTimeout(() => inputRef.current?.focus(), 50); };
+  const cancelEdit = () => { setEditing(null); setInput(''); };
+  // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
+  const jumpTo = (id: string) => {
+    const el = document.getElementById(`gm-${id}`);
+    if (!el) return;
+    atBottomRef.current = false;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setFlashId(id);
+    setTimeout(() => setFlashId(f => (f === id ? null : f)), 1600);
+  };
+
+  const openMenu = (m: GroupMessage, el: Element | null) => {
+    if (adminView && m.user_id === user.id) return; // 관리자 보기: 할 일이 없음
+    setMenuAnchor(anchorOf(el)); setMenuMsg(m);
+  };
+  // 관리자 보기에서는 하트·답장 없이 메뉴(프로필)만
+  const gestures = usePressGestures<GroupMessage>({
+    keyOf: m => m.id,
+    onTap: (m, el) => { if (m.user_id === user.id || adminView) openMenu(m, el); },
+    onDoubleTap: adminView ? undefined : m => { if (canWriteRef.current) react(m, '❤️'); },
+    onLongPress: (m, el) => openMenu(m, el),
+    onSwipe: adminView ? undefined : m => { if (canWriteRef.current) startReply(m); },
+  });
 
   const rename = async () => {
     const next = window.prompt('새 방 이름을 적어 주세요 (40자까지)', name);
@@ -254,6 +379,10 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   const me = members.some(m => m.user_id === user.id);
   const canWrite = !adminView && me && !error;
+  const canWriteRef = useRef(canWrite);
+  canWriteRef.current = canWrite;
+  const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
+  const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : m.content);
 
   return (
     <div className="fixed inset-0 z-[75] bg-[#eef1ea] flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
@@ -277,7 +406,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} onClick={() => setMenuId(null)} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col">
+      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col">
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
           {hasOlder && <button onClick={loadOlder} className="self-center text-[0.8125rem] text-stone-600 bg-white border border-stone-200 rounded-full px-4 py-1.5">이전 대화 더 보기</button>}
           {loading && <p className="text-center text-stone-400 text-sm py-10">불러오는 중...</p>}
@@ -297,8 +426,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             const a = m.user_id ? people[m.user_id] : undefined;
             const blocked = !!m.user_id && blockedIds.has(m.user_id);
             const grouped = !newDay && prev && prev.kind === 'text' && prev.user_id === m.user_id && new Date(m.created_at).getTime() - new Date(prev.created_at).getTime() < 3 * 60 * 1000;
+            const rs = reactions[m.id] || [];
+            const counts = REACTION_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
+            const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
             return (
-              <div key={m.id}>
+              <div key={m.id} id={`gm-${m.id}`}>
                 {dayLine}
                 <div className={`flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''}`}>
                   {!mine && (grouped ? <span className="w-10 shrink-0" /> : (
@@ -314,20 +446,41 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                         {a?.baptismal_name || '교우'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
                       </span>
                     )}
-                    <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''}`}>
-                      <button onClick={e => { e.stopPropagation(); if (!adminView || !mine) setMenuId(menuId === m.id ? null : m.id); }}
-                        className={`text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words ${blocked ? 'bg-white/60 text-stone-400 italic' : mine ? 'bg-emerald-700 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
-                        {blocked ? '차단한 교우의 메시지예요' : m.content}
-                      </button>
-                      <span className="shrink-0 text-[0.6875rem] text-stone-500 pb-0.5">{timeOf(m.created_at)}</span>
-                    </div>
-                    {menuId === m.id && (
-                      <div className={`mt-1 flex gap-1.5 ${mine ? 'justify-end' : ''}`} onClick={e => e.stopPropagation()}>
-                        {mine && !adminView && <button onClick={() => remove(m)} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-red-600"><Icon name="trash" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1" />지우기</button>}
-                        {!mine && m.user_id && <button onClick={() => { setMenuId(null); onOpenProfile(m.user_id!); }} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700">👤 프로필</button>}
-                        {!mine && !adminView && m.user_id && <button onClick={() => { setMenuId(null); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: a?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); }} className="text-[0.8125rem] px-3 py-1.5 rounded-lg bg-white border border-stone-200 text-stone-700"><Icon name="siren" className="w-[1.05em] h-[1.05em] inline-block align-[-0.2em] mr-1 text-red-500" />신고</button>}
+                    <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''} ${counts.length ? 'mb-4' : ''}`}>
+                      <div className="relative min-w-0">
+                        {/* 옆으로 미는 중: 드러나는 답장 표시 */}
+                        {gestures.swipe?.id === m.id && <SwipeHint dx={gestures.swipe.dx} />}
+                        <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
+                          {...gestures.bind(m)}
+                          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
+                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : mine ? 'bg-emerald-700 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                          {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
+                          {m.reply_to && (
+                            <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
+                              className={`block w-full text-left not-italic -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${mine ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
+                              <span className="block font-bold">↩️ {quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장</span>
+                              <span className="line-clamp-1">{quoted ? preview(quoted) : '이전 대화의 메시지'}</span>
+                            </button>
+                          )}
+                          {blocked ? '차단한 교우의 메시지예요' : m.content}
+                        </div>
+                        {/* 감정을 고르면 잠깐 크게 */}
+                        {heartPop?.id === m.id && (
+                          <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
+                            {heartPop.emoji === '❤️' ? <Icon name="heart" fill className="w-10 h-10 text-rose-500 drop-shadow" /> : <span className="text-4xl drop-shadow">{heartPop.emoji}</span>}
+                          </span>
+                        )}
+                        {/* 메시지 밑 감정 표시 (누르면 고르기) */}
+                        {counts.length > 0 && (
+                          <button onClick={e => openMenu(m, e.currentTarget.parentElement?.querySelector('[data-bubble]') ?? e.currentTarget)}
+                            aria-label={`감정 표시 ${counts.map(c => `${c.e} ${c.n}`).join(', ')}${adminView ? '' : ' · 눌러서 고르기'}`}
+                            className={`absolute -bottom-4 ${mine ? 'right-2' : 'left-2'} flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-white border border-stone-200 shadow-sm text-[0.8125rem] leading-none text-stone-600`}>
+                            {counts.map(c => <span key={c.e} className="inline-flex items-center">{c.e === '❤️' ? <Icon name="heart" fill className="w-3.5 h-3.5 text-rose-500" /> : c.e}{c.n > 1 && <span className="ml-0.5 text-[0.75rem]">{c.n}</span>}</span>)}
+                          </button>
+                        )}
                       </div>
-                    )}
+                      <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">{m.edited_at && <span className="text-stone-400">수정됨</span>}<span>{timeOf(m.created_at)}</span></span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -340,8 +493,20 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         <button onClick={() => scrollToBottom(true)} className="absolute left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] px-4 py-2 rounded-full bg-stone-900/85 text-white text-[0.875rem] font-bold shadow-lg">새 대화 {newBelow}개 ↓</button>
       )}
 
+      {canWrite && (replyTo || editing) && (() => {
+        const m = (editing || replyTo)!;
+        return (
+          <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
+            <div className="flex-1 min-w-0 border-l-4 border-emerald-500 pl-2.5 py-0.5">
+              <p className="text-[0.8125rem] font-bold text-emerald-800">{editing ? '✏️ 메시지 고치는 중' : `↩️ ${m.user_id === user.id ? '내 메시지' : `${nameOf(m.user_id)}님 메시지`}에 답장`}</p>
+              <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{preview(m)}</p>
+            </div>
+            <button type="button" onClick={() => (editing ? cancelEdit() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editing ? '고치기 그만두기' : '답장 그만두기'}>×</button>
+          </div>
+        );
+      })()}
       {canWrite && (
-        <form onSubmit={send} className="shrink-0 bg-white border-t border-stone-200 px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2">
+        <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 pb-[calc(0.625rem+env(safe-area-inset-bottom))] flex items-end gap-2`}>
           <textarea
             ref={inputRef}
             value={input}
@@ -358,13 +523,33 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
               setTimeout(() => sendRef.current(typed), 0);
             }}
             rows={1}
-            placeholder="메시지를 적어 주세요"
+            autoCorrect="on" autoCapitalize="sentences" spellCheck
+            placeholder={editing ? '고칠 내용을 적어 주세요' : '메시지를 적어 주세요'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] text-stone-900 focus:outline-none focus:border-stone-500"
             aria-label="단체 채팅방에 보낼 말"
           />
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-emerald-700 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-emerald-700 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
         </form>
       )}
+
+      {/* 메시지를 꾹 누르면(내 메시지는 한 번 눌러도): 그 메시지 바로 위에 감정 표시, 아래에 답장 · 고치기 · 프로필 · 신고 · 지우기 */}
+      {menuMsg && (() => {
+        const m = menuMsg;
+        const mine = m.user_id === user.id;
+        const myEmoji = (reactions[m.id] || []).find(r => r.user_id === user.id)?.emoji;
+        const close = () => setMenuMsg(null);
+        return (
+          <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close}
+            emojis={canWrite ? REACTION_EMOJIS : undefined} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
+            actions={[
+              ...(canWrite ? [{ label: '↩️ 답장하기', run: () => startReply(m) }] : []),
+              ...(canWrite && canEdit(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEdit(m) }] : []),
+              ...(!mine && m.user_id ? [{ label: '👤 프로필 보기', run: () => { close(); onOpenProfile(m.user_id!); } }] : []),
+              ...(!mine && !adminView && m.user_id ? [{ label: '🚨 신고', run: () => { close(); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: people[m.user_id!]?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); } }] : []),
+              ...(mine && !adminView ? [{ label: '🗑 지우기', run: () => remove(m), danger: true }] : []),
+            ]} />
+        );
+      })()}
 
       {/* 참여한 교우 · 초대 · 이름 바꾸기 · 나가기 */}
       {showMembers && (
