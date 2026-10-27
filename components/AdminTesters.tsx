@@ -18,6 +18,7 @@ export default function AdminTesters({ onClose, sendPush }: {
   const [setupNeeded, setSetupNeeded] = useState(false);
   const [copied, setCopied] = useState<{ ids: string[]; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
 
   const fetchList = async () => {
     const { data, error } = await supabase.from('tester_signups').select('user_id, google_email, status, created_at').order('created_at', { ascending: true });
@@ -54,6 +55,14 @@ export default function AdminTesters({ onClose, sendPush }: {
     ids.forEach(id => sendPush('tester_added', id));
     setCopied(null);
     reload();
+  };
+
+  // 구글 검토가 끝나기 전에 '등록함'으로 알렸으면, 게시된 뒤 등록한 분들께 설치 안내를 한 번 더 보낸다
+  const resend = () => {
+    if (added.length === 0 || resent) return;
+    if (!window.confirm(`Play Console 게시 개요에서 비공개 테스트가 '게시됨'인가요?\n구글에 등록한 ${added.length}명에게 설치 안내 알림을 다시 보낼까요?`)) return;
+    added.forEach(s => sendPush('tester_added', s.user_id));
+    setResent(true);
   };
 
   const remove = async (s: Signup) => {
@@ -102,6 +111,11 @@ export default function AdminTesters({ onClose, sendPush }: {
                   <button onClick={markAdded} disabled={!copied || busy || !copied.ids.some(id => pending.some(p => p.user_id === id))} className="flex-1 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:bg-stone-300">&lsquo;등록함&rsquo;으로 표시</button>
                 </div>
                 {total > 0 && <button onClick={() => copy(list)} className="self-start text-xs text-stone-500 underline">전체 {total}명 이메일 복사</button>}
+                {added.length > 0 && (
+                  <button onClick={resend} disabled={resent} className="w-full py-2.5 rounded-xl border border-emerald-700 text-emerald-800 text-sm font-bold disabled:border-stone-200 disabled:text-stone-400">
+                    {resent ? `${added.length}명에게 설치 안내를 다시 보냈어요` : `등록한 ${added.length}명에게 설치 안내 다시 보내기`}
+                  </button>
+                )}
                 {copied && (
                   <>
                     <p className="text-xs text-emerald-700 font-bold">복사했어요 ({copied.ids.length}명). 복사가 안 됐으면 아래 글을 길게 눌러 직접 복사해요.</p>
