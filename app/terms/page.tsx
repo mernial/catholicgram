@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: '이용약관 및 커뮤니티 규칙
 export default function TermsPage() {
   const contact = ADMIN_EMAILS[0];
   return (
-    <LegalPage title="이용약관 및 커뮤니티 규칙" updated="2026년 10월 5일">
+    <LegalPage title="이용약관 및 커뮤니티 규칙" updated="2026년 10월 27일">
       <p>가톨릭그램은 기도와 묵상, 신앙의 기쁨과 고민을 나누는 가톨릭 신자 커뮤니티입니다. 서비스를 이용하면 아래 약관과 커뮤니티 규칙에 동의한 것으로 봅니다.</p>
 
       <section>
@@ -42,9 +42,10 @@ export default function TermsPage() {
       </section>
 
       <section>
-        <h2>4. 익명 고민상담</h2>
+        <h2>4. 익명 고민상담 · 단체 채팅방</h2>
         <ul>
           <li>익명 게시판에서도 위 규칙이 똑같이 적용됩니다. 익명이라는 이유로 다른 사람에게 상처를 주어서는 안 됩니다.</li>
+          <li>단체 채팅방에서도 위 규칙이 똑같이 적용됩니다. 원하지 않는 사람을 계속 초대하거나 괴롭혀서는 안 되며, 운영자는 신고 처리와 안전한 운영을 위해 단체 채팅방의 대화를 열람할 수 있습니다.</li>
           <li>생명이 위급하거나 극단적 선택이 걱정되는 경우 즉시 <b>자살예방상담전화 109</b>, <b>정신건강위기상담 1577-0199</b>, 또는 <b>112 / 119</b>에 연락하세요.</li>
         </ul>
       </section>

@@ -9,6 +9,8 @@ import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
+import GroupChat from '@/components/GroupChat';
+import NewChat from '@/components/NewChat';
 import { useStickToBottom } from '@/lib/stick-bottom';
 import ExploreTab from '@/components/ExploreTab';
 import HashtagText from '@/components/HashtagText';
@@ -78,7 +80,8 @@ const deepLinkFromSearch = (search: string) => {
   const letters = params.get('letters') === '1';      // 사연함 (관리자) / 보낸 사연
   const lounge = params.get('lounge') || undefined;   // 사랑방의 그 대화 (관리자 부름)
   const tester = params.get('tester') === '1';        // 안드로이드 테스터 신청 창 (구글 등록 완료 알림)
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester } : null;
+  const group = params.get('group') || undefined;     // 단체 채팅방 (새 메시지 알림)
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester || group ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester, group } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -200,6 +203,9 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
+// 단체 채팅방 목록 (supabase/group-chats.sql 의 my_group_chats / admin_group_chats)
+interface GroupChatRow { id: string; name: string; member_count: number; last_message: string | null; last_sender: string | null; last_kind: string | null; last_message_at: string; unread: number }
+interface AdminGroupRow { id: string; name: string; created_at: string; last_message_at: string; member_count: number; member_names: string | null; message_count: number; last_message: string | null; last_sender: string | null }
 // anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; }
@@ -320,7 +326,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -387,6 +393,11 @@ export default function Home() {
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
   const [lettersStart, setLettersStart] = useState<'write' | 'mine'>('write'); // 사연함: 알림으로 열면 '보낸 사연'
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
+  const [groupChats, setGroupChats] = useState<GroupChatRow[]>([]);  // 내 단체 채팅방 (안 읽은 수 포함)
+  const [openGroup, setOpenGroup] = useState<{ id: string; adminView: boolean } | null>(null); // 열려 있는 단체 채팅방 (관리자는 몰래 읽기)
+  const [showNewChat, setShowNewChat] = useState(false);              // 새 채팅: 교우 찾아 1:1 · 단체방 만들기
+  const [messagesView, setMessagesView] = useState<'mine' | 'allGroups'>('mine'); // 관리자: 모든 단체 채팅방 보기
+  const [adminGroups, setAdminGroups] = useState<AdminGroupRow[] | null>(null);
   const [loungeNew, setLoungeNew] = useState(0);
   const [loungeOnlineIds, setLoungeOnlineIds] = useState<string[]>([]); // 지금 사랑방에 들어와 있는 교우 (실시간)
   const loungeOnline = loungeOnlineIds.length;
@@ -1053,8 +1064,27 @@ export default function Home() {
     if (!requireProfile()) return;
     if (partner.id === user.id) return;
     if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
+    setOpenGroup(null); setShowNewChat(false); // 단체 채팅방·새 채팅에서 1:1 대화로
     navigate({ screen: true, tab: 'chat', chatUser: partner });
     setActionModalUser(null);
+  };
+
+  // 내 단체 채팅방 (SQL 실행 전이면 조용히 비워 둠)
+  const fetchGroupChats = async () => {
+    const { data, error } = await supabase.rpc('my_group_chats');
+    if (!error) setGroupChats((data || []) as GroupChatRow[]);
+  };
+  // 관리자: 모든 단체 채팅방
+  const fetchAdminGroups = async () => {
+    const { data, error } = await supabase.rpc('admin_group_chats');
+    setAdminGroups(error ? [] : (data || []) as AdminGroupRow[]);
+  };
+  const openGroupChat = (id: string, adminView = false) => {
+    if (!user) { setShowAuthModal(true); return; }
+    if (!adminView && !requireProfile()) return;
+    setShowNewChat(false);
+    setGroupChats(prev => prev.map(g => (g.id === id ? { ...g, unread: 0 } : g)));
+    setOpenGroup({ id, adminView });
   };
 
   const fetchChatMessages = async (partnerId: string) => {
@@ -1952,6 +1982,7 @@ export default function Home() {
 
   // 아직 읽지 않은 받은 메시지 (보낸 사람별로 묶음)
   const fetchUnreadMessages = async (userId: string) => {
+    fetchGroupChats();
     const { data } = await supabase.from('messages').select('sender_id, content, created_at')
       .eq('receiver_id', userId).is('read_at', null)
       .order('created_at', { ascending: false }).limit(100);
@@ -2044,6 +2075,8 @@ export default function Home() {
     !isAlertExpired(n.created_at) && !hiddenAlerts.has(`c:${n.id}`) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
+  // 메시지 단추 숫자: 1:1 안 읽은 메시지 + 단체 채팅방 안 읽은 메시지 (알림(하트) 숫자에는 1:1만)
+  const messageBadgeCount = unreadMessageCount + (!user ? 0 : groupChats.reduce((sum, g) => sum + (g.unread || 0), 0));
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
     r.created_at && !isAlertExpired(r.created_at) && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
   ).length;
@@ -2219,7 +2252,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'group_message' | 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -2398,7 +2431,7 @@ export default function Home() {
     if (link.post) hideAlertsForPost(link.post, false);
     if (link.anon) hideAlertsForPost(link.anon, true);
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
-      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
+      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.group ? `group:${l.group}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
     if (!key || !('serviceWorker' in navigator)) return;
     navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications()).then(list => {
@@ -2417,6 +2450,7 @@ export default function Home() {
     setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowTesterSignup(false); setShowAdminTesters(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false);
+    setOpenGroup(null); setShowNewChat(false);
   };
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
@@ -2443,6 +2477,11 @@ export default function Home() {
     } else if (deepLink.lounge) {
       setLoungeFocusId(deepLink.lounge);
       setShowLounge(true);
+    } else if (deepLink.group) {
+      // 단체 채팅방 알림: 뒤로가기를 하면 대화 목록으로 오도록 목록 위에 연다
+      if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' });
+      setMessagesView('mine');
+      openGroupChat(deepLink.group);
     } else if (deepLink.tester) {
       setShowTesterSignup(true);
     } else if (deepLink.letters) {
@@ -2730,7 +2769,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
   const anyModalOpen = otherModalOpen || showPopupNotice;
@@ -2776,8 +2815,10 @@ export default function Home() {
     setShowDeletedMessages(false);
     setShowMediaStorage(false);
     setShowLetters(false);
-    // 사랑방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
+    // 사랑방·단체 채팅방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
     if (!reportTarget && !actionModalUser) setShowLounge(false);
+    if (!reportTarget && !actionModalUser && !showNewChat) setOpenGroup(null);
+    setShowNewChat(false);
   };
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
@@ -2873,7 +2914,7 @@ export default function Home() {
       fetchViewingProfile(viewingUserId); fetchFollowData(viewingUserId); fetchUserPosts(viewingUserId);
       if (profileTab === 'tagged' && viewingProfile?.handle) fetchMentionPosts(viewingProfile.handle);
     }
-    if (activeTab === 'messages') { fetchChatPartners(); if (user) { fetchUnreadMessages(user.id); fetchLoungeNew(user.id); } }
+    if (activeTab === 'messages') { fetchChatPartners(); if (user) { fetchUnreadMessages(user.id); fetchLoungeNew(user.id); } if (messagesView === 'allGroups') fetchAdminGroups(); }
     refreshFeed();
   };
   const pullCtx = useRef({ blocked: false, refresh: pullRefresh });
@@ -3736,7 +3777,7 @@ export default function Home() {
                     <button onClick={openProfileEdit} className={btn}>프로필 편집</button>
                     <button onClick={() => goToTab('messages')} className={`${btn} relative`}>
                       메시지
-                      {unreadMessageCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>}
+                      {messageBadgeCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>}
                     </button>
                     <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className="w-10 shrink-0 rounded-lg bg-stone-100 text-stone-900 hover:bg-stone-200 flex items-center justify-center" aria-label="설정"><Icon name="gear" className="w-5 h-5" /></button>
                   </div>
@@ -3930,6 +3971,22 @@ export default function Home() {
           onOpenProfile={id => openProfileCard({ id })}
           onReport={t => setReportTarget(t)} />
       )}
+      {/* 단체 채팅방 (관리자는 '모든 단체방'에서 몰래 읽기만) */}
+      {openGroup && user && (
+        <GroupChat key={openGroup.id} user={user} chatId={openGroup.id} adminView={openGroup.adminView && isAdmin} blockedIds={blockedIds}
+          onClose={() => { setOpenGroup(null); fetchGroupChats(); }}
+          onOpenProfile={id => openProfileCard({ id })}
+          onReport={t => setReportTarget(t)}
+          onSent={id => sendPush('group_message', id)}
+          onChanged={() => { fetchGroupChats(); if (openGroup.adminView) fetchAdminGroups(); }} />
+      )}
+      {showNewChat && user && (
+        <NewChat user={user} mode="start" blockedIds={blockedIds}
+          suggestions={chatPartners.map(p => ({ id: p.id, baptismal_name: p.baptismal_name, handle: p.handle, avatar_url: p.avatar_url, badge_type: p.badge_type }))}
+          onClose={() => setShowNewChat(false)}
+          onOpenDM={p => openChatRoom({ id: p.id, baptismal_name: p.baptismal_name, handle: p.handle || undefined, avatar_url: p.avatar_url || undefined, badge_type: p.badge_type || undefined })}
+          onCreated={id => { fetchGroupChats(); openGroupChat(id); }} />
+      )}
       {activeTab === 'messages' && (
         <section className="flex-1 bg-white flex flex-col">
           <div className="p-4 border-b border-stone-200 flex items-center gap-2">
@@ -3937,7 +3994,42 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <h2 className="font-bold text-lg text-stone-900">메시지</h2>
+            {/* 새 채팅: @아이디·이름으로 찾아 1:1 메시지, 또는 여러 교우와 단체 채팅방 */}
+            <button onClick={() => { if (!user) { setShowAuthModal(true); return; } if (!requireProfile()) return; setShowNewChat(true); }}
+              className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-stone-900 text-white text-[0.875rem] font-bold" aria-label="새 채팅">
+              <Icon name="pencil" className="w-4 h-4" />새 채팅
+            </button>
           </div>
+          {isAdmin && (
+            <div className="px-4 pt-3 pb-2 border-b border-stone-100 grid grid-cols-2 gap-1" role="tablist" aria-label="메시지 보기">
+              {([['mine', '내 대화'], ['allGroups', '🔒 모든 단체방']] as const).map(([k, label]) => (
+                <button key={k} role="tab" aria-selected={messagesView === k} onClick={() => { setMessagesView(k); if (k === 'allGroups') fetchAdminGroups(); }}
+                  className={`py-2 rounded-xl text-[0.875rem] font-bold ${messagesView === k ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}>{label}</button>
+              ))}
+            </div>
+          )}
+          {isAdmin && messagesView === 'allGroups' ? (
+            // 관리자: 모든 단체 채팅방 (들어가서 읽어도 교우들에게 표시되지 않고, 글은 쓸 수 없음)
+            <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
+              <p className="px-4 py-3 text-[0.8125rem] text-stone-500 bg-stone-50 leading-snug">관리자만 보여요. 방에 들어가 읽어도 교우들에게 표시되지 않아요. (읽기만 할 수 있어요)</p>
+              {adminGroups === null && <p className="p-10 text-center text-sm text-stone-400">불러오는 중...</p>}
+              {adminGroups?.length === 0 && <p className="p-10 text-center text-sm text-stone-400">아직 단체 채팅방이 없어요.<br /><span className="text-xs">(처음이면 Supabase에서 <code>supabase/group-chats.sql</code> 실행 필요)</span></p>}
+              {adminGroups?.map(g => (
+                <button key={g.id} onClick={() => openGroupChat(g.id, true)} className="w-full p-4 flex items-start gap-3 hover:bg-stone-50 text-left">
+                  <span className="w-12 h-12 rounded-full bg-stone-800 text-white flex items-center justify-center text-xl shrink-0">👥</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="flex items-center gap-1.5">
+                      <b className="text-stone-900 text-sm truncate">{g.name}</b>
+                      <span className="shrink-0 text-xs text-stone-400">{g.member_count}명 · 글 {g.message_count}</span>
+                      <span className="ml-auto shrink-0 text-[0.75rem] text-stone-400">{timeAgo(g.last_message_at)}</span>
+                    </span>
+                    <span className="block text-xs text-stone-500 truncate mt-0.5">{g.member_names || '참여한 교우 없음'}</span>
+                    {g.last_message && <span className="block text-xs text-stone-700 line-clamp-1 mt-0.5">{g.last_sender}: {g.last_message}</span>}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100">
             {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 */}
             <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
@@ -3954,31 +4046,57 @@ export default function Home() {
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
                 : <span className="text-stone-400 text-xl shrink-0">›</span>}
             </button>
-            {chatPartners.length === 0 ? (
-              <div className="p-12 text-center text-stone-400 text-sm">아직 주고받은 메시지가 없습니다.</div>
-            ) : (
-              chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => (
-                <button key={partner.id} onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
-                  {partner.avatar_url ? (
-                    <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</div>
-                  )}
+            {(() => {
+              // 단체 채팅방과 1:1 대화를 최근 대화 순으로 함께
+              const items = [
+                ...groupChats.map(g => ({ at: g.last_message_at, group: g, partner: null })),
+                ...chatPartners.filter(partner => !blockedIds.has(partner.id)).map(partner => ({ at: partner.lastAt || '', group: null, partner })),
+              ].sort((a, b) => b.at.localeCompare(a.at));
+              if (items.length === 0) return (
+                <div className="p-10 text-center text-stone-400 text-sm leading-relaxed">
+                  아직 주고받은 메시지가 없습니다.<br />
+                  <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ 새 채팅 시작하기</button>
+                </div>
+              );
+              return items.map(({ group: g, partner }) => g ? (
+                <button key={`g-${g.id}`} onClick={() => openGroupChat(g.id)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+                  <span className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xl shrink-0">👥</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
-                      <RoleBadge type={partner.badge_type} />
+                      <h3 className="font-bold text-stone-800 text-sm truncate">{g.name}</h3>
+                      <span className="shrink-0 text-xs text-stone-400">{g.member_count}</span>
                     </div>
-                    <p className={`text-xs mt-0.5 line-clamp-1 ${unreadMessages.some(u => u.partner.id === partner.id) ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>{partner.lastMessage || `@${partner.handle}`}</p>
+                    <p className={`text-xs mt-0.5 line-clamp-1 ${g.unread > 0 ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>
+                      {!g.last_message ? '단체 채팅방' : g.last_kind === 'system' ? g.last_message : `${g.last_sender}: ${g.last_message}`}
+                    </p>
                   </div>
-                  {(() => {
-                    const n = unreadMessages.find(u => u.partner.id === partner.id)?.count || 0;
-                    return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
-                  })()}
+                  {g.unread > 0
+                    ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{g.unread > 99 ? '99+' : g.unread}</span>
+                    : null}
                 </button>
-              ))
-            )}
+              ) : partner && (
+            <button key={`dm-${partner.id}`} onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
+              {partner.avatar_url ? (
+                <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
+              ) : (
+                <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</div>
+              )}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
+                  <RoleBadge type={partner.badge_type} />
+                </div>
+                <p className={`text-xs mt-0.5 line-clamp-1 ${unreadMessages.some(u => u.partner.id === partner.id) ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>{partner.lastMessage || `@${partner.handle}`}</p>
+              </div>
+              {(() => {
+                const n = unreadMessages.find(u => u.partner.id === partner.id)?.count || 0;
+                return n > 0 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{n > 99 ? '99+' : n}</span> : null;
+              })()}
+            </button>
+              ));
+            })()}
           </div>
+          )}
         </section>
       )}
 
@@ -5312,11 +5430,11 @@ export default function Home() {
                   <Icon name="film" fill={activeTab === 'reels'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">영상</span>
                 </button>
-                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } tapTabRefresh(msgOn, () => goToTab('messages')); }} className={`${cls} ${tone(msgOn)}`} aria-label={unreadMessageCount > 0 ? `메시지 (안 읽은 ${unreadMessageCount}개)` : '메시지'}>
+                <button onClick={() => { if (!user) { setShowAuthModal(true); return; } tapTabRefresh(msgOn, () => goToTab('messages')); }} className={`${cls} ${tone(msgOn)}`} aria-label={messageBadgeCount > 0 ? `메시지 (안 읽은 ${messageBadgeCount}개)` : '메시지'}>
                   <span className="relative">
                     <Icon name="send" fill={msgOn} className="w-7 h-7" />
-                    {unreadMessageCount > 0 && (
-                      <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center border-2 border-white">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+                    {messageBadgeCount > 0 && (
+                      <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center border-2 border-white">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>
                     )}
                   </span>
                   <span className="text-[0.75rem] font-medium">메시지</span>
