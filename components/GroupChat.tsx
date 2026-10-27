@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
@@ -16,6 +16,7 @@ import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-act
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
+import { useEnterSend } from '@/lib/use-enter-send';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -73,31 +74,12 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const messagesRef = useRef(messages);
   messagesRef.current = messages;
 
-  // 엔터로 보내기: 컴퓨터·아이패드처럼 큰 화면 (휴대폰은 엔터가 줄바꿈, 보내기 단추로 전송) — 사랑방과 같은 방식
-  const [enterSends, setEnterSends] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(pointer: fine), (min-width: 700px)');
-    const on = () => setEnterSends(mq.matches);
-    on(); mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  const shiftRef = useRef(false);
+  // 엔터: 휴대폰·태블릿은 줄바꿈(보내기 단추로 전송), 컴퓨터는 보내기 (lib/use-enter-send, 1:1 메시지·사랑방과 같음)
   const composingRef = useRef(false);
   const sendRef = useRef<(typed: string) => void>(() => {});
-  useEffect(() => {
-    const ta = inputRef.current;
-    if (!ta || !enterSends) return;
-    // 한글 조합 중에 엔터를 누르면 keydown 없이 줄바꿈이 들어오려 함 → 그 줄바꿈을 막고 보낸다
-    const onBeforeInput = (ev: InputEvent) => {
-      if ((ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph') && !shiftRef.current) {
-        ev.preventDefault();
-        const typed = ta.value;
-        setTimeout(() => sendRef.current(typed), 0);
-      }
-    };
-    ta.addEventListener('beforeinput', onBeforeInput);
-    return () => ta.removeEventListener('beforeinput', onBeforeInput);
-  }, [enterSends, loading]);
+  const enter = useEnterSend(typed => sendRef.current(typed), input);
+  const enterRef = enter.ref;
+  const setInputEl = useCallback((el: HTMLTextAreaElement | null) => { inputRef.current = el; enterRef(el); }, [enterRef]);
 
   const loadPeople = async (ids: (string | null)[]) => {
     const need = Array.from(new Set(ids.filter((x): x is string => !!x))).filter(id => !peopleRef.current[id]);
@@ -582,20 +564,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
           </label>
           <textarea
-            ref={inputRef}
+            ref={setInputEl}
             value={input}
             onChange={e => { setInput(e.target.value.slice(0, 1000)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
-            enterKeyHint={enterSends ? 'send' : 'enter'}
-            onKeyDown={e => {
-              if (e.key === 'Enter') shiftRef.current = e.shiftKey;
-              if (e.key !== 'Enter' || e.shiftKey || !enterSends) return;
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-              e.preventDefault();
-              const typed = e.currentTarget.value;
-              setTimeout(() => sendRef.current(typed), 0);
-            }}
+            enterKeyHint={enter.enterKeyHint}
+            onKeyDown={enter.onKeyDown}
             rows={1}
             autoCorrect="on" autoCapitalize="sentences" spellCheck
             placeholder={editing ? '고칠 내용을 적어 주세요' : '메시지를 적어 주세요'}

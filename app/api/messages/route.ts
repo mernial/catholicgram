@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { purgeOldDeletedMessages } from '@/lib/media-server';
 
 // 메시지 삭제 (서버에서 본인 확인)
-// POST { action: 'delete', id } → 내가 보낸 메시지만.
+// POST { action: 'delete', id } → 내가 보낸 메시지 중 상대방이 아직 읽지 않은 것만 (모두에게서 삭제).
 // 원래 글·사진은 관리자만 볼 수 있는 deleted_messages 로 옮겨 30일 동안만 두고, 대화에서는 내용을 비우고 '삭제됨' 표시만 남긴다
 // (상대가 앱 밖에서 데이터를 꺼내 봐도 지운 내용은 남아 있지 않음).
 
@@ -24,6 +24,8 @@ export async function POST(request: Request) {
   if (!msg) return Response.json({ error: '메시지를 찾을 수 없어요.' }, { status: 404 });
   if (String(msg.sender_id) !== user.id) return Response.json({ error: '내가 보낸 메시지만 삭제할 수 있어요.' }, { status: 403 });
   if (msg.deleted_at) return Response.json({ ok: true });
+  // 모두에게서 삭제는 상대방이 아직 읽기 전에만 (읽은 뒤에는 내 화면에서만 지울 수 있음)
+  if (msg.read_at) return Response.json({ error: '상대방이 이미 읽은 메시지는 모두에게서 지울 수 없어요.', read: true }, { status: 409 });
 
   // 1) 관리자용으로 원래 내용 보관 (표가 없으면 지우지 않음 → 관리자가 내용을 잃지 않게)
   const kept: Record<string, unknown> = {
