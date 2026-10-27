@@ -1,4 +1,12 @@
 // 가톨릭그램 서비스 워커: 푸시 알림 수신 및 알림 클릭 처리
+const isApple = () => /iPhone|iPad|iPod|Macintosh/.test(self.navigator.userAgent) && !/Chrome|CriOS|Android/.test(self.navigator.userAgent);
+// 앱 화면에 '이 알림의 대화방을 지금 보고 있나요?' 묻기 (0.5초 안에 답이 없으면 아니라고 봄)
+const askViewing = (client, url) => new Promise(resolve => {
+  const channel = new MessageChannel();
+  const timer = setTimeout(() => resolve(false), 500);
+  channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data === true); };
+  try { client.postMessage({ type: 'viewing?', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
+});
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
@@ -8,7 +16,11 @@ self.addEventListener('push', (event) => {
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
     const visible = windows.filter(c => c.visibilityState === 'visible');
     if (visible.length > 0) {
+      // 지금 그 대화방(1:1·단체)을 보고 있으면 휴대폰 알림을 띄우지 않는다 (대화하는 중에 알림이 계속 뜨지 않게).
+      // 아이폰·아이패드·맥 사파리는 푸시마다 알림을 꼭 띄워야 해서(안 띄우면 알림 권한을 거둠) 소리 없이 띄웠다가 바로 닫는다
+      const viewing = (await Promise.all(visible.map(c => askViewing(c, data.url || '/')))).some(Boolean);
       visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '' }));
+      if (viewing && !isApple()) return;
       // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄운다.
       // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)
       await self.registration.showNotification(title, {
@@ -20,6 +32,10 @@ self.addEventListener('push', (event) => {
         timestamp: Date.now(),
         data: { url: data.url || '/' },
       });
+      if (viewing) {
+        const shown = await self.registration.getNotifications(data.tag ? { tag: data.tag } : undefined).catch(() => []);
+        shown.forEach(n => n.close());
+      }
       return;
     }
     await self.registration.showNotification(title, {
