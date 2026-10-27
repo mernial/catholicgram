@@ -19,8 +19,8 @@ import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerButton, StickerImage } from '@/components/StickerPanel';
-import { parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
+import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -1434,7 +1434,6 @@ export default function Home() {
   };
 
   // 이모티콘 보내기: 입력칸 옆 😊 → 아래 이모티콘 칸 (쓰던 글은 그대로 둔다)
-  const [dmStickerOpen, setDmStickerOpen] = useState(false);
   const sendDmSticker = async (s: Sticker) => {
     if (!user || !currentChatUser) return;
     const to = currentChatUser.id;
@@ -1450,6 +1449,7 @@ export default function Home() {
     fetchChatMessages(to);
     if (sent) sendPush('message', sent.id);
   };
+  const dmSticker = useStickerPicker(sendDmSticker);
 
   // 메시지로 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩 고르기 — components/ChatMedia)
   const dmMedia = useChatMedia({
@@ -4558,7 +4558,7 @@ export default function Home() {
         // 채팅방: 화면 높이에 맞춰 메시지만 스크롤되고 입력창은 항상 맨 아래에 보임
         <section className="relative flex-1 min-h-0 flex flex-col bg-stone-100">
           {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' */}
-          {!dmCapture && !dmStickerOpen && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
+          {!dmCapture && !dmSticker.open && !dmSticker.picked && !hasStickerSuggestion(messageInput) && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
           <div ref={chatStick.listRef} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
             {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
             <div ref={chatStick.contentRef} className="mt-auto flex flex-col gap-3">
@@ -4700,20 +4700,21 @@ export default function Home() {
               </div>
             </div>
           )}
-          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 ${dmStickerOpen ? '' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'} bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
+          {!dmCapture && !dmRequest && !editingMessage && <StickerAbove picker={dmSticker} text={messageInput} sendClass="bg-blue-500" />}
+          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 ${dmSticker.open ? '' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'} bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
             </label>
-            <StickerButton open={dmStickerOpen} disabled={!!editingMessage} onClick={() => { setDmStickerOpen(o => !o); messageInputRef.current?.blur(); }} />
+            <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(o => !o); messageInputRef.current?.blur(); }} />
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
-            <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { setDmStickerOpen(false); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { dmSticker.setOpen(false); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim()} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </form>}
-          {dmStickerOpen && !dmCapture && !dmRequest && !editingMessage && <StickerPanel onSend={sendDmSticker} onClose={() => setDmStickerOpen(false)} sendClass="bg-blue-500" />}
+          {dmSticker.open && !dmCapture && !dmRequest && !editingMessage && <StickerPanel picker={dmSticker} />}
           {captureAsk && (
             <CaptureChoice onClose={() => setCaptureAsk(null)}
               onPick={() => { setDmCapture(new Set([captureAsk])); setCaptureAsk(null); }}

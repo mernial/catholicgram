@@ -17,8 +17,8 @@ import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerButton, StickerImage } from '@/components/StickerPanel';
-import { parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
+import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -301,7 +301,6 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   // 이모티콘 보내기 (입력칸에 쓰던 글은 그대로)
-  const [stickerOpen, setStickerOpen] = useState(false);
   const sendSticker = async (s: Sticker) => {
     if (sending || adminView) return;
     setSending(true);
@@ -320,6 +319,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     addMessages([data as GroupMessage]);
     onSent?.((data as GroupMessage).id);
   };
+  const stickerPick = useStickerPicker(sendSticker);
 
   const remove = async (m: GroupMessage) => {
     setMenuMsg(null);
@@ -562,7 +562,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       </div>
 
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
-      {!stickerOpen && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} />}
+      {!stickerPick.open && !stickerPick.picked && !hasStickerSuggestion(input) && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} />}
 
       <TypingIndicator typers={typing.typers} lookup={id => (people[id] ? { name: people[id].baptismal_name, avatar: people[id].avatar_url ?? null } : undefined)} />
       {media.bar}
@@ -582,13 +582,14 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       })()}
       {canWrite && !capturePick && (
         <>
-        <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerOpen ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
+        {!editing && <StickerAbove picker={stickerPick} text={input} sendClass="bg-emerald-700" />}
+        <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
           </label>
-          <StickerButton open={stickerOpen} disabled={!!editing} className="w-11 h-11" onClick={() => { setStickerOpen(o => !o); inputRef.current?.blur(); }} />
+          <StickerButton open={stickerPick.open} disabled={!!editing} className="w-11 h-11" onClick={() => { stickerPick.setOpen(o => !o); inputRef.current?.blur(); }} />
           <textarea
             ref={setInputEl}
             value={input}
@@ -602,11 +603,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             placeholder={editing ? '고칠 내용을 적어 주세요' : '메시지 입력...'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] text-stone-900 focus:outline-none focus:border-stone-500"
             aria-label="단체 채팅방에 보낼 말"
-            onFocus={() => setStickerOpen(false)}
+            onFocus={() => stickerPick.setOpen(false)}
           />
           <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-emerald-700 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
         </form>
-        {stickerOpen && !editing && <StickerPanel onSend={sendSticker} onClose={() => setStickerOpen(false)} sendClass="bg-emerald-700" />}
+        {stickerPick.open && !editing && <StickerPanel picker={stickerPick} />}
         </>
       )}
 

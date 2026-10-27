@@ -12,8 +12,8 @@ import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerButton, StickerImage } from '@/components/StickerPanel';
-import { parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
+import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
@@ -332,7 +332,6 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
 
   // 이모티콘 보내기 (입력칸에 쓰던 글은 그대로)
-  const [stickerOpen, setStickerOpen] = useState(false);
   const sendSticker = async (s: Sticker) => {
     if (sending || error || (frozen && !isAdmin)) return;
     setSending(true);
@@ -350,6 +349,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     atBottomRef.current = true;
     if (data) addMessages([data]);
   };
+  const stickerPick = useStickerPicker(sendSticker);
 
   // 관리자: '관리자가 사랑방에 왔어요' — 사랑방에 📢 안내 글을 올리고 모든 교우에게 휴대폰 알림
   const announce = async () => {
@@ -779,7 +779,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       )}
 
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
-      {!trash && !stickerOpen && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
+      {!trash && !stickerPick.open && !stickerPick.picked && !hasStickerSuggestion(input) && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
 
       {!trash && <TypingIndicator typers={typing.typers.filter(t => !blockedIds.has(t.id))} lookup={id => (authors[id] ? { name: authors[id].baptismal_name, avatar: authors[id].avatar_url ?? null } : undefined)} />}
       {!trash && media.bar}
@@ -816,13 +816,14 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         )}
         {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
         {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={setInput} excludeId={user.id} label="부르기" /></div>}
-        <form onSubmit={send} className={`px-3 pt-2.5 ${stickerOpen ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
+        {!(frozen && !isAdmin) && <StickerAbove picker={stickerPick} text={input} sendClass="bg-[#4d6a45]" />}
+        <form onSubmit={send} className={`px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending || (frozen && !isAdmin) ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || (frozen && !isAdmin) || !!error} onChange={media.onPick} />
           </label>
-          <StickerButton open={stickerOpen} disabled={(frozen && !isAdmin) || !!error} className="w-11 h-11" onClick={() => { setStickerOpen(o => !o); inputRef.current?.blur(); }} />
+          <StickerButton open={stickerPick.open} disabled={(frozen && !isAdmin) || !!error} className="w-11 h-11" onClick={() => { stickerPick.setOpen(o => !o); inputRef.current?.blur(); }} />
           <textarea
             ref={setInputEl}
             value={input}
@@ -836,12 +837,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             placeholder={frozen && !isAdmin ? '❄️ 잠시 멈춘 대화예요' : '사랑방에 한마디...'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] focus:outline-none focus:border-stone-500"
             aria-label="사랑방에 보낼 말"
-            onFocus={() => setStickerOpen(false)}
+            onFocus={() => stickerPick.setOpen(false)}
           />
           {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
           <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
-        {stickerOpen && !(frozen && !isAdmin) && <StickerPanel onSend={sendSticker} onClose={() => setStickerOpen(false)} sendClass="bg-[#4d6a45]" />}
+        {stickerPick.open && !(frozen && !isAdmin) && <StickerPanel picker={stickerPick} />}
         </div>
       )}
 
