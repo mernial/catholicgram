@@ -107,7 +107,8 @@ export async function POST(request: Request) {
     ids.forEach(pid => list.push({ recipientId: pid, payload: { title: '💬 사랑방에서 회원님을 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content))}`, url: `/?lounge=${msg.id}`, tag: `lounge-mention-${msg.id}` } }));
     if (list.length === 0) return Response.json({ skipped: 'nobody' });
   } else if (type === 'test') {
-    // 알림 확인용: 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
+    // 알림 확인용 (관리자만): 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
     // 댓글 알림처럼 그 글의 가장 최근 댓글로 가는지 확인한다. 그 글에 댓글이 없으면 최근 댓글이 달린 다른 공개 글로.
     const { data: post } = await admin.from('posts').select('id').eq('id', id).maybeSingle();
     if (!post) return Response.json({ error: 'not found' }, { status: 404 });
