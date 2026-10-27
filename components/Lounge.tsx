@@ -564,7 +564,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   }, [trash === null]);
 
   return (
-    <div className="fixed inset-0 z-[75] bg-[#f4efe6] flex flex-col" role="dialog" aria-label="모두의 사랑방">
+    <div className="fixed inset-0 z-[75] bg-stone-100 flex flex-col" role="dialog" aria-label="모두의 사랑방">
       {/* 맨 위 */}
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
@@ -636,7 +636,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const adminId = adminMsgs.length > 0 ? adminMsgs[adminMsgs.length - 1].user_id : (isAdmin ? user.id : null);
         const a = adminId ? authors[adminId] : undefined;
         return (
-          <div className="shrink-0 bg-gradient-to-b from-[#fff6e0] to-[#fdf0d2] border-b-2 border-amber-200 px-3 py-2 flex items-center gap-2.5
+          <div className="shrink-0 bg-gradient-to-b from-amber-50 to-amber-100 border-b-2 border-amber-200 px-3 py-2 flex items-center gap-2.5
             md:w-[36%] md:max-w-[26rem] md:flex-col-reverse md:items-stretch md:justify-end md:border-b-0 md:border-l-2 md:px-4 md:py-3 md:gap-2">
             <div ref={adminRef} className="flex-1 min-w-0 h-[3.3rem] overflow-y-auto overscroll-contain text-right md:h-auto md:min-h-0 md:flex md:flex-col md:gap-2" aria-label="관리자 말씀">
               {adminMsgs.length === 0 ? (
@@ -740,7 +740,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                         {...gestures.bind(m)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-[#4d6a45] text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
                         {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
                         {m.reply_to && (
                           <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -790,8 +790,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         <div className="shrink-0 bg-white border-t border-stone-200">
         {replyTo && (
           <div className="px-3 pt-2 flex items-start gap-2">
-            <div className="flex-1 min-w-0 border-l-4 border-[#4d6a45] pl-2.5 py-0.5">
-              <p className="text-[0.8125rem] font-bold text-[#3d5636]">↩️ {replyTo.user_id === user.id ? '내 글' : `${authorName(replyTo.user_id)}님 글`}에 답장</p>
+            <div className="flex-1 min-w-0 border-l-4 border-blue-600 pl-2.5 py-0.5">
+              <p className="text-[0.8125rem] font-bold text-blue-700">↩️ {replyTo.user_id === user.id ? '내 글' : `${authorName(replyTo.user_id)}님 글`}에 답장</p>
               <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{replyTo.content}</p>
             </div>
             <button type="button" onClick={() => setReplyTo(null)} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="답장 그만두기">×</button>
@@ -816,7 +816,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         )}
         {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
         {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={setInput} excludeId={user.id} label="부르기" /></div>}
-        {!(frozen && !isAdmin) && <StickerAbove picker={stickerPick} text={input} sendClass="bg-[#4d6a45]" />}
+        {!(frozen && !isAdmin) && <StickerAbove picker={stickerPick} text={input} sendClass="bg-blue-600" />}
         <form onSubmit={send} className={`px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending || (frozen && !isAdmin) ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
@@ -840,7 +840,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             onFocus={() => stickerPick.setOpen(false)}
           />
           {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
         {stickerPick.open && !(frozen && !isAdmin) && <StickerPanel picker={stickerPick} />}
         </div>
@@ -905,7 +905,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               </div>
               <div className="mt-4 flex gap-2">
                 {cur && <button onClick={() => removeBadge(badgeEdit)} className="flex-1 py-3 rounded-xl border-2 border-red-200 text-red-600 font-bold">🗑 뱃지 떼기</button>}
-                <button onClick={saveBadge} disabled={!badgeText.trim() || badgeText.trim() === cur} className="flex-1 py-3 rounded-xl bg-[#4d6a45] disabled:bg-stone-300 text-white font-bold">{cur ? '✏️ 바꾸기' : '🏅 달기'}</button>
+                <button onClick={saveBadge} disabled={!badgeText.trim() || badgeText.trim() === cur} className="flex-1 py-3 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white font-bold">{cur ? '✏️ 바꾸기' : '🏅 달기'}</button>
               </div>
               <button onClick={() => setBadgeEdit(null)} className="mt-2 w-full py-2.5 text-stone-500 font-bold">취소</button>
             </div>

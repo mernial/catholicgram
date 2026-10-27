@@ -4001,7 +4001,7 @@ export default function Home() {
             );
           })()}
 
-          <section className="flex-1 flex flex-col gap-2 bg-[#efe6d6]">
+          <section className="flex-1 flex flex-col gap-2 bg-stone-200">
             {(() => {
               const hasMedia = (p: Post) => !!p.video_url || !!(p.images && p.images.length > 0);
               // 홈은 불러온 범위까지만 (다른 사람 공간에서 불러온 오래된 글이 중간에 끼지 않게)
@@ -4021,12 +4021,12 @@ export default function Home() {
               const inlineBanner = slot >= 0 && feedBanners.length > 0 ? feedBanners[slot % feedBanners.length] : null;
               return (
                 <Fragment key={post.id}>
-                <article id={`post-${post.id}`} className={`bg-gradient-to-b from-[#fdfaf5] to-[#f7f0e4] flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_#e6d9c3] scroll-mt-[calc(4rem+env(safe-area-inset-top))] transition-shadow duration-700 ${highlightPostId === post.id ? 'ring-4 ring-inset ring-amber-300' : ''}`}>
+                <article id={`post-${post.id}`} className={`bg-gradient-to-b from-white to-stone-100 flex flex-col pb-4 sm:pb-5 shadow-[0_1px_0_rgb(var(--stone-300))] scroll-mt-[calc(4rem+env(safe-area-inset-top))] transition-shadow duration-700 ${highlightPostId === post.id ? 'ring-4 ring-inset ring-amber-300' : ''}`}>
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
                     <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="shrink-0" aria-label={`${post.author_name}님 프로필`}>
                       {post.avatar_url
-                        ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-[#e6d9c3]" />
+                        ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-300" />
                         : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
@@ -4180,12 +4180,13 @@ export default function Home() {
             {/* 버튼: 두 칸씩 나란히 — 회색 단추(프로필 편집·메시지·내 댓글·설정), 테두리 단추(다른 계정으로 로그인·로그아웃) */}
             {(() => {
               const btn = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-stone-100 text-stone-900 hover:bg-stone-200 transition-colors inline-flex items-center justify-center gap-1.5';
+              const btnPrimary = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-blue-500 text-white hover:bg-blue-600 transition-colors inline-flex items-center justify-center gap-1.5'; // 화면 색의 주요 색
               const ico = 'w-[1.1em] h-[1.1em] shrink-0';
               const sub = 'min-h-[2.25rem] px-2 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50 inline-flex items-center justify-center gap-1.5 leading-tight';
               return viewingUserId === user?.id ? (
                 <>
                   <div className="mt-3 grid grid-cols-2 gap-1.5">
-                    <button onClick={openProfileEdit} className={btn}><Icon name="pencil" className={ico} />프로필 편집</button>
+                    <button onClick={openProfileEdit} className={btnPrimary}><Icon name="pencil" className={ico} />프로필 편집</button>
                     <button onClick={() => goToTab('messages')} className={btn}>
                       <Icon name="send" className={ico} />메시지
                       {messageBadgeCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>}
@@ -4372,7 +4373,7 @@ export default function Home() {
         </BottomSheet>
       )}
       {showAnon && (
-        <BottomSheet label="익명 고민상담" onClose={() => setShowAnon(false)} tone="bg-[#fbfaf7]">
+        <BottomSheet label="익명 고민상담" onClose={() => setShowAnon(false)} tone="bg-white">
         <AnonBoard key={anonKey} user={user} isAdmin={isAdmin} profileReady={!needsProfileSetup} onRequireLogin={() => user ? setSetupDismissed(false) : setShowAuthModal(true)} onReport={setReportTarget} focusPostId={anonFocusId} focusReplyId={anonFocusReply} onFocused={() => { setAnonFocusId(null); setAnonFocusReply(null); }} onReplied={id => sendPush('anon_reply', id)} onOpenProfile={id => openProfileCard({ id })} />
         </BottomSheet>
       )}
@@ -4471,8 +4472,8 @@ export default function Home() {
           ) : (
           <div className="flex-1 overflow-y-auto divide-y divide-stone-100" onScroll={() => { if (swipedRow) setSwipedRow(null); }}>
             {/* 모두의 사랑방: 모든 교우가 함께하는 실시간 대화방 (단체 메시지 칸 맨 위) */}
-            {messagesView === 'group' && <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-[#f3ead8] to-[#faf6ee] hover:brightness-[0.98] text-left">
-              <span className="w-12 h-12 rounded-full bg-[#4d6a45] text-white text-2xl flex items-center justify-center shrink-0">💬</span>
+            {messagesView === 'group' && <button onClick={() => { if (!requireProfile()) return; setShowLounge(true); }} className="w-full p-4 flex items-center gap-3 bg-gradient-to-r from-amber-50 to-stone-50 hover:brightness-[0.98] text-left">
+              <span className="w-12 h-12 rounded-full bg-blue-600 text-white text-2xl flex items-center justify-center shrink-0">💬</span>
               <span className="flex-1 min-w-0">
                 <span className="block font-bold text-stone-900 text-[0.9375rem]">모두의 사랑방</span>
                 <span className="block text-xs text-stone-600 mt-0.5">
@@ -4768,11 +4769,11 @@ export default function Home() {
         const blocked = blockedIds.has(u.id);
         return (
           <div className="fixed inset-0 bg-black/70 z-[93] flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setActionModalUser(null)}>
-            <div className="relative bg-[#fdfaf5] w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label={`${u.baptismal_name || '교우'}님 프로필`}>
+            <div className="relative bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label={`${u.baptismal_name || '교우'}님 프로필`}>
               <button onClick={() => setActionModalUser(null)} className="absolute right-2 top-2 w-11 h-11 flex items-center justify-center text-stone-500 text-3xl leading-none" aria-label="닫기">×</button>
               <div className="px-6 pt-8 pb-5 flex flex-col items-center text-center">
                 {u.avatar_url
-                  ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-[#e6d9c3]" />
+                  ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-stone-300" />
                   : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{initial(u.baptismal_name, '교')}</span>}
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
@@ -4780,12 +4781,12 @@ export default function Home() {
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
-                <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-[#4d6a45] text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
+                <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
                   🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기
                 </button>
                 {!blocked && (
                   <div className={`mt-2.5 w-full grid gap-2 ${chattingWith ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                    <button onClick={() => toggleFollow(u.id, actionUserFollowStatus)} className={`py-3 rounded-2xl text-[0.9375rem] font-bold ${actionUserFollowStatus === 'none' ? 'bg-white border-2 border-[#4d6a45] text-[#4d6a45]' : 'bg-white border border-stone-300 text-stone-700'}`}>
+                    <button onClick={() => toggleFollow(u.id, actionUserFollowStatus)} className={`py-3 rounded-2xl text-[0.9375rem] font-bold ${actionUserFollowStatus === 'none' ? 'bg-white border-2 border-blue-600 text-blue-600' : 'bg-white border border-stone-300 text-stone-700'}`}>
                       {actionUserFollowStatus === 'none' ? '팔로우' : actionUserFollowStatus === 'pending' ? '팔로우 요청됨' : '팔로잉 ✓'}
                     </button>
                     {!chattingWith && (
@@ -4990,15 +4991,15 @@ export default function Home() {
         };
         return (
           <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
-            <div className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-[#fdfaf5] rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
-              <div className="shrink-0 pt-2.5 pb-3 border-b border-[#eadfcb] relative">
+            <div className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-white rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
+              <div className="shrink-0 pt-2.5 pb-3 border-b border-stone-200 relative">
                 <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
                 <p className="text-center font-bold text-stone-900 mt-2">댓글{(() => { const n = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).length; return n > 0 ? ` ${n}개` : ''; })()}</p>
                 <button onClick={() => setCommentSheetId(null)} className="absolute right-3 top-3 w-10 h-10 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
               </div>
               {/* 스토리 댓글이면: 어떤 스토리인지 (24시간 안이면 바로 다시 보기) */}
               {sheetIsStory && sheetPost && (
-                <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4]">
+                <div className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-stone-200 bg-stone-100">
                   {sheetPost.images?.[0] && <img loading="lazy" src={sheetPost.images[0]} alt="" className="w-11 h-14 rounded-lg object-cover shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 스토리' : `${sheetPost.author_name}님의 스토리`}</p>
@@ -5011,10 +5012,10 @@ export default function Home() {
               )}
               {/* 알림으로 열었으면: 어느 글의 댓글인지 (누르면 창을 닫고 피드의 그 글로) */}
               {!sheetIsStory && sheetShowsPost && sheetPost && (
-                <button onClick={() => { setCommentSheetId(null); focusFeedPost(sheetPost.id); }} className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-[#eadfcb] bg-[#f7f0e4] text-left" aria-label="이 글 보기">
+                <button onClick={() => { setCommentSheetId(null); focusFeedPost(sheetPost.id); }} className="shrink-0 flex items-center gap-3 px-4 py-2.5 border-b border-stone-200 bg-stone-100 text-left" aria-label="이 글 보기">
                   {sheetPost.images?.[0] || sheetPost.video_poster
                     ? <img loading="lazy" src={sheetPost.images?.[0] || sheetPost.video_poster || ''} alt="" className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                    : <span className="w-12 h-12 rounded-lg bg-[#eadfcb] flex items-center justify-center text-xl shrink-0">📝</span>}
+                    : <span className="w-12 h-12 rounded-lg bg-stone-200 flex items-center justify-center text-xl shrink-0">📝</span>}
                   <div className="flex-1 min-w-0">
                     <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 글' : `${sheetPost.author_name}님의 글`} · {timeAgo(sheetPost.created_at)}</p>
                     <p className="text-[0.8125rem] text-stone-600 line-clamp-2 break-words">{sheetPost.content || (sheetPost.video_url ? '영상' : '사진')}</p>
@@ -5117,7 +5118,7 @@ export default function Home() {
                 );
               })()}
               {/* 입력칸 */}
-              <div className="shrink-0 border-t border-[#eadfcb] px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-[#fdfaf5] flex flex-col gap-1.5">
+              <div className="shrink-0 border-t border-stone-200 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white flex flex-col gap-1.5">
                 {replyTargets[sid] && (
                   <div className="flex items-center gap-2 text-[0.8125rem] bg-stone-100 text-stone-600 rounded-lg px-3 py-1.5">
                     <span className="flex-1 min-w-0 truncate"><b className="text-stone-800">{replyTargets[sid]!.name}</b>님에게 답글 남기는 중</span>
@@ -5147,8 +5148,8 @@ export default function Home() {
       {/* 팝업 공지: 앱에 들어오면 한 번 뜸. 닫기 = 다음에 또, 다시 보지 않기 = 이 공지는 그만 */}
       {showPopupNotice && popupNotice && (
         <div className="fixed inset-0 z-[88] bg-black/55 flex items-center justify-center p-5 animate-fade-in" onClick={() => closePopup(popupNotice.id)}>
-          <div className="w-full max-w-sm max-h-[80dvh] bg-[#fdfaf5] rounded-3xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} role="dialog" aria-label="공지">
-            <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 border-b border-[#eadfcb]">
+          <div className="w-full max-w-sm max-h-[80dvh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} role="dialog" aria-label="공지">
+            <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 border-b border-stone-200">
               <IconBadge name="megaphone" tone="gold" />
               <div className="min-w-0">
                 <p className="text-[0.75rem] font-bold text-amber-700">공지</p>
@@ -5158,8 +5159,8 @@ export default function Home() {
             <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
               <p className="text-[1rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{popupNotice.content}</p>
             </div>
-            <div className="flex border-t border-[#eadfcb]">
-              <button onClick={() => hideNotice(popupNotice.id)} className="flex-1 py-4 text-[0.9375rem] font-bold text-stone-500 border-r border-[#eadfcb]">다시 보지 않기</button>
+            <div className="flex border-t border-stone-200">
+              <button onClick={() => hideNotice(popupNotice.id)} className="flex-1 py-4 text-[0.9375rem] font-bold text-stone-500 border-r border-stone-200">다시 보지 않기</button>
               <button onClick={() => closePopup(popupNotice.id)} className="flex-1 py-4 text-[0.9375rem] font-bold text-stone-900">닫기</button>
             </div>
           </div>
@@ -6098,7 +6099,7 @@ export default function Home() {
           {(() => {
             // 인스타그램처럼: 홈 · 영상 · 메시지 · 탐색 · 내 공간 (새 글은 왼쪽 위 +)
             const dark = activeTab === 'reels';
-            const tone = (on: boolean) => on ? (dark ? 'text-white' : 'text-stone-900') : (dark ? 'text-white/55' : 'text-stone-400');
+            const tone = (on: boolean) => on ? (dark ? 'text-white' : 'text-blue-600') : (dark ? 'text-white/55' : 'text-stone-400'); // 지금 화면은 화면 색의 주요 색
             const cls = 'flex-1 py-3 flex flex-col items-center gap-0.5 transition-colors';
             const meOn = activeTab === 'profile' && viewingUserId === user?.id;
             const msgOn = activeTab === 'messages';

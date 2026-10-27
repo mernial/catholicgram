@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { deleteMyAccount, signOutAndClear } from '@/lib/account';
 import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
+import { THEMES, DEFAULT_THEME, getTheme, applyTheme } from '@/lib/theme';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import { IconBadge } from '@/components/Icon';
@@ -42,8 +43,14 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   const [blocked, setBlocked] = useState<BlockedProfile[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [textSize, setTextSize] = useState('100%');
+  const [theme, setTheme] = useState(DEFAULT_THEME);
 
-  useEffect(() => { setTextSize(getTextSize()); }, []);
+  useEffect(() => { setTextSize(getTextSize()); setTheme(getTheme()); }, []);
+
+  const changeTheme = (key: string) => {
+    applyTheme(key);
+    setTheme(key);
+  };
 
   const changeTextSize = (size: string) => {
     applyTextSize(size);
@@ -99,6 +106,30 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
                     {t.label}
                   </button>
                 ))}
+              </div>
+            </div>
+            {/* 화면 색: 다섯 가지 중 고르기 (칸마다 그 색으로 미리 보여 줌, 이 휴대폰에만 저장) */}
+            <div className="p-4 border-b border-stone-100">
+              <p className="text-sm mb-2.5 flex items-center gap-3"><IconBadge name="sparkle" tone="gold" />화면 색</p>
+              <div className="flex flex-col gap-2" role="radiogroup" aria-label="화면 색">
+                {THEMES.map(t => {
+                  const [bg, accent, ink] = t.preview;
+                  const on = theme === t.key;
+                  return (
+                    <button key={t.key} type="button" role="radio" aria-checked={on} onClick={() => changeTheme(t.key)}
+                      className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left border-2 transition-shadow ${on ? 'shadow-md' : 'border-transparent'}`}
+                      style={{ backgroundColor: bg, color: ink, borderColor: on ? accent : 'rgba(0,0,0,0.08)' }}>
+                      <span className="flex -space-x-1.5 shrink-0" aria-hidden="true">
+                        {t.swatches.map(c => <span key={c} className="w-6 h-6 rounded-full" style={{ backgroundColor: c, boxShadow: '0 0 0 1.5px rgba(127,127,127,0.35)' }} />)}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-bold text-[1rem]">{t.name}</span>
+                        <span className="block text-[0.8125rem] opacity-70">{t.desc}</span>
+                      </span>
+                      <span className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[0.875rem] font-bold" style={on ? { backgroundColor: accent, color: bg } : { boxShadow: `inset 0 0 0 2px ${accent}55` }} aria-hidden="true">{on ? '✓' : ''}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
             {onOpenNotices && (
