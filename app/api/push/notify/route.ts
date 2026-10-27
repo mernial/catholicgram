@@ -12,7 +12,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
+type NotifyBody = { type?: 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
+  if (!id || !type || !['group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -53,7 +53,24 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'tester_added') {
+  if (type === 'group_message') {
+    // 단체 채팅방 새 메시지 → 그 방의 다른 교우들에게 (보낸 교우를 차단한 교우는 빼고, 방에 없는 관리자에게는 가지 않음)
+    const { data: msg } = await admin.from('group_chat_messages').select('id, chat_id, user_id, content, kind, created_at').eq('id', id).maybeSingle();
+    if (!msg || msg.user_id !== user.id || msg.kind !== 'text') return Response.json({ error: 'forbidden' }, { status: 403 });
+    if (Date.now() - new Date(msg.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const [{ data: chat }, { data: members }, { data: sender }, { data: blockers }] = await Promise.all([
+      admin.from('group_chats').select('name').eq('id', msg.chat_id).maybeSingle(),
+      admin.from('group_chat_members').select('user_id').eq('chat_id', msg.chat_id),
+      admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle(),
+      admin.from('blocks').select('blocker_id').eq('blocked_id', user.id),
+    ]);
+    const blockedBy = new Set((blockers || []).map(b => b.blocker_id as string));
+    (members || []).filter(m => m.user_id !== user.id && !blockedBy.has(m.user_id)).forEach(m => list.push({
+      recipientId: m.user_id,
+      payload: { title: `👥 ${chat?.name || '단체 채팅방'}`, body: truncate(`${sender?.baptismal_name || '교우'}: ${msg.content}`), url: `/?group=${msg.chat_id}`, tag: `group-${msg.chat_id}` },
+    }));
+    if (list.length === 0) return Response.json({ sent: 0 });
+  } else if (type === 'tester_added') {
     // 관리자가 테스터 신청자를 구글 플레이 테스터 목록에 등록함 → 신청한 분께 참여 방법 안내
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const { data: signup } = await admin.from('tester_signups').select('user_id, status').eq('user_id', id).maybeSingle();
