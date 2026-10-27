@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
@@ -18,6 +18,7 @@ import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@
 import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
+import { useEnterSend } from '@/lib/use-enter-send';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -1347,7 +1348,7 @@ export default function Home() {
   // 답장: 특정 메시지를 골라 그 메시지에 대한 답이라고 표시 / 고치기: 내 메시지 내용 바꾸기 (하루 안에)
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const canEditMessage = (m: Message) => m.sender_id === user?.id && !m.deleted_at && !isMediaOnlyText(m.content) && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
   const startReply = (m: Message) => { setMessageSheet(null); setEditingMessage(null); setReplyTo(m); setTimeout(() => messageInputRef.current?.focus(), 50); };
   const startEditMessage = (m: Message) => { setMessageSheet(null); setReplyTo(null); setEditingMessage(m); setMessageInput(m.content); setTimeout(() => messageInputRef.current?.focus(), 50); };
@@ -1362,9 +1363,10 @@ export default function Home() {
     setFlashMessageId(String(id));
     setTimeout(() => setFlashMessageId(f => (f === String(id) ? null : f)), 1600);
   };
-  // 내가 보낸 메시지 지우기 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
+  // 내가 보낸 메시지를 모두에게서 지우기: 상대방이 아직 읽기 전에만 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
   const deleteMessage = async (msg: Message) => {
-    if (!window.confirm(msg.image_url ? `이 ${isVideoUrl(msg.image_url) ? '동영상' : '사진'}을 삭제할까요?\n상대방 화면에서도 지워져요.` : '이 메시지를 삭제할까요?\n상대방 화면에서도 지워져요.')) return;
+    const what = msg.image_url ? `이 ${isVideoUrl(msg.image_url) ? '동영상' : '사진'}을` : '이 메시지를';
+    if (!window.confirm(`${what} 모두에게서 삭제할까요?\n상대방이 아직 읽지 않아서 상대방 화면에서도 지워져요.`)) return;
     setMessageSheet(null);
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch('/api/messages', {
@@ -1373,6 +1375,12 @@ export default function Home() {
       body: JSON.stringify({ action: 'delete', id: msg.id }),
     }).catch(() => null);
     const json = res ? await res.json().catch(() => ({})) : {};
+    if (res?.status === 409 && json.read) {
+      // 메뉴를 연 사이에 상대방이 읽었으면: 내 화면에서만 지울지 묻는다
+      if (window.confirm('그사이 상대방이 메시지를 읽어서 모두에게서 지울 수 없어요.\n내 화면에서만 지울까요?')) dmHidden.hide(String(msg.id));
+      if (currentChatUser) fetchChatMessages(currentChatUser.id);
+      return;
+    }
     if (!res?.ok) { alert(json.error || '삭제하지 못했어요.'); return; }
     setChatMessages(prev => prev.map(m => m.id === msg.id ? { ...m, content: '', image_url: null, deleted_at: new Date().toISOString() } : m));
     if (currentChatUser) fetchChatMessages(currentChatUser.id);
@@ -1385,10 +1393,10 @@ export default function Home() {
   const [anonFocusId, setAnonFocusId] = useState<string | null>(null); // 알림으로 연 고민글
   const [anonFocusReply, setAnonFocusReply] = useState<string | null>(null); // 그 글의 새 답글
 
-  const sendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !currentChatUser || !messageInput.trim()) return;
-    const newMsg = messageInput.trim();
+  const sendMessage = async (e?: React.FormEvent, typed?: string) => {
+    e?.preventDefault();
+    const newMsg = (typed ?? messageInput).trim();
+    if (!user || !currentChatUser || !newMsg) return;
     // 내 메시지 고치기
     if (editingMessage) {
       const target = editingMessage;
@@ -1438,6 +1446,16 @@ export default function Home() {
     onSent: id => sendPush('message', String(id)),
   });
   const sendingPhoto = dmMedia.sending;
+  // 입력칸 엔터: 휴대폰·태블릿은 줄바꿈(보내기 단추로 전송), 컴퓨터는 보내기 · 글에 맞춰 늘어남 (lib/use-enter-send)
+  const dmLastSend = useRef({ text: '', at: 0 });
+  const dmEnter = useEnterSend(typed => {
+    const now = Date.now();
+    if (typed.trim() === dmLastSend.current.text && now - dmLastSend.current.at < 1000) return; // 엔터 한 번에 두 번 가지 않게
+    dmLastSend.current = { text: typed.trim(), at: now };
+    sendMessage(undefined, typed);
+  }, messageInput);
+  const dmEnterRef = dmEnter.ref;
+  const setDmInputEl = useCallback((el: HTMLTextAreaElement | null) => { messageInputRef.current = el; dmEnterRef(el); }, [dmEnterRef]);
   const dmRequest = activeTab === 'chat' && !!currentChatUser && isRequestThread(currentChatUser.id, chatMessages);
   dmRequestRef.current = dmRequest;
   // 입력 중 표시 (요청을 수락하기 전에는 내가 치는 것도 알리지 않음)
@@ -4589,7 +4607,7 @@ export default function Home() {
                           <div
                             data-bubble
                             {...dmGestures.bind(msg)}
-                            className={`relative px-4 py-2 rounded-2xl text-[1rem] select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
@@ -4661,14 +4679,15 @@ export default function Home() {
               </div>
             </div>
           )}
-          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
+          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
             </label>
-            <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
+            {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
+            <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim()} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </form>}
@@ -4703,9 +4722,9 @@ export default function Home() {
                   ...(canEditMessage(m) ? [{ label: '고치기', run: () => startEditMessage(m) }] : []),
                   { label: dmBookmarks.has(mid) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); dmBookmarks.toggle({ id: mid, text: text || (isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: mine ? '나' : currentChatUser?.baptismal_name || '상대', at: m.created_at }); } },
                   { label: '캡처', run: () => { close(); setCaptureAsk(mid); } },
-                  mine
-                    ? { label: '삭제', run: () => deleteMessage(m), danger: true }
-                    : { label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n상대방 화면에는 그대로 남아요.')) dmHidden.hide(mid); }, danger: true },
+                  // 내 메시지를 상대방이 아직 안 읽었으면 '모두에게서 삭제'도 (읽은 뒤에는 내 화면에서만)
+                  ...(mine && !m.read_at && !m.deleted_at ? [{ label: '모두에게서 삭제', run: () => deleteMessage(m), danger: true }] : []),
+                  { label: '내 화면에서만 삭제', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n상대방 화면에는 그대로 남아요.')) dmHidden.hide(mid); }, danger: true },
                 ]} />
             );
           })()}

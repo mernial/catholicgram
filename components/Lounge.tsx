@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
@@ -11,6 +11,7 @@ import { extractMentions } from '@/lib/mentions';
 import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
+import { useEnterSend } from '@/lib/use-enter-send';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
@@ -124,31 +125,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [showWho, setShowWho] = useState(false);                     // 관리자: 지금 들어와 있는 교우
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  // 엔터로 보내기: 컴퓨터(마우스)와 아이패드처럼 화면이 큰 기기. 휴대폰은 엔터가 줄바꿈 (보내기 단추로 전송)
-  const [enterSends, setEnterSends] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(pointer: fine), (min-width: 700px)');
-    const on = () => setEnterSends(mq.matches);
-    on(); mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
-  }, []);
-  // 한글 조합 중에 엔터를 누르면 keydown 을 건너뛰고 줄바꿈이 들어오려 함 → 그 줄바꿈 입력을 막고 보낸다
-  const shiftRef = useRef(false);
+  // 엔터: 휴대폰·태블릿은 줄바꿈(보내기 단추로 전송), 컴퓨터는 보내기 (lib/use-enter-send, 1:1 메시지·단체방과 같음)
   const composingRef = useRef(false); // 한글 자음·모음을 조합하는 중인지
   const sendRef = useRef<(typed: string) => void>(() => {});
-  useEffect(() => {
-    const ta = inputRef.current;
-    if (!ta || !enterSends) return;
-    const onBeforeInput = (ev: InputEvent) => {
-      if ((ev.inputType === 'insertLineBreak' || ev.inputType === 'insertParagraph') && !shiftRef.current) {
-        ev.preventDefault();
-        const typed = ta.value;
-        setTimeout(() => sendRef.current(typed), 0);
-      }
-    };
-    ta.addEventListener('beforeinput', onBeforeInput);
-    return () => ta.removeEventListener('beforeinput', onBeforeInput);
-  }, [enterSends, trash === null]);
+  const enter = useEnterSend(typed => sendRef.current(typed), input);
+  const enterRef = enter.ref;
+  const setInputEl = useCallback((el: HTMLTextAreaElement | null) => { inputRef.current = el; enterRef(el); }, [enterRef]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [notice, setNotice] = useState('');
   const atBottomRef = useRef(true);
@@ -818,21 +800,13 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || (frozen && !isAdmin) || !!error} onChange={media.onPick} />
           </label>
           <textarea
-            ref={inputRef}
+            ref={setInputEl}
             value={input}
             onChange={e => { setInput(e.target.value.slice(0, 500)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
-            enterKeyHint={enterSends ? 'send' : 'enter'}
-            onKeyDown={e => {
-              // 엔터 = 보내기, 쉬프트+엔터 = 줄바꿈 (컴퓨터·아이패드 등 큰 화면). 한글 조합 중인 엔터는 글자 완성이므로 건너뜀
-              if (e.key === 'Enter') shiftRef.current = e.shiftKey;
-              if (e.key !== 'Enter' || e.shiftKey || !enterSends) return;
-              if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-              e.preventDefault();
-              const typed = e.currentTarget.value; // 방금 완성된 글자까지 포함 (화면 갱신 전에 읽음)
-              setTimeout(() => sendRef.current(typed), 0);
-            }}
+            enterKeyHint={enter.enterKeyHint}
+            onKeyDown={enter.onKeyDown}
             rows={1}
             disabled={frozen && !isAdmin}
             placeholder={frozen && !isAdmin ? '❄️ 잠시 멈춘 대화예요' : '사랑방에 한마디...'}
