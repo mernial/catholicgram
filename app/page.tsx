@@ -200,7 +200,8 @@ interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; c
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
-interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; }
+// anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
+interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; deleted_at?: string | null; }
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
@@ -1919,6 +1920,28 @@ export default function Home() {
       const prev = merged.get(c.id);
       merged.set(c.id, { ...(prev || { ...c, post_id: c.post_id || '', post_content: postContent[c.post_id || ''] || '' }), mention: 'comment' });
     });
+    // 익명 고민글 답글 (휴대폰 알림은 오는데 알림 목록에는 없던 것)
+    type AnonRow = { id: string; post_id: string; content: string; created_at: string };
+    const [{ data: myAnon }, { data: myAnonReplies }] = await Promise.all([
+      supabase.from('anon_posts_feed').select('id, content').eq('is_mine', true).order('created_at', { ascending: false }).limit(50),
+      supabase.from('anon_replies_feed').select('post_id').eq('is_mine', true).order('created_at', { ascending: false }).limit(100),
+    ]);
+    const anonContent: Record<string, string> = Object.fromEntries((myAnon || []).map(p => [p.id, p.content || '']));
+    const repliedIds = Array.from(new Set((myAnonReplies || []).map(r => r.post_id as string))).filter(id => !(id in anonContent));
+    const [{ data: onMyAnon }, { data: authorReplies }, { data: repliedPosts }] = await Promise.all([
+      Object.keys(anonContent).length > 0
+        ? supabase.from('anon_replies_feed').select('id, post_id, content, created_at').in('post_id', Object.keys(anonContent)).eq('is_mine', false)
+          .order('created_at', { ascending: false }).limit(30)
+        : Promise.resolve({ data: [] as AnonRow[] }),
+      repliedIds.length > 0
+        ? supabase.from('anon_replies_feed').select('id, post_id, content, created_at').in('post_id', repliedIds).eq('is_post_author', true)
+          .order('created_at', { ascending: false }).limit(30)
+        : Promise.resolve({ data: [] as AnonRow[] }),
+      repliedIds.length > 0 ? supabase.from('anon_posts_feed').select('id, content').in('id', repliedIds) : Promise.resolve({ data: [] as { id: string; content: string }[] }),
+    ]);
+    (repliedPosts || []).forEach(p => { anonContent[p.id] = p.content || ''; });
+    ((onMyAnon || []) as AnonRow[]).forEach(r => merged.set(`a:${r.id}`, { id: `a:${r.id}`, post_id: r.post_id, content: r.content, author_name: '익명 교우', created_at: r.created_at, post_content: anonContent[r.post_id] || '', anon: 'mine' }));
+    ((authorReplies || []) as AnonRow[]).forEach(r => merged.set(`a:${r.id}`, { id: `a:${r.id}`, post_id: r.post_id, content: r.content, author_name: '고민글 작성자', created_at: r.created_at, post_content: anonContent[r.post_id] || '', anon: 'author' }));
     setNotifications(Array.from(merged.values()).sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 40));
   };
 
@@ -2013,7 +2036,7 @@ export default function Home() {
   // 알림은 3일만 보관: 그보다 오래된 댓글·답글·언급·팔로우 알림은 목록과 숫자에서 뺀다 (안 읽은 메시지는 그대로)
   const isAlertExpired = (at?: string) => !!at && Date.now() - new Date(at).getTime() > ALERT_KEEP_MS;
   const unreadCommentCount = !user ? 0 : notifications.filter(n =>
-    !isAlertExpired(n.created_at) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
+    !isAlertExpired(n.created_at) && !hiddenAlerts.has(`c:${n.id}`) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
@@ -2033,6 +2056,9 @@ export default function Home() {
       return next;
     });
   };
+  // 확인한 알림은 바로 지운다: 그 글(고민글)의 알림을 모두 목록에서 뺀다
+  const hideAlertsForPost = (postId: string, anon: boolean) =>
+    notifications.filter(n => n.post_id === postId && !!n.anon === anon).forEach(n => hideAlert(`c:${n.id}`));
   const clearSeenAlerts = () => {
     if (!user) return;
     const now = new Date().toISOString();
@@ -2179,7 +2205,10 @@ export default function Home() {
   // 알림 누르기: 글에서 언급 → 피드의 그 글로, 댓글·답글·댓글 언급 → 그 글로 가서 댓글 창의 그 댓글
   const openNotification = (n: CommentNotification) => {
     setShowNotifications(false);
-    if (n.mention === 'post') openPostById(n.post_id);
+    hideAlert(`c:${n.id}`);
+    hideAlertsForPost(n.post_id, !!n.anon);
+    if (n.anon) { setAnonFocusId(n.post_id); setAnonFocusReply(n.id.slice(2)); goToTab('anon'); }
+    else if (n.mention === 'post') openPostById(n.post_id);
     else openPostFromAlert(n.post_id, n.id);
   };
 
@@ -2360,6 +2389,9 @@ export default function Home() {
     if (link.comment) hideAlert(`c:${link.comment}`);
     if (link.view) hideAlert(`c:mp:${link.view}`);
     if (link.profile) hideAlert(`fu:${link.profile}`);
+    if (link.reply) hideAlert(`c:a:${link.reply}`);
+    if (link.post) hideAlertsForPost(link.post, false);
+    if (link.anon) hideAlertsForPost(link.anon, true);
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
       : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
@@ -4811,7 +4843,7 @@ export default function Home() {
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
-                      {n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}<b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}
+                      {n.anon ? <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /> : n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}{n.anon === 'mine' ? <><b>익명 교우</b>가 회원님의 고민글에 답글을 남겼어요</> : n.anon === 'author' ? <><b>고민글 작성자</b>가 답글을 남겼어요</> : <><b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}</>}
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
