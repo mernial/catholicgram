@@ -42,7 +42,7 @@ import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
-import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
+import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
 import { FEED_BANNER_EVERY, type SponsorBannerData } from '@/lib/sponsor';
@@ -251,7 +251,7 @@ async function getCroppedImg(imageSrc: string, pixelCrop: any): Promise<Blob> {
   });
 }
 
-const MAX_PHOTOS = 5; // 한 글에 올릴 수 있는 사진 수
+const MAX_PHOTOS = 10; // 한 글에 올릴 수 있는 사진 수 (서버 app/api/posts 도 같게)
 
 // 글 공개 범위
 type Visibility = 'public' | 'followers' | 'private';
@@ -1263,7 +1263,7 @@ export default function Home() {
   const [replyTo, setReplyTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
-  const canEditMessage = (m: Message) => m.sender_id === user?.id && !m.deleted_at && m.content !== PHOTO_ONLY_TEXT && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
+  const canEditMessage = (m: Message) => m.sender_id === user?.id && !m.deleted_at && !isMediaOnlyText(m.content) && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
   const startReply = (m: Message) => { setMessageSheet(null); setEditingMessage(null); setReplyTo(m); setTimeout(() => messageInputRef.current?.focus(), 50); };
   const startEditMessage = (m: Message) => { setMessageSheet(null); setReplyTo(null); setEditingMessage(m); setMessageInput(m.content); setTimeout(() => messageInputRef.current?.focus(), 50); };
   const cancelEditMessage = () => { setEditingMessage(null); setMessageInput(''); };
@@ -1279,7 +1279,7 @@ export default function Home() {
   };
   // 내가 보낸 메시지 지우기 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
   const deleteMessage = async (msg: Message) => {
-    if (!window.confirm(msg.image_url ? '이 사진을 삭제할까요?\n상대방 화면에서도 지워져요.' : '이 메시지를 삭제할까요?\n상대방 화면에서도 지워져요.')) return;
+    if (!window.confirm(msg.image_url ? `이 ${isVideoUrl(msg.image_url) ? '동영상' : '사진'}을 삭제할까요?\n상대방 화면에서도 지워져요.` : '이 메시지를 삭제할까요?\n상대방 화면에서도 지워져요.')) return;
     setMessageSheet(null);
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch('/api/messages', {
@@ -1337,32 +1337,58 @@ export default function Home() {
     if (sent) sendPush('message', sent.id);
   };
 
-  // 메시지로 사진 보내기 (입력칸에 쓴 글이 있으면 함께)
-  const [sendingPhoto, setSendingPhoto] = useState(false);
-  const sendPhotoMessage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  // 메시지로 사진·동영상 보내기: 여러 개를 한꺼번에 골라도 하나씩 차례로 보낸다 (개수 제한 없음).
+  // 입력칸에 쓴 글이 있으면 첫 번째와 함께. 상대에게 가는 휴대폰 알림은 한 번만.
+  const [mediaSending, setMediaSending] = useState<{ done: number; total: number; note?: string } | null>(null);
+  const sendingPhoto = !!mediaSending;
+  // 영상: 12MB 넘으면 720p로 줄이고(영상 길이만큼 걸림, 모든 휴대폰에서 재생되는 mp4), 45MB 넘으면 못 보냄
+  const uploadChatVideo = async (file: File, onShrink: (ratio: number) => void) => {
+    let video: Blob = file;
+    if (file.size > SHRINK_OVER_MB * 1024 * 1024) {
+      const shrunk = await shrinkVideo(file, onShrink).catch(() => null);
+      if (shrunk && shrunk.size < file.size) video = shrunk;
+    }
+    if (video.size > MAX_VIDEO_MB * 1024 * 1024) throw new Error('too-big');
+    const ext = video.type.includes('webm') ? 'webm' : video.type.includes('quicktime') ? 'mov' : 'mp4';
+    const rand = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => b.toString(16).padStart(2, '0')).join('');
+    return uploadMedia(video, { kind: 'videos', ext, contentType: video.type || 'video/mp4', bucket: 'post-videos', path: `${user!.id}/dm_${Date.now()}_${rand}.${ext}` });
+  };
+  const sendMediaMessages = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isVideoFile = (f: File) => f.type.startsWith('video/') || /\.(mov|mp4|m4v|webm)$/i.test(f.name);
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/') || isVideoFile(f) || /\.(heic|heif|jpe?g|png|webp|gif)$/i.test(f.name));
     e.target.value = '';
-    if (!file || !user || !currentChatUser) return;
-    setSendingPhoto(true);
-    try {
-      const url = await uploadPhoto(file, 'dm');
-      const text = messageInput.trim();
-      const { data: sent, error } = await supabase.from('messages')
-        .insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: text || PHOTO_ONLY_TEXT, image_url: url })
-        .select('id').single();
-      if (error) {
-        alert(error.code === '42703' || error.code === 'PGRST204'
-          ? '사진 보내기를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)'
-          : `사진을 보내지 못했습니다.\n(${error.message})`);
-        return;
+    if (files.length === 0 || !user || !currentChatUser || mediaSending) return;
+    const to = currentChatUser.id;
+    let text = messageInput.trim();
+    let firstId: string | number | null = null;
+    const failed: { name: string; why: string }[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const video = isVideoFile(file);
+      setMediaSending({ done: i, total: files.length, note: video ? '동영상 올리는 중' : undefined });
+      try {
+        const url = video
+          ? await uploadChatVideo(file, r => setMediaSending({ done: i, total: files.length, note: `동영상 줄이는 중 ${Math.round(r * 100)}%` }))
+          : await uploadPhoto(file, 'dm');
+        const { data: sent, error } = await supabase.from('messages')
+          .insert({ sender_id: user.id, receiver_id: to, content: text || (video ? VIDEO_ONLY_TEXT : PHOTO_ONLY_TEXT), image_url: url })
+          .select('id').single();
+        if (error) {
+          if (error.code === '42703' || error.code === 'PGRST204') { alert('사진 보내기를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)'); break; }
+          throw new Error(error.message);
+        }
+        if (text) { text = ''; setMessageInput(''); } // 글은 첫 번째와 함께 한 번만
+        if (firstId === null && sent) firstId = sent.id;
+        fetchChatMessages(to); // 보내는 대로 하나씩 보이게
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '';
+        failed.push({ name: video ? '동영상' : '사진', why: msg === 'too-big' ? `너무 커요 (${MAX_VIDEO_MB}MB까지)` : /bucket|not found/i.test(msg) ? '영상 저장소 준비 중' : '올리지 못함' });
       }
-      if (text) setMessageInput('');
-      fetchChatMessages(currentChatUser.id);
-      if (sent) sendPush('message', sent.id);
-    } catch {
-      alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
-    } finally {
-      setSendingPhoto(false);
+    }
+    setMediaSending(null);
+    if (firstId !== null) sendPush('message', String(firstId));
+    if (failed.length) {
+      alert(`${files.length}개 중 ${failed.length}개를 보내지 못했어요.\n${failed.slice(0, 5).map(f => `· ${f.name}: ${f.why}`).join('\n')}${failed.length > 5 ? '\n…' : ''}\n잠시 후 다시 보내 주세요.`);
     }
   };
 
@@ -1865,7 +1891,7 @@ export default function Home() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
-    // 사진은 최대 5장: 여러 번 나눠 골라도 이어서 추가됨
+    // 사진은 최대 MAX_PHOTOS(10)장: 여러 번 나눠 골라도 이어서 추가됨
     const picked = Array.from(e.target.files);
     e.target.value = '';
     if (picked.length === 0) return;
@@ -4325,10 +4351,11 @@ export default function Home() {
                           {original && (
                             <div className="mt-1.5 pt-1.5 border-t border-dashed border-stone-300">
                               <p className="text-[0.75rem] font-bold text-red-500">원래 내용 · 관리자만 보여요</p>
-                              {original.image_url && (
-                                <img loading="lazy" src={original.image_url} alt="지운 사진" onClick={() => zoomPhoto(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
+                              {original.image_url && (isVideoUrl(original.image_url)
+                                ? <video src={`${original.image_url}#t=0.1`} controls playsInline preload="metadata" className="mt-1 w-[min(55vw,14rem)] max-h-64 rounded-xl bg-black opacity-90" />
+                                : <img loading="lazy" src={original.image_url} alt="지운 사진" onClick={() => zoomPhoto(original.image_url)} className="mt-1 max-w-[min(55vw,14rem)] max-h-64 rounded-xl object-cover cursor-zoom-in opacity-90" />
                               )}
-                              {original.content && !(original.image_url && original.content === PHOTO_ONLY_TEXT) && (
+                              {original.content && !(original.image_url && isMediaOnlyText(original.content)) && (
                                 <p className="mt-0.5 text-stone-600 whitespace-pre-wrap break-words">{original.content}</p>
                               )}
                             </div>
@@ -4355,18 +4382,22 @@ export default function Home() {
                               <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
                                 className={`block w-full text-left -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${isMe ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
                                 <span className="block font-bold">↩️ {quoted ? (quoted.sender_id === user?.id ? '나' : currentChatUser?.baptismal_name || '상대') : '이전 메시지'}에게 답장</span>
-                                <span className="line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.image_url && quoted.content === PHOTO_ONLY_TEXT ? '📷 사진' : quoted.content}</span>
+                                <span className="line-clamp-1">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.content}</span>
                               </button>
                             )}
-                            {msg.image_url && (
-                              <img loading="lazy"
-                                src={msg.image_url}
-                                alt="보낸 사진"
-                                onClick={e => { if (isMe) return; e.stopPropagation(); zoomPhoto(msg.image_url); }}
-                                className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
-                              />
+                            {msg.image_url && (isVideoUrl(msg.image_url)
+                              // 동영상: 누르면 재생 (말풍선 메뉴는 꾹 누르기로)
+                              ? <video src={`${msg.image_url}#t=0.1`} controls playsInline preload="metadata" aria-label="보낸 동영상"
+                                  onClick={e => e.stopPropagation()}
+                                  className="block -mx-2 -mt-0.5 mb-1 w-[min(60vw,16rem)] max-h-80 rounded-xl bg-black" />
+                              : <img loading="lazy"
+                                  src={msg.image_url}
+                                  alt="보낸 사진"
+                                  onClick={e => { if (isMe) return; e.stopPropagation(); zoomPhoto(msg.image_url); }}
+                                  className="block -mx-2 -mt-0.5 mb-1 max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in"
+                                />
                             )}
-                            {!(msg.image_url && msg.content === PHOTO_ONLY_TEXT) && msg.content}
+                            {!(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
                           {heartPop?.id === String(msg.id) && (
@@ -4396,13 +4427,24 @@ export default function Home() {
             <div ref={messagesEndRef} />
             </div>
           </div>
+          {/* 사진·동영상 보내는 중 (여러 개면 몇 번째인지) */}
+          {mediaSending && (
+            <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-t border-stone-200" role="status" aria-live="polite">
+              <p className="text-[0.8125rem] font-bold text-blue-700">
+                📤 {mediaSending.total > 1 ? `${mediaSending.total}개 중 ${mediaSending.done + 1}번째 보내는 중` : '보내는 중'}{mediaSending.note ? ` · ${mediaSending.note}` : ''}
+              </p>
+              <div className="mt-1 h-1.5 rounded-full bg-stone-100 overflow-hidden">
+                <div className="h-full bg-blue-500 transition-all" style={{ width: `${Math.round((mediaSending.done / mediaSending.total) * 100)}%` }} />
+              </div>
+            </div>
+          )}
           {(replyTo || editingMessage) && (() => {
             const m = (editingMessage || replyTo)!;
             return (
               <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
                 <div className="flex-1 min-w-0 border-l-4 border-blue-400 pl-2.5 py-0.5">
                   <p className="text-[0.8125rem] font-bold text-blue-700">{editingMessage ? '✏️ 메시지 고치는 중' : `↩️ ${m.sender_id === user?.id ? '내 메시지' : `${currentChatUser?.baptismal_name || '상대'}님 메시지`}에 답장`}</p>
-                  <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{m.image_url && m.content === PHOTO_ONLY_TEXT ? '📷 사진' : m.content}</p>
+                  <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{m.content}</p>
                 </div>
                 <button type="button" onClick={() => (editingMessage ? cancelEditMessage() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editingMessage ? '고치기 그만두기' : '답장 그만두기'}>×</button>
               </div>
@@ -4410,9 +4452,9 @@ export default function Home() {
           })()}
           <form onSubmit={sendMessage} className={`shrink-0 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] bg-white flex gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
-            <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진 보내기">
+            <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
-              <input type="file" accept="image/*" className="hidden" disabled={sendingPhoto} onChange={sendPhotoMessage} />
+              <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={sendMediaMessages} />
             </label>
             <input ref={messageInputRef} type="text" autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint="send" aria-label="메시지 입력" value={messageInput} onChange={(e) => setMessageInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && e.nativeEvent.isComposing) e.preventDefault(); }} onFocus={() => [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms))} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 bg-stone-100 border-none rounded-full px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" disabled={!messageInput.trim()} className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
@@ -4431,7 +4473,7 @@ export default function Home() {
                 actions={[
                   { label: '↩️ 답장하기', run: () => startReply(m) },
                   ...(canEditMessage(m) ? [{ label: '✏️ 고치기 (오타 수정)', run: () => startEditMessage(m) }] : []),
-                  ...(m.image_url ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
+                  ...(m.image_url && !isVideoUrl(m.image_url) ? [{ label: '🔍 사진 크게 보기', run: () => { close(); zoomPhoto(m.image_url); } }] : []),
                   ...(mine ? [{ label: '🗑 삭제', run: () => deleteMessage(m), danger: true }] : []),
                 ]} />
             );
