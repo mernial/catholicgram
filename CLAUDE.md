@@ -18,3 +18,15 @@
 - #202 알림 3일 보관(`ALERT_KEEP_MS`, 안 읽은 메시지는 제외) · 익명 고민글 답글 알림을 알림창에 표시(id `a:답글id`) · 알림을 눌러 확인하면 그 글의 알림을 바로 지움 · 익명 답글을 펼치면 답글 위치로 스크롤
   - 건의함: 루비로사(@rubyrosa) 건의 2건(익명 답글 스크롤, 알림 기록/자동 삭제)을 반영. 건의함 답변은 아직 안 보냄
 - #203 하단 메시지·내 공간 아이콘을 그 화면에서 다시 누르면 맨 위로 올라가며 새로고침(홈과 같은 동작)
+
+## 최근 변경 (2026-10-26~27, 클라우드 세션 `claude/catholic-social-network-byyih8`)
+- #196 고민상담 글쓰기: 칸 안에서 끌면 '당겨서 새로고침'이 가로채 글이 지워지던 문제 → 입력 중·입력칸·안쪽 스크롤에서는 새로고침 안 함(`app/page.tsx` pull-to-refresh `typing`), 글 칸이 글에 맞춰 늘어남, 쓰던 글 유지(`drafts`), `colorScheme: 'only light'`
+- #197 글 고치기·건의하기·공지 쓰기: 키보드가 올라오면 글 칸이 한 줄로 눌리던 문제 → textarea `shrink-0`
+- #198·#199 테스터 안내: 'App not available'일 때 할 일 안내, 관리자 화면에 '게시됨 확인' 단계와 '등록한 N명에게 설치 안내 다시 보내기'
+- #200 아동 안전 표준 페이지 `/child-safety` (Play 제출 전 검사 '불완전한 아동 안전 표준 선언' 해결용, 이용약관에서 링크)
+
+## Android 앱 (Google Play) 진행 상황
+- 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
+- 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
+- 검토가 끝나면: 앱 관리자 → 테스터 신청에서 ① '등록한 N명에게 설치 안내 다시 보내기' 먼저 → ② 새 신청자는 복사·Play 목록에 붙여넣기 후 '등록함으로 표시' (순서를 지키면 알림이 두 번 가지 않음)
+- 남은 일: Play Console 앱 무결성의 **앱 서명 키 SHA-256**을 받아 `app/.well-known/assetlinks.json/route.ts`(기본 패키지가 아직 `com.catholicgram.app`)를 `com.catholicgram.android` + 지문으로 고치기 → 앱 위 주소창이 사라짐. 비공개 테스트 12명 이상 14일 뒤 프로덕션 신청
