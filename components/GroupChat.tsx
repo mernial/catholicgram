@@ -457,9 +457,10 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
-                              className={`block w-full text-left not-italic -mx-1 mb-1 px-2 py-1 rounded-lg border-l-4 text-[0.8125rem] leading-snug ${mine ? 'bg-white/15 border-white/70 text-white/90' : 'bg-stone-100 border-stone-400 text-stone-600'}`}>
-                              <span className="block font-bold">↩️ {quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장</span>
-                              <span className="line-clamp-1">{quoted ? preview(quoted) : '이전 대화의 메시지'}</span>
+                              aria-label={`${quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장 · 눌러서 원래 메시지 보기`}
+                              className={`flex max-w-full items-center gap-1 text-left not-italic mb-0.5 text-[0.8125rem] leading-snug ${mine ? 'text-white/70' : 'text-stone-400'}`}>
+                              <span className="min-w-0 truncate">{quoted ? preview(quoted) : '이전 대화의 메시지'}</span>
+                              <span aria-hidden="true" className="shrink-0">↵</span>
                             </button>
                           )}
                           {blocked ? '차단한 교우의 메시지예요' : m.content}
