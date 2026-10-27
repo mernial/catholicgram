@@ -57,6 +57,7 @@
 - 1:1 메시지 삭제: 내 메시지를 상대가 아직 안 읽었으면(`read_at` 없음) 꾹 누르기 메뉴에 '모두에게서 삭제', 늘 '내 화면에서만 삭제'(`dmHidden`). 서버(`app/api/messages`)도 읽은 메시지는 409로 거절, 그사이 읽혔으면 '내 화면에서만 지울까요?'
 - 채팅 입력칸 엔터(`lib/use-enter-send`, 1:1·단체방·사랑방 공통): 휴대폰·태블릿(화면 자판)은 엔터 = 줄바꿈·보내기 단추로 전송, 컴퓨터(`(hover: hover) and (pointer: fine)`)만 엔터 = 보내기·쉬프트+엔터 = 줄바꿈. 입력칸이 글에 맞춰 늘어남(최대 `max-h-32`). 1:1 입력칸은 `<input>` → `<textarea>`, 말풍선 `whitespace-pre-wrap`. 예전엔 아이패드처럼 큰 화면(700px 이상)도 엔터 = 보내기였음
 - 채팅 이모티콘 캐릭터 넷 × 24개(`lib/stickers.ts`, 그림 `public/stickers/{sheep,cloud,bell,candle}/01~24.webp` — 운영자가 준 그림을 잘라 배경 투명 256px): 아멘이(양)·몽글이(구름)·딩동이(종)·루(초). 1:1·단체방·사랑방 입력칸 옆 😊 → 아래 이모티콘 칸(`components/StickerPanel`, 캐릭터 탭 네 칸, 마지막 탭 `localStorage stickerPack`), 고르면 입력칸 위에 미리 보기·'보내기'(같은 것을 한 번 더 눌러도 보냄), 쓰던 글은 그대로. 글을 치면 입력칸 위에 '추천' 줄(`suggestStickers`: 이모티콘 이름마다 떠올릴 말 `KEYWORDS`, 띄어쓰기 없이 비교, 예: '기도하러 성당가는중이야' → 곧 도착!·기도할게요·미사 때 만나요, × 로 숨김). 메시지 글은 `[아멘이] 안녕!`(예전 앱·알림·목록에서도 읽힘, 처음 보낸 `[양 이모티콘] …`도 아멘이로 읽음)이고 이 글과 똑같으면 말풍선 대신 그림(`parseSticker`/`StickerImage`). 이모티콘은 복사·고치기 없음. SQL 필요 없음
+- 게시글 수정 화면을 운영자 시안대로: 위 × · 가운데 '게시글 수정' · 오른쪽 '저장' 단추 / 작성자 / '사진 N장'·'⊕ 사진 추가' / 사진 줄(`components/PhotoStrip`: 누르면 고름(테두리), 길게 눌러 옆으로 끌면 순서 바꿈) / 고른 사진의 자르기·가리기·삭제('가리기'는 `PhotoEditor startStep='cover'`로 바로 가리기 단계) / '본문' 칸(아래 이모티콘·#해시태그) / '추가 설정' 칸(교우 태그 N명·음악·공개 범위·영상 위 글자)
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음

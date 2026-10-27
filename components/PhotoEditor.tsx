@@ -37,10 +37,11 @@ const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, rejec
   img.src = src;
 });
 
-export default function PhotoEditor({ file, onDone, onCancel }: {
+export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop' }: {
   file: File;
   onDone: (edited: File) => void;
   onCancel: () => void;
+  startStep?: 'crop' | 'cover'; // 'cover': 자르지 않고 바로 ② 가리기 (게시글 수정의 '가리기')
 }) {
   const srcUrl = useMemo(() => URL.createObjectURL(file), [file]);
   useEffect(() => () => URL.revokeObjectURL(srcUrl), [srcUrl]);
@@ -73,20 +74,30 @@ export default function PhotoEditor({ file, onDone, onCancel }: {
   const update = (id: string, patch: Partial<Cover>) => setCovers(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
 
   // 자른 부분을 캔버스로 (긴 쪽 2048px 이하)
-  const goCover = async () => {
-    if (!area) return;
+  const goCover = async (whole?: Area) => {
+    const part = whole || area;
+    if (!part) return;
     const img = await loadImage(srcUrl);
-    const scale = Math.min(1, MAX_OUT / Math.max(area.width, area.height));
+    const scale = Math.min(1, MAX_OUT / Math.max(part.width, part.height));
     const canvas = document.createElement('canvas');
-    canvas.width = Math.max(1, Math.round(area.width * scale));
-    canvas.height = Math.max(1, Math.round(area.height * scale));
+    canvas.width = Math.max(1, Math.round(part.width * scale));
+    canvas.height = Math.max(1, Math.round(part.height * scale));
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(img, area.x, area.y, area.width, area.height, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, part.x, part.y, part.width, part.height, 0, 0, canvas.width, canvas.height);
     setCropped({ url: canvas.toDataURL('image/jpeg', 0.92), canvas });
     setStep('cover');
   };
+
+  // '가리기'로 열면 사진 전체를 그대로 두고 바로 가리기 단계로
+  const startedCover = useRef(false);
+  useEffect(() => {
+    if (startStep !== 'cover' || !natural || startedCover.current) return;
+    startedCover.current = true;
+    goCover({ x: 0, y: 0, width: natural.w, height: natural.h });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startStep, natural]);
 
   const addCover = (c: Omit<Cover, 'id' | 'x' | 'y' | 'rotation'>) => {
     const id = newId();
@@ -227,7 +238,7 @@ export default function PhotoEditor({ file, onDone, onCancel }: {
         <>
           {head('자르기',
             <button onClick={onCancel} className="px-2 py-2 text-[1rem] text-white/80">취소</button>,
-            <button onClick={goCover} disabled={!area} className="px-2 py-2 text-[1rem] font-bold text-[#fbe7b0] disabled:opacity-40">다음</button>)}
+            <button onClick={() => goCover()} disabled={!area} className="px-2 py-2 text-[1rem] font-bold text-[#fbe7b0] disabled:opacity-40">다음</button>)}
           <div className="relative flex-1 min-h-0">
             <Cropper image={srcUrl} crop={crop} zoom={zoom} aspect={aspect} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, px) => setArea(px)} objectFit="contain" showGrid />
           </div>
