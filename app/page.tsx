@@ -549,11 +549,16 @@ export default function Home() {
       else consumePendingLink(search);
     } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
 
-    const savedTab = storageGet('activeTab') as Tab | null;
+    // 앱을 새로 켜면(휴대폰을 껐다 켬·앱을 완전히 닫았다 엶) 홈에서 시작한다.
+    // 앱이 켜져 있는 동안 새로고침된 경우(새 버전 적용 등)만 보던 화면을 이어서 연다 — sessionStorage 는 앱을 닫으면 지워진다
+    const sameSession = (() => {
+      try { const had = sessionStorage.getItem('appOpened') === '1'; sessionStorage.setItem('appOpened', '1'); return had; } catch { return false; }
+    })();
+    const savedTab = sameSession ? storageGet('activeTab') as Tab | null : null;
     const savedUserId = storageGet('viewingUserId');
     const savedChatUserId = storageGet('chatUserId');
 
-    // 마지막으로 보던 화면으로 시작
+    // 새로고침이면 마지막으로 보던 화면으로 시작
     let startScreen: ScreenState = { screen: true, tab: 'home' };
     if (savedTab === 'chat' || savedTab === 'messages') startScreen = { screen: true, tab: 'messages' };
     // 다른 교우의 공간은 다시 열 때 이어서 열지 않는다 (알림을 눌러 열었는데 엉뚱한 교우 공간이 뜨지 않게) — 내 공간만
