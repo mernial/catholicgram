@@ -457,6 +457,7 @@ export default function Home() {
   const [showEditVideoEditor, setShowEditVideoEditor] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [editVisibility, setEditVisibility] = useState<Visibility>('public');
+  const [editVisOpen, setEditVisOpen] = useState(false); // 게시글 수정: 공개 범위 고르기 펼침
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
   const [musicSegment, setMusicSegment] = useState<MusicSegmentTarget | null>(null); // 고른 곡의 구간만 다시 고치기
   const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
@@ -2089,6 +2090,27 @@ export default function Home() {
     setEditVisibility(post.visibility || 'public');
     setEditMusic(post.music ? { value: post.music, title: post.music_title || '음악' } : null);
     setEditPhotos((post.images || []).map(url => ({ url })));
+    setEditVisOpen(false);
+  };
+  // 게시글 수정: 글 칸이 글에 맞춰 늘어남
+  const editTextRef = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const ta = editTextRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight}px`;
+  }, [editContent, editingPostId, showEditVideoEditor]);
+  // 게시글 ⋯ 메뉴: 아래로 끌어 닫기, 공유하기·링크 복사 (?view= 로 열면 그 글을 크게)
+  const postMenuSheet = useSheetDrag(() => setPostMenuId(null), !!postMenuId);
+  const postLink = (post: Post) => `${window.location.origin}/?view=${post.id}`;
+  const sharePost = async (post: Post) => {
+    const url = postLink(post);
+    if (navigator.share) {
+      try { await navigator.share({ title: `${post.author_name}님의 글 · 가톨릭그램`, text: (post.content || '').slice(0, 80), url }); return; }
+      catch (e) { if ((e as Error)?.name === 'AbortError') return; }
+    }
+    if (await copyText(url)) showToast('링크를 복사했어요. 원하는 곳에 붙여 넣으세요');
+    else window.prompt('이 주소를 복사하세요', url);
   };
   // 글 고치기: 사진 편집 열기 (원래 사진은 내려받아 파일로)
   const openEditPhotoEditor = async (idx: number) => {
@@ -5152,77 +5174,108 @@ export default function Home() {
         </div>
       )}
 
-      {/* 글 고치기: 글·이모티콘, 영상이면 영상 위 글자·이모티콘도 */}
+      {/* 게시글 수정 (인스타그램처럼): 위에 × · 제목 · 완료, 작성자 줄, 사진·영상, 글, 아래에 고를 것들(교우 태그·음악·공개 범위·영상 꾸미기) */}
       {editingPostId && !showEditVideoEditor && (() => {
         const target = posts.find(p => p.id === editingPostId);
         if (!target) return null;
         const thumb = target.video_poster || target.images?.[0];
+        const before = target.images || [];
+        const dirty = editContent !== (target.content || '') || editVisibility !== (target.visibility || 'public')
+          || (editMusic?.value || null) !== (target.music || null)
+          || (!target.video_url && (editPhotos.length !== before.length || editPhotos.some((ph, i) => !!ph.file || ph.url !== before[i])))
+          || (!!target.video_url && JSON.stringify(editOverlays || null) !== JSON.stringify(target.video_overlays || null));
+        const closeEdit = () => { if (dirty && !window.confirm('고친 내용이 저장되지 않아요. 그래도 닫을까요?')) return; setEditingPostId(null); };
+        const canSave = !savingEdit && !!(editContent.trim() || editPhotos.length > 0 || target.video_url);
+        const chevron = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-stone-400 shrink-0" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>;
+        const rowBase = 'w-full min-h-[3.5rem] px-4 py-3 flex items-center gap-4 text-left';
+        const row = `${rowBase} active:bg-stone-50`;
         return (
-          <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center" onClick={() => setEditingPostId(null)}>
-            <section className="bg-white w-full sm:w-[30rem] max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-xl flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between">
-                <h2 className="font-bold text-stone-900">글 고치기</h2>
-                <button onClick={() => setEditingPostId(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
-              </div>
-              {target.video_url ? (
-                thumb && <img loading="lazy" src={thumb} alt="" className="w-20 h-20 rounded-xl object-cover border border-stone-200" />
-              ) : (
-                // 사진 고치기: 빼기 · 자르기·가리기 · 추가
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex gap-2 overflow-x-auto pb-1">
+          <div className="fixed inset-0 z-[75] bg-black/50 flex items-stretch sm:items-center justify-center">
+            <section role="dialog" aria-label="게시글 수정" className="bg-white w-full h-full sm:h-[90dvh] sm:max-w-xl sm:rounded-3xl overflow-hidden flex flex-col">
+              <header className="shrink-0 h-14 px-1.5 flex items-center gap-1 border-b border-stone-100">
+                <button onClick={closeEdit} className="w-11 h-11 flex items-center justify-center text-stone-800" aria-label="닫기">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+                <h2 className="flex-1 font-bold text-[1.125rem] text-stone-900">게시글 수정</h2>
+                <button onClick={() => handleUpdatePost(target.id)} disabled={!canSave} className="h-11 px-3 text-[1.0625rem] font-bold text-sky-600 disabled:text-stone-300">{savingEdit ? '저장 중…' : '완료'}</button>
+              </header>
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain pb-[env(safe-area-inset-bottom)]">
+                {/* 작성자 · 올린 때 */}
+                <div className="px-4 py-3 flex items-center gap-3">
+                  {profile?.avatar_url
+                    ? <img src={profile.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
+                    : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 font-serif font-bold flex items-center justify-center shrink-0">{initial(profile?.baptismal_name, '교')}</span>}
+                  <span className="flex-1 min-w-0 truncate text-[0.9375rem] font-semibold text-stone-900">{profile?.handle || target.author_name}</span>
+                  <span className="shrink-0 text-[0.875rem] text-stone-400">{timeAgo(target.created_at)}</span>
+                </div>
+                {/* 사진·영상: 사진은 빼기(×) · 자르기·가리기 · 더 넣기 */}
+                {target.video_url ? (
+                  thumb && <img src={thumb} alt="" className="w-full max-h-[45dvh] object-cover bg-black" />
+                ) : (
+                  <div className="flex gap-1 overflow-x-auto snap-x snap-mandatory">
                     {editPhotos.map((ph, idx) => (
-                      <div key={ph.url} className="relative shrink-0 w-24">
-                        <img src={ph.url} alt="" className="w-24 h-24 rounded-xl object-cover border border-stone-200" />
-                        <button type="button" onClick={() => setEditPhotos(prev => { const next = prev.filter((_, i) => i !== idx); if (ph.file) URL.revokeObjectURL(ph.url); return next; })} className="absolute top-1 right-1 w-7 h-7 rounded-full bg-black/65 text-white text-base leading-none" aria-label="사진 빼기">×</button>
-                        <button type="button" onClick={() => openEditPhotoEditor(idx)} disabled={editPhotoLoading} className="mt-1 w-full py-1.5 rounded-lg bg-stone-100 text-[0.75rem] font-bold text-stone-700 disabled:opacity-50">✂️ 자르기·가리기</button>
+                      <div key={ph.url} className="relative shrink-0 snap-start h-64">
+                        <img src={ph.url} alt="" className="h-full w-auto min-w-[10rem] max-w-[85vw] object-cover bg-stone-100" />
+                        <button type="button" onClick={() => setEditPhotos(prev => { const next = prev.filter((_, i) => i !== idx); if (ph.file) URL.revokeObjectURL(ph.url); return next; })}
+                          className="absolute top-2 right-2 w-8 h-8 rounded-full bg-black/55 text-white text-lg leading-none flex items-center justify-center" aria-label={`${idx + 1}번째 사진 빼기`}>×</button>
+                        <button type="button" onClick={() => openEditPhotoEditor(idx)} disabled={editPhotoLoading}
+                          className="absolute bottom-2 left-2 px-3 py-1.5 rounded-full bg-black/55 text-white text-[0.8125rem] font-bold disabled:opacity-50">자르기·가리기</button>
                       </div>
                     ))}
                     {editPhotos.length < MAX_PHOTOS && (
-                      <label className="shrink-0 w-24 h-24 rounded-xl border-2 border-dashed border-stone-300 flex flex-col items-center justify-center text-stone-500 cursor-pointer">
-                        <Icon name="plus" className="w-6 h-6" /><span className="text-[0.75rem] font-bold">사진 추가</span>
+                      <label className="shrink-0 snap-start h-64 w-40 bg-stone-50 border border-dashed border-stone-300 flex flex-col items-center justify-center gap-1 text-stone-500 cursor-pointer">
+                        <Icon name="plus" className="w-7 h-7" /><span className="text-[0.875rem] font-bold">사진 추가</span>
+                        <span className="text-[0.75rem] text-stone-400">{editPhotos.length}/{MAX_PHOTOS}</span>
                         <input type="file" accept="image/*" multiple className="hidden" onChange={e => { addEditPhotos(e.target.files); e.target.value = ''; }} />
                       </label>
                     )}
                   </div>
-                  {editPhotoLoading && <p className="text-[0.75rem] text-stone-500">사진을 불러오는 중...</p>}
+                )}
+                {editPhotoLoading && <p className="px-4 pt-2 text-[0.8125rem] text-stone-500">사진을 불러오는 중...</p>}
+                {/* 글: 칸 없이, 글에 맞춰 늘어남 */}
+                <textarea ref={editTextRef} value={editContent} onChange={e => setEditContent(e.target.value)} rows={3} placeholder="문구를 입력하세요..." aria-label="글 내용"
+                  className="block w-full px-4 pt-4 pb-2 text-[1rem] leading-relaxed text-stone-900 bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
+                {user && <div className="px-4"><MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} /></div>}
+                <div className="px-2 pb-2 flex gap-0.5 overflow-x-auto" role="group" aria-label="이모티콘 넣기">
+                  {['🙏', '✝️', '❤️', '😊', '🥰', '🌸', '🕊️', '⛪', '📿', '✨', '🎉', '🌿'].map(e => (
+                    <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="shrink-0 w-10 h-10 rounded-full text-[1.375rem] active:bg-stone-100">{e}</button>
+                  ))}
                 </div>
-              )}
-              <textarea autoFocus value={editContent} onChange={e => setEditContent(e.target.value)} rows={6} placeholder="내용을 고쳐 주세요" className="w-full shrink-0 p-3.5 text-[1rem] bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
-              {user && <MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} />}
-              {/* 이모티콘 바로 넣기 */}
-              <div className="flex flex-wrap gap-1">
-                {['🙏', '✝️', '❤️', '😊', '🥰', '🌸', '🕊️', '⛪', '📿', '✨', '🎉', '🌿'].map(e => (
-                  <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-10 h-10 rounded-xl bg-stone-100 text-xl">{e}</button>
-                ))}
-              </div>
-              <VisibilityPicker value={editVisibility} onChange={setEditVisibility} />
-              {/* 음악 넣기·바꾸기·빼기 */}
-              {editMusic ? (
-                <div className="flex items-center gap-2 bg-violet-50 border border-violet-100 rounded-xl px-3 py-2">
-                  <span className="w-8 h-8 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-[1.125rem] h-[1.125rem]" /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-bold text-stone-700 truncate">{editMusic.title}</span>
-                    {musicRangeLabel(editMusic.value) && <span className="block text-[0.75rem] text-violet-700">{musicRangeLabel(editMusic.value)}</span>}
-                  </span>
-                  {canAdjustMusic(editMusic.value) && (
-                    <button type="button" onClick={() => openMusicSegment('edit', editMusic)} className="text-xs px-2.5 py-1.5 rounded-lg bg-violet-600 text-white font-bold">구간 조절</button>
+                <div className="border-t border-stone-100 py-1">
+                  <button type="button" onClick={() => { setEditContent(c => (c && !/\s$/.test(c) ? c + ' @' : c + '@')); setTimeout(() => { const ta = editTextRef.current; if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); } }, 0); }} className={row}>
+                    <Icon name="user" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[1rem] text-stone-900">교우 태그하기</span>
+                    {chevron}
+                  </button>
+                  <div className={rowBase}>
+                    <button type="button" onClick={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="flex-1 min-w-0 flex items-center gap-4 text-left">
+                      <Icon name="music" className="w-6 h-6 text-stone-800 shrink-0" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[1rem] text-stone-900 truncate">{editMusic ? editMusic.title : '음악 넣기'}</span>
+                        {editMusic && <span className="block text-[0.8125rem] text-stone-500 truncate">{musicRangeLabel(editMusic.value) || '음악 바꾸기'}</span>}
+                      </span>
+                    </button>
+                    {editMusic && canAdjustMusic(editMusic.value) && <button type="button" onClick={() => openMusicSegment('edit', editMusic)} className="shrink-0 px-2.5 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700">구간</button>}
+                    {editMusic
+                      ? <button type="button" onClick={() => setEditMusic(null)} className="shrink-0 w-9 h-9 rounded-full text-stone-400 text-xl leading-none" aria-label="음악 빼기">×</button>
+                      : chevron}
+                  </div>
+                  <button type="button" onClick={() => setEditVisOpen(v => !v)} className={row} aria-expanded={editVisOpen}>
+                    <Icon name={VISIBILITY[editVisibility].icon} className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[1rem] text-stone-900">공개 범위</span>
+                    <span className="shrink-0 text-[0.9375rem] text-stone-500">{VISIBILITY[editVisibility].label}</span>
+                    <span className={`transition-transform ${editVisOpen ? 'rotate-90' : ''}`}>{chevron}</span>
+                  </button>
+                  {editVisOpen && <div className="px-4 pb-3"><VisibilityPicker value={editVisibility} onChange={setEditVisibility} /></div>}
+                  {target.video_url && (
+                    <button type="button" onClick={() => setShowEditVideoEditor(true)} className={row}>
+                      <Icon name="film" className="w-6 h-6 text-stone-800 shrink-0" />
+                      <span className="flex-1 text-[1rem] text-stone-900">영상 위 글자·이모티콘</span>
+                      {hasOverlays(editOverlays) && <span className="shrink-0 text-[0.9375rem] text-stone-500">있음</span>}
+                      {chevron}
+                    </button>
                   )}
-                  <button type="button" onClick={() => { setMusicSegment(null); setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-700 font-bold">바꾸기</button>
-                  <button type="button" onClick={() => setEditMusic(null)} className="text-xs px-2.5 py-1.5 rounded-lg border border-stone-200 text-stone-500">빼기</button>
                 </div>
-              ) : (
-                <button type="button" onClick={() => { setMusicPickerFor('edit'); setShowMusicPicker(true); }} className="self-start inline-flex items-center gap-2 text-sm font-semibold text-violet-800 bg-violet-50 border border-violet-100 px-3.5 py-2.5 rounded-xl">
-                  <Icon name="music" className="w-[1.125rem] h-[1.125rem]" />음악 넣기
-                </button>
-              )}
-              {target.video_url && (
-                <button type="button" onClick={() => setShowEditVideoEditor(true)} className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2.5 rounded-xl">
-                  <Icon name="film" className="w-[1.125rem] h-[1.125rem]" />영상 위 글자·이모티콘 고치기{hasOverlays(editOverlays) && ' ✓'}
-                </button>
-              )}
-              <div className="flex gap-2 pt-1">
-                <button onClick={() => setEditingPostId(null)} className="flex-1 py-3 rounded-xl border border-stone-300 text-sm text-stone-600">취소</button>
-                <button onClick={() => handleUpdatePost(target.id)} disabled={savingEdit || (!editContent.trim() && editPhotos.length === 0 && !target.video_url)} className="flex-1 py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40">{savingEdit ? '저장 중...' : '고치기'}</button>
               </div>
             </section>
           </div>
@@ -5865,23 +5918,31 @@ export default function Home() {
         </div>
       )}
 
-      {/* 게시글 ⋯ 메뉴: 아래에서 올라오는 큰 버튼 */}
+      {/* 게시글 ⋯ 메뉴 (인스타그램처럼): 위에 네모 단추 셋, 아래에 그림+글 줄. 아래로 끌거나 바깥을 누르면 닫힘 */}
       {postMenuId && (() => {
         const post = posts.find(p => p.id === postMenuId);
         if (!post) return null;
         const mine = user?.id === post.user_id;
         const canDelete = mine || isAdmin;
-        const item = 'w-full py-4 text-[1rem] font-semibold border-b border-stone-100 last:border-b-0';
+        const close = () => setPostMenuId(null);
+        const tile = 'flex flex-col items-center gap-1.5 text-[0.875rem] text-stone-800';
+        const tileBox = 'w-full h-[4.25rem] rounded-2xl bg-stone-100 flex items-center justify-center active:bg-stone-200';
+        const row = 'w-full px-6 py-3.5 flex items-center gap-4 text-left text-[1.0625rem] active:bg-stone-50';
         return (
-          <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setPostMenuId(null)}>
-            <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-safe" onClick={e => e.stopPropagation()}>
-              <p className="pt-4 pb-2 text-center text-xs text-stone-400">{post.author_name}님의 글</p>
-              {mine && <button onClick={() => { setPostMenuId(null); startEditPost(post); }} className={`${item} text-stone-800`}><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />글 고치기 · 공개 범위</button>}
-              {canDelete && <button onClick={() => { setPostMenuId(null); handleDeletePost(post.id); }} className={`${item} text-red-600`}><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />지우기</button>}
-              <button onClick={() => { setPostMenuId(null); openPostViewer(post); }} className={`${item} text-stone-700`}><Icon name="expand" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />크게 보기</button>
-              {!mine && <button onClick={() => { setPostMenuId(null); goToProfile(post.user_id); }} className={`${item} text-stone-700`}><Icon name="user" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{post.author_name}님 공간 가기</button>}
-              {user && !mine && <button onClick={() => { setPostMenuId(null); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${item} text-red-500`}><Icon name="siren" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고하기</button>}
-              <button onClick={() => setPostMenuId(null)} className="w-full py-4 text-[1rem] font-bold text-stone-500 bg-stone-50">취소</button>
+          <div className="fixed inset-0 bg-black/45 z-[75] flex items-end sm:items-center justify-center animate-fade-in" onClick={close}>
+            <div ref={postMenuSheet.sheetRef} role="dialog" aria-label={`${post.author_name}님의 글 메뉴`} className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:pt-5" onClick={e => e.stopPropagation()}>
+              <div {...postMenuSheet.handleProps} className="sm:hidden pt-2.5 pb-4 flex justify-center touch-none cursor-grab" aria-hidden="true"><span className="w-10 h-1.5 rounded-full bg-stone-300" /></div>
+              <div className="grid grid-cols-3 gap-3 px-5">
+                <button onClick={() => { close(); openPostViewer(post); }} className={tile}><span className={tileBox}><Icon name="expand" className="w-7 h-7" /></span>크게 보기</button>
+                <button onClick={() => { close(); sharePost(post); }} className={tile}><span className={tileBox}><Icon name="send" className="w-7 h-7" /></span>공유하기</button>
+                <button onClick={async () => { close(); if (await copyText(postLink(post))) showToast('링크를 복사했어요'); else window.prompt('이 주소를 복사하세요', postLink(post)); }} className={tile}><span className={tileBox}><Icon name="stack" className="w-7 h-7" /></span>링크 복사</button>
+              </div>
+              <div className="mt-4 pt-1 border-t border-stone-100">
+                {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
+                {!mine && <button onClick={() => { close(); goToProfile(post.user_id); }} className={`${row} text-stone-900`}><Icon name="user" className="w-6 h-6 shrink-0" />{post.author_name}님 공간 가기</button>}
+                {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
+                {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
+              </div>
             </div>
           </div>
         );
