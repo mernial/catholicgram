@@ -227,7 +227,7 @@ export default function VideoEditor({ src, initial, musicTitle, musicRange, onOp
   const tool = 'flex flex-col items-center gap-0.5 text-white text-[0.75rem] font-bold px-2';
 
   return (
-    <div className="fixed inset-0 z-[84] bg-black flex flex-col">
+    <div data-no-pinch className="fixed inset-0 z-[84] bg-black flex flex-col">
       <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-2 text-white">
         <button onClick={onCancel} className="text-sm text-white/80">취소</button>
         <p className="font-bold"><Icon name="sparkle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-[#fbe7b0]" />영상 꾸미기</p>

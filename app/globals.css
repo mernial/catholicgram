@@ -5,6 +5,7 @@
 /* ---- 모든 휴대폰 화면 크기 대응 ---- */
 html {
   -webkit-text-size-adjust: 100%;
+  touch-action: pan-x pan-y;        /* 두 손가락으로 벌려도 앱 화면 전체가 커지지 않게 (사진만 커짐: components/PinchPeek) */
   overscroll-behavior: none;        /* 앱 화면 전체가 끌려 내려가 멈춰 보이는 현상 방지 (아이패드) */
 }
 body {

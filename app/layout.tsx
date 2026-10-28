@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import PinchPeek from "@/components/PinchPeek";
 
 // 나눔스퀘어라운드 (네이버, OFL 무료 글꼴) — 둥글고 부드러운 고딕체
 const nanumSquareRound = localFont({
@@ -35,6 +36,9 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  // 두 손가락으로 벌려도 앱 화면 전체가 커지지 않게 (사진·이모티콘만 커짐: components/PinchPeek). 글씨는 설정 → 글씨 크기로
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: 'cover', // 노치가 있는 폰에서 화면 끝까지 사용 (안전 영역은 pb-safe 등으로 피함)
   interactiveWidget: 'resizes-content', // 키보드가 올라오면 화면 높이를 줄여 입력창이 키보드 위에 보이게 (안드로이드)
   themeColor: '#FAF7F2',
@@ -52,7 +56,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">{children}<PinchPeek /></body>
     </html>
   );
 }
