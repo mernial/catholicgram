@@ -21,7 +21,7 @@ import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
-import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
+import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
@@ -1478,6 +1478,7 @@ export default function Home() {
     if (sent) sendPush('message', sent.id);
   };
   const dmSticker = useStickerPicker(sendDmSticker);
+  const dmStickerTap = useCloseStickersOnTap(dmSticker); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
   // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
   const submitDm = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -4693,7 +4694,7 @@ export default function Home() {
         <section className="relative flex-1 min-h-0 flex flex-col bg-stone-100">
           {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' */}
           {!dmCapture && !dmSticker.open && !dmSticker.picked && !hasStickerSuggestion(messageInput) && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
-          <div ref={chatStick.listRef} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
+          <div ref={chatStick.listRef} {...dmStickerTap} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
             {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
             <div ref={chatStick.contentRef} className="mt-auto flex flex-col gap-3">
             {chatMessages.length === 0 ? (
