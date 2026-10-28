@@ -19,6 +19,7 @@ import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
+import { askConfirm } from '@/components/ConfirmDialog';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
@@ -2491,9 +2492,9 @@ export default function Home() {
   const listedMessages = unreadMessages.filter(u => !blockedIds.has(u.partner.id) && !(notificationsClearedAt && new Date(u.lastAt) <= new Date(notificationsClearedAt)));
   // '모두 지우기': 확인하지 않은 알림까지 지금까지 온 알림을 모두 지운다 (그 뒤에 오는 알림은 다시 보임).
   // 안 읽은 메시지는 알림 목록에서만 빠지고 메시지함에는 그대로 (읽음 표시를 보내지 않음)
-  const clearAllAlerts = () => {
+  const clearAllAlerts = async () => {
     if (!user) return;
-    if (!window.confirm('알림을 모두 지울까요?\n확인하지 않은 알림도 지워져요.\n(안 읽은 메시지는 메시지함에 그대로 남아요)')) return;
+    if (!(await askConfirm({ title: '알림을 모두 지울까요?', message: '확인하지 않은 알림도 함께 지워져요.\n안 읽은 메시지는 메시지함에 그대로 남아요.', ok: '모두 지우기', danger: true }))) return;
     // 휴대폰 시계가 서버보다 조금 늦어도 지금 보이는 알림은 모두 지워지게, 가장 늦은 알림 시각과 비교
     const times = [Date.now(), ...listedComments.map(n => +new Date(n.created_at)), ...listedFollows.map(r => +new Date(r.created_at || 0)), ...listedMessages.map(u => +new Date(u.lastAt))];
     const at = new Date(Math.max(...times.filter(t => !Number.isNaN(t)))).toISOString();
