@@ -60,6 +60,7 @@
 - 게시글 수정 화면을 운영자 시안대로: 위 × · 가운데 '게시글 수정' · 오른쪽 '저장' 단추 / 작성자 / '사진 N장'·'⊕ 사진 추가' / 사진 줄(`components/PhotoStrip`: 누르면 고름(테두리), 길게 눌러 옆으로 끌면 순서 바꿈) / 고른 사진의 자르기·가리기·삭제('가리기'는 `PhotoEditor startStep='cover'`로 바로 가리기 단계) / '본문' 칸(아래 이모티콘·#해시태그) / '추가 설정' 칸(교우 태그 N명·음악·공개 범위·영상 위 글자)
 - 화면 색 다섯 가지(설정 → 화면 색, `lib/theme.ts`, 이 휴대폰에만 `localStorage appTheme`, 시작 전 `THEME_BOOT_SCRIPT`로 깜빡임 없이): 아이보리&골드·화이트&네이비·세이지&스톤(기본=예전 색)·에디토리얼 버건디·차콜&샴페인(어두운 화면). `tailwind.config.js`의 white·stone·blue가 `app/globals.css`의 `[data-theme]` 변수(R G B)를 씀 — 그 CSS는 `scripts/theme-css.py`로 만듦(어두운 화면 보정: 흰 칸→카드색, 밝아진 단추 위 글자 어둡게, 다른 색의 연한 칸·진한 글자 뒤집기). 하드코딩 색(#fdfaf5·#eadfcb·#4d6a45 등)은 stone·blue 클래스로 바꿈, 단체방 내 말풍선·보내기도 주요 색(blue-600). 지금 화면 아래 탭·'프로필 편집'은 주요 색
 - 이모티콘 추천을 카카오톡처럼: 추천 줄·고른 이모티콘 미리 보기가 입력칸 위 대화 위에 떠서 보임(높이 0 `relative` 칸 안 `StickerAbove`, 대화창 높이 그대로). 추천에서 고르면 그 뜻과 이어진 말을 단어째 입력칸에서 지움(`stripStickerWords`, 예: '기도하러 성당가는중이야' + 곧 도착! → '기도하러'). 보내기 단추 = 고른 이모티콘 먼저, 남은 글은 이어서(`submitDm`/`submit`). 추천·미리 보기 단추는 입력칸 초점을 뺏지 않음(자판 유지)
+- 게시글 이모티콘: 글쓰기 '이모티콘 넣기' 줄·글 고치기 본문 칸 이모티콘 단추에서 채팅 이모티콘(네 캐릭터)을 한 글에 5개까지(`MAX_POST_STICKERS`), × 로 빼기. 저장은 글 끝에 `[아멘이] 아멘!` 줄을 붙임(`joinPostStickers`, SQL 필요 없음, 예전 앱에서는 그 줄이 글로 보임) → 보일 때 `splitPostStickers`로 꺼내 그림(`PostStickers`, 홈·크게 보기에서 글 위). 이모티콘만 있는 글은 내 공간·탐색 칸에 그 그림. 목록·알림·내 댓글·신고·휴대폰 알림 글은 `postPlainText`(이모티콘 줄 뺀 글)
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음

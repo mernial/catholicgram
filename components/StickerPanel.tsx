@@ -113,6 +113,21 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   );
 }
 
+// 게시글에 붙은 이모티콘 줄 (글쓰기·고치기에서는 × 로 빼기)
+export function PostStickers({ stickers, size = 'w-28 h-28', onRemove }: { stickers: Sticker[]; size?: string; onRemove?: (index: number) => void }) {
+  if (stickers.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label="이모티콘">
+      {stickers.map((s, i) => (
+        <span key={`${s.id}-${i}`} className="relative">
+          <img src={s.src} alt={`이모티콘: ${s.label}`} draggable={false} className={`${size} object-contain select-none`} />
+          {onRemove && <button type="button" onClick={() => onRemove(i)} className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-black/60 text-white text-base leading-none flex items-center justify-center" aria-label={`${s.label} 이모티콘 빼기`}>×</button>}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 // 말풍선 대신 보이는 이모티콘 그림 (누르기·꾹 누르기는 감싼 말풍선이 받는다)
 export function StickerImage({ sticker }: { sticker: Sticker }) {
   return <img src={sticker.src} alt={`이모티콘: ${sticker.label}`} draggable={false} className="block w-32 h-32 object-contain pointer-events-none select-none" />;

@@ -19,8 +19,8 @@ import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
-import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
+import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -302,6 +302,8 @@ export default function Home() {
   const [content, setContent] = useState('');
   const [composerPhotoIdx, setComposerPhotoIdx] = useState(0);   // 글쓰기: 크게 보이는 사진
   const [composerVisOpen, setComposerVisOpen] = useState(false);   // 글쓰기: 공개 범위 고르기 펼침
+  const [composerStickers, setComposerStickers] = useState<Sticker[]>([]); // 글쓰기: 붙인 이모티콘 (글 끝에 한 줄씩 저장)
+  const [composerStickerOpen, setComposerStickerOpen] = useState(false);
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
   // 글 고치기의 사진: 원래 사진은 주소만, 새로 넣거나 편집한 사진은 파일과 미리보기 주소
   const [editPhotos, setEditPhotos] = useState<{ url: string; file?: File }[]>([]);
@@ -466,6 +468,7 @@ export default function Home() {
   const [editVisOpen, setEditVisOpen] = useState(false); // 게시글 수정: 공개 범위 고르기 펼침
   const [editSelIdx, setEditSelIdx] = useState(0);         // 게시글 수정: 고른 사진 (자르기·가리기·삭제)
   const [editEmojiOpen, setEditEmojiOpen] = useState(false); // 게시글 수정: 이모티콘 줄 펼침
+  const [editStickers, setEditStickers] = useState<Sticker[]>([]); // 게시글 수정: 붙인 이모티콘
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
   const [musicSegment, setMusicSegment] = useState<MusicSegmentTarget | null>(null); // 고른 곡의 구간만 다시 고치기
   const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
@@ -1001,13 +1004,13 @@ export default function Home() {
   const discardComposer = () => {
     composerOpenRef.current = false;
     setShowComposer(false);
-    setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
+    setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
     tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
     setComposerStep('pick'); setComposerMulti(false); setComposerPhotoIdx(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
   const leaveComposer = () => {
-    const hasDraft = !!(content.trim() || selectedFiles.length || selectedVideo);
+    const hasDraft = !!(content.trim() || selectedFiles.length || selectedVideo || composerStickers.length);
     if (hasDraft && !window.confirm('작성하던 게시글이 취소됩니다.')) return false;
     discardComposer();
     return true;
@@ -1766,7 +1769,7 @@ export default function Home() {
     e.preventDefault();
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    if (!content.trim() && selectedFiles.length === 0 && !selectedVideo) return;
+    if (!content.trim() && selectedFiles.length === 0 && !selectedVideo && composerStickers.length === 0) return;
     setLoading(true);
     const uploadedUrls: string[] = [];
     for (const file of selectedFiles) {
@@ -1811,7 +1814,7 @@ export default function Home() {
       };
     }
     const author = profile?.baptismal_name || '교우';
-    const row = { content, images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}), ...(composerVisibility !== 'public' ? { visibility: composerVisibility } : {}) };
+    const row = { content: joinPostStickers(content, composerStickers), images: uploadedUrls, user_id: user.id, author_name: author, ...(videoFields || {}), ...(composerVisibility !== 'public' ? { visibility: composerVisibility } : {}) };
     let { data: created, error } = await supabase.from('posts').insert([composerMusic ? { ...row, music: composerMusic.value, music_title: composerMusic.title } : row]).select('id');
     // 음악 칼럼이 아직 없는 경우(SQL 실행 전)에는 음악 없이 올린다
     if (error && composerMusic && (error.code === 'PGRST204' || error.code === '42703')) {
@@ -1831,7 +1834,7 @@ export default function Home() {
     if (!error) {
       // 글에서 @태그한 사람에게 휴대폰 알림
       if (created?.[0]?.id && extractMentions(content).length > 0) sendPush('post', created[0].id);
-      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo();
+      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
       tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowComposer(false);
@@ -2137,9 +2140,16 @@ export default function Home() {
     setPosts(prev => prev.filter(p => p.id !== postId));
     setSelectedPostDetail(prev => prev?.id === postId ? null : prev);
   };
+  // 게시글 이모티콘 고르기 칸: 누르면 바로 글에 붙음 (한 글에 MAX_POST_STICKERS 개까지)
+  const postStickerPicker = (open: boolean, setOpen: StickerPicker['setOpen'], list: Sticker[], setList: (f: (prev: Sticker[]) => Sticker[]) => void): StickerPicker => ({
+    open, setOpen, picked: null, setPicked: () => {}, sendPicked: async () => {}, close: () => setOpen(false),
+    pick: s => { if (list.length >= MAX_POST_STICKERS) { alert(`이모티콘은 한 글에 ${MAX_POST_STICKERS}개까지 넣을 수 있어요.`); return; } setList(prev => [...prev, s]); },
+  });
   const startEditPost = (post: Post) => {
     setEditingPostId(post.id);
-    setEditContent(post.content || '');
+    const parts = splitPostStickers(post.content);
+    setEditContent(parts.text);
+    setEditStickers(parts.stickers);
     setEditOverlays(post.video_overlays || null);
     setEditVisibility(post.visibility || 'public');
     setEditMusic(post.music ? { value: post.music, title: post.music_title || '음악' } : null);
@@ -2162,7 +2172,7 @@ export default function Home() {
   const sharePost = async (post: Post) => {
     const url = postLink(post);
     if (navigator.share) {
-      try { await navigator.share({ title: `${post.author_name}님의 글 · 가톨릭그램`, text: (post.content || '').slice(0, 80), url }); return; }
+      try { await navigator.share({ title: `${post.author_name}님의 글 · 가톨릭그램`, text: postPlainText(post.content).slice(0, 80), url }); return; }
       catch (e) { if ((e as Error)?.name === 'AbortError') return; }
     }
     if (await copyText(url)) showToast('링크를 복사했어요. 원하는 곳에 붙여 넣으세요');
@@ -2202,7 +2212,7 @@ export default function Home() {
   const handleUpdatePost = async (postId: string) => {
     const target = posts.find(p => p.id === postId);
     if (!target) return;
-    const changes: Partial<Post> = { content: editContent.trim() };
+    const changes: Partial<Post> = { content: joinPostStickers(editContent.trim(), editStickers) };
     if (target.video_url) changes.video_overlays = hasOverlays(editOverlays) ? editOverlays : null;
     if (editVisibility !== (target.visibility || 'public')) changes.visibility = editVisibility;
     if ((editMusic?.value || null) !== (target.music || null)) {
@@ -2271,7 +2281,7 @@ export default function Home() {
     try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
     try { setReadAlerts(new Set(JSON.parse(storageGet(`notificationsRead:${userId}`) || '[]'))); } catch { /* 무시 */ }
     setFeastClearedAt(storageGet(`feastClearedAt:${userId}`));
-    const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, p.content || '']));
+    const postContent: Record<string, string> = Object.fromEntries((myPosts || []).map(p => [p.id, postPlainText(p.content)]));
     const mentionQuery = (table: 'posts' | 'comments', cols: string) => myHandle
       ? supabase.from(table).select(cols).ilike('content', `%@${myHandle}%`).neq('user_id', userId)
         .order('created_at', { ascending: false }).limit(20)
@@ -2295,7 +2305,7 @@ export default function Home() {
     (replies || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] || '', is_reply: true }));
     type Row = { id: string; post_id?: string; content: string; author_name: string; created_at: string };
     ((postMentions || []) as unknown as Row[]).filter(p => mentionsHandle(p.content, myHandle)).forEach(p =>
-      merged.set(`mp:${p.id}`, { id: `mp:${p.id}`, post_id: p.id, content: p.content, author_name: p.author_name, created_at: p.created_at, post_content: p.content, mention: 'post' }));
+      merged.set(`mp:${p.id}`, { id: `mp:${p.id}`, post_id: p.id, content: postPlainText(p.content), author_name: p.author_name, created_at: p.created_at, post_content: postPlainText(p.content), mention: 'post' }));
     ((commentMentions || []) as unknown as Row[]).filter(c => mentionsHandle(c.content, myHandle)).forEach(c => {
       const prev = merged.get(c.id);
       merged.set(c.id, { ...(prev || { ...c, post_id: c.post_id || '', post_content: postContent[c.post_id || ''] || '' }), mention: 'comment' });
@@ -3764,7 +3774,7 @@ export default function Home() {
           )}
           {/* 글쓰기: 인스타그램 '새 게시물'처럼 전체 화면 (닫거나 다른 화면으로 가면 쓰던 글은 '작성하던 게시글이 취소됩니다' 확인 후 버림) */}
           {showComposer && (() => {
-            const canShare = !loading && !videoStatus && !!(content.trim() || selectedFiles.length > 0 || selectedVideo);
+            const canShare = !loading && !videoStatus && !!(content.trim() || selectedFiles.length > 0 || selectedVideo || composerStickers.length > 0);
             const shownIdx = Math.min(composerPhotoIdx, Math.max(0, previewUrls.length - 1));
             const insertToken = (token: string) => {
               setContent(c => (c && !/\s$/.test(c) ? `${c} ${token}` : `${c}${token}`));
@@ -3947,8 +3957,18 @@ export default function Home() {
                   </div>
                 )}
 
+                {/* 붙인 이모티콘 (× 로 빼기) */}
+                {composerStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={composerStickers} size="w-24 h-24" onRemove={i => setComposerStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
+
                 {/* 인스타그램처럼 아래 목록 */}
                 <div className="border-t border-stone-100">
+                  <button type="button" onClick={() => setComposerStickerOpen(o => !o)} className={row} aria-expanded={composerStickerOpen}>
+                    <Icon name="smiley" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 text-[0.9375rem] text-stone-900">이모티콘 넣기</span>
+                    {composerStickers.length > 0 && <span className="text-[0.875rem] text-stone-500">{composerStickers.length}개</span>}
+                    <span className="text-stone-400 text-xl">{composerStickerOpen ? '⌄' : '›'}</span>
+                  </button>
+                  {composerStickerOpen && <StickerPanel picker={postStickerPicker(composerStickerOpen, setComposerStickerOpen, composerStickers, setComposerStickers)} />}
                   <button type="button" onClick={() => setShowMusicPicker(true)} className={row}>
                     <Icon name="music" className="w-6 h-6 text-stone-800 shrink-0" />
                     <span className="flex-1 min-w-0">
@@ -4092,7 +4112,10 @@ export default function Home() {
                     {(() => {
                       // 사진·영상이 있는 글은 첫 줄, 글만 있는 글은 두 줄만 보이고 끝에 '... 더 보기' → 누르면 전체
                       const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
+                      const { text: shownText, stickers } = splitPostStickers(post.content);
                       return (
+                      <>
+                      {stickers.length > 0 && <PostStickers stickers={stickers} size={hasMedia ? 'w-24 h-24' : 'w-32 h-32'} />}
                       <ClampText
                         lines={hasMedia ? 1 : 2}
                         expanded={expandedPosts.has(post.id)}
@@ -4104,9 +4127,10 @@ export default function Home() {
                           /* 글 앞에 굵은 이름: 누르면 그 사람의 공간으로 */
                           <button onClick={e => { e.stopPropagation(); openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type }); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
                         }
-                        text={post.content || ''}
+                        text={shownText}
                         renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
                       />
+                      </>
                       );
                     })()}
 
@@ -4290,7 +4314,12 @@ export default function Home() {
                   ) : post.images && post.images.length > 0 ? (
                     <img loading="lazy" src={post.images[0]} alt="사진" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="w-full h-full p-2 text-[0.75rem] text-stone-600 flex items-center justify-center text-center">{post.content}</div>
+                    (() => {
+                      const { text, stickers } = splitPostStickers(post.content);
+                      return stickers.length && !text.trim()
+                        ? <img loading="lazy" src={stickers[0].src} alt={`이모티콘: ${stickers[0].label}`} className="w-full h-full object-contain p-3" />
+                        : <div className="w-full h-full p-2 text-[0.75rem] text-stone-600 flex items-center justify-center text-center">{text}</div>;
+                    })()
                   )}
                 </div>
               ))
@@ -4362,7 +4391,7 @@ export default function Home() {
                           <span className="font-bold text-[0.9375rem]">{post.author_name}</span>
                         </button>
                         {post.content && (
-                          <button onClick={() => openPostViewer(post)} className="text-left text-[0.9375rem] leading-snug line-clamp-2 whitespace-pre-wrap">{post.content}</button>
+                          <button onClick={() => openPostViewer(post)} className="text-left text-[0.9375rem] leading-snug line-clamp-2 whitespace-pre-wrap">{postPlainText(post.content)}</button>
                         )}
                         {music && (
                           <button onClick={() => openPostViewer(post)} className="self-start max-w-full flex items-center gap-1.5 text-[0.8125rem] bg-white/15 backdrop-blur-sm rounded-full px-3 py-1"><Icon name="music" className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{post.music_title || '음악'} · 듣기</span></button>
@@ -5015,7 +5044,7 @@ export default function Home() {
                   {sheetPost.images?.[0] && <img loading="lazy" src={sheetPost.images[0]} alt="" className="w-11 h-14 rounded-lg object-cover shrink-0" />}
                   <div className="flex-1 min-w-0">
                     <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 스토리' : `${sheetPost.author_name}님의 스토리`}</p>
-                    <p className="text-[0.75rem] text-stone-500 truncate">{sheetPost.content || timeAgo(sheetPost.created_at)}{!storyStillUp && ' · 24시간이 지나 내려간 스토리'}</p>
+                    <p className="text-[0.75rem] text-stone-500 truncate">{postPlainText(sheetPost.content) || timeAgo(sheetPost.created_at)}{!storyStillUp && ' · 24시간이 지나 내려간 스토리'}</p>
                   </div>
                   {storyStillUp && (
                     <button onClick={() => { setCommentSheetId(null); if (currentScreenRef.current.tab !== 'home') goToHome(); setStoryOpenRequest(sheetPost.user_id); }} className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">스토리 보기</button>
@@ -5030,7 +5059,7 @@ export default function Home() {
                     : <span className="w-12 h-12 rounded-lg bg-stone-200 flex items-center justify-center text-xl shrink-0">📝</span>}
                   <div className="flex-1 min-w-0">
                     <p className="text-[0.875rem] font-bold text-stone-800 truncate">{sheetPost.user_id === user?.id ? '내 글' : `${sheetPost.author_name}님의 글`} · {timeAgo(sheetPost.created_at)}</p>
-                    <p className="text-[0.8125rem] text-stone-600 line-clamp-2 break-words">{sheetPost.content || (sheetPost.video_url ? '영상' : '사진')}</p>
+                    <p className="text-[0.8125rem] text-stone-600 line-clamp-2 break-words">{postPlainText(sheetPost.content) || (sheetPost.video_url ? '영상' : '사진')}</p>
                   </div>
                   <span className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">글 보기</span>
                 </button>
@@ -5253,12 +5282,13 @@ export default function Home() {
         if (!target) return null;
         const thumb = target.video_poster || target.images?.[0];
         const before = target.images || [];
-        const dirty = editContent !== (target.content || '') || editVisibility !== (target.visibility || 'public')
+        const orig = splitPostStickers(target.content);
+        const dirty = joinPostStickers(editContent, editStickers) !== joinPostStickers(orig.text, orig.stickers) || editVisibility !== (target.visibility || 'public')
           || (editMusic?.value || null) !== (target.music || null)
           || (!target.video_url && (editPhotos.length !== before.length || editPhotos.some((ph, i) => !!ph.file || ph.url !== before[i])))
           || (!!target.video_url && JSON.stringify(editOverlays || null) !== JSON.stringify(target.video_overlays || null));
         const closeEdit = () => { if (dirty && !window.confirm('고친 내용이 저장되지 않아요. 그래도 닫을까요?')) return; setEditingPostId(null); };
-        const canSave = !savingEdit && !!(editContent.trim() || editPhotos.length > 0 || target.video_url);
+        const canSave = !savingEdit && !!(editContent.trim() || editPhotos.length > 0 || target.video_url || editStickers.length > 0);
         const sel = Math.min(editSelIdx, Math.max(0, editPhotos.length - 1));
         const tagged = Array.from(new Set(extractMentions(editContent)));
         // 글 끝에 # 또는 @ 를 붙이고 바로 이어서 쓰게 (누른 그 자리에서 자판이 올라오도록 바로 초점)
@@ -5343,12 +5373,17 @@ export default function Home() {
                   <textarea ref={editTextRef} value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} placeholder="문구를 입력하세요..." aria-label="글 내용"
                     className="block w-full min-h-[7rem] px-4 pt-2 pb-3 text-[1.0625rem] leading-relaxed text-stone-900 bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
                   {user && <div className="px-4"><MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} /></div>}
+                  {/* 붙인 이모티콘 (× 로 빼기) */}
+                  {editStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={editStickers} size="w-24 h-24" onRemove={i => setEditStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
                   {editEmojiOpen && (
-                    <div className="px-2 pb-2 flex flex-wrap gap-0.5" role="group" aria-label="이모티콘 넣기">
-                      {['🙏', '✝️', '❤️', '😊', '🥰', '🌸', '🕊️', '⛪', '📿', '✨', '🎉', '🌿'].map(e => (
-                        <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-11 h-11 rounded-full text-[1.5rem] active:bg-stone-100">{e}</button>
-                      ))}
-                    </div>
+                    <>
+                      <div className="px-2 pb-2 flex flex-wrap gap-0.5" role="group" aria-label="이모티콘 넣기">
+                        {['🙏', '✝️', '❤️', '😊', '🥰', '🌸', '🕊️', '⛪', '📿', '✨', '🎉', '🌿'].map(e => (
+                          <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-11 h-11 rounded-full text-[1.5rem] active:bg-stone-100">{e}</button>
+                        ))}
+                      </div>
+                      <StickerPanel picker={postStickerPicker(editEmojiOpen, setEditEmojiOpen, editStickers, setEditStickers)} />
+                    </>
                   )}
                   <div className="flex items-center border-t border-stone-100 px-2">
                     <button type="button" onClick={() => setEditEmojiOpen(o => !o)} aria-pressed={editEmojiOpen} className={`inline-flex items-center gap-2 px-3 py-3 text-[0.9375rem] ${editEmojiOpen ? 'text-amber-700 font-bold' : 'text-stone-600'}`}>
@@ -5801,7 +5836,7 @@ export default function Home() {
                   {peek.avatar_url ? <img loading="lazy" src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{initial(peek.author_name)}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
-                {thumb ? <div className="bg-black flex justify-center"><img loading="lazy" src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{peek.content}</p>}
+                {thumb ? <div className="bg-black flex justify-center"><img loading="lazy" src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{postPlainText(peek.content)}</p>}
               </div>
             );
           })()}
@@ -5895,6 +5930,7 @@ export default function Home() {
               })()}
               <div id="viewer-post-text" className="px-5 pb-5 pt-3 flex flex-col gap-2">
                 {/* 글은 처음엔 여섯 줄까지, 더 길면 '더 보기' */}
+                <PostStickers stickers={splitPostStickers(selectedPostDetail.content).stickers} size="w-32 h-32" />
                 <ClampText
                   key={selectedPostDetail.id}
                   lines={6}
@@ -5902,7 +5938,7 @@ export default function Home() {
                   onExpand={() => setViewerTextOpen(true)}
                   onCollapse={() => setViewerTextOpen(false)}
                   className="text-stone-900 text-[1rem] whitespace-pre-wrap leading-relaxed"
-                  text={selectedPostDetail.content || ''}
+                  text={splitPostStickers(selectedPostDetail.content).text}
                   renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
                 />
                 <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
@@ -6067,7 +6103,7 @@ export default function Home() {
               <div className="mt-4 pt-1 border-t border-stone-100">
                 {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
                 {!mine && <button onClick={() => { close(); goToProfile(post.user_id); }} className={`${row} text-stone-900`}><Icon name="user" className="w-6 h-6 shrink-0" />{post.author_name}님 공간 가기</button>}
-                {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: post.content }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
+                {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: postPlainText(post.content) }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
                 {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
               </div>
             </div>

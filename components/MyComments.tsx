@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import LoadMore from '@/components/LoadMore';
+import { postPlainText } from '@/lib/stickers';
 
 // 내 공간 → '내 댓글': 내가 단 댓글을 최근 순으로 모아 본다 (나만 볼 수 있음).
 // 누르면 그 글로 가서 댓글 창의 그 댓글을 보여 준다 (지워진 글이면 댓글 창만).
@@ -71,7 +72,7 @@ export default function MyComments({ userId, onOpen }: { userId: string; onOpen:
                 <span className="flex-1 min-w-0">
                   <span className="block text-[0.8125rem] text-stone-500 truncate">
                     {post === undefined ? '…' : post
-                      ? <><b className="font-semibold text-stone-700">{post.author_name || '교우'}</b>님의 {post.is_story ? '스토리' : '글'}{post.content ? ` · ${post.content.replace(/\s+/g, ' ')}` : ''}</>
+                      ? <><b className="font-semibold text-stone-700">{post.author_name || '교우'}</b>님의 {post.is_story ? '스토리' : '글'}{post.content ? ` · ${postPlainText(post.content).replace(/\s+/g, ' ')}` : ''}</>
                       : '지워졌거나 볼 수 없는 글'}
                   </span>
                   <span className="block mt-0.5 text-[0.9375rem] text-stone-900 leading-snug line-clamp-2 break-words">

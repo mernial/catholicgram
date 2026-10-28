@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import RoleBadge from '@/components/RoleBadge';
 import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
+import { postPlainText, splitPostStickers } from '@/lib/stickers';
 import { InterestEvent, loadInterests, recordInterest, removeSearch } from '@/lib/interests';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
@@ -268,11 +269,17 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
         <button key={post.id} onClick={() => openPost(post)} className="relative aspect-square overflow-hidden bg-white text-left">
           {post.images?.[0] ? (
             <img src={post.images[0]} alt="" className="absolute inset-0 w-full h-full object-cover" loading="lazy" />
-          ) : (
-            <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-stone-50 to-stone-100 flex">
-              <p className="text-[0.8125rem] text-stone-700 leading-snug line-clamp-5 break-words"><HashtagText text={post.content} /></p>
-            </div>
-          )}
+          ) : (() => {
+            // 이모티콘만 있는 글은 그 이모티콘 그림으로
+            const { text, stickers } = splitPostStickers(post.content);
+            return stickers.length && !text.trim()
+              ? <img src={stickers[0].src} alt={`이모티콘: ${stickers[0].label}`} className="absolute inset-0 w-full h-full object-contain p-3 bg-gradient-to-br from-stone-50 to-stone-100" loading="lazy" />
+              : (
+                <div className="absolute inset-0 p-2.5 bg-gradient-to-br from-stone-50 to-stone-100 flex">
+                  <p className="text-[0.8125rem] text-stone-700 leading-snug line-clamp-5 break-words"><HashtagText text={text} /></p>
+                </div>
+              );
+          })()}
           {(post.images?.length || 0) > 1 && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow"><Icon name="stack" fill className="w-4 h-4" /></span>}
           {post.is_video && <span className="absolute top-1.5 right-1.5 text-white text-xs drop-shadow"><Icon name="play" fill className="w-4 h-4" /></span>}
           {followed && (
@@ -297,7 +304,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
           <RoleBadge type={post.badge_type} size="xs" showLabel={false} />
           <span className="text-[0.75rem] text-stone-400 shrink-0">· {timeAgo(post.created_at)}</span>
         </div>
-        <p className="text-sm text-stone-800 line-clamp-3 leading-relaxed"><HashtagText text={post.content} onTag={openTag} /></p>
+        <p className="text-sm text-stone-800 line-clamp-3 leading-relaxed"><HashtagText text={postPlainText(post.content)} onTag={openTag} /></p>
         <p className="text-[0.75rem] text-stone-500">
           <Icon name="pray" fill className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{post.pray_count || 0} · <Icon name="heart" fill className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{post.like_count || 0}
           {note && <span className="text-blue-600 ml-1.5">· {note}</span>}

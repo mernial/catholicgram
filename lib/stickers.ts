@@ -118,3 +118,23 @@ export function stripStickerWords(text: string, s: Sticker): string {
   if (kill.size === 0) return text;
   return parts.filter((_, i) => !kill.has(i)).join('').replace(/[ \t]{2,}/g, ' ').trim();
 }
+
+// 게시글의 이모티콘: 글 끝에 이모티콘 글('[아멘이] 아멘!')을 한 줄씩 붙여 저장하고(SQL 필요 없음),
+// 보여 줄 때는 그 줄들을 꺼내 그림으로 — 예전 앱에서는 그 줄이 글로 보임
+export const MAX_POST_STICKERS = 5;
+export function splitPostStickers(content?: string | null): { text: string; stickers: Sticker[] } {
+  const stickers: Sticker[] = [];
+  const lines: string[] = [];
+  for (const line of (content || '').split('\n')) {
+    const s = parseSticker(line);
+    if (s) stickers.push(s); else lines.push(line);
+  }
+  return { text: lines.join('\n').replace(/\s+$/, ''), stickers };
+}
+export const joinPostStickers = (text: string, stickers: Sticker[]) =>
+  [text.replace(/\s+$/, ''), ...stickers.map(stickerText)].filter(Boolean).join('\n');
+// 글만 (목록·미리 보기·공유용): 이모티콘 줄은 빼고, 글이 없으면 '이모티콘'
+export const postPlainText = (content?: string | null) => {
+  const { text, stickers } = splitPostStickers(content);
+  return text || (stickers.length ? `이모티콘 ${stickers.map(s => s.label).join(' ')}` : '');
+};
