@@ -180,8 +180,8 @@ export function suggestStickers(text: string, limit = 12): Sticker[] {
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
 }
 
-// 추천 이모티콘을 고르면 그 뜻과 이어진 말(단어째)을 입력칸에서 지운다 (카카오톡처럼).
-// 추천을 띄운 마지막 낱말(두 낱말에 걸친 말이면 앞 낱말까지)만 지운다
+// 추천을 띄운 마지막 낱말(두 낱말에 걸친 말이면 앞 낱말까지)을 뺀 글.
+// 빈 글이 되면 낱말 하나만 쳐서 뜬 추천 → 고를 때 입력칸을 비운다 (문장을 쓰는 중이면 글은 그대로, StickerAbove)
 export function stripStickerWords(text: string, s: Sticker): string {
   const parts = text.split(/(\s+)/);
   const wordIdx = parts.map((p, i) => (p.trim() ? i : -1)).filter(i => i >= 0);

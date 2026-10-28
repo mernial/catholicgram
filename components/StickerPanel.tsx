@@ -70,7 +70,7 @@ export function StickerButton({ open, onClick, disabled, className = 'w-10 h-10'
 }
 
 // 입력칸 위에 떠 있는 칸 (대화 위에 겹쳐 보임): 고른 이모티콘 미리 보기 + 친 글에 맞는 추천 줄.
-// 높이 0인 relative 칸 안에 두면 그 바로 위에 뜬다. onTextChange 를 주면 추천에서 고를 때 이어진 말을 지움
+// 높이 0인 relative 칸 안에 두면 그 바로 위에 뜬다. onTextChange 를 주면 낱말 하나에서 뜬 추천을 고를 때 그 낱말을 지움
 // 자판이 올라와 위쪽 자리가 모자라면(글씨를 크게 한 휴대폰도) 미리 보기가 대화 칸 위로 넘어가 잘리지 않게
 // 자리에 맞춰 줄인다: 그림을 줄이고 → 추천 줄을 잠시 숨기고 → 안내 글을 빼고 → 그림을 더 줄임
 type Fit = { img: number | null; strip: boolean; caption: boolean };
@@ -91,7 +91,8 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
   const { picked } = picker;
   const favs = useStickerFavorites();
   const pickSuggested = (s: Sticker) => {
-    if (picked?.id !== s.id && onTextChange) { const rest = stripStickerWords(text, s); if (rest !== text) onTextChange(rest); }
+    // 낱말 하나만 쳐서 뜬 추천이면(예: '축하해요', '좋은 아침') 그 글을 지우고 이모티콘만, 문장을 쓰는 중이면 글은 그대로
+    if (picked?.id !== s.id && onTextChange && text.trim() && !stripStickerWords(text, s)) onTextChange('');
     picker.pick(s);
   };
   const boxRef = useRef<HTMLDivElement>(null);
