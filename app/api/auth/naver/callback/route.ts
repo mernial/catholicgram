@@ -41,7 +41,8 @@ export async function GET(request: Request) {
   const meRes = await fetch('https://openapi.naver.com/v1/nid/me', {
     headers: { Authorization: `Bearer ${token.access_token}` }, cache: 'no-store',
   }).catch(() => null);
-  const me = meRes?.ok ? await meRes.json() as { response?: { id?: string; email?: string; nickname?: string; name?: string } } : null;
+  // birthday('MM-DD'): 네이버 개발자 센터에서 '생일' 항목을 켜고 교우가 동의한 경우에만 온다 → 프로필 생일이 비어 있으면 앱이 채움
+  const me = meRes?.ok ? await meRes.json() as { response?: { id?: string; email?: string; nickname?: string; name?: string; birthday?: string } } : null;
   const naver = me?.response;
   if (!naver?.id) return fail(origin, 'naver_profile');
 
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     email,
     email_confirm: true,
     app_metadata: { naver_id: naver.id },
-    user_metadata: { provider: 'naver', naver_email: naver.email || null, name: naver.name || null, nickname: naver.nickname || null },
+    user_metadata: { provider: 'naver', naver_email: naver.email || null, name: naver.name || null, nickname: naver.nickname || null, birthday: naver.birthday || null },
   });
   if (createError && !/already|registered|exists/i.test(createError.message)) return fail(origin, 'naver_account');
 
@@ -62,6 +63,10 @@ export async function GET(request: Request) {
     options: { redirectTo: `${origin}/auth/signin-complete` },
   });
   if (linkError || !link?.properties?.action_link) return fail(origin, 'naver_account');
+  // 이미 가입한 교우: 네이버가 생일을 새로 알려 주면 로그인 정보에 적어 둔다
+  if (naver.birthday && link.user && link.user.user_metadata?.birthday !== naver.birthday) {
+    await admin.auth.admin.updateUserById(link.user.id, { user_metadata: { ...link.user.user_metadata, birthday: naver.birthday } }).catch(() => {});
+  }
 
   return new Response(null, {
     status: 302,
