@@ -1453,6 +1453,17 @@ export default function Home() {
     if (sent) sendPush('message', sent.id);
   };
   const dmSticker = useStickerPicker(sendDmSticker);
+  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  const submitDm = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (dmSticker.picked && !editingMessage) {
+      const rest = messageInputRef.current?.value ?? messageInput;
+      await dmSticker.sendPicked();
+      if (rest.trim()) sendMessage(undefined, rest);
+      return;
+    }
+    sendMessage(e);
+  };
 
   // 메시지로 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩 고르기 — components/ChatMedia)
   const dmMedia = useChatMedia({
@@ -1475,7 +1486,7 @@ export default function Home() {
     const now = Date.now();
     if (typed.trim() === dmLastSend.current.text && now - dmLastSend.current.at < 1000) return; // 엔터 한 번에 두 번 가지 않게
     dmLastSend.current = { text: typed.trim(), at: now };
-    sendMessage(undefined, typed);
+    if (dmSticker.picked && !editingMessage) submitDm(); else sendMessage(undefined, typed);
   }, messageInput);
   const dmEnterRef = dmEnter.ref;
   const setDmInputEl = useCallback((el: HTMLTextAreaElement | null) => { messageInputRef.current = el; dmEnterRef(el); }, [dmEnterRef]);
@@ -4682,6 +4693,8 @@ export default function Home() {
           {dmMedia.bar}
           {dmMedia.choice}
           {dmCapture && <CaptureBar count={dmCapture.size} busy={capturing} onCancel={() => setDmCapture(null)} onDone={() => makeDmCapture(Array.from(dmCapture))} />}
+          {/* 추천 이모티콘·고른 이모티콘: 대화 위에 떠서 보임 (대화창이 줄어들지 않게) */}
+          {!dmCapture && !dmRequest && !editingMessage && <div className="relative h-0 shrink-0 z-20"><StickerAbove picker={dmSticker} text={messageInput} onTextChange={setMessageInput} /></div>}
           {!dmCapture && !dmRequest && (replyTo || editingMessage) && (() => {
             const m = (editingMessage || replyTo)!;
             return (
@@ -4706,8 +4719,7 @@ export default function Home() {
               </div>
             </div>
           )}
-          {!dmCapture && !dmRequest && !editingMessage && <StickerAbove picker={dmSticker} text={messageInput} sendClass="bg-blue-500" />}
-          {!dmCapture && !dmRequest && <form onSubmit={sendMessage} className={`shrink-0 p-3 ${dmSticker.open ? '' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'} bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
+          {!dmCapture && !dmRequest && <form onSubmit={submitDm} className={`shrink-0 p-3 ${dmSticker.open ? '' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'} bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
             {/* 사진 보내기 */}
             <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
@@ -4716,7 +4728,7 @@ export default function Home() {
             <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(o => !o); messageInputRef.current?.blur(); }} />
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
             <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { dmSticker.setOpen(false); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim()} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
+            <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim() && !dmSticker.picked} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
           </form>}

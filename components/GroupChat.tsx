@@ -248,6 +248,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     const now = Date.now();
     if (typed.trim() === lastSendRef.current.text && now - lastSendRef.current.at < 1000) return; // 엔터 한 번에 두 번 가지 않게
     lastSendRef.current = { text: typed.trim(), at: now };
+    if (stickerPick.picked && !editing) { submit(); return; }
     send(undefined, typed);
   };
   const send = async (e?: React.FormEvent, typed?: string) => {
@@ -320,6 +321,17 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     onSent?.((data as GroupMessage).id);
   };
   const stickerPick = useStickerPicker(sendSticker);
+  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (stickerPick.picked && !editing) {
+      const rest = inputRef.current?.value ?? input;
+      await stickerPick.sendPicked();
+      if (rest.trim()) send(undefined, rest);
+      return;
+    }
+    send();
+  };
 
   const remove = async (m: GroupMessage) => {
     setMenuMsg(null);
@@ -568,6 +580,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       {media.bar}
       {media.choice}
       {capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
+      {/* 추천 이모티콘·고른 이모티콘: 대화 위에 떠서 보임 (대화창이 줄어들지 않게) */}
+      {canWrite && !capturePick && !editing && <div className="relative h-0 shrink-0 z-20"><StickerAbove picker={stickerPick} text={input} onTextChange={setInput} /></div>}
       {canWrite && !capturePick && (replyTo || editing) && (() => {
         const m = (editing || replyTo)!;
         return (
@@ -582,8 +596,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       })()}
       {canWrite && !capturePick && (
         <>
-        {!editing && <StickerAbove picker={stickerPick} text={input} sendClass="bg-blue-600" />}
-        <form onSubmit={send} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
+        <form onSubmit={submit} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
@@ -605,7 +618,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             aria-label="단체 채팅방에 보낼 말"
             onFocus={() => stickerPick.setOpen(false)}
           />
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={(!input.trim() && !stickerPick.picked) || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
         </form>
         {stickerPick.open && !editing && <StickerPanel picker={stickerPick} />}
         </>
