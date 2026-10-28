@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
+import BottomSheet from '@/components/BottomSheet';
 
 export interface Notice { id: string; title: string; content: string; pinned: boolean; popup?: boolean; pushed_at: string | null; created_at: string }
 
@@ -99,8 +100,8 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="공지" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-stone-900"><Icon name="megaphone" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />공지사항</h2>
           <div className="flex items-center gap-2">
@@ -161,6 +162,6 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
           </div>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

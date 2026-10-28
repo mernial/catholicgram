@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import RoleBadge from '@/components/RoleBadge';
 import { initial } from '@/lib/fancy-name';
+import BottomSheet from '@/components/BottomSheet';
 
 // 새 채팅: @아이디나 이름으로 교우를 찾아 1:1 메시지를 보내거나, 여러 명을 골라 단체 채팅방을 만든다.
 // 단체 채팅방 안에서 '교우 초대하기'에도 쓴다 (supabase/group-chats.sql)
@@ -91,8 +92,8 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
 
   const title = mode === 'invite' ? '교우 초대하기' : '새 채팅';
   return (
-    <div className="fixed inset-0 bg-black/50 z-[86] flex items-end sm:items-center justify-center" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] h-[88dvh] sm:h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col" onClick={e => e.stopPropagation()} role="dialog" aria-label={title}>
+    <BottomSheet bare label={title} onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex flex-col gap-3">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-[1.125rem] text-stone-900">{title}</h2>
@@ -161,6 +162,6 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
           </div>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

@@ -6,6 +6,7 @@ import { uploadMedia } from '@/lib/upload';
 import { supabase } from '@/lib/supabase';
 import type { SponsorBannerData } from '@/lib/sponsor';
 import SponsorBanner from '@/components/SponsorBanner';
+import BottomSheet from '@/components/BottomSheet';
 
 // 관리자 전용: 후원 배너 등록 / 수정 / 중지 / 삭제 + 노출·클릭 통계
 
@@ -152,8 +153,8 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
   } : null;
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[30rem] max-h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="후원 배너 관리" onClose={onClose} z="z-[85]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           {draft
             ? <button onClick={() => setDraft(null)} className="text-sm font-bold text-stone-900">← {draft.id ? '배너 수정' : '새 배너'}</button>
@@ -248,6 +249,6 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
           </div>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

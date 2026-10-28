@@ -166,7 +166,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
         </div>
       )}
 
-      <div ref={sheet.sheetRef} className="bg-white w-full sm:w-[28rem] h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+      <div ref={sheet.sheetRef} className="bg-white w-full max-w-xl tablet:max-w-3xl h-[92dvh] sm:h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div {...sheet.handleProps} className="shrink-0 pt-2.5 flex justify-center cursor-grab touch-none" aria-hidden="true"><span className="w-12 h-1.5 rounded-full bg-stone-300" /></div>
         <div {...sheet.handleProps} className="px-4 pb-4 pt-2 border-b border-stone-100 flex items-center justify-between shrink-0 cursor-grab">
           <div>

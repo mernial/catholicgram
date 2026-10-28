@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { IconBadge } from '@/components/Icon';
 import { TESTER_GOAL } from '@/lib/android-test';
+import BottomSheet from '@/components/BottomSheet';
 
 // 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
 interface Signup { user_id: string; google_email: string; status: 'requested' | 'added'; created_at: string }
@@ -74,8 +75,8 @@ export default function AdminTesters({ onClose, sendPush }: {
 
   const total = list?.length || 0;
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-stone-50 w-full sm:w-[30rem] h-[92dvh] sm:h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()} role="dialog" aria-label="안드로이드 테스터 신청 목록">
+    <BottomSheet bare label="안드로이드 테스터 신청 목록" onClose={onClose} z="z-[86]" tone="bg-stone-50">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 bg-white border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-stone-900 flex items-center gap-2"><IconBadge name="phone" tone="green" />안드로이드 테스터 신청</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-2" aria-label="닫기">×</button>
@@ -142,6 +143,6 @@ export default function AdminTesters({ onClose, sendPush }: {
           )}
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

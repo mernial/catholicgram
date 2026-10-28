@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import MusicSegmentPicker from '@/components/MusicSegmentPicker';
 import { type BgmTrack, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
 import Icon from '@/components/Icon';
+import BottomSheet from '@/components/BottomSheet';
 
 interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
 
@@ -88,8 +89,8 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="음악 고르기" onClose={onClose} z="z-[85]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="font-bold text-stone-900"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-700" />음악 추가</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
@@ -229,6 +230,6 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
         )}
         </>)}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

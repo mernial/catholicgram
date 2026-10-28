@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadMedia } from '@/lib/upload';
 import type { BgmTrack } from '@/lib/music';
+import BottomSheet from '@/components/BottomSheet';
 
 const MAX_MB = 20;
 
@@ -79,8 +80,8 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-96 max-h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="음악 관리" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="font-bold text-stone-900">🎵 배경음악 관리</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
@@ -122,6 +123,6 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
           )}
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

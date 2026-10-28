@@ -4147,7 +4147,7 @@ export default function Home() {
                   {!post.video_url && post.images && post.images.length > 0 && (
                     <PostPhotos
                       images={post.images}
-                      onOpen={i => setSelectedImage({ images: post.images || [], index: i })}
+                      onOpen={i => openPostViewer(post, i)} // 사진을 누르면 크게 보기(글·음악과 함께), 거기서 한 번 더 누르면 확대·이동
                       onDoubleTap={() => likeByDoubleTap(post.id)}
                       musicTitle={post.music_title}
                     />
@@ -4938,9 +4938,9 @@ export default function Home() {
 
       {/* 오늘의 기도지향 모아 보기 */}
       {showIntentions && (
-        <div className="fixed inset-0 bg-black/60 z-[80] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowIntentions(false)}>
-          <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
-            <div className="p-4 bg-gradient-to-br from-[#101a3f] to-[#1f2f66] text-white flex items-center justify-between">
+        <BottomSheet bare label="오늘의 기도지향" onClose={() => setShowIntentions(false)} z="z-[80]" tone="bg-white" head="bg-gradient-to-r from-[#101a3f] to-[#1f2f66] [&_span]:bg-white/40">
+          <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+            <div className="px-4 pb-4 pt-2 bg-gradient-to-r from-[#101a3f] to-[#1f2f66] text-white flex items-center justify-between">
               <div>
                 <h2 className="font-bold text-[#fbe7b0]"><Icon name="pray" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />오늘의 기도지향 ({visibleIntentions.length})</h2>
                 <p className="text-xs text-white/60 mt-0.5">{new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'long' })} · 자정에 새로 시작돼요</p>
@@ -5059,7 +5059,7 @@ export default function Home() {
             </div>
             </div>
           </div>
-        </div>
+        </BottomSheet>
       )}
 
       {/* 댓글 창: 인스타그램처럼 아래에서 올라옴 */}
@@ -5095,8 +5095,8 @@ export default function Home() {
             : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center shrink-0">{initial(name, '교')}</span>;
         };
         return (
-          <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
-            <div ref={commentPull.sheetRef} className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-white rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
+          <div className="fixed inset-0 z-[80] bg-black/45 flex items-end sm:items-center justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
+            <div ref={commentPull.sheetRef} className="w-full max-w-xl tablet:max-w-3xl h-[92dvh] sm:h-[88dvh] bg-white rounded-t-3xl sm:rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
               <div {...commentPull.handleProps} className="shrink-0 pt-2.5 pb-3 border-b border-stone-200 relative touch-none cursor-grab">
                 <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
                 <p className="text-center font-bold text-stone-900 mt-2">댓글{(() => { const n = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).length; return n > 0 ? ` ${n}개` : ''; })()}</p>
@@ -5332,8 +5332,8 @@ export default function Home() {
 
       {/* 팔로워·팔로잉 목록 */}
       {followList && (
-        <div className="fixed inset-0 bg-black/50 z-[75] flex items-end sm:items-center justify-center" onClick={() => setFollowList(null)}>
-          <section className="bg-white w-full sm:w-96 h-[75dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+        <BottomSheet bare label="팔로워·팔로잉" onClose={() => setFollowList(null)} z="z-[75]" tone="bg-white">
+          <section className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
               <h2 className="font-bold text-stone-900">{followList.mode === 'followers' ? '팔로워' : '팔로잉'}{followList.items && ` ${followList.items.length}명`}</h2>
               <button onClick={() => setFollowList(null)} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-1" aria-label="닫기">×</button>
@@ -5354,7 +5354,7 @@ export default function Home() {
               ))}
             </div>
           </section>
-        </div>
+        </BottomSheet>
       )}
 
       {/* 게시글 수정: 위 × · 제목 · 저장 / 작성자 / 사진 줄(고르기·길게 눌러 순서 바꾸기, 자르기·가리기·삭제) / 본문 칸(이모티콘·해시태그) / 추가 설정(교우 태그·음악·공개 범위) */}
@@ -5856,7 +5856,7 @@ export default function Home() {
 
       {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-2 sm:p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
           {/* 다음(이전) 추천 글 미리보기: 밀면 아래(위)에서 따라 올라옴 */}
           {viewerDrag !== 0 && (() => {
             const peek = viewerNeighbor(viewerDrag < 0 ? 1 : -1);
@@ -5867,7 +5867,7 @@ export default function Home() {
             const pos = viewerDrag < 0 ? { top: bottom + 16 + viewerDrag } : { bottom: H - (top - 16 + viewerDrag) };
             return (
               <div
-                className="pointer-events-none absolute left-4 right-4 mx-auto max-w-md bg-white rounded-3xl overflow-hidden shadow-2xl"
+                className="pointer-events-none absolute left-2 right-2 sm:left-4 sm:right-4 mx-auto max-w-xl bg-white rounded-3xl overflow-hidden shadow-2xl"
                 style={{ ...pos, transition: viewerAnimating ? 'top 0.26s ease-out, bottom 0.26s ease-out' : 'none' }}
               >
                 <div className="p-4 flex items-center gap-2.5 border-b border-stone-100">
@@ -5880,7 +5880,7 @@ export default function Home() {
           })()}
           <div
             ref={viewerCardRef}
-            className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85dvh]"
+            className="bg-white w-full max-w-xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92dvh]"
             style={{ transform: `translateY(${viewerDrag}px)`, transition: viewerAnimating ? 'transform 0.26s ease-out' : 'none' }}
             onClick={e => e.stopPropagation()}
             onTouchStart={onViewerTouchStart}
@@ -5919,7 +5919,7 @@ export default function Home() {
                         onClick={viewerImageTap}
                         onLoad={e => { const nr = naturalRatio(e.currentTarget); if (nr) setViewerRatios(prev => (prev[src] === nr ? prev : { ...prev, [src]: nr })); }}
                         // 글이 있으면 사진을 조금 낮춰 글이 한 화면에 함께 보이게
-                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(${(selectedPostDetail.content || '').trim() ? 44 : 60}dvh * ${frame}))` }}
+                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(${(selectedPostDetail.content || '').trim() ? 52 : 70}dvh * ${frame}))` }}
                       />
                     );
                   })()}

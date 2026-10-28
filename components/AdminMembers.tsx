@@ -6,6 +6,7 @@ import RoleBadge from '@/components/RoleBadge';
 import { formatFeastDay } from '@/lib/feast';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
+import BottomSheet from '@/components/BottomSheet';
 
 export interface AdminMember {
   id: string;
@@ -165,8 +166,8 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] h-[92dvh] sm:h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="회원 관리" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="font-bold text-stone-900"><Icon name="users" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />회원 명단</h2>
           <div className="flex items-center gap-2">
@@ -294,6 +295,6 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
           </>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
