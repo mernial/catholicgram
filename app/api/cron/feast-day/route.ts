@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { todayFeastKeys, todayKst } from '@/lib/feast';
+import { onePerDevice } from '@/lib/push-devices';
 
 // 매일 아침 8시(한국 시간) Vercel Cron 이 호출한다. (vercel.json 참고)
 // 1) 오늘 축일인 교우 본인에게 축하 푸시
@@ -9,7 +10,7 @@ import { todayFeastKeys, todayKst } from '@/lib/feast';
 // 같은 날 두 번 호출되어도 feast_day_sends 기록으로 한 번만 보낸다.
 
 type Payload = { title: string; body: string; url: string; tag: string };
-type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string };
+type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; device?: string | null; last_seen?: string | null };
 
 export async function GET(request: Request) {
   // CRON_SECRET 이 있으면 그것으로 확인하고, 없으면 Vercel Cron 요청을 아침 시간대(7~10시)에만 받는다.
@@ -85,8 +86,8 @@ export async function GET(request: Request) {
   const subscriptions: Subscription[] = [];
   for (let i = 0; i < recipientIds.length; i += 200) {
     const { data } = await admin.from('push_subscriptions')
-      .select('id, user_id, endpoint, p256dh, auth').in('user_id', recipientIds.slice(i, i + 200));
-    if (data) subscriptions.push(...data);
+      .select('*').in('user_id', recipientIds.slice(i, i + 200));
+    if (data) subscriptions.push(...onePerDevice(data as Subscription[])); // 같은 기기에는 한 번만 (한 사람의 구독은 같은 묶음 안)
   }
   if (subscriptions.length === 0) return Response.json({ celebrants: todays.length, sent: 0 });
 

@@ -20,6 +20,7 @@ import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
@@ -620,6 +621,9 @@ export default function Home() {
         // 휴대폰·컴퓨터가 앱을 예전 알림 주소로 다시 띄운 경우: 그 주소는 무시하고, 방금 누른 알림이 적어 둔 곳이 있으면 그리로
         else consumePendingLink();
       }
+      // 공유한 글 주소(?view=, 알림 표시 n 없음)는 알림 주소가 아니므로 늘 연다 (1분 안에 같은 주소로 두 번 열리는 것만 막음).
+      // 예전엔 n 없는 주소를 모두 '예전 알림 주소'로 보고 버려서, 카카오톡으로 받은 글 링크가 홈 첫 글로만 열렸음
+      else if (initialLink.view) { if (markLinkOpened(search)) setDeepLink(initialLink); }
       else consumePendingLink(search);
     } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
 
@@ -2181,7 +2185,8 @@ export default function Home() {
   }, [editContent, editingPostId, showEditVideoEditor]);
   // 게시글 ⋯ 메뉴: 아래로 끌어 닫기, 공유하기·링크 복사 (?view= 로 열면 그 글을 크게)
   const postMenuSheet = useSheetDrag(() => setPostMenuId(null), !!postMenuId);
-  const postLink = (post: Post) => `${window.location.origin}/?view=${post.id}`;
+  // 공유 주소: /p/글id — 카카오톡 등의 미리 보기에 그 글의 사진·글이 나오고, 열면 앱의 그 글 크게 보기로 (app/p/[id])
+  const postLink = (post: Post) => `${window.location.origin}/p/${post.id}`;
   const sharePost = async (post: Post) => {
     const url = postLink(post);
     if (navigator.share) {
@@ -2689,6 +2694,15 @@ export default function Home() {
     focusFeedPost(postId);
   };
 
+  // 공유한 글 링크·글에서 언급 알림(?view=): 그 글을 크게 보기로 바로 연다 (피드에 아직 없거나 아래쪽에 있어도)
+  const openPostView = async (postId: string) => {
+    if (storyPosts.some(p => p.id === postId)) { openPostComments(postId); return; }
+    const p = posts.find(x => x.id === postId) || await ensurePost(postId);
+    if (!p) { showToast('글을 찾을 수 없어요. 지워졌거나 볼 수 없는 글이에요'); return; }
+    if ((p as Post & { is_story?: boolean }).is_story) { openPostComments(postId); return; }
+    openPostViewer(p);
+  };
+
   // 댓글 알림: 홈에서 그 글로 화면을 옮기고, 댓글이면 댓글 창을 바로 열어 그 댓글로 (스토리 댓글·지워진 글은 댓글 창만)
   const openPostFromAlert = async (postId: string, commentId?: string) => {
     if (storyPosts.some(p => p.id === postId)) { openPostComments(postId, commentId); return; }
@@ -2719,13 +2733,17 @@ export default function Home() {
     }).catch(() => {});
   };
 
+  // 구독 저장: 앱을 열 때마다 기기 이름·마지막으로 연 때도 적는다 → 한 휴대폰에 앱이 둘이면 최근에 연 앱 하나에만 알림 (lib/push-devices)
   const savePushSubscription = async (sub: PushSubscription, userId: string) => {
     const json = sub.toJSON();
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
-    const { error } = await supabase.from('push_subscriptions').upsert(
-      { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth },
+    const base = { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth };
+    let { error } = await supabase.from('push_subscriptions').upsert(
+      { ...base, device: (await pushDeviceKey()) || null, last_seen: new Date().toISOString() },
       { onConflict: 'endpoint' }
     );
+    // supabase/push-devices.sql 실행 전이면 칸이 없으니 예전처럼
+    if (error && (error.code === 'PGRST204' || error.code === '42703')) ({ error } = await supabase.from('push_subscriptions').upsert(base, { onConflict: 'endpoint' }));
     return !error;
   };
 
@@ -2787,8 +2805,18 @@ export default function Home() {
     }
   };
 
+  // 앱을 열 때, 그리고 앱으로 돌아올 때(10분에 한 번) 구독을 다시 적는다 → 마지막으로 쓴 앱이 알림을 받음 (lib/push-devices)
   useEffect(() => {
-    if (user) checkPushStatus(user.id);
+    if (!user) return;
+    checkPushStatus(user.id);
+    let savedAt = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - savedAt < 10 * 60 * 1000) return;
+      savedAt = Date.now();
+      checkPushStatus(user.id);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [user]);
 
   // 처음부터 알림이 오도록: 이미 허용돼 있으면 바로 구독, 아직 묻지 않았으면 안내 창을 띄운다
@@ -2918,6 +2946,8 @@ export default function Home() {
   useEffect(() => {
     // 공지 알림은 로그인 없이도 열린다
     if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
+    // 공유한 글 링크도 로그인 없이 연다 (공개 글은 누구나 볼 수 있음)
+    if (deepLink?.view && !user) { setDeepLink(null); closeOverlaysForLink(); if (currentScreenRef.current.tab !== 'home') goToHome(); openPostView(deepLink.view); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
     linkHandledAt = Date.now();
@@ -2929,7 +2959,7 @@ export default function Home() {
     if (deepLink.post) {
       openPostFromAlert(deepLink.post, deepLink.comment);
     } else if (deepLink.view) {
-      openPostById(deepLink.view);
+      openPostView(deepLink.view);
     } else if (deepLink.profile) {
       goToProfile(deepLink.profile);
     } else if (deepLink.anon) {
