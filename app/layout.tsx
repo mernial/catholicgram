@@ -19,6 +19,7 @@ const nanumSquareRound = localFont({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL('https://catholicgram-dey7.vercel.app'), // 공유 미리 보기(og:image)의 주소를 온전한 주소로
   title: '가톨릭그램',
   description: '기도와 묵상을 나누는 가톨릭 커뮤니티',
   manifest: '/manifest.json',

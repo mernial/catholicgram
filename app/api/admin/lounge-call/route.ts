@@ -2,6 +2,7 @@ import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { onePerDevice, type PushSub } from '@/lib/push-devices';
 
 // 관리자 전용: '관리자가 사랑방에 왔어요'를 모든 교우의 휴대폰으로 알리기
 // POST { id } → 관리자가 방금 사랑방에 올린 📢 안내 글. 알림을 켜 둔 모든 기기로 보냄 (관리자 본인 제외)
@@ -44,9 +45,9 @@ export async function POST(request: Request) {
   let sent = 0;
   const expired: string[] = [];
   for (let from = 0; ; from += 500) {
-    const { data: subs } = await admin.from('push_subscriptions').select('id, user_id, endpoint, p256dh, auth').range(from, from + 499);
-    if (!subs || subs.length === 0) break;
-    const targets = subs.filter(s => s.user_id !== user.id);
+    const { data: rows } = await admin.from('push_subscriptions').select('*').order('user_id').order('id').range(from, from + 499);
+    if (!rows || rows.length === 0) break;
+    const targets = onePerDevice(rows as PushSub[]).filter(s => s.user_id !== user.id); // 같은 기기에는 한 번만
     const results = await Promise.allSettled(targets.map(sub =>
       webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload)
     ));
@@ -57,7 +58,7 @@ export async function POST(request: Request) {
         if (code === 404 || code === 410) expired.push(targets[i].id);
       }
     });
-    if (subs.length < 500) break;
+    if (rows.length < 500) break;
   }
   if (expired.length > 0) await admin.from('push_subscriptions').delete().in('id', expired);
   return Response.json({ ok: true, sent });

@@ -4,6 +4,7 @@ import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
 import { STICKER_PACKS, postPlainText } from '@/lib/stickers';
+import { onePerDevice, type PushSub } from '@/lib/push-devices';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -14,8 +15,8 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
 type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
-// group: 같은 tag 로 여러 알림이 오면 휴대폰에서 '제목 N개' 하나로 합치고, 서로 다른 곳이면 누를 때 url 로 (public/sw.js combined)
-type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string; url: string } };
+// group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
+type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string } };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -170,8 +171,8 @@ export async function POST(request: Request) {
     const body = `${comment.author_name}님: ${truncate(postPlainText(comment.content))}`;
     const url = `/?post=${comment.post_id}&comment=${comment.id}`; // 그 글의 댓글 창을 열고 이 댓글로
     const notified = new Set<string>([user.id]);
-    // 댓글·답글 알림은 글이 달라도 휴대폰에서 '💬 새 댓글 N개' 하나로 합침 (여러 글이면 누를 때 앱의 알림 목록으로)
-    const group = { title: '💬 새 댓글', url: '/?alerts=1' };
+    // 댓글·답글 알림은 글이 달라도 휴대폰에서 '💬 새 댓글 N개' 하나로 합침 (누르면 가장 최근 댓글의 글로)
+    const group = { title: '💬 새 댓글' };
     if (post && !notified.has(post.user_id)) {
       list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: 'post-comments', group } });
       notified.add(post.user_id);
@@ -325,9 +326,10 @@ export async function POST(request: Request) {
   const nonce = Date.now().toString(36);
   targets.forEach(t => { t.payload = { ...t.payload, url: `${t.payload.url}${t.payload.url.includes('?') ? '&' : '?'}n=${nonce}` }; });
   const payloadByUser = new Map(targets.map(t => [t.recipientId, t.payload]));
-  const { data: subscriptions } = await admin.from('push_subscriptions')
-    .select('id, user_id, endpoint, p256dh, auth').in('user_id', targets.map(t => t.recipientId));
-  if (!subscriptions || subscriptions.length === 0) return Response.json({ sent: 0 });
+  const { data: rows } = await admin.from('push_subscriptions')
+    .select('*').in('user_id', targets.map(t => t.recipientId));
+  const subscriptions = onePerDevice((rows || []) as (PushSub & { user_id: string })[]); // 같은 기기에는 한 번만
+  if (subscriptions.length === 0) return Response.json({ sent: 0 });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
   const results = await Promise.allSettled(subscriptions.map(sub =>

@@ -80,6 +80,8 @@
 - 휴대폰 알림 합치기(운영자: '알림이 여러 개 와'): `public/sw.js` `combined()` — 같은 tag 의 알림이 떠 있으면 새로 쌓지 않고 하나로(제목에 개수, 내용은 최근 것부터 다섯 줄, `data.count/lines/places`). 게시글 댓글·답글은 글이 달라도 tag `post-comments` + `group: { title: '💬 새 댓글', url: '/?alerts=1' }` → '💬 새 댓글 N개', 여러 글이 섞이면 누를 때 앱 알림 목록(한 글이면 그 댓글로). 1:1(`chat-보낸이`)·단체방·고민글 답글 등은 '제목 (N)'. 예전엔 댓글 알림 tag 가 글마다(`comment-글id`) 달라 글마다 따로 쌓였음. 알림을 지우거나 누르면 다시 1부터
 - 휴대폰 알림을 눌러 앱으로 들어오면 같은 소식이 화면 위 배너로 또 내려오던 문제: 앱이 뒤에 있는 동안 온 댓글·메시지·팔로우를 앱으로 돌아와 다시 불러올 때 '새 소식'으로 보고 배너를 띄웠음 → `visibleSinceRef`(앱이 마지막으로 화면에 나온 때) 뒤에 생긴 것만 배너. 앱을 보는 중에 온 소식은 예전처럼 배너
 - 1:1·단체방·사랑방: 답장으로 보낸 이모티콘이 가운데에 보이던 문제(답장 줄이 길면 말풍선 칸이 넓어지고 이모티콘은 그 왼쪽에 붙음) → 이모티콘 말풍선은 `flex flex-col items-end`(내 것)/`items-start`로 보낸 쪽에 붙임
+- 같은 휴대폰에 알림이 두 번 오던 문제(운영자): 한 휴대폰에 앱이 둘(크롬으로 추가한 앱 + 삼성 인터넷으로 열리는 Play 앱 등)이면 브라우저마다 알림 구독이 따로라 두 번 왔음 → `supabase/push-devices.sql`(실행 필요: `push_subscriptions.device`·`last_seen`) + `lib/push-devices.ts`: 앱이 구독을 적을 때 기기 이름(안드로이드 모델 `getHighEntropyValues`, 아이폰/아이패드)·마지막으로 연 때를 같이 적고(앱을 열 때·돌아올 때 10분에 한 번), 서버(`/api/push/notify`·공지·사랑방 부르기·축일)는 같은 사람의 같은 기기에는 가장 최근에 연 앱 하나에만(`onePerDevice`). SQL 전이면 예전처럼 모두에게. 합친 알림('💬 새 댓글 N개')을 누르면 알림 목록이 아니라 가장 최근 댓글의 글로
+- 게시글 공유 링크가 그 글이 아니라 홈 첫 글로 열리던 문제: 시작할 때 알림 표시(`n=`) 없는 주소를 모두 '예전 알림 주소'로 보고 버렸음 → `?view=`(공유한 글)는 늘 열고, 피드로 스크롤하는 대신 그 글 크게 보기(`openPostView`), 로그인하지 않아도 열림(공개 글). 공유 주소는 `/p/글id`(`app/p/[id]`: 서버가 anon 권한으로 그 글을 읽어 카카오톡 등 미리 보기에 사진·작성자·글(og:image·og:title·og:description), 열면 `/?view=글id`로). 공개가 아닌 글·지운 글은 '가톨릭그램' 기본 미리 보기. `layout.tsx` `metadataBase`
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음

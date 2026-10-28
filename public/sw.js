@@ -11,25 +11,19 @@ const askViewing = (client, url) => new Promise(resolve => {
   try { client.postMessage({ type: 'viewing?', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
 });
 // 같은 tag 의 알림이 이미 떠 있으면 새로 쌓지 않고 하나로 합친다 (카카오톡처럼): 제목에 개수, 내용은 최근 것부터 다섯 줄.
-// 묶음 알림(data.group: 여러 글에 달린 댓글처럼)은 '💬 새 댓글 3개', 서로 다른 글이 섞이면 누를 때 앱의 알림 목록(group.url)으로
-const placeOf = (u) => {
-  try { const x = new URL(u || '/', self.location.origin); x.searchParams.delete('n'); x.searchParams.delete('comment'); return x.pathname + x.search; } catch { return u || '/'; }
-};
-const withNonce = (u) => `${u}${u.includes('?') ? '&' : '?'}n=${Date.now().toString(36)}`;
+// 묶음 알림(data.group: 여러 글에 달린 댓글처럼)은 '💬 새 댓글 3개'. 누르면 가장 최근 소식의 그 글·대화로 바로
 async function combined(data, title) {
   const body = data.body || '';
   const url = data.url || '/';
   const prev = data.tag ? (await self.registration.getNotifications({ tag: data.tag }).catch(() => []))[0] : null;
-  if (!prev) return { title, body, data: { url, count: 1, lines: [body], places: [placeOf(url)] } };
+  if (!prev) return { title, body, data: { url, count: 1, lines: [body] } };
   const p = prev.data || {};
   const count = (p.count || 1) + 1;
   const lines = [body, ...(p.lines || [prev.body || ''])].filter(Boolean).slice(0, 5);
-  const places = Array.from(new Set([placeOf(url), ...(p.places || [placeOf(p.url)])])).slice(0, 20);
-  const group = data.group;
   return {
-    title: group ? `${group.title} ${count}개` : `${title} (${count})`,
+    title: data.group ? `${data.group.title} ${count}개` : `${title} (${count})`,
     body: lines.join('\n'),
-    data: { url: places.length > 1 && group && group.url ? withNonce(group.url) : url, count, lines, places },
+    data: { url, count, lines },
   };
 }
 self.addEventListener('push', (event) => {
