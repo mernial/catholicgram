@@ -59,10 +59,11 @@ export function useStickerFavorites() {
 // 입력칸 위 단추를 눌러도 입력칸 초점을 뺏지 않게 → 자판이 내려가지 않음
 const keepFocus = { onPointerDown: (e: React.PointerEvent) => e.preventDefault(), onMouseDown: (e: React.MouseEvent) => e.preventDefault() };
 
-// 입력칸 옆 😊 단추 (누르면 이모티콘 칸이 열리고 닫힘)
+// 입력칸 옆 😊 단추 (누르면 이모티콘 칸이 열리고 닫힘). 눌러도 입력칸 초점을 뺏지 않음 — 화면 자판을 내릴지는 onClick 이 정함
+// (실제 자판이면 입력칸에 그대로 두어 이모티콘 칸을 연 채 계속 칠 수 있게, lib/use-enter-send leaveInputForPanel)
 export function StickerButton({ open, onClick, disabled, className = 'w-10 h-10' }: { open: boolean; onClick: () => void; disabled?: boolean; className?: string }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={open} aria-label={open ? '이모티콘 닫기' : '이모티콘 보내기'}
+    <button type="button" {...keepFocus} onClick={onClick} disabled={disabled} aria-pressed={open} aria-label={open ? '이모티콘 닫기' : '이모티콘 보내기'}
       className={`${className} shrink-0 rounded-full flex items-center justify-center disabled:opacity-40 ${open ? 'bg-amber-100 text-amber-700' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`}>
       <Icon name="smiley" className="w-[1.375rem] h-[1.375rem]" />
     </button>

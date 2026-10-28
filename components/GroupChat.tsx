@@ -16,7 +16,7 @@ import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-act
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
-import { useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 
@@ -604,7 +604,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
           </label>
-          <StickerButton open={stickerPick.open} disabled={!!editing} className="w-11 h-11" onClick={() => { stickerPick.setOpen(o => !o); inputRef.current?.blur(); }} />
+          <StickerButton open={stickerPick.open} disabled={!!editing} className="w-11 h-11" onClick={() => { stickerPick.setOpen(!stickerPick.open); leaveInputForPanel(inputRef.current); }} />
           <textarea
             ref={setInputEl}
             value={input}
@@ -618,7 +618,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             placeholder={editing ? '고칠 내용을 적어 주세요' : '메시지 입력...'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] text-stone-900 focus:outline-none focus:border-stone-500"
             aria-label="단체 채팅방에 보낼 말"
-            onFocus={() => stickerPick.setOpen(false)}
+            onFocus={() => closePanelOnInputFocus(() => stickerPick.setOpen(false))}
           />
           <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={(!input.trim() && !stickerPick.picked) || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
         </form>
