@@ -4,6 +4,7 @@ import "./globals.css";
 import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
 import PinchPeek from "@/components/PinchPeek";
+import ConfirmHost from "@/components/ConfirmDialog";
 
 // 나눔스퀘어라운드 (네이버, OFL 무료 글꼴) — 둥글고 부드러운 고딕체
 const nanumSquareRound = localFont({
@@ -56,7 +57,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}<PinchPeek /></body>
+      <body className="min-h-full flex flex-col">{children}<PinchPeek /><ConfirmHost /></body>
     </html>
   );
 }
