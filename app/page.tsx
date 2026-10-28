@@ -44,6 +44,7 @@ import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/comp
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
+import InstallGuide from '@/components/InstallGuide';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
 import ReelVideo from '@/components/ReelVideo';
@@ -3147,6 +3148,8 @@ export default function Home() {
   };
   // 댓글 이모티콘: 고르면 입력칸 위에 크게 미리 보기 → 게시(또는 같은 이모티콘을 한 번 더)로 쓴 글과 함께 한 댓글로 올림
   const commentSticker = useStickerPicker(s => { if (commentSheetId) handleAddComment(commentSheetId, { sticker: s }); });
+  // 댓글 창: × 말고도 손잡이·제목줄이나 (맨 위까지 올라간) 댓글 목록을 아래로 끌어내리면 닫힘 (lib/sheet-drag)
+  const commentPull = useSheetDrag(() => setCommentSheetId(null), !!commentSheetId);
   const { setOpen: setCommentStickerOpen, setPicked: setCommentStickerPicked } = commentSticker;
   useEffect(() => { setCommentStickerOpen(false); setCommentStickerPicked(null); }, [commentSheetId, setCommentStickerOpen, setCommentStickerPicked]);
   const submitComment = (postId: string, typed?: string) => {
@@ -4772,7 +4775,7 @@ export default function Home() {
                   <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{quoteLabel(m)}</p>
                 </div>
                 {!editingMessage && <QuoteThumb m={m} size="w-11 h-11" />}
-                <button type="button" onClick={() => (editingMessage ? cancelEditMessage() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editingMessage ? '고치기 그만두기' : '답장 그만두기'}>×</button>
+                <button type="button" onClick={() => { if (editingMessage) cancelEditMessage(); else { setReplyTo(null); dmSticker.setPicked(null); } }} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editingMessage ? '고치기 그만두기' : '답장 그만두기'}>×</button>
               </div>
             );
           })()}
@@ -5072,8 +5075,8 @@ export default function Home() {
         };
         return (
           <div className="fixed inset-0 z-[80] bg-black/45 flex items-end justify-center animate-fade-in" onClick={() => setCommentSheetId(null)}>
-            <div className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-white rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
-              <div className="shrink-0 pt-2.5 pb-3 border-b border-stone-200 relative">
+            <div ref={commentPull.sheetRef} className="w-full max-w-xl tablet:max-w-3xl h-[78dvh] bg-white rounded-t-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()} role="dialog" aria-label="댓글">
+              <div {...commentPull.handleProps} className="shrink-0 pt-2.5 pb-3 border-b border-stone-200 relative touch-none cursor-grab">
                 <span className="block mx-auto w-10 h-1.5 rounded-full bg-stone-300" />
                 <p className="text-center font-bold text-stone-900 mt-2">댓글{(() => { const n = (comments[sid] || []).filter(c => !c.user_id || !blockedIds.has(c.user_id)).length; return n > 0 ? ` ${n}개` : ''; })()}</p>
                 <button onClick={() => setCommentSheetId(null)} className="absolute right-3 top-3 w-10 h-10 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
@@ -5210,7 +5213,7 @@ export default function Home() {
                 {replyTargets[sid] && (
                   <div className="flex items-center gap-2 text-[0.8125rem] bg-stone-100 text-stone-600 rounded-lg px-3 py-1.5">
                     <span className="flex-1 min-w-0 truncate"><b className="text-stone-800">{replyTargets[sid]!.name}</b>님에게 답글 남기는 중</span>
-                    <button onClick={() => setReplyTargets(prev => ({ ...prev, [sid]: null }))} className="text-stone-400 text-lg leading-none px-1" aria-label="답글 취소">×</button>
+                    <button onClick={() => { setReplyTargets(prev => ({ ...prev, [sid]: null })); commentSticker.setPicked(null); }} className="text-stone-400 text-lg leading-none px-1" aria-label="답글 취소">×</button>
                   </div>
                 )}
                 {user && <MentionSuggest value={commentInputs[sid] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [sid]: v }))} excludeId={user.id} />}
@@ -5620,55 +5623,8 @@ export default function Home() {
       )}
 
       {/* 홈 화면 추가 방법 안내 */}
-      {showInstallGuide && (
-        <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowInstallGuide(false)}>
-          <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3">
-              <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-12 h-12 rounded-xl" />
-              <div>
-                <h2 className="font-bold text-stone-900">{!isIOS && installPrompt ? '가톨릭그램 앱 설치하기' : '홈 화면에 추가하기'}</h2>
-                <p className="text-xs text-stone-500">{isIOS ? '홈 화면에 추가해야 휴대폰 알림도 받을 수 있어요' : '앱처럼 아이콘을 눌러 바로 열 수 있어요'}</p>
-              </div>
-            </div>
-            {isIOS ? (
-              <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
-                <li><b>Safari</b>로 이 페이지를 열어주세요 (Chrome은 오른쪽 위 공유 버튼)</li>
-                <li>화면 아래(또는 위)의 <b>공유 버튼</b> <span className="inline-block border border-stone-300 rounded px-1 text-xs">⬆︎</span> 을 누르세요 (안 보이면 <b>⋯</b> 버튼 → <b>공유</b>)</li>
-                <li>목록을 내려 <b>홈 화면에 추가</b>를 누르세요</li>
-                <li>오른쪽 위 <b>추가</b>를 누르면 완료!</li>
-              </ol>
-            ) : (
-              <>
-                {!installPrompt && (
-                  <ol className="text-sm text-stone-700 flex flex-col gap-2.5 list-decimal pl-5">
-                    <li><b>Chrome</b>: 오른쪽 위 <b>⋮</b> 메뉴 → <b>홈 화면에 추가</b> 또는 <b>앱 설치</b></li>
-                    <li><b>삼성 인터넷</b>: 아래 <b>≡</b> 메뉴 → <b>현재 페이지 추가</b> → <b>홈 화면</b></li>
-                  </ol>
-                )}
-                <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-4 flex flex-col gap-2">
-                  <p className="text-[1.0625rem] font-bold text-red-700">⚠️ 설치 중 경고 창이 뜨면</p>
-                  <p className="text-sm text-stone-800 leading-relaxed">
-                    &lsquo;Play 프로텍트&rsquo; 등의 경고가 뜰 수 있어요.<br />
-                    큰 <b>[확인]</b> 버튼을 누르면 <b className="text-red-700">설치가 취소</b>됩니다.
-                  </p>
-                  <p className="text-[1.0625rem] font-bold text-stone-900 bg-yellow-200 rounded-lg px-3 py-2 text-center">
-                    👉 아래쪽 작은 글씨 <u>무시하고 설치</u>를 눌러주세요
-                  </p>
-                  <p className="text-xs text-stone-500 text-center">(안 보이면 <b>자세히</b>를 먼저 누르세요)</p>
-                </div>
-              </>
-            )}
-            {!isIOS && installPrompt ? (
-              <div className="flex gap-2">
-                <button onClick={() => setShowInstallGuide(false)} className="px-4 py-3 rounded-xl text-sm font-medium text-stone-500 border border-stone-200">나중에</button>
-                <button onClick={startNativeInstall} className="flex-1 bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">📲 지금 설치하기</button>
-              </div>
-            ) : (
-              <button onClick={() => setShowInstallGuide(false)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold">확인</button>
-            )}
-          </div>
-        </div>
-      )}
+      {/* 홈 화면에 추가하기: 쓰는 브라우저에 맞춘 단계 + 메뉴 단추 자리를 가리키는 화살표 (components/InstallGuide) */}
+      {showInstallGuide && <InstallGuide isIOS={isIOS} canInstall={!!installPrompt} onInstall={startNativeInstall} onClose={() => setShowInstallGuide(false)} />}
 
       {/* 댓글 알림 목록 */}
       {showNotifications && (

@@ -592,7 +592,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
               <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{preview(m)}</p>
             </div>
             {!editing && !(m.user_id && blockedIds.has(m.user_id)) && <QuoteThumb m={m} size="w-11 h-11" />}
-            <button type="button" onClick={() => (editing ? cancelEdit() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editing ? '고치기 그만두기' : '답장 그만두기'}>×</button>
+            <button type="button" onClick={() => { if (editing) cancelEdit(); else { setReplyTo(null); stickerPick.setPicked(null); } }} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editing ? '고치기 그만두기' : '답장 그만두기'}>×</button>
           </div>
         );
       })()}

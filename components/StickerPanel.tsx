@@ -67,17 +67,22 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
   }, []);
   const fitKey = `${picked?.id || ''}|${tick}|${suggestStickers(text, 1).length > 0}|${text.split('\n').length}`;
   const fitKeyRef = useRef(fitKey);
+  const fitSteps = useRef(0); // 한 번 맞출 때 몇 단계까지만 (소수점 픽셀 등으로 끝없이 다시 그리지 않게)
   useLayoutEffect(() => {
-    if (fitKeyRef.current !== fitKey) { fitKeyRef.current = fitKey; if (fit !== FULL_FIT) { setFit(FULL_FIT); return; } }
+    if (fitKeyRef.current !== fitKey) { fitKeyRef.current = fitKey; fitSteps.current = 0; if (fit !== FULL_FIT) { setFit(FULL_FIT); return; } }
     const box = boxRef.current, anchor = box?.parentElement;
-    if (!picked || !box || !anchor) return;
-    const over = box.offsetHeight + 4 - roomAbove(anchor);
-    if (over <= 0) return;
+    if (!picked || !box || !anchor || fitSteps.current >= 6) return;
+    const over = Math.ceil(box.offsetHeight + 4 - roomAbove(anchor));
+    if (over <= 1) return;
     const cur = imgRef.current?.offsetHeight || 0;
-    if (cur - over >= 96) setFit(f => ({ ...f, img: cur - over }));
-    else if (fit.strip && box.querySelector('[data-sticker-suggest]')) setFit(f => ({ ...f, strip: false }));
-    else if (fit.caption) setFit(f => ({ ...f, caption: false }));
-    else if (cur > MIN_IMG) setFit(f => ({ ...f, img: Math.max(MIN_IMG, cur - over) }));
+    const next: Fit = cur - over >= 96 ? { ...fit, img: Math.floor(cur - over) }
+      : fit.strip && box.querySelector('[data-sticker-suggest]') ? { ...fit, strip: false }
+      : fit.caption ? { ...fit, caption: false }
+      : cur > MIN_IMG ? { ...fit, img: Math.max(MIN_IMG, Math.floor(cur - over)) }
+      : fit;
+    if (next.img === fit.img && next.strip === fit.strip && next.caption === fit.caption) return; // 더 줄일 것이 없음
+    fitSteps.current += 1;
+    setFit(next);
   });
   const imgStyle = fit.img ? { width: fit.img, height: fit.img } : undefined;
   return (
@@ -96,12 +101,13 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
   );
 }
 
-// 친 글과 비슷한 이모티콘 추천 (× 를 누르면 글을 다 지울 때까지 숨김)
+// 지금 치는 낱말과 비슷한 이모티콘 추천 (× 를 누르면 다른 낱말을 칠 때까지 숨김)
 function StickerSuggest({ text, picked, onPick, collapsed }: { text: string; picked: Sticker | null; onPick: (s: Sticker) => void; collapsed?: boolean }) {
   const [hidden, setHidden] = useState(false);
-  const empty = !text.trim();
-  useEffect(() => { if (empty) setHidden(false); }, [empty]);
   const list = useMemo(() => suggestStickers(text), [text]);
+  // × 로 숨겨도 새 낱말에 맞는 추천(목록이 바뀜)은 다시 보여 줌
+  const listKey = list.map(s => s.id).join(',');
+  useEffect(() => { setHidden(false); }, [listKey]);
   if (hidden || collapsed || list.length === 0) return null; // collapsed: 미리 보기 자리가 모자라 잠시 숨김
   return (
     <div data-sticker-suggest className="pointer-events-auto w-full flex items-center gap-1 pl-2 pr-1 py-1.5 rounded-2xl bg-white shadow-[0_4px_18px_rgba(0,0,0,0.16)] border border-stone-200" role="region" aria-label="추천 이모티콘">
@@ -138,7 +144,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [picker.picked]);
   return (
-    <div className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
+    <div data-no-sheet-drag className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
       {/* 캐릭터 탭: 네 칸을 같은 너비로 (그림 위, 이름 아래) */}
       <div className="flex items-stretch gap-1 px-2 pt-2 pb-1 border-b border-stone-100">
         <div className="flex-1 min-w-0 grid grid-cols-4 gap-1" role="tablist" aria-label="이모티콘 캐릭터">

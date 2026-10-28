@@ -810,7 +810,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{quoteLabel(replyTo)}</p>
             </div>
             <QuoteThumb m={replyTo} size="w-11 h-11" />
-            <button type="button" onClick={() => setReplyTo(null)} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="답장 그만두기">×</button>
+            <button type="button" onClick={() => { setReplyTo(null); stickerPick.setPicked(null); }} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="답장 그만두기">×</button>
           </div>
         )}
         {notice && <p className="px-4 pt-2 text-[0.8125rem] font-bold text-amber-700">{notice}</p>}

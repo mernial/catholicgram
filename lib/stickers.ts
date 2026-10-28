@@ -89,31 +89,46 @@ const KEYWORDS: Record<string, string[]> = {
 
 export const hasStickerSuggestion = (text: string) => suggestStickers(text, 1).length > 0;
 
+// 추천은 지금 치고 있는 말에만 맞춘다: 마지막 낱말 (두 낱말에 걸친 말 '좋은 아침'은 바로 앞 낱말까지 이어 봄).
+// 맞는 말이 마지막 낱말에 걸쳐 있어야 함 → 추천이 뜬 뒤 고르지 않고 다른 말을 이어 치면 그 추천은 사라지고
+// 새로 친 낱말에 맞는 추천이 뜬다 (예: '위로' → 토닥토닥, 이어서 '해 드리고 싶어요' → 사라짐)
+function tailMatches(text: string, keys: string[]) {
+  const words = text.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const last = words[words.length - 1] || '';
+  const prev = words[words.length - 2] || '';
+  const joined = prev + last;
+  const hits: { at: number; len: number }[] = [];
+  for (const k of keys) {
+    for (let at = joined.indexOf(k); at >= 0; at = joined.indexOf(k, at + 1)) {
+      if (at + k.length > prev.length) hits.push({ at, len: k.length }); // 마지막 낱말에 걸친 것만
+    }
+  }
+  return { hits, prevLen: prev.length, joined };
+}
+
 // 친 글과 비슷한 이모티콘 (맞는 말이 많고 길수록 먼저, 같은 점수면 캐릭터 순서). 두 글자 미만이면 없음
 export function suggestStickers(text: string, limit = 12): Sticker[] {
-  const t = text.toLowerCase().replace(/\s+/g, '');
-  if (t.length < 2) return [];
+  if (text.replace(/\s+/g, '').length < 2) return [];
   const scored: { s: Sticker; score: number; i: number }[] = [];
   STICKERS.forEach((s, i) => {
-    const score = (KEYWORDS[s.label] || []).reduce((sum, k) => (t.includes(k) ? sum + k.length : sum), 0);
+    const score = tailMatches(text, KEYWORDS[s.label] || []).hits.reduce((sum, h) => sum + h.len, 0);
     if (score > 0) scored.push({ s, score, i });
   });
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
 }
 
 // 추천 이모티콘을 고르면 그 뜻과 이어진 말(단어째)을 입력칸에서 지운다 (카카오톡처럼).
-// 띄어쓰기를 빼고 맞춰 보므로 '좋은 아침이에요'의 '좋은아침'처럼 두 단어에 걸친 말도 함께 지움
+// 추천을 띄운 마지막 낱말(두 낱말에 걸친 말이면 앞 낱말까지)만 지운다
 export function stripStickerWords(text: string, s: Sticker): string {
-  const keys = KEYWORDS[s.label] || [];
   const parts = text.split(/(\s+)/);
-  const owner: number[] = []; // 띄어쓰기 없이 이은 글자 → 몇 번째 조각의 글자인지
-  let joined = '';
-  parts.forEach((p, i) => { if (!p.trim()) return; for (const ch of p.toLowerCase()) { joined += ch; owner.push(i); } });
+  const wordIdx = parts.map((p, i) => (p.trim() ? i : -1)).filter(i => i >= 0);
+  const lastIdx = wordIdx[wordIdx.length - 1], prevIdx = wordIdx[wordIdx.length - 2];
+  if (lastIdx === undefined) return text;
+  const { hits, prevLen } = tailMatches(text, KEYWORDS[s.label] || []);
   const kill = new Set<number>();
-  for (const k of keys) {
-    for (let at = joined.indexOf(k); at >= 0; at = joined.indexOf(k, at + 1)) {
-      for (let c = at; c < at + k.length; c++) kill.add(owner[c]);
-    }
+  for (const h of hits) {
+    if (h.at < prevLen && prevIdx !== undefined) kill.add(prevIdx); // 앞 낱말에 걸친 말 ('좋은 아침')
+    kill.add(lastIdx);
   }
   if (kill.size === 0) return text;
   return parts.filter((_, i) => !kill.has(i)).join('').replace(/[ \t]{2,}/g, ' ').trim();
