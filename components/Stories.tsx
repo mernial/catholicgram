@@ -245,7 +245,8 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
           </div>
           <div className="flex-1 min-h-0 flex items-center justify-center"><img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" /></div>
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
-            <input value={caption} onChange={e => setCaption(e.target.value.slice(0, 100))} placeholder="한마디 쓰기 (선택)" className="w-full px-4 py-3 rounded-full bg-white/15 text-white placeholder-white/60 text-[0.9375rem] focus:outline-none" />
+            {/* input 대신 한 줄 textarea: 휴대폰 자판 위 자동 완성 줄이 뜨지 않음 */}
+            <textarea rows={1} value={caption} onChange={e => setCaption(e.target.value.replace(/\n/g, ' ').slice(0, 100))} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} enterKeyHint="done" placeholder="한마디 쓰기 (선택)" className="block w-full resize-none [field-sizing:content] max-h-28 px-4 py-3 rounded-3xl bg-white/15 text-white placeholder-white/60 text-[0.9375rem] leading-6 focus:outline-none" />
             <button onClick={post} disabled={posting} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? '올리는 중...' : '내 스토리에 올리기'}</button>
             <p className="text-center text-[0.75rem] text-white/60">24시간 뒤에 저절로 사라져요</p>
           </div>

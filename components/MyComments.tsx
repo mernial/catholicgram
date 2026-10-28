@@ -76,7 +76,7 @@ export default function MyComments({ userId, onOpen }: { userId: string; onOpen:
                       : '지워졌거나 볼 수 없는 글'}
                   </span>
                   <span className="block mt-0.5 text-[0.9375rem] text-stone-900 leading-snug line-clamp-2 break-words">
-                    {c.parent_id && <span className="text-stone-400 mr-1" aria-label="답글">↳</span>}{c.content}
+                    {c.parent_id && <span className="text-stone-400 mr-1" aria-label="답글">↳</span>}{postPlainText(c.content)}
                   </span>
                   <span className="block mt-1 text-[0.75rem] text-stone-400">{when(c.created_at)}</span>
                 </span>

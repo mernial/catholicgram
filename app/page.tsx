@@ -397,6 +397,7 @@ export default function Home() {
   const [intentionSaving, setIntentionSaving] = useState(false);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editCommentText, setEditCommentText] = useState('');
+  const [editCommentStickers, setEditCommentStickers] = useState<Sticker[]>([]); // 댓글 고치기: 붙은 이모티콘 (글만 고치고 × 로 빼기)
   const [replyTargets, setReplyTargets] = useState<Record<string, { userId: string; name: string; commentId?: string } | null>>({});
   // 오늘 축일인 팔로잉 교우들 + 축일 카드 닫음 여부(하루 단위)
   const [feastFriends, setFeastFriends] = useState<UserProfile[]>([]);
@@ -3064,8 +3065,12 @@ export default function Home() {
     return res.ok ? json : { error: json.error || '처리하지 못했어요.' };
   };
 
+  const startEditComment = (c: Comment) => {
+    const parts = splitPostStickers(c.content);
+    setEditingCommentId(c.id); setEditCommentText(parts.text); setEditCommentStickers(parts.stickers);
+  };
   const saveCommentEdit = async (c: Comment) => {
-    const text = editCommentText.trim();
+    const text = joinPostStickers(editCommentText.trim(), editCommentStickers);
     if (!text) return;
     const result = await callCommentApi({ action: 'edit', id: c.id, content: text });
     if (result.error) { alert(result.error); return; }
@@ -3088,21 +3093,23 @@ export default function Home() {
     if (!requireProfile()) return;
     if (targetUserId !== user.id || commentId) setReplyTargets(prev => ({ ...prev, [postId]: { userId: targetUserId, name, commentId } }));
     if (commentSheetId !== postId) await toggleCommentBox(postId);
-    setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLInputElement | null)?.focus(), 150);
+    setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLTextAreaElement | null)?.focus(), 150);
   };
 
   const commentSendingRef = useRef(new Set<string>()); // 엔터가 두 번 들어와도 한 번만 올리게
-  const handleAddComment = async (postId: string) => {
+  // typed: 엔터로 올릴 때 방금 완성된 글자까지 든 입력칸 내용 · sticker: 함께 올릴 이모티콘 (글 끝에 한 줄로)
+  const handleAddComment = async (postId: string, opts: { typed?: string; sticker?: Sticker | null } = {}) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    const text = commentInputs[postId];
-    if (!text || !text.trim() || commentSendingRef.current.has(postId)) return;
+    const text = opts.typed ?? commentInputs[postId] ?? '';
+    const sticker = opts.sticker || null;
+    if ((!text.trim() && !sticker) || commentSendingRef.current.has(postId)) return;
     commentSendingRef.current.add(postId);
     // 입력칸은 바로 비운다: 올리는 동안 이어서 친 글자가 나중에 지워지지 않게 (못 올리면 되돌림)
     setCommentInputs(prev => ({ ...prev, [postId]: '' }));
     const author = profile?.baptismal_name || '교우';
     const target = replyTargets[postId];
-    const row = { post_id: postId, content: text.trim(), user_id: user.id, author_name: author };
+    const row = { post_id: postId, content: joinPostStickers(text.trim(), sticker ? [sticker] : []), user_id: user.id, author_name: author };
     const replyRow = target ? { ...row, reply_to_user_id: target.userId, reply_to_name: target.name } : row;
     let { data, error } = await supabase.from('comments')
       .insert([target?.commentId ? { ...replyRow, parent_id: target.commentId } : replyRow]).select();
@@ -3117,6 +3124,7 @@ export default function Home() {
     commentSendingRef.current.delete(postId);
     if (error || !data?.[0]) {
       setCommentInputs(prev => ({ ...prev, [postId]: (prev[postId] || '').trim() ? prev[postId] : text }));
+      if (sticker) commentSticker.setPicked(sticker);
       if (error) alert(`댓글을 남기지 못했어요.\n(${error.message})`);
       return;
     }
@@ -3125,6 +3133,24 @@ export default function Home() {
     setReplyTargets(prev => ({ ...prev, [postId]: null }));
     sendPush('comment', data[0].id);
   };
+  // 댓글 이모티콘: 고르면 입력칸 위에 크게 미리 보기 → 게시(또는 같은 이모티콘을 한 번 더)로 쓴 글과 함께 한 댓글로 올림
+  const commentSticker = useStickerPicker(s => { if (commentSheetId) handleAddComment(commentSheetId, { sticker: s }); });
+  const { setOpen: setCommentStickerOpen, setPicked: setCommentStickerPicked } = commentSticker;
+  useEffect(() => { setCommentStickerOpen(false); setCommentStickerPicked(null); }, [commentSheetId, setCommentStickerOpen, setCommentStickerPicked]);
+  const submitComment = (postId: string, typed?: string) => {
+    const s = commentSticker.picked;
+    if (s) commentSticker.setPicked(null);
+    handleAddComment(postId, { typed, sticker: s });
+  };
+  // 댓글 입력칸 엔터: 휴대폰은 줄바꿈(게시 단추로 올림), 컴퓨터는 올리기 · 글에 맞춰 늘어남 (lib/use-enter-send)
+  const commentLastSend = useRef({ text: '', at: 0 });
+  const commentEnter = useEnterSend(typed => {
+    if (!commentSheetId) return;
+    const now = Date.now();
+    if (typed.trim() === commentLastSend.current.text && now - commentLastSend.current.at < 1000) return; // 엔터 한 번에 두 번 올라가지 않게
+    commentLastSend.current = { text: typed.trim(), at: now };
+    submitComment(commentSheetId, typed);
+  }, commentSheetId ? commentInputs[commentSheetId] || '' : '');
 
   const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -5076,6 +5102,7 @@ export default function Home() {
                   const pray = r.n.pray || 0, like = r.n.like || 0, myPray = r.mine.includes('pray'), myLike = r.mine.includes('like');
                   // 꾹 눌러 고른 다른 감정 (👍 2 😂 1 …)
                   const extras = REACTION_EMOJIS.map(e => ({ e, n: r.n[COMMENT_REACTION_TYPES[e]] || 0 })).filter(x => x.e !== '❤️' && x.e !== '🙏' && x.n > 0);
+                  const { text: cText, stickers: cStickers } = splitPostStickers(c.content); // 글 끝의 이모티콘 줄은 그림으로
                   const nameLine = (
                     <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
                       <b className="text-stone-900">{authorName(c)}</b>
@@ -5091,9 +5118,10 @@ export default function Home() {
                           <div className="flex flex-col gap-1.5 mt-1">
                             {nameLine}
                             <textarea value={editCommentText} onChange={e => setEditCommentText(e.target.value)} rows={2} autoFocus className="w-full text-[0.9375rem] border border-stone-300 rounded-lg px-2.5 py-2 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                            <PostStickers stickers={editCommentStickers} size="w-24 h-24" onRemove={i => setEditCommentStickers(prev => prev.filter((_, j) => j !== i))} />
                             <div className="flex justify-end gap-1.5">
                               <button onClick={() => setEditingCommentId(null)} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
-                              <button onClick={() => saveCommentEdit(c)} disabled={!editCommentText.trim()} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold disabled:opacity-40">저장</button>
+                              <button onClick={() => saveCommentEdit(c)} disabled={!editCommentText.trim() && editCommentStickers.length === 0} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold disabled:opacity-40">저장</button>
                             </div>
                           </div>
                         ) : (
@@ -5102,10 +5130,13 @@ export default function Home() {
                             {commentGestures.swipe?.id === c.id && <SwipeHint dx={commentGestures.swipe.dx} />}
                             <div data-comment {...commentGestures.bind(c)} className="relative select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer">
                               {nameLine}
-                              <p className="text-[0.9375rem] text-stone-800 leading-relaxed whitespace-pre-wrap break-words">
-                                {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
-                                <HashtagText text={c.content} onTag={t => { setCommentSheetId(null); openHashtag(t); }} onMention={h => { setCommentSheetId(null); goToHandle(h); }} />
-                              </p>
+                              {(cText || c.reply_to_name) && (
+                                <p className="text-[0.9375rem] text-stone-800 leading-relaxed whitespace-pre-wrap break-words">
+                                  {c.reply_to_name && <span className="text-blue-600 font-bold mr-1">@{(c.reply_to_user_id && authorByUser[c.reply_to_user_id]?.name) || c.reply_to_name}</span>}
+                                  <HashtagText text={cText} onTag={t => { setCommentSheetId(null); openHashtag(t); }} onMention={h => { setCommentSheetId(null); goToHandle(h); }} />
+                                </p>
+                              )}
+                              {cStickers.length > 0 && <div className="mt-1"><PostStickers stickers={cStickers} size="w-28 h-28" /></div>}
                             </div>
                             {/* 감정을 고르면 잠깐 크게 */}
                             {commentPop?.id === c.id && (
@@ -5126,9 +5157,9 @@ export default function Home() {
                                 {extras.map(x => <span key={x.e}>{x.e}{x.n > 1 && <span className="ml-0.5 text-[0.75rem]">{x.n}</span>}</span>)}
                               </button>
                             )}
-                            {user && c.user_id === user.id && <button onClick={() => { setEditingCommentId(c.id); setEditCommentText(c.content); }}>수정</button>}
+                            {user && c.user_id === user.id && <button onClick={() => startEditComment(c)}>수정</button>}
                             {user && (c.user_id === user.id || isAdmin || sheetPost?.user_id === user.id) && <button onClick={() => deleteComment(c)} className="text-red-500">삭제</button>}
-                            {user && c.user_id !== user.id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content })} className="text-stone-400">신고</button>}
+                            {user && c.user_id !== user.id && <button onClick={() => setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: postPlainText(c.content) })} className="text-stone-400">신고</button>}
                           </div>
                         )}
                       </div>
@@ -5152,14 +5183,16 @@ export default function Home() {
                     onEmoji={e => toggleCommentReaction(c.id, COMMENT_REACTION_TYPES[e])}
                     actions={[
                       ...(c.user_id ? [{ label: '↩️ 답글 달기', run: () => { close(); tagUserInComments(sid, c.user_id!, authorName(c), c._rootId); } }] : []),
-                      ...(mineC ? [{ label: '✏️ 수정', run: () => { close(); setEditingCommentId(c.id); setEditCommentText(c.content); } }] : []),
-                      ...(user && !mineC ? [{ label: '🚨 신고', run: () => { close(); setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: c.content }); } }] : []),
+                      ...(mineC ? [{ label: '✏️ 수정', run: () => { close(); startEditComment(c); } }] : []),
+                      ...(user && !mineC ? [{ label: '🚨 신고', run: () => { close(); setReportTarget({ type: 'comment', id: c.id, userId: c.user_id, userName: c.author_name, preview: postPlainText(c.content) }); } }] : []),
                       ...(user && (mineC || isAdmin || sheetPost?.user_id === user.id) ? [{ label: '🗑 삭제', run: () => { close(); deleteComment(c); }, danger: true }] : []),
                     ]} />
                 );
               })()}
+              {/* 추천 이모티콘·고른 이모티콘: 댓글 위에 떠서 보임 */}
+              {user && <div className="relative h-0 shrink-0 z-20"><StickerAbove picker={commentSticker} text={commentInputs[sid] || ''} onTextChange={v => setCommentInputs(prev => ({ ...prev, [sid]: v }))} sendLabel="게시" /></div>}
               {/* 입력칸 */}
-              <div className="shrink-0 border-t border-stone-200 px-3 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] bg-white flex flex-col gap-1.5">
+              <div className={`shrink-0 border-t border-stone-200 px-3 pt-2 ${commentSticker.open ? 'pb-2' : 'pb-[calc(0.5rem+env(safe-area-inset-bottom))]'} bg-white flex flex-col gap-1.5`}>
                 {replyTargets[sid] && (
                   <div className="flex items-center gap-2 text-[0.8125rem] bg-stone-100 text-stone-600 rounded-lg px-3 py-1.5">
                     <span className="flex-1 min-w-0 truncate"><b className="text-stone-800">{replyTargets[sid]!.name}</b>님에게 답글 남기는 중</span>
@@ -5167,20 +5200,30 @@ export default function Home() {
                   </div>
                 )}
                 {user && <MentionSuggest value={commentInputs[sid] || ''} onChange={v => setCommentInputs(prev => ({ ...prev, [sid]: v }))} excludeId={user.id} />}
-                <div className="flex items-center gap-2">
-                  {user && avatarOf(user.id, profile?.baptismal_name)}
-                  <input
-                    id={`comment-input-${sid}`}
-                    type="text"
-                    value={commentInputs[sid] || ''}
-                    onChange={e => setCommentInputs(prev => ({ ...prev, [sid]: e.target.value }))}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleAddComment(sid); }}
-                    placeholder={replyTargets[sid] ? `${replyTargets[sid]!.name}님에게 답글...` : sheetPost ? `${sheetPost.author_name}님에게 댓글 남기기...` : '댓글 달기...'}
-                    className="flex-1 min-w-0 text-[0.9375rem] border border-stone-300 rounded-full px-4 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-stone-300"
-                  />
-                  <button onClick={() => handleAddComment(sid)} disabled={!(commentInputs[sid] || '').trim()} className="shrink-0 px-3 py-2 text-[0.9375rem] font-bold text-blue-600 disabled:text-blue-300">게시</button>
+                <div className="flex items-end gap-2">
+                  {user && <span className="shrink-0 mb-1">{avatarOf(user.id, profile?.baptismal_name)}</span>}
+                  {/* 한 줄 입력칸(input) 대신 textarea: 휴대폰 자판 위에 열쇠·카드·위치 자동 완성 줄이 뜨지 않음 */}
+                  <div className="flex-1 min-w-0 flex items-end border border-stone-300 rounded-[1.375rem] bg-white focus-within:ring-2 focus-within:ring-stone-300">
+                    <textarea
+                      id={`comment-input-${sid}`}
+                      ref={commentEnter.ref}
+                      rows={1}
+                      autoComplete="off"
+                      enterKeyHint={commentEnter.enterKeyHint}
+                      value={commentInputs[sid] || ''}
+                      onChange={e => setCommentInputs(prev => ({ ...prev, [sid]: e.target.value }))}
+                      onKeyDown={commentEnter.onKeyDown}
+                      onFocus={() => commentSticker.setOpen(false)}
+                      placeholder={replyTargets[sid] ? `${replyTargets[sid]!.name}님에게 답글...` : sheetPost ? `${sheetPost.author_name}님에게 댓글 남기기...` : '댓글 달기...'}
+                      aria-label="댓글 입력"
+                      className="flex-1 min-w-0 max-h-32 resize-none bg-transparent pl-4 pr-1 py-2.5 text-[0.9375rem] leading-5 focus:outline-none"
+                    />
+                    {user && <StickerButton open={commentSticker.open} className="w-9 h-9 m-0.5" onClick={() => { commentSticker.setOpen(o => !o); (document.getElementById(`comment-input-${sid}`) as HTMLTextAreaElement | null)?.blur(); }} />}
+                  </div>
+                  <button onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={() => submitComment(sid)} disabled={!(commentInputs[sid] || '').trim() && !commentSticker.picked} className="shrink-0 px-3 py-2.5 text-[0.9375rem] font-bold text-blue-600 disabled:text-blue-300">게시</button>
                 </div>
               </div>
+              {user && commentSticker.open && <StickerPanel picker={commentSticker} />}
             </div>
           </div>
         );
@@ -5700,7 +5743,7 @@ export default function Home() {
                     <p className="text-[0.9375rem] text-stone-800">
                       {n.anon ? <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /> : n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}{n.anon === 'mine' ? <><b>익명 교우</b>가 회원님의 고민글에 답글을 남겼어요</> : n.anon === 'author' ? <><b>고민글 작성자</b>가 답글을 남겼어요</> : <><b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}</>}
                     </p>
-                    <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{n.content}&rdquo;</p>
+                    <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{postPlainText(n.content)}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
                       {new Date(n.created_at).toLocaleString('ko-KR')} · {n.post_content || '사진 게시물'}
                     </p>

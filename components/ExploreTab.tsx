@@ -338,6 +338,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             type="search"
+            autoComplete="off"
             enterKeyHint="search"
             placeholder="사람, #해시태그, 글 내용 검색"
             onFocus={() => setSearchFocused(true)}

@@ -154,7 +154,7 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(comment.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: post } = await admin.from('posts').select('user_id').eq('id', comment.post_id).single();
     const replyTo = comment.reply_to_user_id as string | null | undefined;
-    const body = `${comment.author_name}님: ${truncate(comment.content || '')}`;
+    const body = `${comment.author_name}님: ${truncate(postPlainText(comment.content))}`;
     const url = `/?post=${comment.post_id}&comment=${comment.id}`; // 그 글의 댓글 창을 열고 이 댓글로
     const notified = new Set<string>([user.id]);
     if (post && !notified.has(post.user_id)) {
