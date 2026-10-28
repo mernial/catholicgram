@@ -1,4 +1,7 @@
 // 가톨릭그램 서비스 워커: 푸시 알림 수신 및 알림 클릭 처리
+// 휴대폰 위쪽 줄(상태 표시줄)의 작은 알림 그림: 안드로이드는 모양(투명이 아닌 곳)만 흰색으로 쓰므로
+// 앱 아이콘(꽉 찬 네모)을 주면 흰 네모가 된다 → 투명 바탕에 흰 ☧ 그림 (public/badge.svg 로 만듦)
+const BADGE = '/badge-96.png';
 const isApple = () => /iPhone|iPad|iPod|Macintosh/.test(self.navigator.userAgent) && !/Chrome|CriOS|Android/.test(self.navigator.userAgent);
 // 앱 화면에 '이 알림의 대화방을 지금 보고 있나요?' 묻기 (0.5초 안에 답이 없으면 아니라고 봄)
 const askViewing = (client, url) => new Promise(resolve => {
@@ -26,7 +29,7 @@ self.addEventListener('push', (event) => {
       await self.registration.showNotification(title, {
         body: data.body || '',
         icon: '/icon-v2-192.png',
-        badge: '/icon-v2-192.png',
+        badge: BADGE,
         tag: data.tag,
         silent: true,
         timestamp: Date.now(),
@@ -41,7 +44,7 @@ self.addEventListener('push', (event) => {
     await self.registration.showNotification(title, {
       body: data.body || '',
       icon: '/icon-v2-192.png',
-      badge: '/icon-v2-192.png',
+      badge: BADGE,
       tag: data.tag,
       renotify: !!data.tag, // 같은 대화/글의 알림이 또 와도 다시 소리·진동
       silent: false,
