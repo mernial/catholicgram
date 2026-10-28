@@ -3502,6 +3502,7 @@ export default function Home() {
   // 크게 보기 손가락 밀기: 사진 좌우로 밀면 다음 사진, (탐색에서 열었으면) 위로 밀면 다음 추천 글
   const [viewerQueue, setViewerQueue] = useState<string[] | null>(null);
   const viewerScrollRef = useRef<HTMLDivElement>(null);
+  const viewerSideRef = useRef<HTMLDivElement>(null); // 가로로 든 아이패드: 오른쪽 글 칸 (따로 스크롤)
   const viewerTouch = useRef<{ x: number; y: number; atTop: boolean; atBottom: boolean; onImage: boolean } | null>(null);
   // 위아래로 밀 때 카드가 손가락을 따라 움직이고, 다음 글이 아래에서 이어서 올라옴
   const [viewerDrag, setViewerDrag] = useState(0);
@@ -3531,12 +3532,18 @@ export default function Home() {
       setViewerTextOpen(false);
       openPostViewer(next);
       viewerScrollRef.current?.scrollTo({ top: 0 });
+      viewerSideRef.current?.scrollTo({ top: 0 });
     }, 260);
     return true;
   };
   const onViewerTouchStart = (e: React.TouchEvent) => {
     const t = e.touches[0];
-    const el = viewerScrollRef.current;
+    // 손가락이 닿은 곳을 실제로 스크롤하는 칸 (가로로 든 아이패드는 오른쪽 글 칸, 아니면 전체)
+    let el: HTMLElement | null = viewerScrollRef.current;
+    for (let n = e.target as HTMLElement | null; n && n !== viewerCardRef.current; n = n.parentElement) {
+      const oy = getComputedStyle(n).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && n.scrollHeight > n.clientHeight + 2) { el = n; break; }
+    }
     setViewerAnimating(false);
     const rect = viewerCardRef.current?.getBoundingClientRect();
     if (rect && viewerDrag === 0) viewerCardRect.current = { top: rect.top, bottom: rect.bottom };
@@ -5873,7 +5880,8 @@ export default function Home() {
 
       {/* 프로필 게시물 상세 보기 팝업 (사진 + 캡션) */}
       {selectedPostDetail && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-2 sm:p-4 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
+        // 아이패드(tablet)는 가운데 작은 카드 대신 화면 가득, 가로로 들면 사진 왼쪽 · 글 오른쪽 (tablet-land)
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-2 sm:p-4 tablet:p-0 animate-fade-in" onClick={() => setSelectedPostDetail(null)}>
           {/* 다음(이전) 추천 글 미리보기: 밀면 아래(위)에서 따라 올라옴 */}
           {viewerDrag !== 0 && (() => {
             const peek = viewerNeighbor(viewerDrag < 0 ? 1 : -1);
@@ -5884,7 +5892,7 @@ export default function Home() {
             const pos = viewerDrag < 0 ? { top: bottom + 16 + viewerDrag } : { bottom: H - (top - 16 + viewerDrag) };
             return (
               <div
-                className="pointer-events-none absolute left-2 right-2 sm:left-4 sm:right-4 mx-auto max-w-xl bg-white rounded-3xl overflow-hidden shadow-2xl"
+                className="pointer-events-none absolute left-2 right-2 sm:left-4 sm:right-4 tablet:left-0 tablet:right-0 mx-auto max-w-xl tablet:max-w-none bg-white rounded-3xl tablet:rounded-none overflow-hidden shadow-2xl"
                 style={{ ...pos, transition: viewerAnimating ? 'top 0.26s ease-out, bottom 0.26s ease-out' : 'none' }}
               >
                 <div className="p-4 flex items-center gap-2.5 border-b border-stone-100">
@@ -5897,14 +5905,14 @@ export default function Home() {
           })()}
           <div
             ref={viewerCardRef}
-            className="bg-white w-full max-w-xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92dvh]"
+            className="bg-white w-full max-w-xl rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[92dvh] tablet:max-w-none tablet:h-[100dvh] tablet:max-h-none tablet:rounded-none tablet:shadow-none"
             style={{ transform: `translateY(${viewerDrag}px)`, transition: viewerAnimating ? 'transform 0.26s ease-out' : 'none' }}
             onClick={e => e.stopPropagation()}
             onTouchStart={onViewerTouchStart}
             onTouchMove={onViewerTouchMove}
             onTouchEnd={onViewerTouchEnd}
           >
-            <div className="p-4 border-b border-stone-100 flex items-center justify-between">
+            <div className="p-4 tablet:pt-[calc(0.75rem+env(safe-area-inset-top))] tablet:pb-3 border-b border-stone-100 flex items-center justify-between shrink-0">
               <button onClick={() => { const d = selectedPostDetail; openProfileCard({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 {selectedPostDetail.avatar_url ? (
                   <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
@@ -5916,15 +5924,16 @@ export default function Home() {
                   <span className="text-[0.75rem] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
                 </div>
               </button>
-              <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 font-bold text-lg">×</button>
+              <button onClick={() => setSelectedPostDetail(null)} className="text-stone-400 hover:text-stone-700 p-1 tablet:w-11 tablet:h-11 tablet:text-3xl tablet:leading-none font-bold text-lg" aria-label="닫기">×</button>
             </div>
             
-            <div ref={viewerScrollRef} className="overflow-y-auto overscroll-contain flex-1 flex flex-col">
+            {(() => { const side = !!(selectedPostDetail.video_url || selectedPostDetail.images?.length); return (
+            <div ref={viewerScrollRef} className={`overflow-y-auto overscroll-contain flex-1 min-h-0 flex flex-col ${side ? 'tablet-land:flex-row tablet-land:overflow-hidden' : ''}`}>
               {selectedPostDetail.video_url && (
-                <div className="bg-black" data-viewer-media><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} onDoubleTap={() => likeByDoubleTap(selectedPostDetail.id)} /></div>
+                <div className="bg-black tablet-land:flex-1 tablet-land:min-w-0 tablet-land:flex tablet-land:items-center tablet-land:justify-center" data-viewer-media><VideoViewer src={selectedPostDetail.video_url} poster={selectedPostDetail.video_poster} overlays={selectedPostDetail.video_overlays} onDoubleTap={() => likeByDoubleTap(selectedPostDetail.id)} /></div>
               )}
               {!selectedPostDetail.video_url && selectedPostDetail.images && selectedPostDetail.images.length > 0 && (
-                <div className="w-full bg-black flex items-center justify-center relative select-none" data-viewer-media>
+                <div className="w-full bg-black flex items-center justify-center relative select-none tablet-land:w-auto tablet-land:flex-1 tablet-land:min-w-0" data-viewer-media>
                   {(() => {
                     const src = selectedPostDetail.images[Math.min(detailImageIndex, selectedPostDetail.images.length - 1)];
                     const r = viewerRatios[src];
@@ -5935,8 +5944,11 @@ export default function Home() {
                         alt="게시물 사진"
                         onClick={viewerImageTap}
                         onLoad={e => { const nr = naturalRatio(e.currentTarget); if (nr) setViewerRatios(prev => (prev[src] === nr ? prev : { ...prev, [src]: nr })); }}
-                        // 글이 있으면 사진을 조금 낮춰 글이 한 화면에 함께 보이게
-                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), width: `min(100%, calc(${(selectedPostDetail.content || '').trim() ? 52 : 70}dvh * ${frame}))` }}
+                        // 글이 있으면 사진을 조금 낮춰 글이 한 화면에 함께 보이게 (아이패드 전체 화면은 더 크게, 가로로 들면 화면 높이에 맞춤)
+                        style={{ aspectRatio: String(frame), objectFit: photoFit(r, frame), ['--frame' as string]: frame }}
+                        className={(selectedPostDetail.content || '').trim()
+                          ? 'w-[min(100%,calc(52dvh*var(--frame)))] tablet:w-[min(100%,calc(64dvh*var(--frame)))] tablet-land:w-[min(100%,calc((100dvh_-_5rem)*var(--frame)))]'
+                          : 'w-[min(100%,calc(70dvh*var(--frame)))] tablet:w-[min(100%,calc(76dvh*var(--frame)))] tablet-land:w-[min(100%,calc((100dvh_-_5rem)*var(--frame)))]'}
                       />
                     );
                   })()}
@@ -5956,6 +5968,7 @@ export default function Home() {
                   )}
                 </div>
               )}
+              <div ref={viewerSideRef} className={`flex flex-col ${side ? 'tablet-land:w-[26rem] tablet-land:shrink-0 tablet-land:overflow-y-auto tablet-land:overscroll-contain tablet-land:border-l tablet-land:border-stone-100' : ''}`}>
               {(() => {
                 const music = parsePostMusic(selectedPostDetail.music);
                 if (!music) return null;
@@ -5983,7 +5996,7 @@ export default function Home() {
                   </div>
                 );
               })()}
-              <div id="viewer-post-text" className="px-5 pb-5 pt-3 flex flex-col gap-2">
+              <div id="viewer-post-text" className="px-5 pb-5 tablet:pb-[calc(1.25rem+env(safe-area-inset-bottom))] pt-3 flex flex-col gap-2">
                 {/* 글은 처음엔 여섯 줄까지, 더 길면 '더 보기' */}
                 <PostStickers stickers={splitPostStickers(selectedPostDetail.content).stickers} size="w-32 h-32" />
                 <ClampText
@@ -6009,7 +6022,9 @@ export default function Home() {
                 )}
 
               </div>
+              </div>
             </div>
+            ); })()}
           </div>
           {/* 반투명 안내: 위로 밀면 다음 추천 */}
           {viewerQueue && viewerDrag === 0 && viewerNeighbor(1) && (
