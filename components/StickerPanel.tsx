@@ -6,7 +6,7 @@ import { STICKER_PACKS, STICKERS, stripStickerWords, suggestStickers, type Stick
 import { toast } from '@/lib/chat-actions';
 
 // 이모티콘 보내기 (1:1 메시지·단체 채팅방·사랑방 공통)
-//  - 입력칸 옆 😊 → 입력칸 아래 이모티콘 칸 (캐릭터별 탭: 아멘이·몽글이·딩동이·루)
+//  - 입력칸 옆 😊 → 입력칸 아래 이모티콘 칸 (★ 즐겨찾기 + 캐릭터별 탭, 탭 순서는 꾹 눌러 끌거나 '순서' 단추로)
 //  - 글을 치면 입력칸 위에 비슷한 뜻의 이모티콘 추천 (카카오톡처럼 대화 위에 떠 있어 대화창이 줄어들지 않음)
 //  - 이모티콘을 고르면 그 위에 크게 미리 보기 → 보내기 단추(또는 같은 이모티콘을 한 번 더)로 전송.
 //    추천에서 고르면 그 뜻과 이어진 말은 입력칸에서 지우고, 남은 글은 보내기 때 이모티콘 다음에 함께 보냄
@@ -121,7 +121,7 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
       {picked && (
         <div className="pointer-events-auto relative rounded-3xl bg-black/65 backdrop-blur-sm p-3 pt-2.5 shadow-xl animate-fade-in" role="region" aria-label="고른 이모티콘">
           <button type="button" {...keepFocus} onClick={picker.sendPicked} aria-label={`${picked.packName} ${picked.label} 보내기`} className="block">
-            <img ref={imgRef} src={picked.src} alt="" draggable={false} className="w-36 h-36 object-contain" style={imgStyle} />
+            <img ref={imgRef} src={picked.src} alt="" draggable={false} className="w-28 h-28 object-contain" style={imgStyle} />
           </button>
           {fit.caption && <p className="mt-1 text-center text-[0.75rem] text-white/85">{sendLabel === '보내기' ? '보내기 단추를 누르면 보내져요' : `${sendLabel}를 누르면 올라가요`}</p>}
           <button type="button" {...keepFocus} onClick={() => picker.setPicked(null)} className="absolute -top-1 -right-1 w-9 h-9 rounded-full bg-black/70 text-white text-xl leading-none flex items-center justify-center" aria-label="고른 이모티콘 취소">×</button>
@@ -182,14 +182,46 @@ function StickerCell({ s, active, fav, onPick, onToggleFav }: { s: Sticker; acti
   );
 }
 
-// 입력칸 아래 이모티콘 칸: 위에 탭(★ 즐겨찾기 + 캐릭터 넷), 아래에 그 탭의 이모티콘 (마지막에 본 탭을 기억)
+// 탭 순서: 이 휴대폰에만 저장 (localStorage 'stickerTabOrder'). 나중에 캐릭터가 늘면 저장된 순서 뒤에 붙는다
 const FAV_TAB = 'fav';
+const ALL_TABS = [FAV_TAB, ...STICKER_PACKS.map(p => p.id)];
+const ORDER_KEY = 'stickerTabOrder';
+const ORDER_EVENT = 'sticker-tab-order';
+const readOrder = (): string[] => {
+  let saved: string[] = [];
+  try { const v: unknown = JSON.parse(localStorage.getItem(ORDER_KEY) || '[]'); if (Array.isArray(v)) saved = v.filter((x): x is string => typeof x === 'string' && ALL_TABS.includes(x)); } catch { /* 무시 */ }
+  saved = Array.from(new Set(saved));
+  return [...saved, ...ALL_TABS.filter(id => !saved.includes(id))];
+};
+const saveOrder = (order: string[]) => {
+  try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch { /* 저장 불가 */ }
+  window.dispatchEvent(new Event(ORDER_EVENT));
+};
+const moveTo = (order: string[], id: string, to: number) => {
+  const next = order.filter(x => x !== id);
+  next.splice(Math.max(0, Math.min(to, next.length)), 0, id);
+  return next;
+};
+
+// 입력칸 아래 이모티콘 칸: 위에 탭(★ 즐겨찾기 + 캐릭터들, 옆으로 밀어 보기), 아래에 그 탭의 이모티콘 (마지막에 본 탭을 기억)
+//  - 탭 순서 바꾸기: 탭을 꾹 누른 채 옆으로 끌기, 또는 '순서' 단추 → ▲▼
 export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   const favs = useStickerFavorites();
   const [packId, setPackId] = useState(() => {
-    try { const saved = localStorage.getItem('stickerPack'); if (saved && (saved === FAV_TAB || STICKER_PACKS.some(p => p.id === saved))) return saved; } catch { /* 무시 */ }
+    try { const saved = localStorage.getItem('stickerPack'); if (saved && ALL_TABS.includes(saved)) return saved; } catch { /* 무시 */ }
     return STICKER_PACKS[0].id;
   });
+  const [order, setOrder] = useState<string[]>(ALL_TABS);
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  useEffect(() => {
+    const load = () => setOrder(readOrder());
+    load();
+    window.addEventListener(ORDER_EVENT, load);
+    window.addEventListener('storage', load);
+    return () => { window.removeEventListener(ORDER_EVENT, load); window.removeEventListener('storage', load); };
+  }, []);
+  const [arranging, setArranging] = useState(false); // '순서' 단추로 연 ▲▼ 목록
   const isFav = packId === FAV_TAB;
   const pack = STICKER_PACKS.find(p => p.id === packId) || STICKER_PACKS[0];
   const shown = isFav ? favs.list : pack.stickers;
@@ -204,35 +236,122 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     hadPicked.current = false;
     gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, [picker.picked]);
-  const tabClass = (on: boolean) => `min-w-0 flex flex-col items-center py-1 rounded-xl text-[0.75rem] font-bold transition-colors ${on ? 'bg-amber-100 text-stone-900' : 'text-stone-500'}`;
+  // 고른 탭이 보이게 (탭이 많아 옆으로 밀려 있을 때)
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { rowRef.current?.querySelector<HTMLElement>(`[data-tab="${packId}"]`)?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [packId]);
+
+  // 탭 꾹 눌러 옆으로 끌기 (끄는 동안에는 탭 줄이 스크롤되지 않게)
+  const [dragId, setDragId] = useState<string | null>(null);
+  const dragRef = useRef<string | null>(null);
+  dragRef.current = dragId;
+  const press = useRef<{ id: string; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const suppressClick = useRef(false);
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const stop = (e: TouchEvent) => { if (dragRef.current) e.preventDefault(); };
+    row.addEventListener('touchmove', stop, { passive: false });
+    return () => row.removeEventListener('touchmove', stop);
+  }, []);
+  const startDrag = (id: string) => {
+    setDragId(id);
+    try { navigator.vibrate?.(15); } catch { /* 무시 */ }
+    const onMove = (e: PointerEvent) => {
+      const row = rowRef.current;
+      if (!row) return;
+      const r = row.getBoundingClientRect();
+      if (e.clientX < r.left + 28) row.scrollLeft -= 10; else if (e.clientX > r.right - 28) row.scrollLeft += 10; // 끝에 닿으면 밀어 줌
+      const cells = Array.from(row.querySelectorAll<HTMLElement>('[data-tab]'));
+      let to = cells.findIndex(c => e.clientX < c.getBoundingClientRect().left + c.offsetWidth / 2);
+      if (to < 0) to = cells.length;
+      const cur = orderRef.current;
+      const from = cur.indexOf(id);
+      if (to > from) to -= 1; // 끄는 탭이 빠진 자리만큼 당겨짐
+      if (to !== from) setOrder(moveTo(cur, id, to));
+    };
+    const onEnd = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      setDragId(null);
+      suppressClick.current = true;
+      setTimeout(() => { suppressClick.current = false; }, 400);
+      saveOrder(orderRef.current);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+  const tabHandlers = (id: string) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (press.current) clearTimeout(press.current.timer);
+      const p = { id, x: e.clientX, y: e.clientY, timer: setTimeout(() => { press.current = null; startDrag(id); }, 400) };
+      press.current = p;
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const p = press.current;
+      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) { clearTimeout(p.timer); press.current = null; } // 옆으로 밀어 보는 중
+    },
+    onPointerUp: () => { if (press.current) { clearTimeout(press.current.timer); press.current = null; } },
+    onPointerCancel: () => { if (press.current) { clearTimeout(press.current.timer); press.current = null; } },
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+    onClick: () => { if (suppressClick.current) return; choose(id); },
+  });
+  const move = (id: string, by: number) => { const next = moveTo(order, id, order.indexOf(id) + by); setOrder(next); saveOrder(next); };
+
+  const tabClass = (on: boolean, dragging: boolean) => `shrink-0 w-14 flex flex-col items-center py-1 rounded-xl text-[0.75rem] font-bold transition-[background-color,transform] select-none [-webkit-touch-callout:none] ${on ? 'bg-amber-100 text-stone-900' : 'text-stone-500'} ${dragging ? 'scale-110 bg-white shadow-lg ring-2 ring-amber-300 z-10' : ''}`;
+  const tabIcon = (id: string) => id === FAV_TAB
+    ? <span className="w-8 h-8 flex items-center justify-center text-[1.625rem] leading-none text-amber-400" aria-hidden="true">★</span>
+    : <img src={STICKER_PACKS.find(p => p.id === id)!.stickers[0].src} alt="" draggable={false} className="w-8 h-8 object-contain pointer-events-none" />;
+  const tabName = (id: string) => (id === FAV_TAB ? '즐겨찾기' : STICKER_PACKS.find(p => p.id === id)!.name);
+
   return (
     <div data-no-sheet-drag className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
-      {/* 탭: 즐겨찾기 + 캐릭터 넷을 같은 너비로 (그림 위, 이름 아래) */}
-      <div className="flex items-stretch gap-1 px-2 pt-2 pb-1 border-b border-stone-100">
-        <div className="flex-1 min-w-0 grid grid-cols-5 gap-1" role="tablist" aria-label="이모티콘 캐릭터">
-          <button type="button" role="tab" aria-selected={isFav} onClick={() => choose(FAV_TAB)} className={tabClass(isFav)}>
-            <span className="w-9 h-9 flex items-center justify-center text-[1.75rem] leading-none text-amber-400" aria-hidden="true">★</span>
-            <span className="max-w-full truncate">즐겨찾기</span>
-          </button>
-          {STICKER_PACKS.map(p => (
-            <button key={p.id} type="button" role="tab" aria-selected={p.id === packId} onClick={() => choose(p.id)} className={tabClass(p.id === packId)}>
-              <img src={p.stickers[0].src} alt="" className="w-9 h-9 object-contain" />
-              <span className="max-w-full truncate">{p.name}</span>
+      {/* 탭: 즐겨찾기 + 캐릭터들 (그림 위, 이름 아래). 꾹 눌러 옆으로 끌면 순서 바꾸기 */}
+      <div className="flex items-stretch gap-1 pl-2 pr-1 pt-2 pb-1 border-b border-stone-100">
+        <div ref={rowRef} className="flex-1 min-w-0 flex gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ touchAction: 'pan-x' }} role="tablist" aria-label="이모티콘 캐릭터">
+          {order.map(id => (
+            <button key={id} type="button" role="tab" data-tab={id} aria-selected={id === packId} {...tabHandlers(id)} className={tabClass(id === packId, dragId === id)}>
+              {tabIcon(id)}
+              <span className="max-w-full truncate">{tabName(id)}</span>
             </button>
           ))}
+          <button type="button" onClick={() => setArranging(a => !a)} aria-pressed={arranging} className={`shrink-0 w-11 rounded-xl text-[0.6875rem] font-bold leading-tight flex flex-col items-center justify-center gap-0.5 ${arranging ? 'bg-stone-900 text-white' : 'text-stone-500'}`} aria-label="탭 순서 바꾸기">
+            <span className="text-base leading-none" aria-hidden="true">⇄</span>순서
+          </button>
         </div>
         <button type="button" onClick={picker.close} className="shrink-0 w-9 rounded-xl text-stone-400 text-2xl leading-none" aria-label="이모티콘 닫기">×</button>
       </div>
-      <div ref={gridRef} className="h-[14.5rem] overflow-y-auto overscroll-contain grid grid-cols-4 gap-1 px-2 pt-1 pb-2 content-start" role="tabpanel" aria-label={isFav ? '즐겨찾기 이모티콘' : `${pack.name} 이모티콘`}>
-        {isFav && (
-          <p className={`col-span-4 text-center text-stone-500 leading-relaxed ${shown.length ? 'text-[0.75rem] py-1' : 'text-[0.9375rem] py-8'}`}>
-            {shown.length ? '꾹 누르면 즐겨찾기에서 빠져요' : <>자주 쓰는 이모티콘을 <b className="text-stone-700">꾹 누르면</b><br />⭐ 여기에 모여요</>}
-          </p>
-        )}
-        {shown.map(s => (
-          <StickerCell key={s.id} s={s} active={picker.picked?.id === s.id} fav={!isFav && favs.has(s)} onPick={() => picker.pick(s)} onToggleFav={() => favs.toggle(s)} />
-        ))}
-      </div>
+      {arranging ? (
+        // 탭 순서 바꾸기: ▲▼ 로 옮기기 (탭을 꾹 눌러 옆으로 끌어도 됨)
+        <div className="h-[14.5rem] overflow-y-auto overscroll-contain px-3 pt-2 pb-2" role="list" aria-label="탭 순서">
+          <div className="flex items-center gap-2 pb-2">
+            <p className="flex-1 text-[0.8125rem] text-stone-500 leading-snug">자주 쓰는 탭을 위로 올려 앞에 두세요<br />(탭을 꾹 눌러 옆으로 끌어도 돼요)</p>
+            <button type="button" onClick={() => setArranging(false)} className="shrink-0 px-4 py-2 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">완료</button>
+          </div>
+          {order.map((id, i) => (
+            <div key={id} role="listitem" className="flex items-center gap-3 py-1.5 border-t border-stone-100">
+              <span className="w-6 text-center text-[0.875rem] font-bold text-stone-400">{i + 1}</span>
+              {tabIcon(id)}
+              <span className="flex-1 min-w-0 truncate text-[1rem] font-bold text-stone-800">{tabName(id)}</span>
+              <button type="button" onClick={() => move(id, -1)} disabled={i === 0} className="w-11 h-11 rounded-xl border border-stone-200 text-lg text-stone-700 disabled:opacity-30" aria-label={`${tabName(id)} 앞으로`}>▲</button>
+              <button type="button" onClick={() => move(id, 1)} disabled={i === order.length - 1} className="w-11 h-11 rounded-xl border border-stone-200 text-lg text-stone-700 disabled:opacity-30" aria-label={`${tabName(id)} 뒤로`}>▼</button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div ref={gridRef} className="h-[14.5rem] overflow-y-auto overscroll-contain grid grid-cols-5 gap-0.5 px-2 pt-1 pb-2 content-start" role="tabpanel" aria-label={isFav ? '즐겨찾기 이모티콘' : `${pack.name} 이모티콘`}>
+          {isFav && (
+            <p className={`col-span-5 text-center text-stone-500 leading-relaxed ${shown.length ? 'text-[0.75rem] py-1' : 'text-[0.9375rem] py-8'}`}>
+              {shown.length ? '꾹 누르면 즐겨찾기에서 빠져요' : <>자주 쓰는 이모티콘을 <b className="text-stone-700">꾹 누르면</b><br />⭐ 여기에 모여요</>}
+            </p>
+          )}
+          {shown.map(s => (
+            <StickerCell key={s.id} s={s} active={picker.picked?.id === s.id} fav={!isFav && favs.has(s)} onPick={() => picker.pick(s)} onToggleFav={() => favs.toggle(s)} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
