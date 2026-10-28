@@ -12,7 +12,7 @@ import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import GroupChat from '@/components/GroupChat';
 import NewChat from '@/components/NewChat';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
-import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
+import { useChatMedia, ChatMediaView, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
 import BottomSheet from '@/components/BottomSheet';
@@ -117,6 +117,8 @@ const clearPendingLink = () => { caches?.open(PENDING_CACHE).then(c => c.delete(
 let pendingLinkHandler: ((url: string) => void) | null = null;
 // 같은 알림 목적지를 두 번 열지 않게 (서비스 워커 메시지 + 적어 둔 목적지가 둘 다 올 수 있음)
 let lastOpenedLink: { url: string; at: number } | null = null;
+// 알림·링크로 화면을 연 때: 앱을 다시 띄우며 이어 열던 예전 대화방이 그 뒤에 늦게 열려 알림 화면을 덮지 않게
+let linkHandledAt = 0;
 const markLinkOpened = (url: string) => {
   const key = new URL(url, 'http://x').search;
   if (lastOpenedLink && lastOpenedLink.url === key && Date.now() - lastOpenedLink.at < 60 * 1000) return false;
@@ -228,7 +230,7 @@ interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string;
 interface GroupChatRow { id: string; name: string; member_count: number; last_message: string | null; last_sender: string | null; last_kind: string | null; last_message_at: string; unread: number }
 interface AdminGroupRow { id: string; name: string; created_at: string; last_message_at: string; member_count: number; member_names: string | null; message_count: number; last_message: string | null; last_sender: string | null }
 // anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
-interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; }
+interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; post_image?: string | null; }
 interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; images?: string[] | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; }
 // 휴대폰 알림창에 남은 그 대화(채팅·단체방)의 알림을 닫는다 (대화방을 열었을 때)
 const closeOsNotifications = (tag: string) => {
@@ -649,7 +651,7 @@ export default function Home() {
       // 대화방은 상대 정보가 있어야 열 수 있으므로, 상대를 다시 불러온 뒤 연다
       if (savedTab === 'chat' && savedChatUserId) {
         supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', savedChatUserId).single()
-          .then(({ data }) => { if (data) navigate({ screen: true, tab: 'chat', chatUser: data }); });
+          .then(({ data }) => { if (data && !linkHandledAt) navigate({ screen: true, tab: 'chat', chatUser: data }); else if (linkHandledAt) linkLog('skip', '예전 대화방 이어 열기 (알림 화면 먼저)'); });
       }
     }, 0);
     if (startScreen.tab === 'profile' && savedUserId) setViewingUserId(savedUserId);
@@ -2276,7 +2278,7 @@ export default function Home() {
   };
   const fetchNotifications = async (userId: string) => {
     const myHandle = myHandleRef.current;
-    const { data: myPosts } = await supabase.from('posts').select('id, content').eq('user_id', userId).order('created_at', { ascending: false }).limit(200); // 최근 글의 댓글만 알림
+    const { data: myPosts } = await supabase.from('posts').select('id, content, images, video_poster').eq('user_id', userId).order('created_at', { ascending: false }).limit(200); // 최근 글의 댓글만 알림
     setNotificationsLastSeen(storageGet(`notificationsLastSeen:${userId}`));
     setNotificationsClearedAt(storageGet(`notificationsClearedAt:${userId}`));
     try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${userId}`) || '[]'))); } catch { /* 무시 */ }
@@ -2311,6 +2313,15 @@ export default function Home() {
       const prev = merged.get(c.id);
       merged.set(c.id, { ...(prev || { ...c, post_id: c.post_id || '', post_content: postContent[c.post_id || ''] || '' }), mention: 'comment' });
     });
+    // 알림 줄 오른쪽에 그 글의 작은 사진 (무슨 사진에 단 댓글인지 보이게). 내 글이 아닌 글(답글·언급)은 한 번에 불러옴
+    const thumbOf = (p: { images?: string[] | null; video_poster?: string | null }) => p.images?.[0] || p.video_poster || null;
+    const postThumb: Record<string, string | null> = Object.fromEntries((myPosts || []).map(p => [p.id, thumbOf(p)]));
+    const needThumb = Array.from(new Set(Array.from(merged.values()).map(n => n.post_id))).filter(id => id && !(id in postThumb));
+    if (needThumb.length > 0) {
+      const { data: others } = await supabase.from('posts').select('id, images, video_poster').in('id', needThumb.slice(0, 60));
+      (others || []).forEach(p => { postThumb[p.id] = thumbOf(p); });
+    }
+    merged.forEach((n, key) => { if (postThumb[n.post_id]) merged.set(key, { ...n, post_image: postThumb[n.post_id] }); });
     // 익명 고민글 답글 (휴대폰 알림은 오는데 알림 목록에는 없던 것)
     type AnonRow = { id: string; post_id: string; content: string; created_at: string };
     const [{ data: myAnon }, { data: myAnonReplies }] = await Promise.all([
@@ -2871,6 +2882,7 @@ export default function Home() {
     if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     if (!deepLink || !user) return;
     setDeepLink(null);
+    linkHandledAt = Date.now();
     linkLog('open', Object.entries(deepLink).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join('&'));
     dismissAlertsFor(deepLink);
     closeOverlaysForLink();
@@ -4707,7 +4719,8 @@ export default function Home() {
                               <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
                                 aria-label={`${quoted ? (quoted.sender_id === user?.id ? '내' : `${currentChatUser?.baptismal_name || '상대'}님`) : '이전'} 메시지에 답장 · 눌러서 원래 메시지 보기`}
                                 className={`flex max-w-full items-center gap-1 text-left mb-0.5 text-[0.8125rem] leading-snug ${isMe && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
-                                <span className="min-w-0 truncate">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoted.content}</span>
+                                {quoted && !quoted.deleted_at && <QuoteThumb m={quoted} />}
+                                <span className="min-w-0 truncate">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoteLabel(quoted)}</span>
                                 <span aria-hidden="true" className="shrink-0">↵</span>
                               </button>
                             )}
@@ -4756,8 +4769,9 @@ export default function Home() {
               <div className="shrink-0 px-3 pt-2 bg-white border-t border-stone-200 flex items-start gap-2">
                 <div className="flex-1 min-w-0 border-l-4 border-blue-400 pl-2.5 py-0.5">
                   <p className="text-[0.8125rem] font-bold text-blue-700">{editingMessage ? '✏️ 메시지 고치는 중' : `↩️ ${m.sender_id === user?.id ? '내 메시지' : `${currentChatUser?.baptismal_name || '상대'}님 메시지`}에 답장`}</p>
-                  <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{m.content}</p>
+                  <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{quoteLabel(m)}</p>
                 </div>
+                {!editingMessage && <QuoteThumb m={m} size="w-11 h-11" />}
                 <button type="button" onClick={() => (editingMessage ? cancelEditMessage() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editingMessage ? '고치기 그만두기' : '답장 그만두기'}>×</button>
               </div>
             );
@@ -5739,7 +5753,8 @@ export default function Home() {
                 listedComments.map(n => (
                   <div key={n.id} data-flip-key={`c:${n.id}`} className={`relative ${readAlerts.has(`c:${n.id}`) ? 'opacity-55' : ''}`}>
                   <button onClick={() => hideAlert(`c:${n.id}`)} className="absolute top-3 right-3 z-10 text-stone-300 hover:text-stone-600 text-lg leading-none px-1" aria-label="이 알림 지우기">×</button>
-                  <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1">
+                  <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex items-center gap-3">
+                    <span className="flex-1 min-w-0 flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
                       {n.anon ? <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /> : n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}{n.anon === 'mine' ? <><b>익명 교우</b>가 회원님의 고민글에 답글을 남겼어요</> : n.anon === 'author' ? <><b>고민글 작성자</b>가 답글을 남겼어요</> : <><b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}</>}
                     </p>
@@ -5747,6 +5762,9 @@ export default function Home() {
                     <p className="text-[0.8125rem] text-stone-400 truncate">
                       {new Date(n.created_at).toLocaleString('ko-KR')} · {n.post_content || '사진 게시물'}
                     </p>
+                    </span>
+                    {/* 그 글의 사진 (무슨 사진에 단 댓글인지) */}
+                    {n.post_image && <img loading="lazy" src={n.post_image} alt="" className="w-12 h-12 shrink-0 rounded-lg object-cover bg-stone-100" />}
                   </button>
                   </div>
                 ))

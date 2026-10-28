@@ -14,7 +14,7 @@ import { usePressGestures } from '@/lib/use-press-gestures';
 import { useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
-import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn } from '@/components/ChatMedia';
+import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
 import { useTyping } from '@/lib/typing';
@@ -758,7 +758,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                           <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
                             aria-label={`${quoted ? authorName(quoted.user_id) : '이전 대화'}에게 답장 · 눌러서 원래 글 보기`}
                             className={`flex max-w-full items-center gap-1 text-left font-normal mb-0.5 text-[0.8125rem] leading-snug ${mine && !announceMsg && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
-                            <span className="min-w-0 truncate">{quoted ? (blockedIds.has(quoted.user_id) ? '차단한 교우의 글' : quoted.content) : '이전 대화의 글'}</span>
+                            {quoted && !blockedIds.has(quoted.user_id) && <QuoteThumb m={quoted} />}
+                            <span className="min-w-0 truncate">{quoted ? (blockedIds.has(quoted.user_id) ? '차단한 교우의 글' : quoteLabel(quoted)) : '이전 대화의 글'}</span>
                             <span aria-hidden="true" className="shrink-0">↵</span>
                           </button>
                         )}
@@ -806,8 +807,9 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           <div className="px-3 pt-2 flex items-start gap-2">
             <div className="flex-1 min-w-0 border-l-4 border-blue-600 pl-2.5 py-0.5">
               <p className="text-[0.8125rem] font-bold text-blue-700">↩️ {replyTo.user_id === user.id ? '내 글' : `${authorName(replyTo.user_id)}님 글`}에 답장</p>
-              <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{replyTo.content}</p>
+              <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{quoteLabel(replyTo)}</p>
             </div>
+            <QuoteThumb m={replyTo} size="w-11 h-11" />
             <button type="button" onClick={() => setReplyTo(null)} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="답장 그만두기">×</button>
           </div>
         )}

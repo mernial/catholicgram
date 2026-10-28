@@ -8,7 +8,7 @@ import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
 import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@/components/NewChat';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
-import { useChatMedia, ChatMediaView } from '@/components/ChatMedia';
+import { useChatMedia, ChatMediaView, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
 import { useTyping } from '@/lib/typing';
@@ -408,7 +408,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const canWriteRef = useRef(canWrite);
   canWriteRef.current = canWrite;
   const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
-  const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : m.content);
+  const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : quoteLabel(m));
 
   // 입력 중 표시 (관리자 보기는 보기만, 알리지 않음)
   const typing = useTyping(`group:${chatId}`, user.id, !adminView);
@@ -540,6 +540,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
                               aria-label={`${quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장 · 눌러서 원래 메시지 보기`}
                               className={`flex max-w-full items-center gap-1 text-left not-italic mb-0.5 text-[0.8125rem] leading-snug ${mine && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
+                              {quoted && !(quoted.user_id && blockedIds.has(quoted.user_id)) && <QuoteThumb m={quoted} />}
                               <span className="min-w-0 truncate">{quoted ? preview(quoted) : '이전 대화의 메시지'}</span>
                               <span aria-hidden="true" className="shrink-0">↵</span>
                             </button>
@@ -590,6 +591,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
               <p className="text-[0.8125rem] font-bold text-emerald-800">{editing ? '✏️ 메시지 고치는 중' : `↩️ ${m.user_id === user.id ? '내 메시지' : `${nameOf(m.user_id)}님 메시지`}에 답장`}</p>
               <p className="text-[0.8125rem] text-stone-500 line-clamp-1">{preview(m)}</p>
             </div>
+            {!editing && !(m.user_id && blockedIds.has(m.user_id)) && <QuoteThumb m={m} size="w-11 h-11" />}
             <button type="button" onClick={() => (editing ? cancelEdit() : setReplyTo(null))} className="w-9 h-9 shrink-0 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label={editing ? '고치기 그만두기' : '답장 그만두기'}>×</button>
           </div>
         );
