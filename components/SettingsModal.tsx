@@ -12,6 +12,7 @@ import { IconBadge } from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { appKindLabel } from '@/lib/app-kind';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -32,6 +33,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   onOpenNotices?: () => void;
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast'>(initialView);
+  const [appInfo, setAppInfo] = useState<{ title: string; detail: string } | null>(null);
+  useEffect(() => { setAppInfo(appKindLabel()); }, []);
   const [feastInput, setFeastInput] = useState(feastDay);
   const [savingFeast, setSavingFeast] = useState(false);
 
@@ -163,6 +166,17 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
             </button>
+            {/* 지금 쓰는 앱: 한 휴대폰에 앱이 둘이면(아이콘이 같음) 어느 쪽인지 여기서 확인 (lib/app-kind) */}
+            {appInfo && (
+              <div className="p-4 flex items-start gap-3">
+                <IconBadge name="phone" tone="sky" />
+                <div className="min-w-0">
+                  <p className="text-[0.8125rem] text-stone-500">지금 쓰는 앱</p>
+                  <p className="text-[0.9375rem] font-bold text-stone-800">{appInfo.title}</p>
+                  <p className="text-[0.8125rem] text-stone-500 leading-snug">{appInfo.detail}</p>
+                </div>
+              </div>
+            )}
             <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.app_metadata?.naver_id ? '네이버 계정' : user.email || (user.app_metadata?.provider === 'google' ? '구글 계정' : '카카오 계정')}</p>
             {/* 기기마다 새 버전을 받았는지 비교할 때 보는 번호 */}
             <p className="px-4 pb-4 -mt-3 text-[0.75rem] text-stone-300">앱 버전 {(process.env.NEXT_PUBLIC_APP_VERSION || 'dev').slice(0, 7)}</p>
