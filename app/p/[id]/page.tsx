@@ -47,9 +47,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = `${post.author_name || '교우'}님의 글 · 가톨릭그램`;
   const description = text ? (text.length > 80 ? `${text.slice(0, 80)}…` : text) : '가톨릭그램에서 사진을 보세요';
   const image = post.images?.[0] || post.video_poster;
+  // og:url·canonical 이 없으면 카카오톡 미리 보기 카드(사진 부분)를 누를 때 이 글이 아니라 사이트 첫 화면이 열렸다
+  // (글 주소 글자를 누르면 그 글로 갔음). 카드도 이 글 주소로 가게 적어 둔다
+  const url = `/p/${encodeURIComponent(post.id)}`;
   return {
     title, description,
-    openGraph: { title, description, type: 'article', siteName: SITE.title, images: [image || '/icon-v2-512.png'] },
+    alternates: { canonical: url },
+    openGraph: { title, description, type: 'article', siteName: SITE.title, url, images: [image || '/icon-v2-512.png'] },
     twitter: { card: image ? 'summary_large_image' : 'summary', title, description },
   };
 }
