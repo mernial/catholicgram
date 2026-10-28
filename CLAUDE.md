@@ -92,6 +92,7 @@
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
+- 2026-10-29 운영자 화면으로 확인: Play Console 게시 개요에 '최근 게시일: 2026년 10월 27일', 검토 중인 변경사항 없음 → **검토 끝나고 게시됨**(관리형 게시 사용 중지 = 검토를 통과하면 바로 게시)
 - 검토가 끝나면: 앱 관리자 → 테스터 신청에서 ① '등록한 N명에게 설치 안내 다시 보내기' 먼저 → ② 새 신청자는 복사·Play 목록에 붙여넣기 후 '등록함으로 표시' (순서를 지키면 알림이 두 번 가지 않음)
 - `/.well-known/assetlinks.json`: 패키지 `com.catholicgram.android` + Play 앱 서명 키 SHA-256 `90:F1:…:95:46`을 코드(`FINGERPRINTS`)에 넣음(2026-10-27) → 앱 위 주소창이 사라져야 함(기기에 반영까지 몇 시간~하루). 환경변수 `ANDROID_SHA256_FINGERPRINTS`·`ANDROID_PACKAGE_NAME`가 있으면 함께 들어감
 - 남은 일: 비공개 테스트 12명 이상 14일 뒤 프로덕션 신청
