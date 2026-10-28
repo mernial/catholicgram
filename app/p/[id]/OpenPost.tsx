@@ -2,15 +2,14 @@
 
 import { useEffect } from 'react';
 
-// 공유 주소를 열면 곧바로 앱의 그 글 크게 보기로 (미리 보기 정보는 page.tsx 가 서버에서 채움)
-export default function OpenPost({ id }: { id: string }) {
-  const href = `/?view=${encodeURIComponent(id)}`;
-  useEffect(() => { window.location.replace(href); }, [href]);
-  return (
-    <main className="min-h-dvh flex flex-col items-center justify-center gap-4 p-6 text-center bg-stone-100">
-      <img src="/icon-v2-192.png" alt="" className="w-20 h-20 rounded-3xl shadow" />
-      <p className="text-[1.0625rem] font-bold text-stone-800">가톨릭그램에서 글을 여는 중이에요…</p>
-      <a href={href} className="px-5 py-3 rounded-2xl bg-stone-900 text-white font-bold">열리지 않으면 여기를 누르세요</a>
-    </main>
-  );
+// 보통 브라우저·설치한 앱(홈 화면 앱·Play 앱)에서 공유 주소를 열면 곧바로 앱의 그 글 크게 보기로.
+// 카카오톡·네이버·밴드 같은 앱 안의 창에서는 넘기지 않고 이 쪽(서버가 그린 글)을 그대로 보여 준다 —
+// 앱 화면은 그런 창에서 다른 브라우저로 넘어가려다 막힐 수 있어서 (아이패드 카카오톡 등)
+const IN_APP = /KAKAOTALK|NAVER\(inapp|NAVER|Line\/|FBAN|FBAV|Instagram|BAND\/|DaumApps|everytimeApp|; wv\)/i;
+
+export default function OpenPost({ href }: { href: string }) {
+  useEffect(() => {
+    if (!IN_APP.test(navigator.userAgent)) window.location.replace(href);
+  }, [href]);
+  return null;
 }
