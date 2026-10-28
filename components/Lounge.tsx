@@ -279,6 +279,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     const now = Date.now();
     if (typed.trim() === lastSendRef.current.text && now - lastSendRef.current.at < 1000) return;
     lastSendRef.current = { text: typed.trim(), at: now };
+    if (stickerPick.picked) { submit(); return; }
     send(undefined, typed);
   };
   const send = async (e?: React.FormEvent, typed?: string) => {
@@ -350,6 +351,17 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (data) addMessages([data]);
   };
   const stickerPick = useStickerPicker(sendSticker);
+  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  const submit = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (stickerPick.picked) {
+      const rest = inputRef.current?.value ?? input;
+      await stickerPick.sendPicked();
+      if (rest.trim()) send(undefined, rest);
+      return;
+    }
+    send();
+  };
 
   // 관리자: '관리자가 사랑방에 왔어요' — 사랑방에 📢 안내 글을 올리고 모든 교우에게 휴대폰 알림
   const announce = async () => {
@@ -785,6 +797,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       {!trash && media.bar}
       {media.choice}
       {!trash && capturePick && <CaptureBar count={capturePick.size} busy={capturing} onCancel={() => setCapturePick(null)} onDone={() => makeCapture(Array.from(capturePick))} />}
+      {/* 추천 이모티콘·고른 이모티콘: 대화 위에 떠서 보임 (대화창이 줄어들지 않게) */}
+      {!trash && !capturePick && !(frozen && !isAdmin) && <div className="relative h-0 shrink-0 z-20"><StickerAbove picker={stickerPick} text={input} onTextChange={setInput} /></div>}
       {/* 입력 */}
       {!trash && !capturePick && (
         <div className="shrink-0 bg-white border-t border-stone-200">
@@ -816,8 +830,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         )}
         {frozen && !isAdmin && <p className="mx-3 mt-2 px-3 py-2 rounded-xl bg-sky-50 border border-sky-200 text-[0.875rem] font-bold text-sky-900">❄️ 관리자가 대화를 잠시 멈췄어요. 지금은 읽기만 할 수 있어요.</p>}
         {!(frozen && !isAdmin) && <div className="px-3 pt-2 empty:hidden"><MentionSuggest value={input} onChange={setInput} excludeId={user.id} label="부르기" /></div>}
-        {!(frozen && !isAdmin) && <StickerAbove picker={stickerPick} text={input} sendClass="bg-blue-600" />}
-        <form onSubmit={send} className={`px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
+        <form onSubmit={submit} className={`px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
           {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
           <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending || (frozen && !isAdmin) ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
@@ -840,7 +853,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             onFocus={() => stickerPick.setOpen(false)}
           />
           {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!input.trim() || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
+          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={(!input.trim() && !stickerPick.picked) || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>
         </form>
         {stickerPick.open && !(frozen && !isAdmin) && <StickerPanel picker={stickerPick} />}
         </div>

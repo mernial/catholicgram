@@ -100,3 +100,21 @@ export function suggestStickers(text: string, limit = 12): Sticker[] {
   });
   return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
 }
+
+// 추천 이모티콘을 고르면 그 뜻과 이어진 말(단어째)을 입력칸에서 지운다 (카카오톡처럼).
+// 띄어쓰기를 빼고 맞춰 보므로 '좋은 아침이에요'의 '좋은아침'처럼 두 단어에 걸친 말도 함께 지움
+export function stripStickerWords(text: string, s: Sticker): string {
+  const keys = KEYWORDS[s.label] || [];
+  const parts = text.split(/(\s+)/);
+  const owner: number[] = []; // 띄어쓰기 없이 이은 글자 → 몇 번째 조각의 글자인지
+  let joined = '';
+  parts.forEach((p, i) => { if (!p.trim()) return; for (const ch of p.toLowerCase()) { joined += ch; owner.push(i); } });
+  const kill = new Set<number>();
+  for (const k of keys) {
+    for (let at = joined.indexOf(k); at >= 0; at = joined.indexOf(k, at + 1)) {
+      for (let c = at; c < at + k.length; c++) kill.add(owner[c]);
+    }
+  }
+  if (kill.size === 0) return text;
+  return parts.filter((_, i) => !kill.has(i)).join('').replace(/[ \t]{2,}/g, ' ').trim();
+}
