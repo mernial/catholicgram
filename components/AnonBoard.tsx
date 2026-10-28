@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { ReportTarget } from '@/components/ReportDialog';
 import Icon, { IconBadge, type IconName } from '@/components/Icon';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -237,14 +238,14 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   };
 
   const handleDeletePost = async (postId: string) => {
-    if (!window.confirm('이 고민글을 삭제하시겠습니까? 답글도 함께 삭제됩니다.')) return;
+    if (!(await askConfirm('이 고민글을 삭제하시겠습니까? 답글도 함께 삭제됩니다.'))) return;
     const { error } = await supabase.rpc('delete_anon_post', { p_id: postId });
     if (error) { alert(`삭제하지 못했습니다.\n(${error.message})`); return; }
     setPosts(prev => prev.filter(p => p.id !== postId));
   };
 
   const handleDeleteReply = async (postId: string, replyId: string) => {
-    if (!window.confirm('이 답글을 삭제하시겠습니까?')) return;
+    if (!(await askConfirm('이 답글을 삭제하시겠습니까?'))) return;
     const { error } = await supabase.rpc('delete_anon_reply', { p_id: replyId });
     if (error) { alert(`삭제하지 못했습니다.\n(${error.message})`); return; }
     setReplies(prev => ({ ...prev, [postId]: (prev[postId] || []).filter(r => r.id !== replyId) }));

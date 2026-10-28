@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 const LABELS: Record<string, string> = { posts: '게시물·스토리', profiles: '프로필 사진', messages: '메시지 사진', feedback: '건의 사진', letters: '사연 사진', sponsor_banners: '광고 배너', bgm_tracks: '배경음악' };
 
@@ -48,7 +49,7 @@ export default function MediaStorage({ onClose }: { onClose: () => void }) {
 
   const total = remaining ? Object.values(remaining).reduce((a, b) => a + b, 0) : 0;
   const migrate = async () => {
-    if (!window.confirm(`수파베이스에 있는 파일 ${total}개를 R2로 옮길까요?\n(옮기는 동안 화면을 켜 두세요. 수파베이스 쪽 원본은 지우지 않아요.)`)) return;
+    if (!(await askConfirm(`수파베이스에 있는 파일 ${total}개를 R2로 옮길까요?\n(옮기는 동안 화면을 켜 두세요. 수파베이스 쪽 원본은 지우지 않아요.)`))) return;
     setRunning(true); stopRef.current = false; setLog([]);
     let totalMoved = 0;
     for (let round = 1; !stopRef.current; round++) {

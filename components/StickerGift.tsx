@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { giftablePacks } from '@/lib/stickers';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 관리자: 교우에게 전용 이모티콘 선물하기·거두기 (교우 프로필 카드 → '🎁 이모티콘 선물')
 //  - 선물은 sticker_grants 표 (supabase/sticker-gifts.sql 실행 필요)
@@ -39,7 +40,7 @@ export default function StickerGift({ user, onClose, onGifted }: {
     onGifted?.(data.id as string);
   };
   const takeBack = async (packId: string) => {
-    if (!window.confirm(`${user.name}님에게 준 이모티콘을 거둘까요?`)) return;
+    if (!(await askConfirm(`${user.name}님에게 준 이모티콘을 거둘까요?`))) return;
     setBusy(packId);
     const { error } = await supabase.from('sticker_grants').delete().eq('user_id', user.id).eq('pack_id', packId);
     setBusy(null);

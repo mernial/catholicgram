@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import { uploadPhoto } from '@/lib/upload';
 import { useSheetDrag } from '@/lib/sheet-drag';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 사연 보내기 (supabase/letters.sql)
 // 교우: 사연 쓰기 + 내가 보낸 사연과 상태 보기 — 사연은 관리자에게만 전달됨
@@ -107,7 +108,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   // 관리자: 선물 대상으로 뽑기 / 취소
   const toggleGift = async (l: Letter) => {
     const next = !l.gift;
-    if (next && !window.confirm(`${l.author_name || '이 교우'}님의 사연을 선물 대상으로 뽑을까요?\n보낸 분께 "선물 대상으로 뽑혔어요" 알림이 가요.`)) return;
+    if (next && !(await askConfirm(`${l.author_name || '이 교우'}님의 사연을 선물 대상으로 뽑을까요?\n보낸 분께 "선물 대상으로 뽑혔어요" 알림이 가요.`))) return;
     const { error: e } = await supabase.from('letters').update({ gift: next }).eq('id', l.id);
     if (e) { alert(/gift/.test(e.message) ? '선물 기능을 준비 중이에요. (관리자: supabase/letters-gift.sql 실행 필요)' : '바꾸지 못했어요.'); return; }
     setItems(prev => prev?.map(x => x.id === l.id ? { ...x, gift: next } : x) || prev);
@@ -115,7 +116,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
     if (next) onGift?.(l.id);
   };
   const remove = async (l: Letter) => {
-    if (!window.confirm('이 사연을 지울까요?')) return;
+    if (!(await askConfirm('이 사연을 지울까요?'))) return;
     const { error: e } = await supabase.from('letters').delete().eq('id', l.id);
     if (e) { alert('지우지 못했어요.'); return; }
     setItems(prev => prev?.filter(x => x.id !== l.id) || prev);

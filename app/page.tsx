@@ -511,6 +511,9 @@ export default function Home() {
   const [alertSoundOn, setAlertSoundOn] = useState(true);
   const seenAlertKeysRef = useRef<Set<string>>(new Set());
   const sessionStartRef = useRef<number>(0);
+  // 앱이 마지막으로 화면에 나온 때: 앱이 뒤에 있는 동안 온 소식은 휴대폰 알림으로 이미 봤으므로(그 알림을 눌러 들어오기도 함)
+  // 앱으로 돌아와 다시 불러와도 화면 위 배너로 또 띄우지 않는다
+  const visibleSinceRef = useRef<number>(0);
 
   const [chatPartners, setChatPartners] = useState<(UserProfile & { lastMessage?: string; lastAt?: string; isRequest?: boolean })[]>([]);
   // 1:1 대화방 상태 (supabase/dm-requests.sql): 수락한 때 · 나간 때 — 표가 없으면(SQL 실행 전) 요청·나가기 없이 예전처럼
@@ -854,7 +857,7 @@ export default function Home() {
 
   // 새 화면으로 이동하면서 이동 기록을 남긴다 (같은 화면이면 기록을 늘리지 않음)
   const navigate = (st: ScreenState) => {
-    if (composerOpenRef.current && !leaveComposer()) return; // 글을 쓰다가 다른 화면으로: 취소할지 묻고 버림
+    if (composerOpenRef.current && !leaveComposer(() => navigate(st))) return; // 글을 쓰다가 다른 화면으로: 취소할지 묻고 버린 뒤 이동
     const cur = currentScreenRef.current;
     const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
     // 아직 기록을 깔기 전(첫 터치 전)이면 지금 칸만 바꿔 둔다 → 첫 터치 때 그 위에 기록을 깐다
@@ -1017,11 +1020,13 @@ export default function Home() {
     setComposerStep('pick'); setComposerMulti(false); setComposerPhotoIdx(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-  const leaveComposer = () => {
+  // 글쓰기를 닫을 때: 쓰던 게 없으면 바로 닫고 true. 쓰던 게 있으면 확인 창을 띄우고 false — '글 버리기'를 누르면 닫고 then 을 부른다
+  const leaveComposer = (then?: () => void) => {
     const hasDraft = !!(content.trim() || selectedFiles.length || selectedVideo || composerStickers.length);
-    if (hasDraft && !window.confirm('작성하던 게시글이 취소됩니다.')) return false;
-    discardComposer();
-    return true;
+    if (!hasDraft) { discardComposer(); return true; }
+    askConfirm({ title: '작성하던 게시글이 취소됩니다', message: '지금까지 쓴 글과 고른 사진이 지워져요.', ok: '글 버리기', cancel: '계속 쓰기', danger: true, icon: 'pencil' })
+      .then(ok => { if (ok) { discardComposer(); then?.(); } });
+    return false;
   };
 
   // 내가 팔로우하는 교우 (홈 피드에서 그분들 글을 먼저)
@@ -1035,7 +1040,7 @@ export default function Home() {
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    if (currentStatus === 'accepted' && !window.confirm('팔로우를 취소하시겠습니까?')) return;
+    if (currentStatus === 'accepted' && !(await askConfirm({ title: '팔로우를 취소할까요?', ok: '팔로우 취소', cancel: '아니요', icon: 'userMinus' }))) return;
     if (currentStatus === 'none') {
       let { data: created, error } = await supabase.from('follows')
         .insert({ follower_id: user.id, following_id: targetId, status: 'accepted' }).select('id').single();
@@ -1080,8 +1085,8 @@ export default function Home() {
     setBlockedIds(prev => { const next = new Set(prev); next.delete(targetId); return next; });
   };
 
-  const confirmBlock = (target: UserProfile) => {
-    if (window.confirm(`${target.baptismal_name}님을 차단할까요?\n서로의 글과 댓글이 보이지 않고, 메시지를 받지 않으며 서로 팔로우할 수 없습니다.`)) blockUser(target.id);
+  const confirmBlock = async (target: UserProfile) => {
+    if ((await askConfirm(`${target.baptismal_name}님을 차단할까요?\n서로의 글과 댓글이 보이지 않고, 메시지를 받지 않으며 서로 팔로우할 수 없습니다.`))) blockUser(target.id);
   };
 
   // 나를 새로 팔로우한 사람 (최근 20명)
@@ -1382,7 +1387,7 @@ export default function Home() {
   // 내가 보낸 메시지를 모두에게서 지우기: 상대방이 아직 읽기 전에만 (원래 내용은 관리자만 볼 수 있게 서버가 따로 보관)
   const deleteMessage = async (msg: Message) => {
     const what = msg.image_url ? `이 ${isVideoUrl(msg.image_url) ? '동영상' : '사진'}을` : '이 메시지를';
-    if (!window.confirm(`${what} 모두에게서 삭제할까요?\n상대방이 아직 읽지 않아서 상대방 화면에서도 지워져요.`)) return;
+    if (!(await askConfirm(`${what} 모두에게서 삭제할까요?\n상대방이 아직 읽지 않아서 상대방 화면에서도 지워져요.`))) return;
     setMessageSheet(null);
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch('/api/messages', {
@@ -1393,7 +1398,7 @@ export default function Home() {
     const json = res ? await res.json().catch(() => ({})) : {};
     if (res?.status === 409 && json.read) {
       // 메뉴를 연 사이에 상대방이 읽었으면: 내 화면에서만 지울지 묻는다
-      if (window.confirm('그사이 상대방이 메시지를 읽어서 모두에게서 지울 수 없어요.\n내 화면에서만 지울까요?')) dmHidden.hide(String(msg.id));
+      if ((await askConfirm('그사이 상대방이 메시지를 읽어서 모두에게서 지울 수 없어요.\n내 화면에서만 지울까요?'))) dmHidden.hide(String(msg.id));
       if (currentChatUser) fetchChatMessages(currentChatUser.id);
       return;
     }
@@ -1516,9 +1521,9 @@ export default function Home() {
   const declineDmRequest = async (alsoBlock = false) => {
     const p = currentChatUser;
     if (!p) return;
-    if (!window.confirm(alsoBlock
+    if (!(await askConfirm(alsoBlock
       ? `${p.baptismal_name}님을 차단할까요?\n메시지 요청이 지워지고, 앞으로 메시지를 받지 않아요.`
-      : `${p.baptismal_name}님의 메시지 요청을 거절할까요?\n대화방이 목록에서 사라져요. 상대방에게는 알리지 않아요.`)) return;
+      : `${p.baptismal_name}님의 메시지 요청을 거절할까요?\n대화방이 목록에서 사라져요. 상대방에게는 알리지 않아요.`))) return;
     if (!(await saveDmThread(p.id, { left_at: new Date().toISOString(), accepted_at: null }))) return;
     if (alsoBlock) await blockUser(p.id);
     setChatPartners(prev => prev.filter(x => x.id !== p.id));
@@ -1528,7 +1533,7 @@ export default function Home() {
   // 메시지 목록에서 대화방 나가기 (1:1은 내 화면에서만 지움 · 단체방은 방에서 나감)
   const [swipedRow, setSwipedRow] = useState<string | null>(null); // 메시지 목록에서 옆으로 밀어 '나가기'가 나온 줄
   const leaveDmThread = async (p: { id: string; baptismal_name: string; isRequest?: boolean }) => {
-    if (!window.confirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`)) return;
+    if (!(await askConfirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`))) return;
     const now = new Date().toISOString();
     // 수락했던 대화는 나중에 다시 메시지가 오면 바로 보이고, 요청이던 대화는 다시 요청으로
     if (!(await saveDmThread(p.id, { left_at: now, accepted_at: p.isRequest ? null : now }))) return;
@@ -1536,7 +1541,7 @@ export default function Home() {
     setUnreadMessages(prev => prev.filter(u => u.partner.id !== p.id));
   };
   const leaveGroupFromList = async (g: GroupChatRow) => {
-    if (!window.confirm(`'${g.name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`)) return;
+    if (!(await askConfirm(`'${g.name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`))) return;
     const { error } = await supabase.rpc('leave_group_chat', { p_chat: g.id });
     if (error) { alert('나가지 못했어요. 잠시 후 다시 해 주세요.'); return; }
     setGroupChats(prev => prev.filter(x => x.id !== g.id));
@@ -1586,12 +1591,12 @@ export default function Home() {
 
   // 내 공간: 로그아웃 · 다른 계정으로 로그인 (로그아웃한 뒤 로그인 창을 열고, 카카오·구글·네이버 모두 계정을 새로 고르게 한다)
   const logout = async () => {
-    if (!window.confirm('로그아웃할까요?')) return;
+    if (!(await askConfirm('로그아웃할까요?'))) return;
     await signOutAndClear();
     goToHome();
   };
   const switchAccount = async () => {
-    if (!window.confirm('지금 계정에서 로그아웃하고 다른 계정으로 로그인할까요?')) return;
+    if (!(await askConfirm('지금 계정에서 로그아웃하고 다른 계정으로 로그인할까요?'))) return;
     await signOutAndClear();
     goToHome();
     setSwitchingAccount(true);
@@ -1981,7 +1986,7 @@ export default function Home() {
   };
 
   const deleteIntention = async (id: string) => {
-    if (!window.confirm('오늘의 기도지향을 내릴까요?')) return;
+    if (!(await askConfirm('오늘의 기도지향을 내릴까요?'))) return;
     await supabase.from('prayer_intentions').delete().eq('id', id);
     fetchIntentions();
   };
@@ -2142,7 +2147,7 @@ export default function Home() {
     return res.ok ? json : { error: json.error || '처리하지 못했어요.' };
   };
   const handleDeletePost = async (postId: string) => {
-    if (!window.confirm('이 글을 지울까요?\n사진·영상과 댓글도 함께 지워지고 되돌릴 수 없어요.')) return;
+    if (!(await askConfirm('이 글을 지울까요?\n사진·영상과 댓글도 함께 지워지고 되돌릴 수 없어요.'))) return;
     const result = await callPostApi({ action: 'delete', id: postId });
     if (result.error) { alert(result.error); return; }
     setPosts(prev => prev.filter(p => p.id !== postId));
@@ -2809,10 +2814,15 @@ export default function Home() {
     if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {} });
   };
 
-  // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') visibleSinceRef.current = Date.now(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+  // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동 (앱이 뒤에 있는 동안 온 것은 빼고: visibleSinceRef)
   useEffect(() => {
     if (!user) return;
-    const since = sessionStartRef.current;
+    const since = Math.max(sessionStartRef.current, visibleSinceRef.current);
     const isNew = (key: string, at?: string) => {
       if (seenAlertKeysRef.current.has(key)) return false;
       seenAlertKeysRef.current.add(key);
@@ -3119,7 +3129,7 @@ export default function Home() {
   };
 
   const deleteComment = async (c: Comment) => {
-    if (!window.confirm('이 댓글을 삭제할까요?')) return;
+    if (!(await askConfirm('이 댓글을 삭제할까요?'))) return;
     const result = await callCommentApi({ action: 'delete', id: c.id });
     if (result.error) { alert(result.error); return; }
     setComments(prev => ({ ...prev, [c.post_id]: (prev[c.post_id] || []).filter(x => x.id !== c.id) }));
@@ -3973,7 +3983,7 @@ export default function Home() {
                 <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
                   <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
                     <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
-                    <button type="button" onClick={() => { if (leaveComposer()) setStoryPickRequest(n => n + 1); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
+                    <button type="button" onClick={() => { const pick = () => setStoryPickRequest(n => n + 1); if (leaveComposer(pick)) pick(); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
                     <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
                   </div>
                 </div>
@@ -4769,7 +4779,7 @@ export default function Home() {
                           <div
                             data-bubble
                             {...dmGestures.bind(msg)}
-                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${sticker ? '!px-0 !py-0 bg-transparent' : isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${isMe ? 'items-end' : 'items-start'}` : isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
@@ -4892,7 +4902,7 @@ export default function Home() {
                   { label: '캡처', run: () => { close(); setCaptureAsk(mid); } },
                   // 내 메시지를 상대방이 아직 안 읽었으면 '모두에게서 삭제'도 (읽은 뒤에는 내 화면에서만)
                   ...(mine && !m.read_at && !m.deleted_at ? [{ label: '모두에게서 삭제', run: () => deleteMessage(m), danger: true }] : []),
-                  { label: '내 화면에서만 삭제', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n상대방 화면에는 그대로 남아요.')) dmHidden.hide(mid); }, danger: true },
+                  { label: '내 화면에서만 삭제', run: async () => { close(); if ((await askConfirm('이 메시지를 내 화면에서 지울까요?\n상대방 화면에는 그대로 남아요.'))) dmHidden.hide(mid); }, danger: true },
                 ]} />
             );
           })()}
@@ -5409,7 +5419,7 @@ export default function Home() {
           || (editMusic?.value || null) !== (target.music || null)
           || (!target.video_url && (editPhotos.length !== before.length || editPhotos.some((ph, i) => !!ph.file || ph.url !== before[i])))
           || (!!target.video_url && JSON.stringify(editOverlays || null) !== JSON.stringify(target.video_overlays || null));
-        const closeEdit = () => { if (dirty && !window.confirm('고친 내용이 저장되지 않아요. 그래도 닫을까요?')) return; setEditingPostId(null); };
+        const closeEdit = async () => { if (dirty && !(await askConfirm('고친 내용이 저장되지 않아요. 그래도 닫을까요?'))) return; setEditingPostId(null); };
         const canSave = !savingEdit && !!(editContent.trim() || editPhotos.length > 0 || target.video_url || editStickers.length > 0);
         const sel = Math.min(editSelIdx, Math.max(0, editPhotos.length - 1));
         const tagged = Array.from(new Set(extractMentions(editContent)));

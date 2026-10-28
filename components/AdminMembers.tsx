@@ -7,6 +7,7 @@ import { formatFeastDay } from '@/lib/feast';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 export interface AdminMember {
   id: string;
@@ -105,8 +106,8 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
   const toggleSuspend = async (m: AdminMember) => {
     const name = m.baptismal_name || m.email || '이 회원';
     const ok = m.suspended
-      ? window.confirm(`${name}님의 이용 정지를 해제할까요?`)
-      : window.confirm(`${name}님을 이용 정지할까요?\n로그인이 막히고, 이미 로그인한 기기도 1시간 안에 로그아웃됩니다.`);
+      ? (await askConfirm(`${name}님의 이용 정지를 해제할까요?`))
+      : (await askConfirm(`${name}님을 이용 정지할까요?\n로그인이 막히고, 이미 로그인한 기기도 1시간 안에 로그아웃됩니다.`));
     if (!ok) return;
     setBusyId(m.id);
     const result = await callApi('POST', { action: m.suspended ? 'unsuspend' : 'suspend', userId: m.id });
@@ -118,7 +119,7 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
   // 이 회원에 대한 미처리 신고를 모두 해제 (글은 그대로, 신고 표시만 없앰)
   const dismissReports = async (m: AdminMember) => {
     const name = m.baptismal_name || m.email || '이 회원';
-    if (!window.confirm(`${name}님에 대한 신고 ${m.open_reports}건을 해제할까요?\n(문제없다고 보고 신고 표시만 없애요. 글은 그대로예요)`)) return;
+    if (!(await askConfirm(`${name}님에 대한 신고 ${m.open_reports}건을 해제할까요?\n(문제없다고 보고 신고 표시만 없애요. 글은 그대로예요)`))) return;
     setBusyId(m.id);
     const result = await callApi('POST', { action: 'dismiss-reports', userId: m.id });
     setBusyId(null);

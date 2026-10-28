@@ -19,6 +19,7 @@ import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -335,7 +336,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   const remove = async (m: GroupMessage) => {
     setMenuMsg(null);
-    if (!window.confirm('이 메시지를 지울까요?\n다른 교우들에게도 보이지 않게 돼요.')) return;
+    if (!(await askConfirm('이 메시지를 지울까요?\n다른 교우들에게도 보이지 않게 돼요.'))) return;
     const { error: err } = await supabase.from('group_chat_messages').delete().eq('id', m.id);
     if (err) { alert('지우지 못했어요.'); return; }
     setMessages(prev => prev.filter(x => x.id !== m.id));
@@ -396,7 +397,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   const leave = async () => {
-    if (!window.confirm(`'${name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`)) return;
+    if (!(await askConfirm(`'${name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`))) return;
     const { error: err } = await supabase.rpc('leave_group_chat', { p_chat: chatId });
     if (err) { alert('나가지 못했어요. 잠시 후 다시 해 주세요.'); return; }
     onChanged?.();
@@ -534,7 +535,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                         <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                           {...gestures.bind(m)}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -650,7 +651,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
               ...(!mine && !adminView && m.user_id ? [{ label: '신고', run: () => { close(); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: people[m.user_id!]?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); } }] : []),
               ...(mine && !adminView
                 ? [{ label: '삭제', run: () => remove(m), danger: true }]
-                : [{ label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 메시지를 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.')) hiddenMsgs.hide(m.id); }, danger: true }]),
+                : [{ label: '삭제 (내 화면에서만)', run: async () => { close(); if ((await askConfirm('이 메시지를 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.'))) hiddenMsgs.hide(m.id); }, danger: true }]),
             ]} />
         );
       })()}

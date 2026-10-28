@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { uploadMedia } from '@/lib/upload';
 import type { BgmTrack } from '@/lib/music';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 const MAX_MB = 20;
 
@@ -63,7 +64,7 @@ export default function BgmAdmin({ onClose, onChanged }: { onClose: () => void; 
   };
 
   const remove = async (t: BgmTrack) => {
-    if (!window.confirm(`'${t.title}'을(를) 삭제할까요?\n이 음악을 쓴 게시물에서는 음악이 나오지 않게 됩니다.\n(잠시 숨기려면 '숨기기'를 쓰세요)`)) return;
+    if (!(await askConfirm(`'${t.title}'을(를) 삭제할까요?\n이 음악을 쓴 게시물에서는 음악이 나오지 않게 됩니다.\n(잠시 숨기려면 '숨기기'를 쓰세요)`))) return;
     const path = t.url.includes('/storage/v1/') ? t.url.split('/bgm/')[1] : null; // 수파베이스 저장소 파일만 (R2 파일은 남겨 둠)
     if (path) await supabase.storage.from('bgm').remove([path]);
     await supabase.from('bgm_tracks').delete().eq('id', t.id);

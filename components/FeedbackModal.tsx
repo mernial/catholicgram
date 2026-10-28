@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 운영자 건의함 (supabase/feedback.sql)
 // 일반 교우: 건의 보내기 + 내가 보낸 건의의 상태/답변 보기
@@ -142,7 +143,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
   // 신고된 콘텐츠 삭제 후 '조치 완료'로 표시
   const deleteReportedContent = async (report: Report) => {
-    if (!window.confirm('신고된 콘텐츠를 삭제할까요?')) return;
+    if (!(await askConfirm('신고된 콘텐츠를 삭제할까요?'))) return;
     const { error } =
       report.target_type === 'post' ? await supabase.from('posts').delete().eq('id', report.target_id)
       : report.target_type === 'comment' ? await supabase.from('comments').delete().eq('id', report.target_id)
@@ -206,7 +207,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   };
 
   const deleteItem = async (item: Feedback) => {
-    if (!window.confirm('이 건의를 삭제하시겠습니까?')) return;
+    if (!(await askConfirm('이 건의를 삭제하시겠습니까?'))) return;
     const { error } = await supabase.from('feedback').delete().eq('id', item.id);
     if (error) { alert(`삭제하지 못했습니다.\n(${error.message})`); return; }
     setItems(prev => prev.filter(f => f.id !== item.id));
@@ -289,7 +290,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                     <button onClick={() => deleteReportedContent(r)} className="text-xs px-3 py-1.5 rounded-lg bg-red-600 text-white font-bold">콘텐츠 삭제</button>
                   )}
                   {r.status !== 'resolved' && <button onClick={() => setReportStatus(r, 'resolved')} className="text-xs px-3 py-1.5 rounded-lg border border-emerald-300 text-emerald-700">조치 완료</button>}
-                  {r.status !== 'dismissed' && <button onClick={() => { if (window.confirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)')) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold"><Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고 해제</button>}
+                  {r.status !== 'dismissed' && <button onClick={async () => { if ((await askConfirm('문제없는 내용으로 보고 신고를 해제할까요?\n(글은 그대로 두고, 신고 표시만 없어져요)'))) setReportStatus(r, 'dismissed'); }} className="text-xs px-3 py-1.5 rounded-lg border border-blue-300 text-blue-700 font-bold"><Icon name="check" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />신고 해제</button>}
                   {r.status !== 'open' && <button onClick={() => setReportStatus(r, 'open')} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-500">다시 미처리로</button>}
                 </div>
                 {/* 신고한 분께 처리 결과 알려주기 */}
