@@ -6,8 +6,18 @@ import MusicSegmentPicker from '@/components/MusicSegmentPicker';
 import { type BgmTrack, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
+import { ADMIN_EMAILS } from '@/lib/admin';
 
-interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string }
+interface YouTubeResult { videoId: string; title: string; channel: string; thumbnail: string; duration: string; topic?: boolean }
+
+// 노래 검색이 안 될 때 관리자에게만 보이는 고칠 곳 (/api/youtube/search 의 error)
+const ADMIN_FIX: Record<string, string> = {
+  not_configured: 'Vercel 환경 변수에 YOUTUBE_API_KEY 가 없어요. 넣은 뒤 Redeploy 해 주세요.',
+  key_invalid: 'Vercel 의 YOUTUBE_API_KEY 가 틀렸거나 지워진 키예요. 구글 클라우드 → 사용자 인증 정보에서 키를 확인해 다시 넣고 Redeploy 해 주세요.',
+  api_disabled: '구글 클라우드에서 YouTube Data API v3 가 꺼져 있어요. API 라이브러리에서 [사용]을 눌러 주세요.',
+  key_blocked: '키의 \'애플리케이션 제한사항\'이 웹사이트·앱으로 걸려 있어 서버 검색이 막혀요. \'없음\'으로 바꿔 주세요. (API 제한은 YouTube Data API v3 만 두면 돼요)',
+  quota: '하루 검색 한도(10,000, 검색 약 100번)를 다 썼어요. 구글 클라우드 → 할당량에서 사용량을 볼 수 있어요.',
+};
 
 const QUICK_SEARCHES = ['가톨릭 성가', '생활성가', '묵상 음악', '떼제 성가', '그레고리오 성가', '아베 마리아'];
 
@@ -15,7 +25,7 @@ export interface SelectedMusic { value: string; title: string }
 // 구간 고르기 대상: 유튜브 곡(videoId) 또는 앱 배경음악(trackId + audioUrl)
 export interface MusicSegmentTarget { videoId?: string; trackId?: string; audioUrl?: string; title: string; start: number; clip?: number }
 
-// 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 유튜브 링크)
+// 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 노래 검색 · 유튜브 뮤직 링크)
 export default function MusicPicker({ tracks, initialSegment, onSelect, onClose }: {
   tracks: BgmTrack[];
   initialSegment?: MusicSegmentTarget | null; // 이미 고른 곡의 구간만 다시 고치기
@@ -25,11 +35,12 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
   // 저작권 걱정 없는 배경음악이 있으면 그것부터
   const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length > 0 ? 'bgm' : 'youtube');
 
-  // 유튜브 검색
+  // 노래 검색 (유튜브 뮤직·유튜브의 음악)
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<YouTubeResult[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
+  const [adminFix, setAdminFix] = useState('');
   const [searchUnavailable, setSearchUnavailable] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -59,7 +70,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
     const q = text.trim();
     if (!q) return;
     setQuery(q);
-    setSearching(true); setSearchError(''); setPreviewVideo(null);
+    setSearching(true); setSearchError(''); setAdminFix(''); setPreviewVideo(null);
     const { data: { session } } = await supabase.auth.getSession();
     const res = await fetch(`/api/youtube/search?q=${encodeURIComponent(q)}`, {
       headers: session ? { Authorization: `Bearer ${session.access_token}` } : {},
@@ -68,21 +79,49 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
     setSearching(false);
     if (res?.ok) { setResults(json.results || []); return; }
     setResults(null);
-    if (json.error === 'not_configured') { setSearchUnavailable(true); setShowLinkInput(true); return; }
-    setSearchError(json.error === 'quota'
-      ? '오늘 검색 한도를 다 썼어요. 내일 다시 시도하거나 아래에서 링크로 넣어주세요.'
-      : '검색하지 못했어요. 잠시 후 다시 시도해주세요.');
+    // 검색이 안 되면 유튜브 뮤직 링크로 넣는 칸을 바로 펼친다
+    setShowLinkInput(true);
+    const error: string = json.error || '';
+    if (session?.user.email && ADMIN_EMAILS.includes(session.user.email)) {
+      setAdminFix(ADMIN_FIX[error] || `구글 응답: ${json.reason || error || (res ? res.status : '연결 안 됨')}`);
+    }
+    if (error === 'not_configured') { setSearchUnavailable(true); return; }
+    setSearchError(
+      error === 'quota' ? '오늘 노래 검색 한도를 다 썼어요. 한국 시간 오후 4~5시에 다시 채워져요. 그동안은 아래 유튜브 뮤직 링크로 넣어 주세요.'
+        : error === 'unauthorized' ? '로그인이 풀렸어요. 다시 로그인한 뒤 검색해 주세요.'
+        : error && error !== 'search_failed' ? '지금은 노래 검색이 안 돼요. 아래 유튜브 뮤직 링크로 넣어 주세요.'
+        : '검색하지 못했어요. 잠시 후 다시 해 보시거나 아래 유튜브 뮤직 링크로 넣어 주세요.');
   };
 
-  const checkLink = async () => {
+  const checkLink = async (text = link) => {
     setLinkError('');
-    const parsed = parseYouTubeUrl(link);
-    if (!parsed) { setFound(null); setLinkError('유튜브 주소가 아니에요. 유튜브 앱에서 [공유] → [링크 복사] 후 붙여넣어 주세요.'); return; }
+    const parsed = parseYouTubeUrl(text);
+    if (!parsed) {
+      setFound(null);
+      setLinkError(/[?&]list=/.test(text)
+        ? '노래 하나의 링크를 넣어 주세요. 앨범·재생목록 링크는 안 돼요. (노래 옆 ⋮ → 공유 → 링크 복사)'
+        : '유튜브 뮤직(또는 유튜브) 주소가 아니에요. 노래 옆 ⋮ → 공유 → 링크 복사 후 붙여넣어 주세요.');
+      return;
+    }
     setFound(parsed);
     setChecking(true);
     setYtTitle((await fetchYouTubeTitle(parsed.videoId)) || '');
     setChecking(false);
   };
+
+  // 유튜브 뮤직에서 복사해 온 링크를 한 번에 붙여넣기 (안 되면 입력칸을 꾹 눌러 붙여넣기)
+  const linkInputRef = useRef<HTMLInputElement>(null);
+  const pasteLink = async () => {
+    const text = await navigator.clipboard?.readText?.().catch(() => '') || '';
+    if (!text.trim()) {
+      setLinkError('입력칸을 꾹 눌러 [붙여넣기]를 눌러 주세요.');
+      linkInputRef.current?.focus();
+      return;
+    }
+    setLink(text.trim());
+    checkLink(text.trim());
+  };
+  const musicSearchUrl = `https://music.youtube.com/${query.trim() ? `search?q=${encodeURIComponent(query.trim())}` : ''}`;
 
   const tabBtn = (key: 'bgm' | 'youtube', label: string) => (
     <button onClick={() => setTab(key)} className={`flex-1 py-2.5 text-sm font-bold border-b-2 ${tab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>{label}</button>
@@ -114,13 +153,13 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
         ) : (<>
         <div className="flex border-b border-stone-100">
           {tabBtn('bgm', '저작권 걱정 없는 음악')}
-          {tabBtn('youtube', '유튜브에서 찾기')}
+          {tabBtn('youtube', '유튜브 뮤직에서 찾기')}
         </div>
 
         {tab === 'bgm' ? (
           <div className="overflow-y-auto divide-y divide-stone-100">
             {tracks.length === 0 ? (
-              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 배경음악 관리에서 추가)<br />유튜브에서 찾아 넣을 수도 있어요.</div>
+              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 배경음악 관리에서 추가)<br />유튜브 뮤직에서 찾아 넣을 수도 있어요.</div>
             ) : tracks.map(t => (
               <div key={t.id} className="p-3.5 flex items-center gap-3">
                 <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">
@@ -142,7 +181,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                   <input
                     value={query}
                     onChange={e => setQuery(e.target.value)}
-                    placeholder="곡 제목, 성가 번호, 가수 검색"
+                    placeholder="노래 제목, 성가, 가수 검색"
                     type="search"
                     autoComplete="off"
                     enterKeyHint="search"
@@ -160,7 +199,8 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
               </div>
             )}
             {searching && <div className="p-8 text-center text-sm text-stone-400">검색 중...</div>}
-            {searchError && <p className="p-4 text-sm text-red-600">{searchError}</p>}
+            {searchError && <p className="p-4 text-sm text-red-600 leading-relaxed">{searchError}</p>}
+            {adminFix && <p className="mx-4 mb-1 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed"><b>관리자에게만 보여요</b> · {adminFix}</p>}
             {!searching && results && results.length === 0 && <div className="p-8 text-center text-sm text-stone-400">검색 결과가 없어요.</div>}
             {!searching && results && results.length > 0 && (
               <div className="divide-y divide-stone-100">
@@ -174,7 +214,10 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                       </button>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-bold text-stone-800 line-clamp-2 leading-snug">{r.title}</p>
-                        <p className="text-xs text-stone-500 truncate mt-0.5">{r.channel}</p>
+                        <p className="text-xs text-stone-500 truncate mt-0.5">
+                          {r.topic && <span className="inline-block mr-1 px-1.5 py-px rounded bg-red-50 text-red-700 font-bold align-[0.05em]">유튜브 뮤직 음원</span>}
+                          {r.channel}
+                        </p>
                       </div>
                       <button onClick={() => { setPreviewVideo(null); setSegmentFor({ videoId: r.videoId, title: r.title, start: 0 }); }} className="text-xs px-3 py-2 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
                     </div>
@@ -188,19 +231,33 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
 
             <div className="p-4 flex flex-col gap-3 border-t border-stone-100">
               {!showLinkInput ? (
-                <button onClick={() => setShowLinkInput(true)} className="text-xs text-stone-500 underline self-center">유튜브 링크로 직접 넣기</button>
+                <button onClick={() => setShowLinkInput(true)} className="w-full py-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-bold text-stone-700 flex items-center justify-center gap-1.5">
+                  <Icon name="music" className="w-4 h-4 text-red-600" />유튜브 뮤직 앱에서 고른 노래 넣기
+                </button>
               ) : (
                 <>
-                  <p className="text-sm text-stone-600 leading-relaxed">유튜브 앱에서 <b>공유 → 링크 복사</b> 후 붙여넣어 주세요.</p>
+                  <p className="text-sm font-bold text-stone-800">유튜브 뮤직에서 고른 노래 넣기</p>
+                  <ol className="text-sm text-stone-600 leading-relaxed list-decimal pl-5 flex flex-col gap-0.5">
+                    <li>아래 <b>유튜브 뮤직 열기</b>를 눌러 노래를 찾아요</li>
+                    <li>노래 옆 <b>⋮ → 공유 → 링크 복사</b></li>
+                    <li>여기로 돌아와 <b>붙여넣기</b>를 눌러요</li>
+                  </ol>
+                  <div className="flex gap-2">
+                    <a href={musicSearchUrl} target="_blank" rel="noopener noreferrer"
+                      className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold text-center">유튜브 뮤직 열기 ↗</a>
+                    <button onClick={pasteLink} className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-sm font-bold">📋 붙여넣기</button>
+                  </div>
                   <div className="flex gap-2">
                     <input
+                      ref={linkInputRef}
                       value={link}
                       onChange={e => { setLink(e.target.value); setFound(null); setLinkError(''); }}
-                      placeholder="https://youtu.be/..."
+                      placeholder="https://music.youtube.com/watch?v=..."
                       inputMode="url"
-                      className="flex-1 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
+                      autoComplete="off"
+                      className="flex-1 min-w-0 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
                     />
-                    <button onClick={checkLink} disabled={!link.trim() || checking} className="px-4 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40 shrink-0">확인</button>
+                    <button onClick={() => checkLink()} disabled={!link.trim() || checking} className="px-4 rounded-xl bg-stone-200 text-stone-800 text-sm font-bold disabled:opacity-40 shrink-0">확인</button>
                   </div>
                   {linkError && <p className="text-xs text-red-600">{linkError}</p>}
                   {found && (
@@ -215,7 +272,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                         className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
                       />
                       <button
-                        onClick={() => setSegmentFor({ videoId: found.videoId, title: ytTitle.trim() || '유튜브 음악', start: found.start })}
+                        onClick={() => setSegmentFor({ videoId: found.videoId, title: ytTitle.trim() || '유튜브 뮤직 노래', start: found.start })}
                         disabled={checking}
                         className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
                       >
