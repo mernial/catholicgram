@@ -83,6 +83,20 @@ input, textarea, select {
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
 }
+/* 선물 상자 (components/GiftBox): 기다릴 때 살랑살랑, 누르면 커지며 반짝 사라짐 */
+@keyframes giftWiggle {
+  0%, 60%, 100% { transform: rotate(0) scale(1); }
+  66% { transform: rotate(-5deg) scale(1.03); }
+  72% { transform: rotate(5deg) scale(1.03); }
+  78% { transform: rotate(-3deg); }
+  84% { transform: rotate(2deg); }
+}
+@keyframes giftBurst {
+  0% { transform: scale(1) rotate(0); filter: brightness(1); opacity: 1; }
+  30% { transform: scale(.92) rotate(-6deg); }
+  55% { transform: scale(1.12) rotate(4deg); filter: brightness(1.25); }
+  100% { transform: scale(1.5); filter: brightness(2.2); opacity: 0; }
+}
 
 /* 영상(릴스): 소리 켜기/끄기 표시가 잠깐 보였다 사라짐 */
 @keyframes fadeOut {

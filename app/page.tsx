@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, Fragment } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback, Fragment } from 'react';
 import { supabase } from '@/lib/supabase';
 import imageCompression from 'browser-image-compression';
 import { User } from '@supabase/supabase-js';
@@ -22,7 +22,8 @@ import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/
 import { askConfirm } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
-import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import { MAX_POST_STICKERS, STICKER_PACKS, hasStickerSuggestion, isGiftHandle, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import GiftBox, { type Gift } from '@/components/GiftBox';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -102,7 +103,8 @@ const deepLinkFromSearch = (search: string) => {
   const lounge = params.get('lounge') || undefined;   // 사랑방의 그 대화 (관리자 부름)
   const tester = params.get('tester') === '1';        // 안드로이드 테스터 신청 창 (구글 등록 완료 알림)
   const group = params.get('group') || undefined;     // 단체 채팅방 (새 메시지 알림)
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester || group ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester, group } : null;
+  const gift = params.get('gift') || undefined;       // 관리자의 선물 상자 ('sticker:팩' · 'letter:사연id')
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester || group || gift ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester, group, gift } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -367,7 +369,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -502,6 +504,13 @@ export default function Home() {
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
+  // 관리자의 선물 상자: 선물받은 사연(letters.gift), 연 선물(이 휴대폰 localStorage giftsOpened:아이디), 이번에 열지 않고 닫은 선물, 알림으로 연 선물
+  const [giftLetters, setGiftLetters] = useState<string[]>([]);
+  const [openedGifts, setOpenedGifts] = useState<string[] | null>(null);
+  const [snoozedGifts, setSnoozedGifts] = useState<string[]>([]);
+  const [forcedGift, setForcedGift] = useState<string | null>(null);
+  const [activeGift, setActiveGift] = useState<string | null>(null); // 지금 열어 본 선물 ('확인'을 누를 때까지 그대로 보임)
+  const giftLettersAtRef = useRef(0);
   const [actionUserFollowStatus, setActionUserFollowStatus] = useState<FollowStatus>('none');
   const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
@@ -2453,8 +2462,17 @@ export default function Home() {
     const next = error ? [] : (data || []).map(r => r.pack_id as string).sort();
     setStickerGrants(prev => (prev.join() === next.join() ? prev : next));
   };
-  const refreshAlerts = (userId: string) => {
+  // 선물 대상으로 뽑힌 내 사연 (supabase/letters-gift.sql 실행 전이면 비움). 자주 바뀌지 않아 5분에 한 번만
+  const fetchGiftLetters = async (userId: string, force = false) => {
+    if (!force && Date.now() - giftLettersAtRef.current < 5 * 60 * 1000) return;
+    giftLettersAtRef.current = Date.now();
+    const { data, error } = await supabase.from('letters').select('id').eq('user_id', userId).eq('gift', true);
+    const next = error ? [] : (data || []).map(r => r.id as string).sort();
+    setGiftLetters(prev => (prev.join() === next.join() ? prev : next));
+  };
+  const refreshAlerts = (userId: string, force = false) => {
     fetchStickerGrants(userId);
+    fetchGiftLetters(userId, force);
     fetchAnonUnread(userId);
     fetchLetterCount();
     fetchBlocks(userId);
@@ -2874,7 +2892,7 @@ export default function Home() {
       link.profile && `fu:${link.profile}`, link.reply && `c:a:${link.reply}`,
     ].filter((k): k is string => !!k));
     const keyOf = (l: typeof deepLink) => !l ? '' : l.post ? `post:${l.post}` : l.view ? `post:${l.view}` : l.story ? `story:${l.story}`
-      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.group ? `group:${l.group}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
+      : l.chat ? `chat:${l.chat}` : l.profile ? `profile:${l.profile}` : l.anon ? `anon:${l.anon}` : l.lounge ? `lounge:${l.lounge}` : l.group ? `group:${l.group}` : l.gift ? `gift:${l.gift}` : l.letters ? 'letters' : l.tester ? 'tester' : l.feedback ? 'feedback' : l.reports ? 'reports' : '';
     const key = keyOf(link);
     if (!key || !('serviceWorker' in navigator)) return;
     navigator.serviceWorker.getRegistration('/sw.js').then(reg => reg?.getNotifications()).then(list => {
@@ -2928,6 +2946,8 @@ export default function Home() {
       if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' });
       setMessagesView('group');
       openGroupChat(deepLink.group);
+    } else if (deepLink.gift) {
+      setForcedGift(deepLink.gift);
     } else if (deepLink.tester) {
       setShowTesterSignup(true);
     } else if (deepLink.letters) {
@@ -2957,9 +2977,9 @@ export default function Home() {
   // 내 글에 달린 댓글 알림: 로그인 중에는 30초마다, 앱으로 돌아왔을 때 다시 확인
   useEffect(() => {
     if (!user) return;
-    refreshAlerts(user.id);
+    refreshAlerts(user.id, true);
     pushAlertRef.current = (url: string, title: string, body: string) => {
-      refreshAlerts(user.id);
+      refreshAlerts(user.id, url.includes('gift='));
       // 지금 그 사람과 대화 중이면 메시지마다 음성·배너는 생략
       if (viewingRef.current(url)) return;
       // 어디서 온 알림인지 앱 화면 위 배너로도 보여 준다 (컴퓨터에서는 휴대폰 알림이 구석에 조용히 떠서 놓치기 쉬움)
@@ -3235,6 +3255,47 @@ export default function Home() {
   const isAdmin = !!(user?.email && ADMIN_EMAILS.includes(user.email));
   // 이모티콘을 쓸 수 있는 범위: 관리자 전용·코드로 준 선물(@아이디)·선물받은 것 (lib/stickers)
   useEffect(() => { setStickerAccess({ admin: isAdmin, handle: profile?.handle || null, grants: user ? stickerGrants : [] }); }, [isAdmin, profile?.handle, stickerGrants, user]);
+
+  // 관리자의 선물: 선물받은 전용 이모티콘(sticker_grants·코드에 적은 @아이디) + 선물 대상으로 뽑힌 내 사연.
+  // 아직 열지 않은 선물이 있으면 선물 상자를 띄운다 (연 것은 이 휴대폰에 기억, 열지 않고 닫으면 다음에 앱을 열 때 다시)
+  const myGifts = useMemo<Gift[]>(() => {
+    if (!user) return [];
+    const packs = STICKER_PACKS.filter(p => p.access === 'gift' && (stickerGrants.includes(p.id) || isGiftHandle(p, profile?.handle)));
+    return [
+      ...packs.map(p => ({ key: `sticker:${p.id}`, kind: 'sticker' as const, packId: p.id })),
+      ...giftLetters.map(id => ({ key: `letter:${id}`, kind: 'letter' as const, letterId: id })),
+    ];
+  }, [user, stickerGrants, profile?.handle, giftLetters]);
+  useEffect(() => {
+    if (!user) { setOpenedGifts(null); return; }
+    try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); }
+    try { setSnoozedGifts(JSON.parse(sessionStorage.getItem('giftsSnoozed') || '[]')); } catch { /* 무시 */ }
+  }, [user]);
+  // 알림으로 연 선물이 내 선물에 없으면(거둬들였거나 잘못된 주소) 잠시 뒤 잊는다
+  useEffect(() => {
+    if (!forcedGift || myGifts.some(g => g.key === forcedGift)) return;
+    const t = setTimeout(() => setForcedGift(null), 8000);
+    return () => clearTimeout(t);
+  }, [forcedGift, myGifts]);
+  const markGiftOpened = (key: string) => {
+    if (!user) return;
+    setActiveGift(key);
+    setOpenedGifts(prev => {
+      const next = [...new Set([...(prev || []), key])].slice(-200);
+      storageSet(`giftsOpened:${user.id}`, JSON.stringify(next));
+      return next;
+    });
+  };
+  const closeGift = (gift: Gift) => {
+    setForcedGift(null);
+    setActiveGift(null);
+    if (openedGifts?.includes(gift.key)) return;
+    setSnoozedGifts(prev => {
+      const next = [...prev, gift.key];
+      try { sessionStorage.setItem('giftsSnoozed', JSON.stringify(next)); } catch { /* 무시 */ }
+      return next;
+    });
+  };
   isAdminRef.current = isAdmin;
   // 로그인(관리자 여부)이 정해지면 기도지향을 다시 읽는다 (관리자는 올린 사람까지)
   useEffect(() => { if (user) fetchIntentions(); }, [user?.id, isAdmin]);
@@ -3277,9 +3338,12 @@ export default function Home() {
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
+  // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
+  const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
+    : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
-  const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
-  const anyModalOpen = otherModalOpen || showPopupNotice;
+  const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup && !shownGift;
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -3298,6 +3362,7 @@ export default function Home() {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
     if (actionModalUser) { setActionModalUser(null); return; }
+    if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
@@ -4946,6 +5011,10 @@ export default function Home() {
       })()}
 
       {/* 관리자: 전용 이모티콘 선물 (components/StickerGift) */}
+      {shownGift && (
+        <GiftBox gift={shownGift} onOpened={markGiftOpened} onClose={() => closeGift(shownGift)}
+          onShowLetters={() => { closeGift(shownGift); setLettersStart('mine'); setShowLetters(true); }} />
+      )}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
 
       {/* 후원 배너 관리 (관리자) */}
@@ -5353,6 +5422,7 @@ export default function Home() {
           isAdmin={isAdmin}
           startView={lettersStart}
           onGift={id => sendPush('letter_gift', id)}
+          onStickerGifted={id => sendPush('sticker_gift', id)}
           onMessage={async uid => {
             const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', uid).maybeSingle();
             if (!data) { alert('교우를 찾지 못했어요.'); return; }

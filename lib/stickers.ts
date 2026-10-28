@@ -1,5 +1,5 @@
 // 채팅 이모티콘 (1:1 메시지·단체 채팅방·사랑방): 캐릭터마다 24개 (public/stickers/<dir>/01~24.webp)
-//  - 아멘이(양) · 몽글이(구름) · 딩동이(종) · 루(초) · 신부님(관리자 전용) · 루비로사(루비로사 선물) · 엘리스텔라(엘리스텔라 선물)
+//  - 아멘이(양) · 몽글이(구름) · 딩동이(종) · 루(초) · 신부님(관리자 전용) · 루비로사(루비로사 선물) · 엘리스텔라·양양세라피나(각자 선물)
 // 메시지 글로는 '[아멘이] 안녕!' 처럼 보낸다 — 예전 앱·휴대폰 알림·대화 목록에서도 뜻이 보이고,
 // 이 글과 똑같으면 말풍선 대신 이모티콘 그림으로 보여 준다. (처음 보낸 양 이모티콘 '[양 이모티콘] …'도 아멘이로 읽음)
 // 전용 이모티콘: access 'admin' = 관리자만, 'gift' = giftHandles(@아이디)나 선물받은 교우만(sticker_grants) 고르고 보낼 수 있다.
@@ -23,8 +23,8 @@ const PERSON = [
   '아휴...', '음...', '맛있어요!', '커피 한잔 할까요?', '잘자요', '다녀올게요!',
   '열일중...', '너무 바빠요!', '감동이에요...', '주님 도와주세요', '어떻게 할까요?', '축하합니다!',
 ];
-// 엘리스텔라 전용 이모티콘의 24가지 말 (운영자가 준 판 순서대로)
-const STELLA = [
+// 엘리스텔라·양양세라피나 전용 이모티콘의 24가지 말 (운영자가 준 판 순서대로, 두 판이 같은 말)
+const GREETINGS = [
   '안녕하세요!', '감사합니다', '사랑합니다', '좋아요!', '응원해요', '파이팅!',
   '어??', 'ㅎㅎㅎ', '좋은 하루 되세요', '기도할게요', '말씀 안에서', '잘 자요',
   '죄송합니다', '고마워요', '음...', '열심히 할게요', '주님, 함께해 주세요', '반가워요!',
@@ -47,8 +47,10 @@ const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; lega
   { id: 'roo', name: '루', dir: 'candle', labels: [...COMMON, '평화를 빕니다'] },
   { id: 'father', name: '신부님', dir: 'priest', labels: PERSON, access: 'admin' },              // 관리자 전용
   { id: 'ruby', name: '루비로사', dir: 'ruby', labels: PERSON, access: 'gift', giftHandles: ['rubyrosa'] }, // 루비로사 선물
-  // 엘리스텔라 선물: 관리자가 엘리스텔라 님 프로필 카드 '🎁 이모티콘 선물'로 주거나(sticker_grants), @아이디를 giftHandles 에 적는다
-  { id: 'stella', name: '엘리스텔라', dir: 'stella', labels: STELLA, access: 'gift', giftHandles: [] },
+  // 엘리스텔라 선물: @아이디 'elisabeth stella oh' (사연함 화면에서 확인, 띄어쓰기·_·. 은 빼고 비교)
+  { id: 'stella', name: '엘리스텔라', dir: 'stella', labels: GREETINGS, access: 'gift', giftHandles: ['elisabeth stella oh'] },
+  // 양양세라피나 선물: @아이디를 알면 giftHandles 에, 모르면 관리자가 프로필 카드·사연함의 '🎁'로 선물(sticker_grants)
+  { id: 'serafina', name: '양양세라피나', dir: 'serafina', labels: GREETINGS, access: 'gift', giftHandles: [] },
 ];
 
 export const STICKER_PACKS: StickerPack[] = PACK_DEFS.map(p => ({
@@ -82,13 +84,17 @@ export function setStickerAccess(next: Partial<Access>) {
   access = merged;
   accessListeners.forEach(f => f());
 }
+// 코드에 적은 선물(giftHandles)의 @아이디 비교: 대소문자·띄어쓰기·_·.·- 는 따지지 않음
+const handleKey = (h: string) => h.toLowerCase().replace(/[\s._\-@]/g, '');
+export const isGiftHandle = (p: StickerPack, handle?: string | null) =>
+  !!handle && (p.giftHandles || []).some(h => handleKey(h) === handleKey(handle));
 export const onStickerAccess = (f: () => void) => { accessListeners.add(f); return () => { accessListeners.delete(f); }; };
 export function canUsePack(p: StickerPack | undefined) {
   if (!p) return false;
   if (!p.access) return true;
   if (access.grants.includes(p.id)) return true;
   if (p.access === 'admin') return access.admin;
-  return !!access.handle && (p.giftHandles || []).includes(access.handle.toLowerCase());
+  return isGiftHandle(p, access.handle);
 }
 const PACK_BY_ID = new Map(STICKER_PACKS.map(p => [p.id, p]));
 export const canUseSticker = (s: Sticker) => canUsePack(PACK_BY_ID.get(s.pack));
@@ -156,7 +162,7 @@ const KEYWORDS: Record<string, string[]> = {
   '주님 도와주세요': ['도와주', '살려', '기도부탁'],
   '어떻게 할까요?': ['어떻게', '어쩌', '어떡'],
   '축하합니다!': ['축하', '생일', '축일', '합격', '결혼', '졸업'],
-  // 엘리스텔라
+  // 엘리스텔라·양양세라피나
   '응원해요': ['응원', '힘내', '화이팅', '파이팅'],
   '파이팅!': ['파이팅', '화이팅', '힘내', '할수있'],
   '어??': ['어?', '뭐지', '어리둥절', '헐'],

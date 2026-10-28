@@ -45,7 +45,8 @@ self.addEventListener('push', (event) => {
       const shownNow = viewing ? { title, body: data.body || '', data: { url: data.url || '/' } } : await combined(data, title);
       await self.registration.showNotification(shownNow.title, {
         body: shownNow.body,
-        icon: '/icon-v2-192.png',
+        icon: data.icon || '/icon-v2-192.png',
+        ...(data.image ? { image: data.image } : {}),
         badge: BADGE,
         tag: data.tag,
         silent: true,
@@ -61,7 +62,8 @@ self.addEventListener('push', (event) => {
     const shown = await combined(data, title);
     await self.registration.showNotification(shown.title, {
       body: shown.body,
-      icon: '/icon-v2-192.png',
+      icon: data.icon || '/icon-v2-192.png', // 선물 알림은 선물 상자 그림 (data.icon·data.image)
+      ...(data.image ? { image: data.image } : {}),
       badge: BADGE,
       tag: data.tag,
       renotify: !!data.tag, // 같은 대화/글의 알림이 또 와도 다시 소리·진동
