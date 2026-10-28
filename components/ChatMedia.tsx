@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { uploadMedia, uploadPhoto, isVideoUrl, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, photoBundleText } from '@/lib/upload';
+import { uploadMedia, uploadPhoto, isVideoUrl, isMediaOnlyText, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, photoBundleText } from '@/lib/upload';
+import { parseSticker } from '@/lib/stickers';
 import { MAX_VIDEO_MB, SHRINK_OVER_MB, shrinkVideo } from '@/lib/video';
 
 // 대화방(1:1 메시지·단체 채팅방·사랑방) 공통: 사진·동영상 보내기와 보여 주기
@@ -191,5 +192,33 @@ export function ChatMediaView({ imageUrl, images, onOpen, className = '' }: {
   return (
     <img loading="lazy" src={imageUrl} alt="사진" onClick={e => { e.stopPropagation(); onOpen([imageUrl], 0); }}
       className={`block max-w-[min(60vw,16rem)] max-h-80 rounded-xl object-cover cursor-zoom-in ${className}`} />
+  );
+}
+
+// 답장 표시(말풍선 안·입력칸 위 '답장 중' 줄): 원래 메시지가 사진·동영상·이모티콘이면 작은 그림을 함께 보여
+// 무슨 사진에 단 답장인지 알 수 있게 한다. 글은 '사진'·'사진 3장'·'동영상'·'이모티콘 아멘!'
+type Quotable = { content?: string | null; image_url?: string | null; images?: string[] | null };
+export const quoteLabel = (m: Quotable) => {
+  const sticker = parseSticker(m.content);
+  if (sticker) return `이모티콘 ${sticker.label}`;
+  if (isMediaOnlyText(m.content)) return (m.content || '').replace(/^(📷|🎬)\s*/u, '');
+  return m.content || '';
+};
+export function QuoteThumb({ m, size = 'w-10 h-10' }: { m: Quotable; size?: string }) {
+  const sticker = parseSticker(m.content);
+  if (sticker) return <img src={sticker.src} alt="" draggable={false} className={`${size} shrink-0 object-contain`} />;
+  const src = m.images?.[0] || m.image_url;
+  if (!src) return null;
+  const count = m.images?.length || 0;
+  return (
+    <span className={`relative ${size} shrink-0 rounded-md overflow-hidden bg-stone-200`} aria-hidden="true">
+      {isVideoUrl(src) ? (
+        <>
+          <video src={`${src}#t=0.1`} muted playsInline preload="metadata" className="w-full h-full object-cover pointer-events-none" />
+          <span className="absolute inset-0 flex items-center justify-center bg-black/25 text-white text-[0.625rem]">▶</span>
+        </>
+      ) : <img src={src} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />}
+      {count > 1 && <span className="absolute right-0 bottom-0 px-1 rounded-tl-md bg-black/60 text-white text-[0.625rem] font-bold leading-4">{count}</span>}
+    </span>
   );
 }

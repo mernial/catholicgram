@@ -127,6 +127,16 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   });
   const pack = STICKER_PACKS.find(p => p.id === packId) || STICKER_PACKS[0];
   const choose = (id: string) => { setPackId(id); try { localStorage.setItem('stickerPack', id); } catch { /* 무시 */ } };
+  // 늘 첫 줄부터: 열 때·캐릭터를 바꿀 때·고른 이모티콘을 보낸 뒤 (마지막에 쓴 이모티콘 자리에 머물러 있지 않게)
+  const gridRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (gridRef.current) gridRef.current.scrollTop = 0; }, [pack.id]);
+  const hadPicked = useRef(false);
+  useEffect(() => {
+    if (picker.picked) { hadPicked.current = true; return; }
+    if (!hadPicked.current) return;
+    hadPicked.current = false;
+    gridRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [picker.picked]);
   return (
     <div className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
       {/* 캐릭터 탭: 네 칸을 같은 너비로 (그림 위, 이름 아래) */}
@@ -142,7 +152,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
         </div>
         <button type="button" onClick={picker.close} className="shrink-0 w-9 rounded-xl text-stone-400 text-2xl leading-none" aria-label="이모티콘 닫기">×</button>
       </div>
-      <div className="h-[14.5rem] overflow-y-auto overscroll-contain grid grid-cols-4 gap-1 px-2 pt-1 pb-2 content-start" role="tabpanel" aria-label={`${pack.name} 이모티콘`}>
+      <div ref={gridRef} className="h-[14.5rem] overflow-y-auto overscroll-contain grid grid-cols-4 gap-1 px-2 pt-1 pb-2 content-start" role="tabpanel" aria-label={`${pack.name} 이모티콘`}>
         {pack.stickers.map(s => (
           <button key={s.id} type="button" onClick={() => picker.pick(s)} aria-label={s.label}
             className={`aspect-square rounded-xl p-1 active:scale-95 transition-transform ${picker.picked?.id === s.id ? 'bg-amber-100 ring-2 ring-amber-300' : ''}`}>
