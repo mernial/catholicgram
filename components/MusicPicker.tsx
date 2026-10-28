@@ -142,6 +142,8 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
                     value={query}
                     onChange={e => setQuery(e.target.value)}
                     placeholder="곡 제목, 성가 번호, 가수 검색"
+                    type="search"
+                    autoComplete="off"
                     enterKeyHint="search"
                     className="flex-1 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
                   />

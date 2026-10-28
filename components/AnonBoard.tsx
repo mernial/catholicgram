@@ -372,14 +372,16 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                       </div>
                     ))}
                     <div className="flex gap-1.5">
-                      <input
-                        type="text"
+                      {/* input 대신 한 줄 textarea: 휴대폰 자판 위 자동 완성 줄(열쇠·카드·위치)이 뜨지 않음 */}
+                      <textarea
+                        rows={1}
                         value={replyInputs[post.id] || ''}
-                        onChange={(e) => setReplyInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
-                        onKeyDown={(e) => { if (e.key === 'Enter' && !e.nativeEvent.isComposing) handleReply(post.id); }}
+                        onChange={(e) => setReplyInputs(prev => ({ ...prev, [post.id]: e.target.value.replace(/\n/g, ' ') }))}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!e.nativeEvent.isComposing) handleReply(post.id); } }}
                         maxLength={1000}
+                        enterKeyHint="send"
                         placeholder="따뜻한 답글을 익명으로 남겨주세요..."
-                        className="flex-1 text-xs text-stone-900 border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
+                        className="flex-1 min-w-0 resize-none [field-sizing:content] max-h-24 text-xs leading-4 text-stone-900 border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none"
                       />
                       <button onClick={() => handleReply(post.id)} className="bg-violet-600 text-white text-xs px-3 py-2 rounded-xl">등록</button>
                     </div>

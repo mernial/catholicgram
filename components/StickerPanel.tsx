@@ -33,7 +33,7 @@ export function StickerButton({ open, onClick, disabled, className = 'w-10 h-10'
 
 // 입력칸 위에 떠 있는 칸 (대화 위에 겹쳐 보임): 고른 이모티콘 미리 보기 + 친 글에 맞는 추천 줄.
 // 높이 0인 relative 칸 안에 두면 그 바로 위에 뜬다. onTextChange 를 주면 추천에서 고를 때 이어진 말을 지움
-export function StickerAbove({ picker, text, onTextChange }: { picker: StickerPicker; text: string; onTextChange?: (t: string) => void }) {
+export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내기' }: { picker: StickerPicker; text: string; onTextChange?: (t: string) => void; sendLabel?: string }) {
   const { picked } = picker;
   const pickSuggested = (s: Sticker) => {
     if (picked?.id !== s.id && onTextChange) { const rest = stripStickerWords(text, s); if (rest !== text) onTextChange(rest); }
@@ -46,7 +46,7 @@ export function StickerAbove({ picker, text, onTextChange }: { picker: StickerPi
           <button type="button" {...keepFocus} onClick={picker.sendPicked} aria-label={`${picked.packName} ${picked.label} 보내기`} className="block">
             <img src={picked.src} alt="" draggable={false} className="w-36 h-36 object-contain" />
           </button>
-          <p className="mt-1 text-center text-[0.75rem] text-white/85">보내기 단추를 누르면 보내져요</p>
+          <p className="mt-1 text-center text-[0.75rem] text-white/85">{sendLabel === '보내기' ? '보내기 단추를 누르면 보내져요' : `${sendLabel}를 누르면 올라가요`}</p>
           <button type="button" {...keepFocus} onClick={() => picker.setPicked(null)} className="absolute -top-1 -right-1 w-9 h-9 rounded-full bg-black/70 text-white text-xl leading-none flex items-center justify-center" aria-label="고른 이모티콘 취소">×</button>
         </div>
       )}
@@ -113,14 +113,14 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   );
 }
 
-// 게시글에 붙은 이모티콘 줄 (글쓰기·고치기에서는 × 로 빼기)
+// 게시글·댓글에 붙은 이모티콘 줄 (글쓰기·고치기에서는 × 로 빼기)
 export function PostStickers({ stickers, size = 'w-28 h-28', onRemove }: { stickers: Sticker[]; size?: string; onRemove?: (index: number) => void }) {
   if (stickers.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-2" role="group" aria-label="이모티콘">
       {stickers.map((s, i) => (
         <span key={`${s.id}-${i}`} className="relative">
-          <img src={s.src} alt={`이모티콘: ${s.label}`} draggable={false} className={`${size} object-contain select-none`} />
+          <img src={s.src} alt={`이모티콘: ${s.label}`} draggable={false} className={`${size} object-contain select-none pointer-events-none`} />
           {onRemove && <button type="button" onClick={() => onRemove(i)} className="absolute -top-1 -right-1 w-7 h-7 rounded-full bg-black/60 text-white text-base leading-none flex items-center justify-center" aria-label={`${s.label} 이모티콘 빼기`}>×</button>}
         </span>
       ))}
