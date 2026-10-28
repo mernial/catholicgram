@@ -15,8 +15,37 @@ export type ConfirmOptions = {
 };
 type Request = ConfirmOptions & { resolve: (ok: boolean) => void };
 
+// 예전 window.confirm 글('…할까요?\n자세한 설명')을 그대로 넘겨도 된다: 첫 줄은 제목, 나머지는 설명,
+// 단추 글자·빨간 단추·그림은 글에 든 말로 고른다 (먼저 맞는 것). 따로 정하려면 extra 로 덮어쓴다
+const RULES: [RegExp, Partial<ConfirmOptions>][] = [
+  [/해제|풀까요/, { ok: '해제', icon: 'unlock' }],
+  [/탈퇴|영구 삭제/, { ok: '탈퇴하기', danger: true, icon: 'warning' }],
+  [/차단/, { ok: '차단', danger: true, icon: 'prohibit' }],
+  [/정지할까요/, { ok: '정지', danger: true, icon: 'prohibit' }],
+  [/못하게 할까요/, { ok: '막기', danger: true, icon: 'prohibit' }],
+  [/로그아웃/, { ok: '로그아웃', icon: 'signout' }],
+  [/나갈까요/, { ok: '나가기', danger: true, icon: 'signout' }],
+  [/얼릴까요/, { ok: '얼리기', icon: 'lock' }],
+  [/삭제/, { ok: '삭제', danger: true, icon: 'trash' }],
+  [/지울까요/, { ok: '지우기', danger: true, icon: 'trash' }],
+  [/내릴까요/, { ok: '내리기', danger: true, icon: 'trash' }],
+  [/거둘까요/, { ok: '거두기', danger: true, icon: 'gift' }],
+  [/뗄까요/, { ok: '떼기', danger: true, icon: 'tag' }],
+  [/보낼까요/, { ok: '보내기', icon: 'send' }],
+  [/뽑을까요/, { ok: '뽑기', icon: 'gift' }],
+  [/옮길까요/, { ok: '옮기기' }],
+  [/닫을까요/, { ok: '닫기', cancel: '계속 고치기', danger: true, icon: 'pencil' }],
+  [/하셨나요/, { ok: '네, 했어요', cancel: '아직이요', icon: 'check' }],
+];
+const fromText = (text: string): ConfirmOptions => {
+  const [title, ...rest] = text.split('\n');
+  const rule = RULES.find(([re]) => re.test(text));
+  return { title, message: rest.join('\n').trim() || undefined, ...(rule ? rule[1] : {}) };
+};
+
 let show: ((r: Request) => void) | null = null;
-export function askConfirm(options: ConfirmOptions): Promise<boolean> {
+export function askConfirm(input: string | ConfirmOptions, extra?: Partial<ConfirmOptions>): Promise<boolean> {
+  const options = { ...(typeof input === 'string' ? fromText(input) : input), ...extra };
   if (!show) return Promise.resolve(window.confirm([options.title, options.message].filter(Boolean).join('\n'))); // 창이 아직 없으면 기본 창
   const open = show;
   return new Promise(resolve => open({ ...options, resolve }));
@@ -33,9 +62,10 @@ export default function ConfirmHost() {
   useEffect(() => {
     if (!req) return;
     okRef.current?.focus({ preventScroll: true });
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); req.resolve(false); setReq(null); } };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Esc 는 이 창만 닫는다 (아래에 열린 다른 창까지 닫히지 않게 먼저 받아 멈춤)
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); req.resolve(false); setReq(null); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [req]);
   if (!req) return null;
   const tone = req.danger ? 'bg-red-50 text-red-600' : 'bg-stone-100 text-stone-700';

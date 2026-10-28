@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { IconBadge } from '@/components/Icon';
 import { PLAY_STORE_URL, TESTER_JOIN_URL, TesterStatus, isAndroidDevice, isValidEmail } from '@/lib/android-test';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 안드로이드 앱 테스터 신청: 회원이 동의하고 플레이 스토어 구글 계정을 적어 낸다 (supabase/android-testers.sql)
 // 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다
@@ -53,7 +54,7 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
   };
 
   const cancel = async () => {
-    if (!window.confirm('테스터 신청을 취소할까요?\n적어 주신 이메일도 함께 지워져요.')) return;
+    if (!(await askConfirm({ title: '테스터 신청을 취소할까요?', message: '적어 주신 이메일도 함께 지워져요.', ok: '신청 취소', cancel: '아니요', danger: true, icon: 'trash' }))) return;
     const { error } = await supabase.from('tester_signups').delete().eq('user_id', user.id);
     if (error) { alert('취소하지 못했어요. 잠시 후 다시 해 주세요.'); return; }
     setSavedEmail(''); setConsent(false); setEditing(false);

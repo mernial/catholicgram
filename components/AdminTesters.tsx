@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { IconBadge } from '@/components/Icon';
 import { TESTER_GOAL } from '@/lib/android-test';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
 interface Signup { user_id: string; google_email: string; status: 'requested' | 'added'; created_at: string }
@@ -48,7 +49,7 @@ export default function AdminTesters({ onClose, sendPush }: {
     if (!copied) return;
     const ids = copied.ids.filter(id => pending.some(p => p.user_id === id));
     if (ids.length === 0) return;
-    if (!window.confirm(`Play Console 테스터 목록에 ${ids.length}명을 붙여넣고 저장하셨나요?\n비공개 테스트 검토도 끝나 '게시됨'인가요?\n'등록함'으로 표시하면 그분들께 설치 안내 알림이 가요.`)) return;
+    if (!(await askConfirm(`Play Console 테스터 목록에 ${ids.length}명을 붙여넣고 저장하셨나요?\n비공개 테스트 검토도 끝나 '게시됨'인가요?\n'등록함'으로 표시하면 그분들께 설치 안내 알림이 가요.`))) return;
     setBusy(true);
     const { error } = await supabase.from('tester_signups').update({ status: 'added' }).in('user_id', ids);
     setBusy(false);
@@ -59,15 +60,15 @@ export default function AdminTesters({ onClose, sendPush }: {
   };
 
   // 구글 검토가 끝나기 전에 '등록함'으로 알렸으면, 게시된 뒤 등록한 분들께 설치 안내를 한 번 더 보낸다
-  const resend = () => {
+  const resend = async () => {
     if (added.length === 0 || resent) return;
-    if (!window.confirm(`Play Console 게시 개요에서 비공개 테스트가 '게시됨'인가요?\n구글에 등록한 ${added.length}명에게 설치 안내 알림을 다시 보낼까요?`)) return;
+    if (!(await askConfirm(`Play Console 게시 개요에서 비공개 테스트가 '게시됨'인가요?\n구글에 등록한 ${added.length}명에게 설치 안내 알림을 다시 보낼까요?`))) return;
     added.forEach(s => sendPush('tester_added', s.user_id));
     setResent(true);
   };
 
   const remove = async (s: Signup) => {
-    if (!window.confirm(`${s.google_email} 신청을 지울까요?\nPlay Console 테스터 목록에서도 직접 빼 주세요.`)) return;
+    if (!(await askConfirm(`${s.google_email} 신청을 지울까요?\nPlay Console 테스터 목록에서도 직접 빼 주세요.`))) return;
     const { error } = await supabase.from('tester_signups').delete().eq('user_id', s.user_id);
     if (error) { alert('지우지 못했어요.'); return; }
     reload();

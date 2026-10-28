@@ -20,6 +20,7 @@ import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@
 import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -367,7 +368,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const announce = async () => {
     if (!onAnnounce || sending) return;
     const text = input.trim() || '관리자가 사랑방에 왔어요! 함께 이야기 나눠요 😊';
-    if (!window.confirm(`모든 교우의 휴대폰으로 알림을 보낼까요?\n\n"${text}"\n\n(사랑방에도 안내 글로 올라가요 · 30분에 한 번)`)) return;
+    if (!(await askConfirm(`모든 교우의 휴대폰으로 알림을 보낼까요?\n\n"${text}"\n\n(사랑방에도 안내 글로 올라가요 · 30분에 한 번)`))) return;
     setSending(true);
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: `📢 ${text}`.slice(0, 500) })
       .select('*').single();
@@ -384,7 +385,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
 
   const remove = async (m: LoungeMessage) => {
     setMenuId(null);
-    if (!window.confirm('이 대화를 지울까요?')) return;
+    if (!(await askConfirm('이 대화를 지울까요?'))) return;
     const { error: err } = await supabase.from('lounge_messages').delete().eq('id', m.id);
     if (err) { alert(`지우지 못했어요.\n(${err.message})`); return; }
     setMessages(prev => prev.filter(x => x.id !== m.id));
@@ -394,12 +395,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     setMenuId(null);
     const name = authors[userId]?.baptismal_name || '이 교우';
     if (banned.has(userId)) {
-      if (!window.confirm(`${name}님의 사랑방 대화 금지를 풀까요?`)) return;
+      if (!(await askConfirm(`${name}님의 사랑방 대화 금지를 풀까요?`))) return;
       const { error: err } = await supabase.from('lounge_bans').delete().eq('user_id', userId);
       if (err) { alert(err.message); return; }
       setBanned(prev => { const n = new Set(prev); n.delete(userId); return n; });
     } else {
-      if (!window.confirm(`${name}님이 사랑방에 글을 쓰지 못하게 할까요?\n(읽기는 할 수 있어요. 나중에 풀 수 있어요)`)) return;
+      if (!(await askConfirm(`${name}님이 사랑방에 글을 쓰지 못하게 할까요?\n(읽기는 할 수 있어요. 나중에 풀 수 있어요)`))) return;
       const { error: err } = await supabase.from('lounge_bans').insert({ user_id: userId });
       if (err) { alert(err.message); return; }
       setBanned(prev => new Set(prev).add(userId));
@@ -408,7 +409,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
 
   // 관리자: 대화 얼리기 / 다시 열기 (얼리면 교우는 읽기만, 서버도 막음)
   const toggleFreeze = async () => {
-    if (!frozen && !window.confirm('사랑방 대화를 잠시 얼릴까요?\n교우들은 읽기만 하고 글을 쓸 수 없어요. (관리자는 쓸 수 있어요)')) return;
+    if (!frozen && !(await askConfirm('사랑방 대화를 잠시 얼릴까요?\n교우들은 읽기만 하고 글을 쓸 수 없어요. (관리자는 쓸 수 있어요)'))) return;
     const kind = frozen ? 'unfreeze' : 'freeze';
     const { data, error: err } = await supabase.from('lounge_messages').insert({ content: SYS[kind] + SYS_TEXT[kind] }).select('*').single();
     if (err || !data) { alert(`바꾸지 못했어요.\n(${err?.message || ''})`); return; }
@@ -417,7 +418,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   // 관리자: 오늘 대화를 한꺼번에 지우기 (지운 대화 보관함에는 남음)
   const clearAll = async () => {
-    if (!window.confirm('오늘 사랑방 대화를 모두 지울까요?\n(지운 대화는 위의 \u2018지운 대화\u2019에서 볼 수 있어요)')) return;
+    if (!(await askConfirm('오늘 사랑방 대화를 모두 지울까요?\n(지운 대화는 위의 \u2018지운 대화\u2019에서 볼 수 있어요)'))) return;
     const { error: err } = await supabase.from('lounge_messages').delete().gte('created_at', todayStartIso())
       .not('content', 'like', `${SYS.freeze}%`).not('content', 'like', `${SYS.unfreeze}%`);
     if (err) { alert(`지우지 못했어요.\n(${err.message})`); return; }
@@ -443,7 +444,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   const removeBadge = async (userId: string) => {
     const name = authors[userId]?.baptismal_name || '이 교우';
-    if (!window.confirm(`${name}님의 뱃지 '${badges[userId]}'를 뗄까요?`)) return;
+    if (!(await askConfirm(`${name}님의 뱃지 '${badges[userId]}'를 뗄까요?`))) return;
     const { error: err } = await supabase.from('lounge_badges').delete().eq('user_id', userId);
     if (err) { alert(isSetupError(err) ? BADGE_SETUP : err.message); return; }
     setBadges(prev => { const n = { ...prev }; delete n[userId]; return n; });
@@ -752,7 +753,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                         {...gestures.bind(m)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker ? '!px-0 !py-0 bg-transparent' : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
                         {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
                         {m.reply_to && (
                           <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -887,7 +888,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               ] : []),
               ...(mine || isAdmin
                 ? [{ label: mine ? '삭제' : '삭제 (관리자)', run: () => { close(); remove(m); }, danger: true }]
-                : [{ label: '삭제 (내 화면에서만)', run: () => { close(); if (window.confirm('이 글을 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.')) hiddenMsgs.hide(m.id); }, danger: true }]),
+                : [{ label: '삭제 (내 화면에서만)', run: async () => { close(); if ((await askConfirm('이 글을 내 화면에서 지울까요?\n다른 교우들 화면에는 그대로 남아요.'))) hiddenMsgs.hide(m.id); }, danger: true }]),
             ]} />
         );
       })()}

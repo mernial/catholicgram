@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { PHOTO_OPTIONS, uploadMedia } from '@/lib/upload';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
 // 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
@@ -192,7 +193,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     }
   };
   const remove = async (s: Story) => {
-    if (!window.confirm('이 스토리를 지울까요?')) return;
+    if (!(await askConfirm('이 스토리를 지울까요?'))) return;
     setPaused(true);
     const ok = await onDelete(s.id);
     if (!ok) { setPaused(false); return; }

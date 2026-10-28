@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import type { SponsorBannerData } from '@/lib/sponsor';
 import SponsorBanner from '@/components/SponsorBanner';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 관리자 전용: 후원 배너 등록 / 수정 / 중지 / 삭제 + 노출·클릭 통계
 
@@ -137,7 +138,7 @@ export default function SponsorAdmin({ onClose, onChanged }: { onClose: () => vo
   };
 
   const remove = async (b: SponsorBannerData) => {
-    if (!window.confirm(`'${b.title}' 배너를 삭제할까요? 통계도 함께 삭제됩니다.`)) return;
+    if (!(await askConfirm(`'${b.title}' 배너를 삭제할까요? 통계도 함께 삭제됩니다.`))) return;
     const { error } = await supabase.from('sponsor_banners').delete().eq('id', b.id);
     if (error) { alert(error.message); return; }
     load();

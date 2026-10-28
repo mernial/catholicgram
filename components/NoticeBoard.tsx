@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 export interface Notice { id: string; title: string; content: string; pinned: boolean; popup?: boolean; pushed_at: string | null; created_at: string }
 
@@ -75,7 +76,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
   };
 
   const remove = async (n: Notice) => {
-    if (!window.confirm(`'${n.title}' 공지를 지울까요?`)) return;
+    if (!(await askConfirm(`'${n.title}' 공지를 지울까요?`))) return;
     await supabase.from('announcements').delete().eq('id', n.id);
     setOpenId(null);
     onChanged();

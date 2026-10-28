@@ -11,6 +11,7 @@ import FeastDayPicker from '@/components/FeastDayPicker';
 import { IconBadge } from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -69,8 +70,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   useEffect(() => { if (view === 'blocks') loadBlocked(); }, [view]);
 
   const handleDelete = async () => {
-    if (!window.confirm('정말 탈퇴하시겠습니까?\n작성한 게시글, 사진, 댓글, 메시지 등 모든 데이터가 삭제되며 되돌릴 수 없습니다.')) return;
-    if (!window.confirm('마지막 확인입니다. 계정을 영구 삭제할까요?')) return;
+    if (!(await askConfirm('정말 탈퇴하시겠습니까?\n작성한 게시글, 사진, 댓글, 메시지 등 모든 데이터가 삭제되며 되돌릴 수 없습니다.'))) return;
+    if (!(await askConfirm('마지막 확인입니다. 계정을 영구 삭제할까요?'))) return;
     setDeleting(true);
     const result = await deleteMyAccount();
     setDeleting(false);

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { deleteMyAccount } from '@/lib/account';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import LegalPage from '@/components/legal/LegalPage';
+import { askConfirm } from '@/components/ConfirmDialog';
 
 // 구글 플레이 "계정 삭제 요청 URL" 로 등록하는 페이지
 export default function AccountDeletionPage() {
@@ -20,7 +21,7 @@ export default function AccountDeletionPage() {
   }, []);
 
   const handleDelete = async () => {
-    if (!window.confirm('정말 탈퇴하시겠습니까?\n작성한 게시글, 사진, 댓글, 메시지 등 모든 데이터가 삭제되며 되돌릴 수 없습니다.')) return;
+    if (!(await askConfirm('정말 탈퇴하시겠습니까?\n작성한 게시글, 사진, 댓글, 메시지 등 모든 데이터가 삭제되며 되돌릴 수 없습니다.'))) return;
     setDeleting(true);
     const result = await deleteMyAccount();
     setDeleting(false);
