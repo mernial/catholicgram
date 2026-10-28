@@ -80,7 +80,8 @@ import MyComments from '@/components/MyComments';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
-import { formatFeastDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
+import { birthdayFromMeta, formatFeastDay, isTodayMonthDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
+import CelebrateAvatar from '@/components/CelebrateAvatar';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -250,7 +251,16 @@ const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS]; // 감정 표시를 모
 const DM_REQUEST_HINT = '메시지 요청·대화방 나가기를 준비 중이에요. (관리자: supabase/dm-requests.sql 실행 필요)';
 const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
-interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; nickname_set?: boolean; }
+// birthday: 'MM-DD' (supabase/birthday.sql — 실행 전이면 없음(undefined), 실행했는데 안 적었으면 null)
+interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; birthday?: string | null; nickname_set?: boolean; }
+// 생일·축일 리본에 쓰는 그 교우의 날 (내 공간·교우 공간 머리, 프로필 카드)
+type MemberDays = { id: string; birthday?: string | null; feast_day?: string | null };
+const fetchMemberDays = async (id: string): Promise<MemberDays> => {
+  const { data, error } = await supabase.from('profiles').select('feast_day, birthday').eq('id', id).maybeSingle();
+  if (!error) return { id, ...(data || {}) };
+  const { data: old } = await supabase.from('profiles').select('feast_day').eq('id', id).maybeSingle(); // 생일 칸 생기기 전
+  return { id, ...(old || {}) };
+};
 
 // --- 이미지 자르기 유틸리티 ---
 const createImage = (url: string): Promise<HTMLImageElement> =>
@@ -386,6 +396,9 @@ export default function Home() {
   const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
   const [feastDayInput, setFeastDayInput] = useState('');
+  const [birthdayInput, setBirthdayInput] = useState('');   // 생일 'MM-DD' (가입·프로필 수정)
+  const metaBirthdayTriedRef = useRef<string | null>(null);
+  const [birthdayPromptHidden, setBirthdayPromptHidden] = useState(true); // 내 공간 '생일을 알려 주세요' 안내를 닫았는지 (이 휴대폰)
   const [nicknameInput, setNicknameInput] = useState('');   // 공개 닉네임 (baptismalName 은 비공개 실명)
   const [showFancyName, setShowFancyName] = useState(false); // 닉네임 영어 글자를 필기체 등으로 꾸미기
   const [profileEditMode, setProfileEditMode] = useState(false); // 설정에서 프로필 정보 수정 중
@@ -496,6 +509,8 @@ export default function Home() {
   const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+  const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
+  const [actionUserDays, setActionUserDays] = useState<MemberDays | null>(null); // 프로필 카드 교우의 생일·축일
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
   const [bioDraft, setBioDraft] = useState<string | null>(null); // 소개 고치는 중이면 글자
   const [profileTab, setProfileTab] = useState<'posts' | 'videos' | 'tagged'>('posts');
@@ -921,8 +936,11 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string) => {
-    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set').eq('id', userId).single();
+    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set, birthday').eq('id', userId).single();
     // 새 칼럼이 아직 없는 경우(SQL 실행 전)에도 동작하도록
+    if (error && error.code !== 'PGRST116') {
+      ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set').eq('id', userId).single());
+    }
     if (error && error.code !== 'PGRST116') {
       ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day').eq('id', userId).single());
     }
@@ -932,6 +950,15 @@ export default function Home() {
     const { data: priv } = await supabase.from('profile_private').select('real_name').eq('id', userId).maybeSingle();
     const realName = priv?.real_name || '';
     setMyRealName(realName);
+    // 생일을 안 적었으면 로그인 정보(네이버 생일 등)에 있는 생일로 채운다 (생일 칸이 있을 때만)
+    const metaBirthday = birthdayFromMeta((await supabase.auth.getSession()).data.session?.user?.user_metadata?.birthday);
+    if (data && (data as UserProfile).birthday === null && metaBirthday && metaBirthdayTriedRef.current !== userId) {
+      metaBirthdayTriedRef.current = userId; // 한 번만 (앱을 켜는 동안 프로필을 여러 번 불러도)
+      const { error: bdError } = await supabase.from('profiles').update({ birthday: metaBirthday }).eq('id', userId);
+      if (!bdError) data = { ...data, birthday: metaBirthday } as typeof data;
+    }
+    setBirthdayInput((data as UserProfile | null)?.birthday || metaBirthday || '');
+    setBirthdayPromptHidden(storageGet(`birthdayPromptHidden:${userId}`) === '1');
     if (data && data.baptismal_name && data.handle) {
       setProfile(data);
       // 기존 회원: 닉네임을 아직 정하지 않았으면 안내 (칼럼이 없으면 건너뜀)
@@ -977,6 +1004,13 @@ export default function Home() {
     return row.status === 'pending' ? 'pending' : 'accepted';
   };
 
+  // 공간 주인의 생일·축일 (오늘이면 프로필 사진에 리본·비둘기). 내가 생일·축일을 고치면 다시
+  useEffect(() => {
+    if (!viewingUserId) { setSpaceDays(null); return; }
+    let alive = true;
+    fetchMemberDays(viewingUserId).then(d => { if (alive) setSpaceDays(d); });
+    return () => { alive = false; };
+  }, [viewingUserId, profile?.birthday, profile?.feast_day]);
   // 한 줄 소개 불러오기 (칼럼이 아직 없으면 조용히 비워 둠)
   useEffect(() => {
     setViewingBio(''); setBioDraft(null); setProfileTab('posts');
@@ -1165,6 +1199,8 @@ export default function Home() {
       .then(({ data }) => { if (data && profileCardIdRef.current === target.id) setActionModalUser(cur => (cur && cur.id === data.id ? { ...cur, ...data, avatar_url: data.avatar_url || undefined } : cur)); });
     supabase.from('profiles').select('bio').eq('id', target.id).maybeSingle()
       .then(({ data, error }) => { if (!error && data && profileCardIdRef.current === target.id) setActionUserBio((data as { bio?: string | null }).bio || ''); });
+    setActionUserDays(null);
+    fetchMemberDays(target.id).then(d => { if (profileCardIdRef.current === target.id) setActionUserDays(d); });
   };
 
   // ── 메시지 요청 · 대화방 나가기 ──
@@ -1649,10 +1685,12 @@ export default function Home() {
     setSetupError('');
 
     const feastDay = isValidFeastDay(feastDayInput) ? feastDayInput : null;
+    const birthday = isValidFeastDay(birthdayInput) ? birthdayInput : null;
     // 이메일은 보내지 않는다: 서버가 로그인 정보에서 채우고, 앱에서는 읽을 수 없다 (supabase/profiles-email-private.sql)
     const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle };
-    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]);
+    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true, birthday }]);
     // 새 칼럼이 아직 없는 경우(SQL 실행 전)에는 있는 칼럼만 저장
+    if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([row]));
 
@@ -1661,7 +1699,7 @@ export default function Home() {
       await supabase.from('profile_private').upsert({ id: user.id, real_name: baptismalName.trim(), updated_at: new Date().toISOString() });
       await supabase.rpc('sync_my_author_name');
       setMyRealName(baptismalName.trim());
-      setProfile(prev => ({ ...(prev || {}), id: user.id, baptismal_name: nickname, handle: cleanHandle, feast_day: feastDay, nickname_set: true }));
+      setProfile(prev => ({ ...(prev || {}), id: user.id, baptismal_name: nickname, handle: cleanHandle, feast_day: feastDay, nickname_set: true, ...(prev?.birthday !== undefined || birthday ? { birthday } : {}) }));
       setNeedsProfileSetup(false);
       setProfileEditMode(false);
       fetchPosts();
@@ -1678,6 +1716,7 @@ export default function Home() {
     setHandleInput(profile.handle || '');
     setBaptismalName(myRealName);
     setFeastDayInput(profile.feast_day || '');
+    setBirthdayInput(profile.birthday || '');
     setSetupError('');
     setShowFancyName(false);
     setProfileEditMode(true);
@@ -4328,8 +4367,11 @@ export default function Home() {
                     {initial(viewingProfile?.baptismal_name, '교')}
                   </div>
                 );
+                // 오늘이 생일·축일이면 사진 위 리본·아래 비둘기
+                const days = spaceDays?.id === viewingUserId ? spaceDays : null;
+                const celebrate = (node: React.ReactNode) => <CelebrateAvatar size={5.5} birthday={isTodayMonthDay(days?.birthday)} feast={isTodayMonthDay(days?.feast_day)}>{node}</CelebrateAvatar>;
                 // 내 프로필: 사진을 누르면 프로필 사진 바꾸기
-                return viewingUserId === user?.id ? (
+                return celebrate(viewingUserId === user?.id ? (
                   <label className="relative cursor-pointer shrink-0" aria-label="프로필 사진 바꾸기">
                     {avatar}
                     <span className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-blue-500 text-white flex items-center justify-center border-2 border-white shadow"><Icon name="plus" className="w-4 h-4" /></span>
@@ -4337,7 +4379,7 @@ export default function Home() {
                   </label>
                 ) : viewingProfile?.avatar_url ? (
                   <button onClick={() => setAvatarPreview({ url: viewingProfile.avatar_url!, name: viewingProfile.baptismal_name })} className="shrink-0" aria-label="프로필 사진 크게 보기">{avatar}</button>
-                ) : <div className="shrink-0">{avatar}</div>;
+                ) : <div className="shrink-0">{avatar}</div>);
               })()}
               <div className="flex-1 grid grid-cols-3 text-center">
                 <div><p className="text-lg font-bold text-stone-900">{myPosts.length}</p><p className="text-[0.8125rem] text-stone-600">게시물</p></div>
@@ -4395,6 +4437,18 @@ export default function Home() {
                     <button onClick={switchAccount} className={sub}><Icon name="users" className={ico} />다른 계정으로 로그인</button>
                     <button onClick={logout} className={sub}><Icon name="signout" className={ico} />로그아웃</button>
                   </div>
+                  {/* 생일을 아직 안 적은 교우: 한 번 안내 (생일 칸이 있을 때만 — supabase/birthday.sql) */}
+                  {profile?.birthday === null && !birthdayPromptHidden && (
+                    <div className="mt-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-3 flex items-center gap-3">
+                      <span className="text-[1.75rem] leading-none" aria-hidden="true">🎂</span>
+                      <button onClick={openProfileEdit} className="flex-1 min-w-0 text-left">
+                        <p className="text-[0.9375rem] font-bold text-stone-900">생일을 알려 주세요</p>
+                        <p className="text-[0.8125rem] text-stone-600 leading-snug">생일 날 프로필 사진 위에 축하 리본이 달려요</p>
+                      </button>
+                      <button onClick={openProfileEdit} className="shrink-0 px-3 py-2 rounded-xl bg-rose-500 text-white text-[0.875rem] font-bold">적기</button>
+                      <button onClick={() => { storageSet(`birthdayPromptHidden:${user.id}`, '1'); setBirthdayPromptHidden(true); }} className="shrink-0 w-8 h-8 text-stone-400 text-xl leading-none" aria-label="생일 안내 닫기">×</button>
+                    </div>
+                  )}
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {isAdmin && (
                       <>
@@ -4977,9 +5031,11 @@ export default function Home() {
             <div className="relative bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label={`${u.baptismal_name || '교우'}님 프로필`}>
               <button onClick={() => setActionModalUser(null)} className="absolute right-2 top-2 w-11 h-11 flex items-center justify-center text-stone-500 text-3xl leading-none" aria-label="닫기">×</button>
               <div className="px-6 pt-8 pb-5 flex flex-col items-center text-center">
-                {u.avatar_url
-                  ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-stone-300" />
-                  : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{initial(u.baptismal_name, '교')}</span>}
+                <CelebrateAvatar size={13} birthday={actionUserDays?.id === u.id && isTodayMonthDay(actionUserDays.birthday)} feast={actionUserDays?.id === u.id && isTodayMonthDay(actionUserDays.feast_day)}>
+                  {u.avatar_url
+                    ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-stone-300" />
+                    : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{initial(u.baptismal_name, '교')}</span>}
+                </CelebrateAvatar>
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
                   <RoleBadge type={u.badge_type} />
@@ -6214,9 +6270,15 @@ export default function Home() {
               </div>
 
               <div>
+                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🎂 나의 생일 <span className="font-normal text-stone-400">(월·일, 선택)</span></label>
+                <FeastDayPicker value={birthdayInput} onChange={setBirthdayInput} what="생일" />
+                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">생일 날 프로필 사진 위에 &lsquo;오늘 생일이에요&rsquo; 리본이 달려요. 태어난 해는 받지 않아요.</p>
+              </div>
+
+              <div>
                 <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나의 축일 <span className="font-normal text-stone-400">(선택)</span></label>
                 <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
-                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 팔로워에게도 알려드려요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
+                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 프로필 사진 아래에 &lsquo;오늘 축일이에요&rsquo; 비둘기가 날아와요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
 
               {setupError && <p className="text-red-500 text-xs text-center">{setupError}</p>}

@@ -28,6 +28,18 @@ export const todayFeastKeys = (now = new Date()) => {
   return key === '02-28' && !leap ? [key, '02-29'] : [key];
 };
 
+// 오늘(한국 시간)이 그 날('MM-DD')인지 — 생일·축일 리본 (2월 29일은 윤년이 아니면 28일에)
+export const isTodayMonthDay = (value?: string | null, now = new Date()) => !!value && todayFeastKeys(now).includes(value);
+
+// 로그인 정보의 생일(네이버 'MM-DD', 카카오 'MMDD', 'YYYY-MM-DD' 등) → 'MM-DD' (알 수 없으면 null)
+export const birthdayFromMeta = (raw?: unknown): string | null => {
+  if (typeof raw !== 'string') return null;
+  const m = raw.trim().match(/^(?:\d{4}-?)?(\d{2})-?(\d{2})$/);
+  if (!m) return null;
+  const value = `${m[1]}-${m[2]}`;
+  return isValidFeastDay(value) ? value : null;
+};
+
 // 한국 시간 기준 오늘 날짜 'YYYY-MM-DD'
 export const todayKst = (now = new Date()) =>
   new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);

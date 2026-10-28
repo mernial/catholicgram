@@ -113,6 +113,11 @@ input, textarea, select {
   60% { opacity: 1; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(var(--rot)); }
   100% { opacity: 0; transform: translate(calc(-50% + var(--dx) * 1.15), calc(var(--dy) + 90px)) rotate(calc(var(--rot) * 1.4)); }
 }
+/* 생일 리본·축일 비둘기 (components/CelebrateAvatar): 살짝 둥실 */
+@keyframes celebrateFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
 @keyframes giftBounce {
   0% { transform: translateY(18px) scale(.8); }
   60% { transform: translateY(-6px) scale(1.06); }
