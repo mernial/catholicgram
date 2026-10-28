@@ -544,9 +544,14 @@ export default function Home() {
   useEffect(() => {
     // 카카오톡 인앱 브라우저(특히 아이폰)에서는 로그인 버튼이 동작하지 않는 경우가 있어
     // 기본 브라우저(Safari/Chrome)로 다시 열도록 한다.
+    // 단, 공유받은 글(?view=)을 보러 온 경우는 로그인 없이 볼 수 있으니 넘기지 않고, 아이패드 카카오톡은 이 넘기기를 못 해
+    // '해당 페이지를 찾을 수 없습니다'가 떠서 넘기지 않는다 (로그인 창의 '⋯ → 다른 브라우저로 열기' 안내는 그대로)
     if (/KAKAOTALK/i.test(navigator.userAgent)) {
       setIsKakaoInApp(true);
-      window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
+      const isIPad = /iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+      if (!isIPad && !new URLSearchParams(window.location.search).has('view')) {
+        window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(window.location.href)}`;
+      }
     }
     if (!isStorageAvailable()) setStorageBlocked(true);
 
