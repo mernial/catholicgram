@@ -83,7 +83,7 @@ input, textarea, select {
   from { opacity: 0; transform: scale(0.94); }
   to { opacity: 1; transform: scale(1); }
 }
-/* 선물 상자 (components/GiftBox): 기다릴 때 살랑살랑, 누르면 커지며 반짝 사라짐 */
+/* 선물 상자 (components/GiftBox): 기다릴 때 살랑살랑 → 누르면 통! 튀고 빛나며 꽃가루가 터지고 이모티콘이 상자에서 솟아오름 */
 @keyframes giftWiggle {
   0%, 60%, 100% { transform: rotate(0) scale(1); }
   66% { transform: rotate(-5deg) scale(1.03); }
@@ -91,12 +91,34 @@ input, textarea, select {
   78% { transform: rotate(-3deg); }
   84% { transform: rotate(2deg); }
 }
-@keyframes giftBurst {
-  0% { transform: scale(1) rotate(0); filter: brightness(1); opacity: 1; }
-  30% { transform: scale(.92) rotate(-6deg); }
-  55% { transform: scale(1.12) rotate(4deg); filter: brightness(1.25); }
-  100% { transform: scale(1.5); filter: brightness(2.2); opacity: 0; }
+@keyframes giftPop {
+  0% { transform: scale(1); filter: brightness(1); }
+  30% { transform: scale(.88, .82); }
+  60% { transform: scale(1.08, 1.12); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: brightness(1.05); }
 }
+@keyframes giftGlow {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.3); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+@keyframes giftRise {
+  0% { opacity: 0; transform: translate(-50%, 10%) scale(.25); }
+  25% { opacity: 1; }
+  70% { transform: translate(-50%, -112%) scale(1.12) rotate(-4deg); }
+  85% { transform: translate(-50%, -100%) scale(.97) rotate(3deg); }
+  100% { opacity: 1; transform: translate(-50%, -104%) scale(1) rotate(0); }
+}
+@keyframes giftConfetti {
+  0% { opacity: 1; transform: translate(-50%, 0) rotate(0); }
+  60% { opacity: 1; transform: translate(calc(-50% + var(--dx)), var(--dy)) rotate(var(--rot)); }
+  100% { opacity: 0; transform: translate(calc(-50% + var(--dx) * 1.15), calc(var(--dy) + 90px)) rotate(calc(var(--rot) * 1.4)); }
+}
+@keyframes giftBounce {
+  0% { transform: translateY(18px) scale(.8); }
+  60% { transform: translateY(-6px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+
 
 /* 영상(릴스): 소리 켜기/끄기 표시가 잠깐 보였다 사라짐 */
 @keyframes fadeOut {

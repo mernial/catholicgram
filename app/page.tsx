@@ -24,6 +24,7 @@ import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, STICKER_PACKS, hasStickerSuggestion, isGiftHandle, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
+import { appKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -3270,6 +3271,13 @@ export default function Home() {
     if (!user) { setOpenedGifts(null); return; }
     try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); }
     try { setSnoozedGifts(JSON.parse(sessionStorage.getItem('giftsSnoozed') || '[]')); } catch { /* 무시 */ }
+  }, [user]);
+  // 테스터가 Play 스토어 테스트 앱으로 들어오면 신청 줄에 '앱을 연 때'를 적는다 → 관리자 테스터 화면에 '📱 앱 설치 확인'
+  // (supabase/tester-installs.sql 실행 전이거나 신청하지 않은 교우면 아무 일 없음, 한 번 켤 때 한 번만)
+  useEffect(() => {
+    if (!user || appKind() !== 'play') return;
+    try { if (sessionStorage.getItem('playOpenedMarked') === user.id) return; sessionStorage.setItem('playOpenedMarked', user.id); } catch { /* 무시 */ }
+    supabase.rpc('mark_tester_play_opened').then(() => {}, () => {});
   }, [user]);
   // 알림으로 연 선물이 내 선물에 없으면(거둬들였거나 잘못된 주소) 잠시 뒤 잊는다
   useEffect(() => {

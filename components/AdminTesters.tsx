@@ -8,7 +8,9 @@ import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
 
 // 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
-interface Signup { user_id: string; google_email: string; status: 'requested' | 'added'; created_at: string }
+// play_first_at·play_opened_at: 그 교우가 Play 테스트 앱을 처음·마지막으로 연 때 (supabase/tester-installs.sql)
+interface Signup { user_id: string; google_email: string; status: 'requested' | 'added'; created_at: string; play_first_at?: string | null; play_opened_at?: string | null }
+const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
 interface Who { baptismal_name: string; handle?: string | null }
 
 export default function AdminTesters({ onClose, sendPush }: {
@@ -21,9 +23,15 @@ export default function AdminTesters({ onClose, sendPush }: {
   const [copied, setCopied] = useState<{ ids: string[]; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [resent, setResent] = useState(false);
+  const [installSetupNeeded, setInstallSetupNeeded] = useState(false);
 
   const fetchList = async () => {
-    const { data, error } = await supabase.from('tester_signups').select('user_id, google_email, status, created_at').order('created_at', { ascending: true });
+    const first = await supabase.from('tester_signups').select('user_id, google_email, status, created_at, play_first_at, play_opened_at').order('created_at', { ascending: true });
+    // 설치 확인 칸이 아직 없으면(tester-installs.sql 실행 전) 예전처럼
+    const { data, error } = first.error
+      ? await supabase.from('tester_signups').select('user_id, google_email, status, created_at').order('created_at', { ascending: true })
+      : first;
+    setInstallSetupNeeded(!!first.error);
     if (error) return { setupNeeded: true, list: [] as Signup[], who: {} };
     const rows = (data || []) as Signup[];
     const { data: profiles } = rows.length
@@ -75,6 +83,9 @@ export default function AdminTesters({ onClose, sendPush }: {
   };
 
   const total = list?.length || 0;
+  // Play 테스트 앱을 실제로 연 테스터 (구글은 '테스터 되기'를 누른 사람 12명 이상이 14일 동안 참여해야 정식 출시 신청을 받음)
+  const installed = (list || []).filter(s => s.play_first_at).sort((a, b) => +new Date(a.play_first_at!) - +new Date(b.play_first_at!));
+  const readyOn = installed.length >= TESTER_GOAL ? new Date(+new Date(installed[TESTER_GOAL - 1].play_first_at!) + 14 * 86400e3) : null;
   return (
     <BottomSheet bare label="안드로이드 테스터 신청 목록" onClose={onClose} z="z-[86]" tone="bg-stone-50">
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
@@ -98,6 +109,26 @@ export default function AdminTesters({ onClose, sendPush }: {
                   <div className="h-full rounded-full bg-emerald-500" style={{ width: `${Math.min(100, (total / TESTER_GOAL) * 100)}%` }} />
                 </div>
                 <p className="mt-1.5 text-xs text-stone-500">빠지는 분이 있을 수 있어 15~20명이면 안전해요.</p>
+                <div className="mt-3 pt-3 border-t border-stone-100">
+                  {installSetupNeeded ? (
+                    <p className="text-xs text-stone-500 leading-relaxed">📱 앱 설치 확인은 Supabase 에서 <code>supabase/tester-installs.sql</code> 을 실행한 뒤부터 보여요.</p>
+                  ) : (
+                    <>
+                      <div className="flex items-baseline justify-between">
+                        <p className="text-sm font-bold text-stone-800">📱 앱 설치 확인 {installed.length}명 <span className="font-normal text-stone-500">· 구글 등록 {added.length}명 중</span></p>
+                        <p className="text-xs text-stone-500">{installed.length >= TESTER_GOAL ? '12명 달성 🎉' : `${TESTER_GOAL}명까지 ${TESTER_GOAL - installed.length}명`}</p>
+                      </div>
+                      <div className="mt-2 h-2.5 rounded-full bg-stone-100 overflow-hidden">
+                        <div className="h-full rounded-full bg-sky-500" style={{ width: `${Math.min(100, (installed.length / TESTER_GOAL) * 100)}%` }} />
+                      </div>
+                      <p className="mt-1.5 text-xs text-stone-500 leading-relaxed">
+                        {readyOn
+                          ? <>12번째 분이 {md(installed[TESTER_GOAL - 1].play_first_at!)}에 설치했어요 → <b>{md(readyOn.toISOString())}쯤</b>부터 정식 출시를 신청할 수 있어요 (그동안 지우지 않으면)</>
+                          : <>Play 스토어 테스트 앱을 열면 저절로 표시돼요. 12명이 설치한 날부터 14일 뒤 정식 출시를 신청할 수 있어요.</>}
+                      </p>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="bg-white border border-stone-200 rounded-2xl p-3.5 flex flex-col gap-2">
@@ -133,9 +164,14 @@ export default function AdminTesters({ onClose, sendPush }: {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-stone-800 truncate">{who[s.user_id]?.baptismal_name || '교우'}{who[s.user_id]?.handle && <span className="font-normal text-stone-400"> @{who[s.user_id]?.handle}</span>}</p>
                       <p className="text-xs text-stone-600 break-all">{s.google_email}</p>
-                      <p className="text-[0.6875rem] text-stone-400">{new Date(s.created_at).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })} 신청</p>
+                      <p className="text-[0.6875rem] text-stone-400">
+                        {md(s.created_at)} 신청
+                        {s.play_first_at && <> · <span className="text-sky-700 font-bold">📱 {md(s.play_first_at)} 설치</span>{s.play_opened_at && md(s.play_opened_at) !== md(s.play_first_at) && <> · 마지막 {md(s.play_opened_at)}</>}</>}
+                      </p>
                     </div>
-                    <span className={`text-[0.6875rem] font-bold rounded-full px-2 py-0.5 shrink-0 ${s.status === 'added' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{s.status === 'added' ? '등록함' : '신청함'}</span>
+                    {s.play_first_at
+                      ? <span className="text-[0.6875rem] font-bold rounded-full px-2 py-0.5 shrink-0 bg-sky-100 text-sky-800">설치함</span>
+                      : <span className={`text-[0.6875rem] font-bold rounded-full px-2 py-0.5 shrink-0 ${s.status === 'added' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{s.status === 'added' ? (installSetupNeeded ? '등록함' : '등록함 · 설치 전') : '신청함'}</span>}
                     <button onClick={() => remove(s)} className="text-xs text-stone-400 hover:text-red-600 shrink-0 px-1" aria-label={`${s.google_email} 신청 지우기`}>지우기</button>
                   </div>
                 ))}
