@@ -115,7 +115,8 @@ export function VideoViewer({ src, poster, overlays, onDoubleTap }: { src: strin
   const tap = useDoubleTap(toggle, () => { if (onDoubleTap) { setBurst(Date.now()); onDoubleTap(); } else toggle(); });
 
   return (
-    <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size]" style={{ width: 'min(100%, calc(60dvh * 0.8))' }} onClick={tap}>
+    // 아이패드(전체 화면 크게 보기)는 더 크게, 가로로 들면 화면 높이에 맞춤
+    <div className="relative aspect-[4/5] mx-auto bg-black [container-type:inline-size] w-[min(100%,calc(60dvh*0.8))] tablet:w-[min(100%,calc(66dvh*0.8))] tablet-land:w-[min(100%,calc((100dvh_-_5rem)*0.8))]" onClick={tap}>
       <video ref={ref} src={src} poster={poster || undefined} loop playsInline className="absolute inset-0 w-full h-full object-cover" />
       <OverlayLayer overlays={overlays} />
       {paused && <span className="absolute inset-0 flex items-center justify-center text-white text-5xl bg-black/20"><Icon name="play" fill className="w-14 h-14 drop-shadow" /></span>}

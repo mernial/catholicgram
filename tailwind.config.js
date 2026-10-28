@@ -21,6 +21,8 @@ module.exports = {
       // tablet: 아이패드 같은 큰 터치 화면 → 가운데 좁은 칸 대신 화면 가득 (컴퓨터는 그대로)
       screens: {
         tablet: { raw: '(min-width: 700px) and (any-pointer: coarse)' },
+        // 그중 가로로 든 화면 (게시글 크게 보기: 사진 왼쪽 · 글 오른쪽)
+        'tablet-land': { raw: '(min-width: 700px) and (any-pointer: coarse) and (orientation: landscape)' },
       },
       // 글씨 크기: 55세 이상 이용자를 위해 기본보다 한 단계씩 크게
       // (rem 단위라 설정의 '글씨 크기'를 바꾸면 전체가 함께 커지고 작아짐)
