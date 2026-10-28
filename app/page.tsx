@@ -2451,12 +2451,14 @@ export default function Home() {
   const isAlertExpired = (at?: string) => !!at && Date.now() - new Date(at).getTime() > ALERT_KEEP_MS;
   const unreadCommentCount = !user ? 0 : notifications.filter(n =>
     !isAlertExpired(n.created_at) && !hiddenAlerts.has(`c:${n.id}`) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
+    && (!notificationsClearedAt || new Date(n.created_at) > new Date(notificationsClearedAt))
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
   // 메시지 단추 숫자: 1:1 안 읽은 메시지 + 단체 채팅방 안 읽은 메시지 (알림(하트) 숫자에는 1:1만)
   const messageBadgeCount = unreadMessageCount + (!user ? 0 : groupChats.reduce((sum, g) => sum + (g.unread || 0), 0));
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
     r.created_at && !isAlertExpired(r.created_at) && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
+    && (!notificationsClearedAt || new Date(r.created_at) > new Date(notificationsClearedAt))
   ).length;
   // 지운 알림인지
   const isAlertHidden = (key: string, at?: string) =>
@@ -2486,6 +2488,20 @@ export default function Home() {
 
   const listedFollows = followRequests.filter(r => !blockedIds.has(r.follower.id) && !isAlertHidden(`f:${r.id}`, r.created_at) && !hiddenAlerts.has(`fu:${r.follower.id}`));
   const listedComments = notifications.filter(n => !isAlertHidden(`c:${n.id}`, n.created_at));
+  const listedMessages = unreadMessages.filter(u => !blockedIds.has(u.partner.id) && !(notificationsClearedAt && new Date(u.lastAt) <= new Date(notificationsClearedAt)));
+  // '모두 지우기': 확인하지 않은 알림까지 지금까지 온 알림을 모두 지운다 (그 뒤에 오는 알림은 다시 보임).
+  // 안 읽은 메시지는 알림 목록에서만 빠지고 메시지함에는 그대로 (읽음 표시를 보내지 않음)
+  const clearAllAlerts = () => {
+    if (!user) return;
+    if (!window.confirm('알림을 모두 지울까요?\n확인하지 않은 알림도 지워져요.\n(안 읽은 메시지는 메시지함에 그대로 남아요)')) return;
+    // 휴대폰 시계가 서버보다 조금 늦어도 지금 보이는 알림은 모두 지워지게, 가장 늦은 알림 시각과 비교
+    const times = [Date.now(), ...listedComments.map(n => +new Date(n.created_at)), ...listedFollows.map(r => +new Date(r.created_at || 0)), ...listedMessages.map(u => +new Date(u.lastAt))];
+    const at = new Date(Math.max(...times.filter(t => !Number.isNaN(t)))).toISOString();
+    setNotificationsClearedAt(at);
+    storageSet(`notificationsClearedAt:${user.id}`, at);
+    setFeastClearedAt(at);
+    storageSet(`feastClearedAt:${user.id}`, at);
+  };
   const feastCleared = [feastClearedAt, notificationsClearedAt].some(at => !!at && todayKst(new Date(at)) === todayKst());
 
   // 축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
@@ -2493,7 +2509,7 @@ export default function Home() {
   const visibleFeastFriends = feastFriends.filter(f => !blockedIds.has(f.id));
   const feastAlertCount = !user || (notificationsLastSeen && todayKst(new Date(notificationsLastSeen)) === todayKst())
     ? 0 : visibleFeastFriends.length + (isMyFeastToday ? 1 : 0);
-  const unreadCount = unreadCommentCount + unreadMessageCount + newFollowerCount + feastAlertCount;
+  const unreadCount = unreadCommentCount + listedMessages.reduce((sum, u) => sum + u.count, 0) + newFollowerCount + feastAlertCount;
 
   // 축일 축하 메시지 보내기: 대화방을 열고 인사말을 미리 채워둔다
   const congratulateFeast = (friend: UserProfile) => {
@@ -5681,14 +5697,20 @@ export default function Home() {
               className="sm:hidden pt-3 pb-2 flex justify-center cursor-grab">
               <span className="w-12 h-1.5 rounded-full bg-stone-300" />
             </div>
-            <div className="px-4 pb-4 pt-1 sm:pt-4 border-b border-stone-100 flex items-center justify-between">
+            <div className="px-4 pb-3 pt-1 sm:pt-4 border-b border-stone-100 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
               <div className="flex items-center gap-2">
-                <button onClick={clearSeenAlerts} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인한 알림 지우기</button>
                 <button onClick={toggleAlertSound} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">
                   {alertSoundOn ? <><Icon name="speaker" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 켜짐</> : <><Icon name="mute" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 꺼짐</>}
                 </button>
-                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
+                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1" aria-label="알림 닫기">×</button>
+              </div>
+              </div>
+              {/* 지우기: 확인한(눌러 본) 알림만 / 확인하지 않은 알림까지 모두 */}
+              <div className="flex gap-2">
+                <button onClick={clearSeenAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-stone-200 text-stone-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인한 알림 지우기</button>
+                <button onClick={clearAllAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-red-200 text-red-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모두 지우기</button>
               </div>
             </div>
             </div>
@@ -5739,7 +5761,7 @@ export default function Home() {
                   <button onClick={() => hideAlert(`f:${r.id}`)} className="text-stone-300 hover:text-stone-600 text-lg leading-none px-1 shrink-0" aria-label="이 알림 지우기">×</button>
                 </div>
               ))}
-              {unreadMessages.filter(u => !blockedIds.has(u.partner.id)).map(u => (
+              {listedMessages.map(u => (
                 <button key={`msg-${u.partner.id}`} data-flip-key={`msg-${u.partner.id}`} onClick={() => { setShowNotifications(false); openChatRoom(u.partner); }} className="w-full p-4 text-left hover:bg-stone-50 transition-colors flex flex-col gap-1 bg-amber-50/40">
                   <p className="text-[0.9375rem] text-stone-800">
                     <Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-600" /><b>{u.partner.baptismal_name}</b>님이 메시지를 보냈습니다 <span className="ml-1 text-[0.75rem] bg-red-500 text-white rounded-full px-1.5 py-px font-bold">{u.count}</span>
@@ -5748,7 +5770,7 @@ export default function Home() {
                   <p className="text-[0.8125rem] text-stone-400">{new Date(u.lastAt).toLocaleString('ko-KR')}</p>
                 </button>
               ))}
-              {listedComments.length === 0 && listedFollows.length === 0 && unreadMessages.length === 0 && (feastCleared || (visibleFeastFriends.length === 0 && !isMyFeastToday)) ? (
+              {listedComments.length === 0 && listedFollows.length === 0 && listedMessages.length === 0 && (feastCleared || (visibleFeastFriends.length === 0 && !isMyFeastToday)) ? (
                 <div className="p-10 text-center text-stone-400 text-sm">새 알림이 없습니다.</div>
               ) : (
                 listedComments.map(n => (
