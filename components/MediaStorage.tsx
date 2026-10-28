@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
+import BottomSheet from '@/components/BottomSheet';
 
 const LABELS: Record<string, string> = { posts: '게시물·스토리', profiles: '프로필 사진', messages: '메시지 사진', feedback: '건의 사진', letters: '사연 사진', sponsor_banners: '광고 배너', bgm_tracks: '배경음악' };
 
@@ -72,8 +73,8 @@ export default function MediaStorage({ onClose }: { onClose: () => void }) {
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] max-h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="사진·영상 저장소" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <div>
             <h2 className="font-bold text-stone-900"><Icon name="camera" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />사진 저장소</h2>
@@ -123,6 +124,6 @@ export default function MediaStorage({ onClose }: { onClose: () => void }) {
           </section>
         </div>
       </div>
-    </div>
+    </BottomSheet>
   );
 }

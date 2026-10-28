@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
+import BottomSheet from '@/components/BottomSheet';
 
 // 운영자 건의함 (supabase/feedback.sql)
 // 일반 교우: 건의 보내기 + 내가 보낸 건의의 상태/답변 보기
@@ -231,13 +232,13 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   ];
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <BottomSheet bare label="건의함" onClose={onClose} z="z-[85]" tone="bg-white">
       {zoom && (
         <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
           <img loading="lazy" src={zoom} alt="첨부 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
-      <div className="bg-white w-full sm:w-[28rem] h-[94dvh] sm:h-[90dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <h2 className="font-bold text-stone-900"><Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{isAdmin ? '건의함 · 신고 관리' : '운영자에게 건의하기'}</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
@@ -435,6 +436,6 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
           </div>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

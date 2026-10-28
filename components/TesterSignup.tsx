@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { IconBadge } from '@/components/Icon';
 import { PLAY_STORE_URL, TESTER_JOIN_URL, TesterStatus, isAndroidDevice, isValidEmail } from '@/lib/android-test';
+import BottomSheet from '@/components/BottomSheet';
 
 // 안드로이드 앱 테스터 신청: 회원이 동의하고 플레이 스토어 구글 계정을 적어 낸다 (supabase/android-testers.sql)
 // 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다
@@ -66,8 +67,8 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
   const valid = isValidEmail(email.trim());
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[86] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-[28rem] max-h-[92dvh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-4" onClick={e => e.stopPropagation()} role="dialog" aria-label="안드로이드 앱 테스터 신청">
+    <BottomSheet bare label="안드로이드 테스터 신청" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 overflow-y-auto p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-4" onClick={e => e.stopPropagation()} role="dialog" aria-label="안드로이드 앱 테스터 신청">
         <div className="flex items-center justify-between">
           <h2 className="font-bold text-stone-900 flex items-center gap-2"><IconBadge name="phone" tone="green" />안드로이드 앱 테스터</h2>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-2xl leading-none px-2" aria-label="닫기">×</button>
@@ -151,6 +152,6 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
           </>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }

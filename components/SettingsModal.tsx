@@ -10,6 +10,7 @@ import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import { IconBadge } from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
+import BottomSheet from '@/components/BottomSheet';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -82,8 +83,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   const label = 'flex items-center gap-3';
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[85] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white w-full sm:w-96 max-h-[85dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
+    <BottomSheet bare label="설정" onClose={onClose} z="z-[85]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           {view === 'blocks' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 차단 목록</button>}
           {view === 'feast' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 나의 축일</button>}
@@ -199,6 +200,6 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
           </div>
         )}
       </div>
-    </div>
+    </BottomSheet>
   );
 }
