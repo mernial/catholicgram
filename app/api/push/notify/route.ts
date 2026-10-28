@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
+import { postPlainText } from '@/lib/stickers';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
     if (!post || post.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(post.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     for (const pid of await mentionedIds(post.content, new Set([user.id]))) {
-      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(post.content || '')}`, url: `/?view=${post.id}`, tag: `mention-${post.id}` } });
+      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(postPlainText(post.content))}`, url: `/?view=${post.id}`, tag: `mention-${post.id}` } });
     }
     if (list.length === 0) return Response.json({ skipped: 'no mentions' });
   } else if (type === 'story') {
