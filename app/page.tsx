@@ -3119,6 +3119,22 @@ export default function Home() {
     setTimeout(() => (document.getElementById(`comment-input-${postId}`) as HTMLTextAreaElement | null)?.focus(), 150);
   };
 
+  // 방금 올린 댓글이 보이게 댓글 목록을 내리고 잠깐 칠함 (답글은 그 댓글 밑에 붙으므로 맨 아래가 아니라 그 자리로).
+  // 이모티콘 칸·미리 보기가 닫히며 목록 높이가 바뀌므로 몇 번 맞춤
+  const revealComment = (id: string) => {
+    setHighlightCommentId(id);
+    const fit = () => {
+      const el = document.getElementById(`comment-${id}`);
+      const box = el?.closest('.overflow-y-auto');
+      if (!el || !box) return;
+      const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+      // 다 보이면 그대로, 아니면 가운데로 (답글이면 위의 댓글도 함께 보이게, 맨 아래 댓글은 끝까지만 내려감)
+      if (r.top >= b.top + 8 && r.bottom <= b.bottom - 8) return;
+      box.scrollBy({ top: (r.top + r.bottom) / 2 - (b.top + b.bottom) / 2, behavior: 'smooth' });
+    };
+    [60, 350, 800].forEach(ms => setTimeout(fit, ms));
+    setTimeout(() => setHighlightCommentId(prev => (prev === id ? null : prev)), 2500);
+  };
   const commentSendingRef = useRef(new Set<string>()); // 엔터가 두 번 들어와도 한 번만 올리게
   // typed: 엔터로 올릴 때 방금 완성된 글자까지 든 입력칸 내용 · sticker: 함께 올릴 이모티콘 (글 끝에 한 줄로)
   const handleAddComment = async (postId: string, opts: { typed?: string; sticker?: Sticker | null } = {}) => {
@@ -3155,6 +3171,7 @@ export default function Home() {
     setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
     setReplyTargets(prev => ({ ...prev, [postId]: null }));
     commentSticker.setOpen(false); // 다 쓰고 게시하면 이모티콘 칸도 닫음
+    revealComment(data[0].id);
     sendPush('comment', data[0].id);
   };
   // 댓글 이모티콘: 고르면 입력칸 위에 크게 미리 보기 → 게시(또는 같은 이모티콘을 한 번 더)로 쓴 글과 함께 한 댓글로 올림
