@@ -3144,6 +3144,7 @@ export default function Home() {
     setComments(prev => ({ ...prev, [postId]: [...(prev[postId] || []), data[0]] }));
     setCommentCounts(prev => ({ ...prev, [postId]: (prev[postId] || 0) + 1 }));
     setReplyTargets(prev => ({ ...prev, [postId]: null }));
+    commentSticker.setOpen(false); // 다 쓰고 게시하면 이모티콘 칸도 닫음
     sendPush('comment', data[0].id);
   };
   // 댓글 이모티콘: 고르면 입력칸 위에 크게 미리 보기 → 게시(또는 같은 이모티콘을 한 번 더)로 쓴 글과 함께 한 댓글로 올림
