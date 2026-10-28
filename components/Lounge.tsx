@@ -12,7 +12,7 @@ import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
@@ -352,6 +352,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (data) addMessages([data]);
   };
   const stickerPick = useStickerPicker(sendSticker);
+  const stickerTap = useCloseStickersOnTap(stickerPick); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
   // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -671,7 +672,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           </div>
         );
       })()}
-      <div ref={listRef} onScroll={e => {
+      <div ref={listRef} {...stickerTap} onScroll={e => {
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);

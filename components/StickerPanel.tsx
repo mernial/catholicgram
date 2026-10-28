@@ -19,6 +19,32 @@ export function useStickerPicker(send: (s: Sticker) => void | Promise<void>) {
 }
 export type StickerPicker = ReturnType<typeof useStickerPicker>;
 
+// 이모티콘 칸(또는 고른 이모티콘 미리 보기)이 떠 있을 때 대화 칸을 톡 누르면 닫는다 (카카오톡처럼) — 고른 이모티콘도 취소.
+// 밀어서 대화를 올려 보거나 꾹 누르는 것은 그대로 두고, 닫으려고 누른 그 한 번은 말풍선·사진에 전하지 않는다.
+// 대화 목록 칸에 {...useCloseStickersOnTap(picker)} 로 붙인다 (1:1·단체방·사랑방)
+export function useCloseStickersOnTap(picker: StickerPicker) {
+  const start = useRef<{ x: number; y: number; at: number } | null>(null);
+  const swallowClick = useRef(false);
+  const active = picker.open || !!picker.picked;
+  return {
+    onPointerDownCapture: (e: React.PointerEvent) => { start.current = active ? { x: e.clientX, y: e.clientY, at: Date.now() } : null; },
+    onPointerUpCapture: (e: React.PointerEvent) => {
+      const s = start.current;
+      start.current = null;
+      if (!s || Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10 || Date.now() - s.at > 400) return;
+      picker.close();
+      swallowClick.current = true;
+      setTimeout(() => { swallowClick.current = false; }, 500);
+    },
+    onClickCapture: (e: React.MouseEvent) => {
+      if (!swallowClick.current) return;
+      swallowClick.current = false;
+      e.stopPropagation();
+      e.preventDefault();
+    },
+  };
+}
+
 // 쓸 수 있는 이모티콘이 바뀌면(로그인·관리자·선물) 다시 그림
 export function useStickerAccess() {
   const [, setTick] = useState(0);

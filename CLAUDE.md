@@ -85,6 +85,7 @@
 - 알림창을 사연함·고민상담과 같은 창으로(운영자 요청): `BottomSheet bare label="알림"` — 늘 같은 높이(휴대폰 92dvh·태블릿 88dvh, 가운데 아래에서 올라옴), 손잡이·맨 위 목록을 아래로 끌면 닫힘. 예전의 '위로 끌면 커짐'·'손잡이 누르면 크게↔원래대로'·'지워도 크기 붙잡기'(`alertDrag`·`toggleAlertSheet`·`alertBaseH`)는 없앰(높이가 늘 같으니 필요 없음). 지운 줄 아래가 스르륵 올라오는 것(`useFlipList`)은 그대로
 - 설정 맨 아래 '지금 쓰는 앱'(`lib/app-kind.ts`): Play 스토어 테스트 앱(TWA: 처음 열릴 때 `document.referrer` 가 `android-app://com.catholicgram.android` → `sessionStorage appKind`) / 홈 화면에 추가한 앱(standalone, 브라우저 이름) / 인터넷 창. 한 휴대폰에 앱이 둘이면 아이콘이 같아 어느 쪽을 지울지 알 수 없어서(운영자). 어느 쪽을 지워도 글·메시지는 서버에 있어 그대로
 - 공유 링크를 아이패드 카카오톡에서 열면 '해당 페이지를 찾을 수 없습니다'(운영자): 앱 화면이 카카오톡 안에서 열리면 곧바로 `kakaotalk://web/openExternal`로 다른 브라우저로 넘기려 하는데 아이패드 카카오톡은 이를 못 함 → ① 공유 주소 `/p/글id`가 그 글을 직접 그려 보여 줌(서버, anon 권한 = 공개 글만: 작성자·사진(영상)·이모티콘·글·날짜 + '가톨릭그램에서 보기 · 댓글 달기' → `/?view=`), 보통 브라우저·설치한 앱에서는 곧바로 앱으로 넘어가고(`OpenPost`), 카카오톡·네이버·밴드·인스타 등 앱 안의 창에서는 이 화면 그대로 ② 앱의 카카오톡 넘기기는 아이패드·공유한 글(`?view=`)일 때 하지 않음(로그인 창의 '⋯ → 다른 브라우저로 열기' 안내는 그대로)
+- 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘(운영자 요청, 카카오톡처럼, 1:1·단체방·사랑방): `useCloseStickersOnTap(picker)`(`components/StickerPanel`)을 대화 목록 칸에 붙임 — 이모티콘 칸이나 고른 이모티콘 미리 보기가 있을 때 10px 안·0.4초 안의 누름이면 닫고(`picker.close`, 고른 이모티콘도 취소) 그 누름은 말풍선·사진에 전하지 않음(click 막기). 밀어서 대화 올려 보기는 그대로 열림, 닫힌 뒤 꾹 누르기 메뉴는 예전처럼
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음

@@ -17,7 +17,7 @@ import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { askConfirm } from '@/components/ConfirmDialog';
 
@@ -322,6 +322,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     onSent?.((data as GroupMessage).id);
   };
   const stickerPick = useStickerPicker(sendSticker);
+  const stickerTap = useCloseStickersOnTap(stickerPick); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
   // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -474,7 +475,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         <p className="shrink-0 bg-stone-800 text-white px-4 py-2 text-[0.8125rem] leading-snug">🔒 관리자 보기 · 읽기만 할 수 있어요. 교우들에게는 관리자가 본다는 표시가 나타나지 않아요.</p>
       )}
 
-      <div ref={listRef} onScroll={e => {
+      <div ref={listRef} {...stickerTap} onScroll={e => {
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
