@@ -14,7 +14,8 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
 type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
-type Payload = { title: string; body: string; url: string; tag: string };
+// group: 같은 tag 로 여러 알림이 오면 휴대폰에서 '제목 N개' 하나로 합치고, 서로 다른 곳이면 누를 때 url 로 (public/sw.js combined)
+type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string; url: string } };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   let recipientId: string | null = null;
-  let payload: { title: string; body: string; url: string; tag: string } | null = null;
+  let payload: Payload | null = null;
   // 댓글 답글: 글쓴이 외에 답글 받은 사람에게도 따로 보낸다
   // 댓글·글은 여러 사람에게(글쓴이, 답글 받은 사람, @태그된 사람) 보낼 수 있다
   const list: { recipientId: string; payload: Payload }[] = [];
@@ -169,12 +170,14 @@ export async function POST(request: Request) {
     const body = `${comment.author_name}님: ${truncate(postPlainText(comment.content))}`;
     const url = `/?post=${comment.post_id}&comment=${comment.id}`; // 그 글의 댓글 창을 열고 이 댓글로
     const notified = new Set<string>([user.id]);
+    // 댓글·답글 알림은 글이 달라도 휴대폰에서 '💬 새 댓글 N개' 하나로 합침 (여러 글이면 누를 때 앱의 알림 목록으로)
+    const group = { title: '💬 새 댓글', url: '/?alerts=1' };
     if (post && !notified.has(post.user_id)) {
-      list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: `comment-${comment.post_id}` } });
+      list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: 'post-comments', group } });
       notified.add(post.user_id);
     }
     if (replyTo && !notified.has(replyTo)) {
-      list.push({ recipientId: replyTo, payload: { title: '↩ 새 답글', body, url, tag: `reply-${comment.post_id}` } });
+      list.push({ recipientId: replyTo, payload: { title: '↩ 새 답글', body, url, tag: 'post-comments', group } });
       notified.add(replyTo);
     }
     for (const pid of await mentionedIds(comment.content, notified)) {

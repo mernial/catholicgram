@@ -10,6 +10,28 @@ const askViewing = (client, url) => new Promise(resolve => {
   channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data === true); };
   try { client.postMessage({ type: 'viewing?', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
 });
+// 같은 tag 의 알림이 이미 떠 있으면 새로 쌓지 않고 하나로 합친다 (카카오톡처럼): 제목에 개수, 내용은 최근 것부터 다섯 줄.
+// 묶음 알림(data.group: 여러 글에 달린 댓글처럼)은 '💬 새 댓글 3개', 서로 다른 글이 섞이면 누를 때 앱의 알림 목록(group.url)으로
+const placeOf = (u) => {
+  try { const x = new URL(u || '/', self.location.origin); x.searchParams.delete('n'); x.searchParams.delete('comment'); return x.pathname + x.search; } catch { return u || '/'; }
+};
+const withNonce = (u) => `${u}${u.includes('?') ? '&' : '?'}n=${Date.now().toString(36)}`;
+async function combined(data, title) {
+  const body = data.body || '';
+  const url = data.url || '/';
+  const prev = data.tag ? (await self.registration.getNotifications({ tag: data.tag }).catch(() => []))[0] : null;
+  if (!prev) return { title, body, data: { url, count: 1, lines: [body], places: [placeOf(url)] } };
+  const p = prev.data || {};
+  const count = (p.count || 1) + 1;
+  const lines = [body, ...(p.lines || [prev.body || ''])].filter(Boolean).slice(0, 5);
+  const places = Array.from(new Set([placeOf(url), ...(p.places || [placeOf(p.url)])])).slice(0, 20);
+  const group = data.group;
+  return {
+    title: group ? `${group.title} ${count}개` : `${title} (${count})`,
+    body: lines.join('\n'),
+    data: { url: places.length > 1 && group && group.url ? withNonce(group.url) : url, count, lines, places },
+  };
+}
 self.addEventListener('push', (event) => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
@@ -26,14 +48,15 @@ self.addEventListener('push', (event) => {
       if (viewing && !isApple()) return;
       // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄운다.
       // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)
-      await self.registration.showNotification(title, {
-        body: data.body || '',
+      const shownNow = viewing ? { title, body: data.body || '', data: { url: data.url || '/' } } : await combined(data, title);
+      await self.registration.showNotification(shownNow.title, {
+        body: shownNow.body,
         icon: '/icon-v2-192.png',
         badge: BADGE,
         tag: data.tag,
         silent: true,
         timestamp: Date.now(),
-        data: { url: data.url || '/' },
+        data: shownNow.data,
       });
       if (viewing) {
         const shown = await self.registration.getNotifications(data.tag ? { tag: data.tag } : undefined).catch(() => []);
@@ -41,8 +64,9 @@ self.addEventListener('push', (event) => {
       }
       return;
     }
-    await self.registration.showNotification(title, {
-      body: data.body || '',
+    const shown = await combined(data, title);
+    await self.registration.showNotification(shown.title, {
+      body: shown.body,
       icon: '/icon-v2-192.png',
       badge: BADGE,
       tag: data.tag,
@@ -50,7 +74,7 @@ self.addEventListener('push', (event) => {
       silent: false,
       vibrate: [200, 100, 200],
       timestamp: Date.now(),
-      data: { url: data.url || '/' },
+      data: shown.data,
     });
   })());
 });
