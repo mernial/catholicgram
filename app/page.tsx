@@ -18,7 +18,7 @@ import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@
 import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
-import { useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
@@ -4834,9 +4834,9 @@ export default function Home() {
               {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
               <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
             </label>
-            <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(o => !o); messageInputRef.current?.blur(); }} />
+            <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(!dmSticker.open); leaveInputForPanel(messageInputRef.current); }} />
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
-            <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { dmSticker.setOpen(false); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { closePanelOnInputFocus(() => dmSticker.setOpen(false)); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim() && !dmSticker.picked} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
               <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
             </button>
@@ -5275,12 +5275,12 @@ export default function Home() {
                       value={commentInputs[sid] || ''}
                       onChange={e => setCommentInputs(prev => ({ ...prev, [sid]: e.target.value }))}
                       onKeyDown={commentEnter.onKeyDown}
-                      onFocus={() => commentSticker.setOpen(false)}
+                      onFocus={() => closePanelOnInputFocus(() => commentSticker.setOpen(false))}
                       placeholder={replyTargets[sid] ? `${replyTargets[sid]!.name}님에게 답글...` : sheetPost ? `${sheetPost.author_name}님에게 댓글 남기기...` : '댓글 달기...'}
                       aria-label="댓글 입력"
                       className="flex-1 min-w-0 max-h-32 resize-none bg-transparent pl-4 pr-1 py-2.5 text-[0.9375rem] leading-5 focus:outline-none"
                     />
-                    {user && <StickerButton open={commentSticker.open} className="w-9 h-9 m-0.5" onClick={() => { commentSticker.setOpen(o => !o); (document.getElementById(`comment-input-${sid}`) as HTMLTextAreaElement | null)?.blur(); }} />}
+                    {user && <StickerButton open={commentSticker.open} className="w-9 h-9 m-0.5" onClick={() => { commentSticker.setOpen(!commentSticker.open); leaveInputForPanel(document.getElementById(`comment-input-${sid}`)); }} />}
                   </div>
                   <button onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} onClick={() => submitComment(sid)} disabled={!(commentInputs[sid] || '').trim() && !commentSticker.picked} className="shrink-0 px-3 py-2.5 text-[0.9375rem] font-bold text-blue-600 disabled:text-blue-300">게시</button>
                 </div>

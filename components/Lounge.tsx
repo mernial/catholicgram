@@ -11,7 +11,7 @@ import { extractMentions } from '@/lib/mentions';
 import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
-import { useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, useStickerPicker } from '@/components/StickerPanel';
 import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
@@ -838,7 +838,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
             <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || (frozen && !isAdmin) || !!error} onChange={media.onPick} />
           </label>
-          <StickerButton open={stickerPick.open} disabled={(frozen && !isAdmin) || !!error} className="w-11 h-11" onClick={() => { stickerPick.setOpen(o => !o); inputRef.current?.blur(); }} />
+          <StickerButton open={stickerPick.open} disabled={(frozen && !isAdmin) || !!error} className="w-11 h-11" onClick={() => { stickerPick.setOpen(!stickerPick.open); leaveInputForPanel(inputRef.current); }} />
           <textarea
             ref={setInputEl}
             value={input}
@@ -852,7 +852,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             placeholder={frozen && !isAdmin ? '❄️ 잠시 멈춘 대화예요' : '사랑방에 한마디...'}
             className="flex-1 min-w-0 max-h-32 resize-none rounded-2xl border border-stone-300 bg-stone-50 px-4 py-2.5 text-[1rem] focus:outline-none focus:border-stone-500"
             aria-label="사랑방에 보낼 말"
-            onFocus={() => stickerPick.setOpen(false)}
+            onFocus={() => closePanelOnInputFocus(() => stickerPick.setOpen(false))}
           />
           {/* 보내기를 눌러도 입력창 초점을 뺏지 않게 → 자판이 내려가지 않음 */}
           <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={(!input.trim() && !stickerPick.picked) || sending || !!error || (frozen && !isAdmin)} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : '보내기'}</button>

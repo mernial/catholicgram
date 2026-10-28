@@ -19,17 +19,49 @@ const noteHeight = () => {
   const w = Math.round(window.innerWidth);
   tallest.set(w, Math.max(tallest.get(w) || 0, viewH()));
 };
-if (typeof window !== 'undefined') {
-  noteHeight();
-  window.addEventListener('resize', noteHeight);
-  window.visualViewport?.addEventListener('resize', noteHeight);
-}
-function softKeyboardUp() {
-  noteHeight();
+const shrunk = () => {
   const h = viewH();
   const { width, height } = window.screen;
   const screenH = window.matchMedia('(orientation: landscape)').matches ? Math.min(width, height) : Math.max(width, height); // 아이폰·아이패드는 돌려도 screen 값이 그대로
   return h < (tallest.get(Math.round(window.innerWidth)) || h) - 150 || h < screenH * 0.6;
+};
+function softKeyboardUp() {
+  noteHeight();
+  return shrunk();
+}
+
+// 실제 자판으로 치는 중인지: 화면 자판 없이 입력칸에 글자를 친 적이 있으면(아이패드·휴대폰 + 블루투스·매직 키보드) 켜지고,
+// 화면 자판으로 치거나 입력 중에 화면 자판이 올라오면 꺼진다. 다음에 앱을 열어도 기억 (localStorage 'realKeyboard')
+const REAL_KEY = 'realKeyboard';
+let realKeys = false;
+const setRealKeys = (v: boolean) => {
+  if (realKeys === v) return;
+  realKeys = v;
+  try { localStorage.setItem(REAL_KEY, v ? '1' : '0'); } catch { /* 저장 못 해도 이번엔 씀 */ }
+};
+const isTextInput = (el: Element | null) => !!el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT');
+if (typeof window !== 'undefined') {
+  try { realKeys = localStorage.getItem(REAL_KEY) === '1'; } catch { /* 없으면 화면 자판으로 봄 */ }
+  noteHeight();
+  const onResize = () => { noteHeight(); if (realKeys && isTextInput(document.activeElement) && shrunk()) setRealKeys(false); };
+  window.addEventListener('resize', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
+  window.addEventListener('keydown', e => { if (e.isTrusted && isTextInput(e.target as Element)) setRealKeys(!softKeyboardUp()); }, true);
+}
+const isComputer = () => window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+
+// 이모티콘 칸과 입력칸 (1:1·단체방·사랑방·댓글 공통)
+//  - 휴대폰(화면 자판): 입력칸을 누르면 화면 자판이 그 자리를 차지하므로 이모티콘 칸을 닫고, 😊 를 누르면 입력칸에서 빠져 화면 자판을 내린다
+//  - 실제 자판(아이패드+자판·컴퓨터): 이모티콘 칸을 연 채 입력칸을 눌러 계속 칠 수 있게 닫지 않고, 😊 를 눌러도 입력칸에 그대로 둔다
+//    (예전엔 입력칸을 다시 누르는 순간 이모티콘 칸이 닫혀서 이모티콘 칸이 안 뜨는 것처럼 보였음)
+export function closePanelOnInputFocus(close: () => void) {
+  if (isComputer()) return;
+  if (!realKeys) { close(); return; }
+  setTimeout(() => { if (softKeyboardUp()) close(); }, 600); // 자판을 뗐는데 화면 자판이 올라오면 그때 닫음
+}
+export function leaveInputForPanel(input: HTMLElement | null) {
+  if (isComputer()) return;
+  if (!realKeys || softKeyboardUp()) input?.blur();
 }
 
 export function useEnterSend(send: (typed: string) => void, value?: string) {
