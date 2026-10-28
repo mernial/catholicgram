@@ -7,9 +7,11 @@ import { IconBadge } from '@/components/Icon';
 import { PLAY_STORE_URL, TESTER_JOIN_URL, TesterStatus, isAndroidDevice, isValidEmail } from '@/lib/android-test';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { type AppKind, appKind } from '@/lib/app-kind';
 
 // 안드로이드 앱 테스터 신청: 회원이 동의하고 플레이 스토어 구글 계정을 적어 낸다 (supabase/android-testers.sql)
-// 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다
+// 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다: 참여 → 설치 → 같은 방법으로 로그인 → 예전 앱 지우기 → 14일.
+// 이 화면은 보통 예전 앱(홈 화면에 추가한 앱)에서 알림을 눌러 열리므로, 예전 앱 지우기는 새 앱에 로그인한 뒤 맨 나중에
 export default function TesterSignup({ user, onClose, onStatusChange }: {
   user: User;
   onClose: () => void;
@@ -23,10 +25,14 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
   const [saving, setSaving] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);
   const [isAndroid, setIsAndroid] = useState(true);
+  const [kind, setKind] = useState<AppKind | null>(null); // 지금 이 화면을 연 앱 (Play 앱이면 설치가 끝난 것)
+  // 새 앱에서도 지금과 같은 방법으로 로그인해야 같은 계정 (다른 방법이면 내 글이 없는 새 계정이 생길 수 있음)
+  const loginWay = user.app_metadata?.naver_id ? '네이버' : user.app_metadata?.provider === 'google' ? '구글' : user.app_metadata?.provider === 'kakao' ? '카카오' : null;
 
   useEffect(() => {
     supabase.from('tester_signups').select('google_email, status').eq('user_id', user.id).maybeSingle().then(({ data, error }) => {
       setIsAndroid(isAndroidDevice());
+      setKind(appKind());
       if (error) { setSetupNeeded(true); setStatus('none'); return; }
       const s = (data?.status as TesterStatus) || 'none';
       setStatus(s);
@@ -126,7 +132,21 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
           </>
         )}
 
-        {status === 'added' && !editing && (
+        {status === 'added' && !editing && kind === 'play' && (
+          <>
+            <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4 text-center">
+              <p className="text-2xl">✅</p>
+              <p className="font-bold text-stone-900 mt-1">Play 스토어 앱으로 잘 열렸어요!</p>
+              <p className="text-sm text-stone-700 mt-1">설치가 끝났어요. 함께해 주셔서 감사해요 🙏</p>
+            </div>
+            <ol className="flex flex-col gap-3">
+              {step(1, <>홈 화면에 <b>예전 가톨릭그램 아이콘</b>이 남아 있으면 꾹 눌러 <b>[삭제]</b>해 주세요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>)}
+              {step(2, <><b>14일 동안 지우지 말고</b> 하루 한 번쯤 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
+            </ol>
+          </>
+        )}
+
+        {status === 'added' && !editing && kind !== 'play' && (
           <>
             <div className="rounded-2xl bg-emerald-50 border border-emerald-200 p-4">
               <p className="font-bold text-stone-900">🎉 등록이 끝났어요! 이제 앱을 설치해 주세요</p>
@@ -139,15 +159,27 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
                 <a href={TESTER_JOIN_URL} target="_blank" rel="noopener noreferrer" className="mt-2 block w-full py-3 rounded-xl bg-emerald-700 text-white text-sm font-bold text-center">① 테스트 참여하기</a>
               </>)}
               {step(2, <>
-                그다음 플레이 스토어에서 <b>설치</b>를 누르고, 앱을 열어 로그인해요.
+                그다음 플레이 스토어에서 <b>설치</b>를 눌러요.
                 <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 block w-full py-3 rounded-xl border border-emerald-700 text-emerald-800 text-sm font-bold text-center">② 플레이 스토어에서 설치</a>
               </>)}
-              {step(3, <><b>14일 동안 지우지 말고</b> 가끔 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
+              {step(3, loginWay
+                ? <>새로 설치한 가톨릭그램을 열고 <b>지금처럼 {loginWay}로 로그인</b>해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>
+                : <>새로 설치한 가톨릭그램을 열고 <b>처음 가입할 때 쓴 방법 그대로</b> 로그인해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>)}
+              {step(4, kind === 'home'
+                ? <>새 앱에 로그인이 되면, <b>지금 보고 계신 이 앱(예전 앱)</b>의 아이콘을 홈 화면에서 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>
+                : <>홈 화면에 <b>예전에 추가한 가톨릭그램 아이콘</b>이 있으면 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>)}
+              {step(5, <><b>14일 동안 지우지 말고</b> 하루 한 번쯤 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
             </ol>
-            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-stone-700 leading-relaxed">
-              <p className="font-bold text-amber-900">&lsquo;App not available&rsquo;(앱을 사용할 수 없음)이 나오면</p>
-              <p className="mt-1">· 그 화면 <b>오른쪽 위 동그란 사진</b>을 눌러 <b className="break-all">{savedEmail}</b> 계정으로 바꾼 뒤 다시 ①을 눌러요.</p>
-              <p>· 구글 검토가 아직 안 끝났을 수 있어요. <b>하루쯤 뒤</b>에 다시 ①을 눌러 주세요.</p>
+            <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-stone-700 leading-relaxed flex flex-col gap-2">
+              <div>
+                <p className="font-bold text-amber-900">&lsquo;App not available&rsquo;(앱을 사용할 수 없음)이 나오면</p>
+                <p className="mt-1">· 그 화면 <b>오른쪽 위 동그란 사진</b>을 눌러 <b className="break-all">{savedEmail}</b> 계정으로 바꾼 뒤 다시 ①을 눌러요.</p>
+                <p>· 그래도 안 되면 <b>하루쯤 뒤</b>에 다시 ①을 눌러 주세요.</p>
+              </div>
+              <div>
+                <p className="font-bold text-amber-900">새 앱에서 &lsquo;환영합니다!&rsquo; 가입 화면이 나오면</p>
+                <p className="mt-1">· 다른 방법으로 들어간 거예요. 창을 닫고 <b>내 공간 → 로그아웃</b> 후 {loginWay ? <b>{loginWay}로</b> : <b>처음 가입한 방법으로</b>} 다시 로그인해요.</p>
+              </div>
             </div>
             <button onClick={() => { setConsent(false); setEditing(true); }} className="self-center text-xs text-stone-500 underline">구글 계정 이메일이 달라요 (고치기)</button>
           </>
