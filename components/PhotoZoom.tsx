@@ -181,7 +181,7 @@ export default function PhotoZoom({ images, start = 0, onClose }: { images: stri
   const many = images.length > 1;
   const ease = animate ? 'transform 0.25s ease-out' : 'none';
   return (
-    <div className="fixed inset-0 z-[96] bg-black animate-fade-in select-none overflow-hidden" role="dialog" aria-label="사진 크게 보기">
+    <div data-no-pinch className="fixed inset-0 z-[96] bg-black animate-fade-in select-none overflow-hidden" role="dialog" aria-label="사진 크게 보기">
       <div
         ref={stage}
         className="absolute inset-0 overflow-hidden"

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { STICKER_PACKS, stripStickerWords, suggestStickers, type Sticker } from '@/lib/stickers';
 
@@ -33,37 +33,78 @@ export function StickerButton({ open, onClick, disabled, className = 'w-10 h-10'
 
 // 입력칸 위에 떠 있는 칸 (대화 위에 겹쳐 보임): 고른 이모티콘 미리 보기 + 친 글에 맞는 추천 줄.
 // 높이 0인 relative 칸 안에 두면 그 바로 위에 뜬다. onTextChange 를 주면 추천에서 고를 때 이어진 말을 지움
+// 자판이 올라와 위쪽 자리가 모자라면(글씨를 크게 한 휴대폰도) 미리 보기가 대화 칸 위로 넘어가 잘리지 않게
+// 자리에 맞춰 줄인다: 그림을 줄이고 → 추천 줄을 잠시 숨기고 → 안내 글을 빼고 → 그림을 더 줄임
+type Fit = { img: number | null; strip: boolean; caption: boolean };
+const FULL_FIT: Fit = { img: null, strip: true, caption: true };
+const MIN_IMG = 48;
+// 이 칸이 덮어도 되는 높이: 바로 위의 늘어나는 칸(대화·댓글 목록)의 꼭대기까지
+function roomAbove(anchor: HTMLElement) {
+  const bottom = anchor.getBoundingClientRect().top;
+  for (let el = anchor.previousElementSibling; el; el = el.previousElementSibling) {
+    const cs = getComputedStyle(el);
+    if (cs.position === 'absolute' || cs.position === 'fixed') continue;
+    if (parseFloat(cs.flexGrow) > 0 || cs.overflowY === 'auto' || cs.overflowY === 'scroll') return bottom - el.getBoundingClientRect().top;
+  }
+  const parent = anchor.parentElement;
+  return bottom - (parent ? parent.getBoundingClientRect().top : 0);
+}
 export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내기' }: { picker: StickerPicker; text: string; onTextChange?: (t: string) => void; sendLabel?: string }) {
   const { picked } = picker;
   const pickSuggested = (s: Sticker) => {
     if (picked?.id !== s.id && onTextChange) { const rest = stripStickerWords(text, s); if (rest !== text) onTextChange(rest); }
     picker.pick(s);
   };
+  const boxRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [fit, setFit] = useState<Fit>(FULL_FIT);
+  const [tick, setTick] = useState(0); // 화면 높이가 바뀌면(자판이 오르내리면) 처음부터 다시 맞춤
+  useEffect(() => {
+    const on = () => setTick(t => t + 1);
+    const vv = window.visualViewport;
+    window.addEventListener('resize', on); vv?.addEventListener('resize', on);
+    return () => { window.removeEventListener('resize', on); vv?.removeEventListener('resize', on); };
+  }, []);
+  const fitKey = `${picked?.id || ''}|${tick}|${suggestStickers(text, 1).length > 0}|${text.split('\n').length}`;
+  const fitKeyRef = useRef(fitKey);
+  useLayoutEffect(() => {
+    if (fitKeyRef.current !== fitKey) { fitKeyRef.current = fitKey; if (fit !== FULL_FIT) { setFit(FULL_FIT); return; } }
+    const box = boxRef.current, anchor = box?.parentElement;
+    if (!picked || !box || !anchor) return;
+    const over = box.offsetHeight + 4 - roomAbove(anchor);
+    if (over <= 0) return;
+    const cur = imgRef.current?.offsetHeight || 0;
+    if (cur - over >= 96) setFit(f => ({ ...f, img: cur - over }));
+    else if (fit.strip && box.querySelector('[data-sticker-suggest]')) setFit(f => ({ ...f, strip: false }));
+    else if (fit.caption) setFit(f => ({ ...f, caption: false }));
+    else if (cur > MIN_IMG) setFit(f => ({ ...f, img: Math.max(MIN_IMG, cur - over) }));
+  });
+  const imgStyle = fit.img ? { width: fit.img, height: fit.img } : undefined;
   return (
-    <div className="absolute left-0 right-0 bottom-0 z-20 px-3 pb-2 flex flex-col items-center gap-2 pointer-events-none">
+    <div ref={boxRef} className="absolute left-0 right-0 bottom-0 z-20 px-3 pb-2 flex flex-col items-center gap-2 pointer-events-none">
       {picked && (
         <div className="pointer-events-auto relative rounded-3xl bg-black/65 backdrop-blur-sm p-3 pt-2.5 shadow-xl animate-fade-in" role="region" aria-label="고른 이모티콘">
           <button type="button" {...keepFocus} onClick={picker.sendPicked} aria-label={`${picked.packName} ${picked.label} 보내기`} className="block">
-            <img src={picked.src} alt="" draggable={false} className="w-36 h-36 object-contain" />
+            <img ref={imgRef} src={picked.src} alt="" draggable={false} className="w-36 h-36 object-contain" style={imgStyle} />
           </button>
-          <p className="mt-1 text-center text-[0.75rem] text-white/85">{sendLabel === '보내기' ? '보내기 단추를 누르면 보내져요' : `${sendLabel}를 누르면 올라가요`}</p>
+          {fit.caption && <p className="mt-1 text-center text-[0.75rem] text-white/85">{sendLabel === '보내기' ? '보내기 단추를 누르면 보내져요' : `${sendLabel}를 누르면 올라가요`}</p>}
           <button type="button" {...keepFocus} onClick={() => picker.setPicked(null)} className="absolute -top-1 -right-1 w-9 h-9 rounded-full bg-black/70 text-white text-xl leading-none flex items-center justify-center" aria-label="고른 이모티콘 취소">×</button>
         </div>
       )}
-      <StickerSuggest text={text} picked={picked} onPick={pickSuggested} />
+      <StickerSuggest text={text} picked={picked} onPick={pickSuggested} collapsed={!!picked && !fit.strip} />
     </div>
   );
 }
 
 // 친 글과 비슷한 이모티콘 추천 (× 를 누르면 글을 다 지울 때까지 숨김)
-function StickerSuggest({ text, picked, onPick }: { text: string; picked: Sticker | null; onPick: (s: Sticker) => void }) {
+function StickerSuggest({ text, picked, onPick, collapsed }: { text: string; picked: Sticker | null; onPick: (s: Sticker) => void; collapsed?: boolean }) {
   const [hidden, setHidden] = useState(false);
   const empty = !text.trim();
   useEffect(() => { if (empty) setHidden(false); }, [empty]);
   const list = useMemo(() => suggestStickers(text), [text]);
-  if (hidden || list.length === 0) return null;
+  if (hidden || collapsed || list.length === 0) return null; // collapsed: 미리 보기 자리가 모자라 잠시 숨김
   return (
-    <div className="pointer-events-auto w-full flex items-center gap-1 pl-2 pr-1 py-1.5 rounded-2xl bg-white shadow-[0_4px_18px_rgba(0,0,0,0.16)] border border-stone-200" role="region" aria-label="추천 이모티콘">
+    <div data-sticker-suggest className="pointer-events-auto w-full flex items-center gap-1 pl-2 pr-1 py-1.5 rounded-2xl bg-white shadow-[0_4px_18px_rgba(0,0,0,0.16)] border border-stone-200" role="region" aria-label="추천 이모티콘">
       <div className="flex-1 min-w-0 flex gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {list.map(s => (
           <button key={s.id} type="button" {...keepFocus} onClick={() => onPick(s)} aria-label={`${s.packName} ${s.label}`} aria-pressed={picked?.id === s.id}

@@ -233,7 +233,7 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const ratio = cropped ? cropped.canvas.width / cropped.canvas.height : 1;
 
   return (
-    <div className="fixed inset-0 z-[88] bg-black flex flex-col select-none" role="dialog" aria-label="사진 편집">
+    <div data-no-pinch className="fixed inset-0 z-[88] bg-black flex flex-col select-none" role="dialog" aria-label="사진 편집">
       {step === 'crop' ? (
         <>
           {head('자르기',

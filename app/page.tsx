@@ -5839,7 +5839,7 @@ export default function Home() {
 
       {/* 사진 자르기 모달 */}
       {avatarFile && (
-        <div className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
+        <div data-no-pinch className="fixed inset-0 z-[80] bg-black flex flex-col animate-fade-in">
           <div className="relative flex-1">
             <Cropper
               image={avatarFile}
