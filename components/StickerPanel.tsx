@@ -191,6 +191,10 @@ function StickerCell({ s, active, fav, onPick, onToggleFav }: { s: Sticker; acti
   );
 }
 
+// 이모티콘 칸 크기: 휴대폰은 한 줄에 다섯. 넓은 화면(아이패드·컴퓨터)은 다섯으로 나누면 한 칸이 너무 커져(아이패드 160~230px)
+// 한눈에 안 보이므로 한 칸 5.25rem 안팎으로 여러 개씩, 키가 큰 화면(아이패드)은 칸 높이도 조금 높여 한 캐릭터가 거의 다 보이게
+const PANEL_H = 'h-[14.5rem] [@media(min-width:640px)_and_(min-height:700px)]:h-[18.5rem]';
+
 // 탭 순서: 이 휴대폰에만 저장 (localStorage 'stickerTabOrder'). 나중에 캐릭터가 늘면 저장된 순서 뒤에 붙는다
 const FAV_TAB = 'fav';
 const ALL_TABS = [FAV_TAB, ...STICKER_PACKS.map(p => p.id)]; // 전용 이모티콘까지 모두 (보이는 것은 쓸 수 있는 것만)
@@ -340,7 +344,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
       </div>
       {arranging ? (
         // 탭 순서 바꾸기: ▲▼ 로 옮기기 (탭을 꾹 눌러 옆으로 끌어도 됨)
-        <div className="h-[14.5rem] overflow-y-auto overscroll-contain px-3 pt-2 pb-2" role="list" aria-label="탭 순서">
+        <div className={`${PANEL_H} overflow-y-auto overscroll-contain px-3 pt-2 pb-2`} role="list" aria-label="탭 순서">
           <div className="flex items-center gap-2 pb-2">
             <p className="flex-1 text-[0.8125rem] text-stone-500 leading-snug">자주 쓰는 탭을 위로 올려 앞에 두세요<br />(탭을 꾹 눌러 옆으로 끌어도 돼요)</p>
             <button type="button" onClick={() => setArranging(false)} className="shrink-0 px-4 py-2 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">완료</button>
@@ -356,9 +360,9 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
           ))}
         </div>
       ) : (
-        <div ref={gridRef} className="h-[14.5rem] overflow-y-auto overscroll-contain grid grid-cols-5 gap-0.5 px-2 pt-1 pb-2 content-start" role="tabpanel" aria-label={isFav ? '즐겨찾기 이모티콘' : `${pack.name} 이모티콘`}>
+        <div ref={gridRef} className={`${PANEL_H} overflow-y-auto overscroll-contain grid grid-cols-5 sm:grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-0.5 px-2 pt-1 pb-2 content-start`} role="tabpanel" aria-label={isFav ? '즐겨찾기 이모티콘' : `${pack.name} 이모티콘`}>
           {isFav && (
-            <p className={`col-span-5 text-center text-stone-500 leading-relaxed ${shown.length ? 'text-[0.75rem] py-1' : 'text-[0.9375rem] py-8'}`}>
+            <p className={`col-span-full text-center text-stone-500 leading-relaxed ${shown.length ? 'text-[0.75rem] py-1' : 'text-[0.9375rem] py-8'}`}>
               {shown.length ? '꾹 누르면 즐겨찾기에서 빠져요' : <>자주 쓰는 이모티콘을 <b className="text-stone-700">꾹 누르면</b><br />⭐ 여기에 모여요</>}
             </p>
           )}
