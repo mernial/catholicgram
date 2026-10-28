@@ -2552,61 +2552,9 @@ export default function Home() {
     });
   }, [user]);
 
-  // 알림창(휴대폰): 위쪽 손잡이·제목줄을 위로 끌면 창이 커지고 놓은 높이 그대로 (알림이 적어도 넓게 보기),
-  // 아래로 많이 끌면 닫힘, 손잡이를 누르면 크게 ↔ 원래대로
-  const alertSheetRef = useRef<HTMLDivElement>(null);
-  // 알림 내용이 맨 위일 때 손가락으로 아래로 당겨도 닫힘 (위쪽 손잡이 끌기는 아래 alertDrag)
-  const alertPull = useSheetDrag(() => setShowNotifications(false), showNotifications);
-  const alertDrag = useRef<{ y: number; h: number; down: number; moved: boolean; onHandle: boolean; id: number } | null>(null);
-  const alertSheetMax = () => Math.round(window.innerHeight * 0.92);
-  const toggleAlertSheet = () => {
-    const sheet = alertSheetRef.current;
-    if (!sheet) return;
-    const big = sheet.getBoundingClientRect().height >= alertSheetMax() - 4;
-    sheet.style.transition = 'min-height 0.25s';
-    sheet.style.minHeight = big ? (alertBaseH.current ? `${alertBaseH.current}px` : '') : `${alertSheetMax()}px`; // 원래대로 = 처음 열린 크기
-  };
-  const alertDragStart = (e: React.PointerEvent<HTMLElement>) => {
-    const sheet = alertSheetRef.current;
-    if (!sheet || window.matchMedia('(min-width: 640px)').matches) return; // 큰 화면은 가운데 창
-    // 제목줄의 단추 위에서 시작해도 끌 수 있다 (그냥 누르면 단추가 눌림)
-    alertDrag.current = { y: e.clientY, h: sheet.getBoundingClientRect().height, down: 0, moved: false, onHandle: !!(e.target as HTMLElement).closest('[data-sheet-handle]'), id: e.pointerId };
-  };
-  const alertDragMove = (e: React.PointerEvent<HTMLElement>) => {
-    const d = alertDrag.current, sheet = alertSheetRef.current;
-    if (!d || !sheet) return;
-    const dy = e.clientY - d.y;
-    if (!d.moved) {
-      if (Math.abs(dy) <= 6) return;
-      d.moved = true;
-      sheet.style.transition = 'none';
-      try { e.currentTarget.setPointerCapture(d.id); } catch { /* 무시 */ }
-    }
-    const target = Math.max(0, Math.min(alertSheetMax(), d.h - dy));
-    sheet.style.minHeight = `${target}px`;
-    d.down = Math.max(0, sheet.offsetHeight - target); // 더 줄어들 수 없으면 그만큼 아래로 내려간다
-    sheet.style.transform = d.down ? `translateY(${d.down}px)` : '';
-  };
-  const alertDragEnd = () => {
-    const d = alertDrag.current, sheet = alertSheetRef.current;
-    alertDrag.current = null;
-    if (!d || !sheet) return;
-    if (!d.moved) { if (d.onHandle) toggleAlertSheet(); return; }
-    if (d.down > 90) { setShowNotifications(false); return; }
-    sheet.style.transition = 'transform 0.2s';
-    sheet.style.transform = '';
-  };
-  // 알림을 지워도 창은 줄어들지 않는다: 창이 커질 때마다 그 높이를 최소 높이로 붙잡아 두고,
+  // 알림창: 사연함·고민상담과 같은 아래에서 올라오는 창(BottomSheet, 늘 같은 높이), 아래로 끌어 닫기.
   // 지운 알림 아래 줄들은 스르륵 올라온다 (useFlipList)
   const alertListRef = useFlipList<HTMLDivElement>(showNotifications);
-  const alertBaseH = useRef(0); // 알림이 많아져 저절로 커진 높이 (손잡이로 '원래대로' 돌아갈 크기)
-  useLayoutEffect(() => {
-    const sheet = alertSheetRef.current;
-    if (!showNotifications || !sheet) { alertBaseH.current = 0; return; }
-    if (alertDrag.current || sheet.getAnimations?.().some(a => a.playState === 'running')) return; // 끄는 중·커지는 중에는 그대로
-    const h = sheet.offsetHeight;
-    if (h > (parseFloat(sheet.style.minHeight) || 0)) { sheet.style.minHeight = `${h}px`; alertBaseH.current = Math.max(alertBaseH.current, h); }
-  });
 
   const openNotifications = () => {
     if (!user) return;
@@ -5730,15 +5678,9 @@ export default function Home() {
 
       {/* 댓글 알림 목록 */}
       {showNotifications && (
-        <div className="fixed inset-0 bg-black/60 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowNotifications(false)}>
-          <div ref={el => { alertSheetRef.current = el; alertPull.sheetRef.current = el; }} className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
-            {/* 위로 끌면 크게 (휴대폰) */}
-            <div data-no-sheet-drag onPointerDown={alertDragStart} onPointerMove={alertDragMove} onPointerUp={alertDragEnd} onPointerCancel={alertDragEnd} className="shrink-0 touch-none sm:touch-auto">
-            <div data-sheet-handle role="button" tabIndex={0} aria-label="알림창 크게 보기 · 위로 끌어 올리면 커져요" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleAlertSheet(); } }}
-              className="sm:hidden pt-3 pb-2 flex justify-center cursor-grab">
-              <span className="w-12 h-1.5 rounded-full bg-stone-300" />
-            </div>
-            <div className="px-4 pb-3 pt-1 sm:pt-4 border-b border-stone-100 flex flex-col gap-2.5">
+        <BottomSheet bare label="알림" onClose={() => setShowNotifications(false)} z="z-[70]">
+          <div className="flex-1 min-h-0 flex flex-col pb-safe">
+            <div className="shrink-0 px-4 pb-3 pt-1 border-b border-stone-100 flex flex-col gap-2.5">
               <div className="flex items-center justify-between">
               <h2 className="font-bold text-stone-900">알림</h2>
               <div className="flex items-center gap-2">
@@ -5754,9 +5696,8 @@ export default function Home() {
                 <button onClick={clearAllAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-red-200 text-red-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모두 지우기</button>
               </div>
             </div>
-            </div>
             {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (
-              <div className="px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
+              <div className="shrink-0 px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
                 <IconBadge name="phone" tone="sky" />
                 <div className="flex-1 text-xs text-stone-700 leading-snug">
                   {pushStatus === 'on' && <><b>휴대폰 알림 켜짐</b><br />앱을 닫아도 댓글·메시지 알림이 와요</>}
@@ -5860,7 +5801,7 @@ export default function Home() {
               </div>}
             </div>
           </div>
-        </div>
+        </BottomSheet>
       )}
 
       {/* 로그인 모달 */}
