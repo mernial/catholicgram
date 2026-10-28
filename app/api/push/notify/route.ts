@@ -16,7 +16,13 @@ const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하
 
 type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
-type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string } };
+// icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
+type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
+// 관리자의 선물 알림: 선물 상자 그림, 누르면 앱에서 상자를 열어 무슨 선물인지 확인 (components/GiftBox)
+const giftPayload = (key: string): Payload => ({
+  title: '🎁 관리자의 선물이 도착했습니다', body: '눌러서 어떤 선물인지 확인해 보세요',
+  url: `/?gift=${encodeURIComponent(key)}`, tag: `gift-${key}`, icon: '/gift-icon-192.png', image: '/gift-banner.jpg',
+});
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
@@ -62,12 +68,8 @@ export async function POST(request: Request) {
     const { data: grant } = await admin.from('sticker_grants').select('user_id, pack_id, created_at').eq('id', id).maybeSingle();
     if (!grant) return Response.json({ error: 'not found' }, { status: 404 });
     if (Date.now() - new Date(grant.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
-    const pack = STICKER_PACKS.find(p => p.id === grant.pack_id);
-    list.push({ recipientId: grant.user_id as string, payload: {
-      title: '🎁 이모티콘 선물이 도착했어요',
-      body: `'${pack?.name || '전용'}' 이모티콘을 선물받았어요. 메시지·댓글의 😊 에서 써 보세요`,
-      url: '/', tag: `sticker-gift-${grant.pack_id}`,
-    } });
+    if (!STICKER_PACKS.some(p => p.id === grant.pack_id)) return Response.json({ error: 'not found' }, { status: 404 });
+    list.push({ recipientId: grant.user_id as string, payload: giftPayload(`sticker:${grant.pack_id}`) });
   } else if (type === 'group_message') {
     // 단체 채팅방 새 메시지 → 그 방의 다른 교우들에게 (보낸 교우를 차단한 교우는 빼고, 방에 없는 관리자에게는 가지 않음)
     const { data: msg } = await admin.from('group_chat_messages').select('id, chat_id, user_id, content, kind, created_at').eq('id', id).maybeSingle();
@@ -96,7 +98,7 @@ export async function POST(request: Request) {
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const { data: letter } = await admin.from('letters').select('id, user_id, gift').eq('id', id).maybeSingle();
     if (!letter || !letter.gift) return Response.json({ skipped: 'not a gift' });
-    list.push({ recipientId: letter.user_id, payload: { title: '🎁 사연이 선물 대상으로 뽑혔어요!', body: '보내 주신 사연 감사해요. 운영자가 곧 메시지로 연락드릴게요 🙏', url: '/?letters=1', tag: `letter-gift-${letter.id}` } });
+    list.push({ recipientId: letter.user_id, payload: giftPayload(`letter:${letter.id}`) });
   } else if (type === 'lounge_call') {
     // 사랑방에서 '@관리자'로 부름 → 관리자에게만 (사랑방의 다른 대화는 알림 없음)
     const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();

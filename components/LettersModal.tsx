@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import { uploadPhoto } from '@/lib/upload';
 import { useSheetDrag } from '@/lib/sheet-drag';
-import { askConfirm } from '@/components/ConfirmDialog';
+import { askConfirm, showAlert } from '@/components/ConfirmDialog';
+import StickerGift from '@/components/StickerGift';
 
 // 사연 보내기 (supabase/letters.sql)
 // 교우: 사연 쓰기 + 내가 보낸 사연과 상태 보기 — 사연은 관리자에게만 전달됨
@@ -36,13 +37,14 @@ const SETUP_HINT = '사연 보내기를 준비 중이에요. (관리자: supabas
 const isSetupError = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
 
-export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onMessage }: {
+export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onStickerGifted, onMessage }: {
   user: User;
   authorName: string;
   authorHandle?: string | null;
   isAdmin: boolean;
   startView?: 'write' | 'mine';     // 알림으로 열면 '보낸 사연'
   onGift?: (id: string) => void;    // 관리자: 선물 대상으로 뽑았을 때 보낸 분께 알림
+  onStickerGifted?: (grantId: string) => void; // 관리자: 보낸 분께 이모티콘을 선물했을 때 알림
   onMessage?: (userId: string) => void; // 관리자: 보낸 분께 메시지 (선물 안내)
   onClose: () => void;
   onSent: (id: string) => void;    // 관리자에게 알림 보내기
@@ -56,6 +58,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const [filter, setFilter] = useState<'new' | 'read' | 'aired' | 'gift' | 'all'>('new');
   const [reading, setReading] = useState<Letter | null>(null); // 방송용 크게 읽기
   const [zoom, setZoom] = useState<string | null>(null);
+  const [giftFor, setGiftFor] = useState<Letter | null>(null); // 관리자: 보낸 분께 선물하기 (이모티콘 · 사연 선물 대상)
   // 쓰기
   const [content, setContent] = useState('');
   const [nameDisplay, setNameDisplay] = useState<Letter['name_display']>('anonymous');
@@ -86,21 +89,21 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
     let image_url: string | null = null;
     if (photo) {
       try { image_url = await uploadPhoto(photo.file, 'letters'); }
-      catch { setSending(false); alert('사진을 올리지 못했어요. 사진을 빼고 다시 보내 주세요.'); return; }
+      catch { setSending(false); await showAlert('사진을 올리지 못했어요\n사진을 빼고 다시 보내 주세요.'); return; }
     }
     const id = crypto.randomUUID();
     const { error: e } = await supabase.from('letters').insert({ id, user_id: user.id, author_name: authorName, content: text.slice(0, 5000), image_url, name_display: nameDisplay, broadcast_ok: broadcastOk });
     setSending(false);
-    if (e) { alert(isSetupError(e) ? SETUP_HINT : `사연을 보내지 못했어요.\n(${e.message})`); return; }
+    if (e) { await showAlert(isSetupError(e) ? SETUP_HINT : `사연을 보내지 못했어요\n${e.message}`); return; }
     onSent(id);
     setContent(''); setPhoto(null);
-    alert('사연을 보냈어요. 운영자에게만 전달됩니다 💌');
     setView('mine');
+    await showAlert({ title: '사연을 보냈어요 💌', message: '운영자에게만 전달됩니다', icon: 'check' });
   };
 
   const setStatus = async (l: Letter, status: Letter['status']) => {
     const { error: e } = await supabase.from('letters').update({ status }).eq('id', l.id);
-    if (e) { alert('바꾸지 못했어요.'); return; }
+    if (e) { await showAlert('바꾸지 못했어요\n잠시 후 다시 해 주세요.'); return; }
     setItems(prev => prev?.map(x => x.id === l.id ? { ...x, status } : x) || prev);
     if (reading?.id === l.id) setReading({ ...l, status });
     onChanged?.();
@@ -110,7 +113,12 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
     const next = !l.gift;
     if (next && !(await askConfirm(`${l.author_name || '이 교우'}님의 사연을 선물 대상으로 뽑을까요?\n보낸 분께 "선물 대상으로 뽑혔어요" 알림이 가요.`))) return;
     const { error: e } = await supabase.from('letters').update({ gift: next }).eq('id', l.id);
-    if (e) { alert(/gift/.test(e.message) ? '선물 기능을 준비 중이에요. (관리자: supabase/letters-gift.sql 실행 필요)' : '바꾸지 못했어요.'); return; }
+    if (e) {
+      await showAlert(/gift/.test(e.message)
+        ? { title: '사연 선물을 준비 중이에요', message: '관리자: Supabase 에서 supabase/letters-gift.sql 을 한 번 실행해 주세요.\n이모티콘 선물은 위에서 바로 할 수 있어요.', icon: 'gift' }
+        : '바꾸지 못했어요\n잠시 후 다시 해 주세요.');
+      return;
+    }
     setItems(prev => prev?.map(x => x.id === l.id ? { ...x, gift: next } : x) || prev);
     if (reading?.id === l.id) setReading({ ...reading, gift: next });
     if (next) onGift?.(l.id);
@@ -118,7 +126,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const remove = async (l: Letter) => {
     if (!(await askConfirm('이 사연을 지울까요?'))) return;
     const { error: e } = await supabase.from('letters').delete().eq('id', l.id);
-    if (e) { alert('지우지 못했어요.'); return; }
+    if (e) { await showAlert('지우지 못했어요\n잠시 후 다시 해 주세요.'); return; }
     setItems(prev => prev?.filter(x => x.id !== l.id) || prev);
     onChanged?.();
   };
@@ -158,7 +166,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
             {reading.image_url && <img src={reading.image_url} alt="사연 사진" onClick={() => setZoom(reading.image_url)} className="mt-6 max-w-full rounded-2xl" />}
           </div>
           <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2 flex-wrap">
-            {reading.name_display === 'name' && <button onClick={() => toggleGift(reading)} className={`flex-1 py-3 rounded-2xl font-bold ${reading.gift ? 'border border-amber-300 text-amber-800 bg-amber-50' : 'bg-amber-500 text-white'}`}>{reading.gift ? '🎁 선물 취소' : '🎁 선물 대상으로'}</button>}
+            <button onClick={() => setGiftFor(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-amber-500 text-white">🎁 선물하기</button>
             {onMessage && reading.name_display === 'name' && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
             {reading.status !== 'aired'
               ? <button onClick={() => setStatus(reading, 'aired')} className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-bold">방송에서 소개했어요</button>
@@ -167,6 +175,25 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
         </div>
       )}
 
+      {/* 관리자: 보낸 분께 선물 (이모티콘 선물 + 아이디를 밝힌 사연은 '사연 선물 대상'으로도) */}
+      {giftFor && (() => {
+        const l = items?.find(x => x.id === giftFor.id) || giftFor;
+        return (
+          <div onClick={e => e.stopPropagation()}>
+            <StickerGift user={{ id: l.user_id, name: l.author_name || '교우', handle: handles[l.user_id] }} onClose={() => setGiftFor(null)} onGifted={onStickerGifted}
+              extra={(l.name_display === 'name' || l.gift) && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex items-center gap-3">
+                  <span className="text-[2rem] leading-none shrink-0" aria-hidden="true">💌</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[1.0625rem] text-stone-900">사연 선물 대상</p>
+                    <p className="text-[0.8125rem] text-stone-600">이모티콘 말고 다른 선물을 드릴 때: 보낸 분께 알림이 가고, 운영자가 메시지로 연락해요</p>
+                  </div>
+                  <button onClick={() => toggleGift(l)} className={`shrink-0 px-3 py-2 rounded-xl text-[0.875rem] font-bold ${l.gift ? 'border border-stone-300 text-stone-600 bg-white' : 'bg-amber-500 text-white'}`}>{l.gift ? '취소' : '뽑기'}</button>
+                </div>
+              )} />
+          </div>
+        );
+      })()}
       <div ref={sheet.sheetRef} className="bg-white w-full max-w-xl tablet:max-w-3xl h-[92dvh] sm:h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div {...sheet.handleProps} className="shrink-0 pt-2.5 flex justify-center cursor-grab touch-none" aria-hidden="true"><span className="w-12 h-1.5 rounded-full bg-stone-300" /></div>
         <div {...sheet.handleProps} className="px-4 pb-4 pt-2 border-b border-stone-100 flex items-center justify-between shrink-0 cursor-grab">
@@ -264,7 +291,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                     {view === 'inbox' && <button onClick={() => openReading(l)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[0.8125rem] font-bold">크게 읽기</button>}
                     {view === 'inbox' && l.status === 'new' && <button onClick={() => setStatus(l, 'read')} className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 text-[0.8125rem] font-bold">읽음으로</button>}
                     {view === 'inbox' && l.status !== 'aired' && <button onClick={() => setStatus(l, 'aired')} className="px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-[0.8125rem] font-bold">소개함</button>}
-                    {view === 'inbox' && (l.name_display === 'name' || l.gift) && <button onClick={() => toggleGift(l)} className={`px-3 py-1.5 rounded-lg border text-[0.8125rem] font-bold ${l.gift ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-amber-200 text-amber-700'}`}>{l.gift ? '🎁 선물 취소' : '🎁 선물'}</button>}
+                    {view === 'inbox' && <button onClick={() => setGiftFor(l)} className="px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 text-[0.8125rem] font-bold">🎁 선물</button>}
                     {(view === 'inbox' || l.status === 'new') && <button onClick={() => remove(l)} className="ml-auto px-2 py-1.5 text-stone-400 text-[0.8125rem]">지우기</button>}
                   </div>
                 </div>

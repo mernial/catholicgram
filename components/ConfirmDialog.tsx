@@ -13,7 +13,7 @@ export type ConfirmOptions = {
   danger?: boolean;   // 지우기처럼 되돌릴 수 없는 일: 빨간 단추
   icon?: IconName;
 };
-type Request = ConfirmOptions & { resolve: (ok: boolean) => void };
+type Request = ConfirmOptions & { resolve: (ok: boolean) => void; alert?: boolean };
 
 // 예전 window.confirm 글('…할까요?\n자세한 설명')을 그대로 넘겨도 된다: 첫 줄은 제목, 나머지는 설명,
 // 단추 글자·빨간 단추·그림은 글에 든 말로 고른다 (먼저 맞는 것). 따로 정하려면 extra 로 덮어쓴다
@@ -44,6 +44,14 @@ const fromText = (text: string): ConfirmOptions => {
 };
 
 let show: ((r: Request) => void) | null = null;
+// 앱 모양 안내 창 (단추 하나, window.alert 대신): `await showAlert('못 했어요.\n자세한 설명')` — 첫 줄 제목, 나머지 설명
+export function showAlert(input: string | ConfirmOptions, extra?: Partial<ConfirmOptions>): Promise<void> {
+  const [title, ...rest] = typeof input === 'string' ? input.split('\n') : [];
+  const options = { ...(typeof input === 'string' ? { title, message: rest.join('\n').trim() || undefined } : input), ...extra };
+  if (!show) { window.alert([options.title, options.message].filter(Boolean).join('\n')); return Promise.resolve(); }
+  const open = show;
+  return new Promise(resolve => open({ ...options, alert: true, resolve: () => resolve() }));
+}
 export function askConfirm(input: string | ConfirmOptions, extra?: Partial<ConfirmOptions>): Promise<boolean> {
   const options = { ...(typeof input === 'string' ? fromText(input) : input), ...extra };
   if (!show) return Promise.resolve(window.confirm([options.title, options.message].filter(Boolean).join('\n'))); // 창이 아직 없으면 기본 창
@@ -82,7 +90,7 @@ export default function ConfirmHost() {
         <h2 id="confirm-title" className="text-[1.1875rem] font-bold text-stone-900 leading-snug">{req.title}</h2>
         {req.message && <p id="confirm-message" className="mt-2 text-[0.9375rem] text-stone-500 leading-relaxed whitespace-pre-line">{req.message}</p>}
         <div className="mt-6 w-full flex gap-2.5">
-          <button type="button" onClick={() => close(false)} className="flex-1 py-3.5 rounded-2xl bg-stone-100 text-stone-700 text-[1rem] font-bold active:scale-[0.98] transition-transform">{req.cancel || '취소'}</button>
+          {!req.alert && <button type="button" onClick={() => close(false)} className="flex-1 py-3.5 rounded-2xl bg-stone-100 text-stone-700 text-[1rem] font-bold active:scale-[0.98] transition-transform">{req.cancel || '취소'}</button>}
           <button type="button" ref={okRef} onClick={() => close(true)}
             className={`flex-1 py-3.5 rounded-2xl text-white text-[1rem] font-bold active:scale-[0.98] transition-transform ${req.danger ? 'bg-red-500' : 'bg-stone-900'}`}>{req.ok || '확인'}</button>
         </div>
