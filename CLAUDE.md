@@ -88,10 +88,12 @@
 - 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘(운영자 요청, 카카오톡처럼, 1:1·단체방·사랑방): `useCloseStickersOnTap(picker)`(`components/StickerPanel`)을 대화 목록 칸에 붙임 — 이모티콘 칸이나 고른 이모티콘 미리 보기가 있을 때 10px 안·0.4초 안의 누름이면 닫고(`picker.close`, 고른 이모티콘도 취소) 그 누름은 말풍선·사진에 전하지 않음(click 막기). 밀어서 대화 올려 보기는 그대로 열림, 닫힌 뒤 꾹 누르기 메뉴는 예전처럼
 - 카카오톡 공유 미리 보기 카드(사진 부분)를 누르면 그 글이 아니라 사이트 첫 화면이 열리던 문제(글 주소 글자를 누르면 그 글로 감): `/p/글id` 에 `og:url`·`canonical`(그 글 주소)이 없어서 → `generateMetadata`에 `alternates.canonical`·`openGraph.url`. 카카오톡은 미리 보기를 한동안 저장해 두므로 이미 보낸 링크의 카드는 예전 그대로일 수 있음(새로 공유하면 됨)
 - 글쓰기 음악 '유튜브에서 찾기'가 안 되던 문제(운영자: '유튜브 뮤직에서 검색은 안 돼?'): 유튜브 뮤직은 따로 검색 API 가 없고 노래도 유튜브 영상(같은 영상 ID)이라 → `/api/youtube/search`를 '음악' 분류(`videoCategoryId=10`)로 좁혀 노래만(3개도 안 나오면 그때만 전체에서 한 번 더), '… - Topic' 채널은 '유튜브 뮤직 음원' 표시(`topic`). 실패 이유를 구글 응답에서 읽어 `quota`·`key_invalid`·`api_disabled`·`key_blocked`(키를 웹사이트로 제한)·`not_configured`로 알려 주고, 관리자에게만 고칠 곳을 보여 줌(`ADMIN_FIX`, Vercel 로그에도 `youtube search failed …`). 같은 검색은 6시간 동안 모든 서버가 함께 저장해 씀(`fetch next.revalidate`, 하루 한도 = 검색 약 100번, 한국 시간 오후 4~5시에 다시 참). 탭 이름 '유튜브 뮤직에서 찾기', 아래 '유튜브 뮤직에서 고른 노래 넣기'(유튜브 뮤직 열기 ↗ → ⋮ 공유 → 링크 복사 → 📋 붙여넣기, 검색이 안 되면 바로 펼침, 앨범·재생목록 링크는 안내)
+- 테스터 설치 안내 화면(`components/TesterSignup` '등록함'): 참여 → 설치 → **지금과 같은 방법으로 로그인**(가입한 방법을 `app_metadata`로 읽어 '지금처럼 카카오로', Play 스토어 구글 계정과 상관없음, '환영합니다!' 가입 화면이 나오면 로그아웃 후 다시) → 예전 앱 지우기(맨 나중: 알림을 누르면 보통 예전 앱에서 이 화면이 열리므로. 예전 앱(`appKind` home)에서 열면 '지금 보고 계신 이 앱', Play 앱에서 열면 설치 끝 안내만) → 14일. 예약 알림 `lib/tester-notice.ts` `TESTER_NOTICE_DAYS`(2026-10-29, 운영자 요청): 그날 아침 축일 cron(`/api/cron/feast-day`, 8시)이 '등록함' 테스터에게 '📱 이제 가톨릭그램 앱을 설치할 수 있어요'를 한 번 보냄(같은 기기 한 번, 7~12시만, 지난 날짜는 아무 일 안 함)
 
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
+- 2026-10-29 운영자 화면으로 확인: Play Console 게시 개요에 '최근 게시일: 2026년 10월 27일', 검토 중인 변경사항 없음 → **검토 끝나고 게시됨**(관리형 게시 사용 중지 = 검토를 통과하면 바로 게시)
 - 검토가 끝나면: 앱 관리자 → 테스터 신청에서 ① '등록한 N명에게 설치 안내 다시 보내기' 먼저 → ② 새 신청자는 복사·Play 목록에 붙여넣기 후 '등록함으로 표시' (순서를 지키면 알림이 두 번 가지 않음)
 - `/.well-known/assetlinks.json`: 패키지 `com.catholicgram.android` + Play 앱 서명 키 SHA-256 `90:F1:…:95:46`을 코드(`FINGERPRINTS`)에 넣음(2026-10-27) → 앱 위 주소창이 사라져야 함(기기에 반영까지 몇 시간~하루). 환경변수 `ANDROID_SHA256_FINGERPRINTS`·`ANDROID_PACKAGE_NAME`가 있으면 함께 들어감
 - 남은 일: 비공개 테스트 12명 이상 14일 뒤 프로덕션 신청

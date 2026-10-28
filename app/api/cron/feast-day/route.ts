@@ -3,11 +3,13 @@ import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { todayFeastKeys, todayKst } from '@/lib/feast';
 import { onePerDevice } from '@/lib/push-devices';
+import { sendScheduledTesterNotice } from '@/lib/tester-notice';
 
 // 매일 아침 8시(한국 시간) Vercel Cron 이 호출한다. (vercel.json 참고)
 // 1) 오늘 축일인 교우 본인에게 축하 푸시
 // 2) 그 교우를 팔로우하는 사람들에게 "오늘은 OOO님의 축일이에요" 푸시
 // 같은 날 두 번 호출되어도 feast_day_sends 기록으로 한 번만 보낸다.
+// 3) 운영자가 정한 날이면 등록한 테스터에게 설치 안내 (lib/tester-notice)
 
 type Payload = { title: string; body: string; url: string; tag: string };
 type Subscription = { id: string; user_id: string; endpoint: string; p256dh: string; auth: string; device?: string | null; last_seen?: string | null };
@@ -32,6 +34,10 @@ export async function GET(request: Request) {
   const admin = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // 축일 알림과 상관없이 먼저 (축일인 교우가 없는 날에도 보내야 함)
+  const testerNotice = await sendScheduledTesterNotice(admin, vapidPrivateKey).catch(e => ({ error: String(e) }));
+  if (testerNotice) console.log('tester notice', JSON.stringify(testerNotice));
 
   const { data: celebrants, error } = await admin.from('profiles')
     .select('id, baptismal_name').in('feast_day', todayFeastKeys());
