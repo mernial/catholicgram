@@ -20,7 +20,7 @@ import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { useEnterSend } from '@/lib/use-enter-send';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
-import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import { MAX_POST_STICKERS, hasStickerSuggestion, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -45,6 +45,7 @@ import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
 import InstallGuide from '@/components/InstallGuide';
+import StickerGift from '@/components/StickerGift';
 import YouTubePlayer from '@/components/YouTubePlayer';
 import PostVideo, { VideoViewer } from '@/components/PostVideo';
 import ReelVideo from '@/components/ReelVideo';
@@ -497,6 +498,8 @@ export default function Home() {
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
 
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
+  const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
+  const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
   const [actionUserFollowStatus, setActionUserFollowStatus] = useState<FollowStatus>('none');
   const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
@@ -2427,7 +2430,14 @@ export default function Home() {
     const { count, error } = await supabase.from('letters').select('id', { count: 'exact', head: true }).eq('status', 'new');
     if (!error) setLetterNewCount(count || 0);
   };
+  // 내가 선물받은 전용 이모티콘 (supabase/sticker-gifts.sql 실행 전이면 조용히 비움)
+  const fetchStickerGrants = async (userId: string) => {
+    const { data, error } = await supabase.from('sticker_grants').select('pack_id').eq('user_id', userId);
+    const next = error ? [] : (data || []).map(r => r.pack_id as string).sort();
+    setStickerGrants(prev => (prev.join() === next.join() ? prev : next));
+  };
   const refreshAlerts = (userId: string) => {
+    fetchStickerGrants(userId);
     fetchAnonUnread(userId);
     fetchLetterCount();
     fetchBlocks(userId);
@@ -2677,7 +2687,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'group_message' | 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'sticker_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -3195,6 +3205,8 @@ export default function Home() {
   };
 
   const isAdmin = !!(user?.email && ADMIN_EMAILS.includes(user.email));
+  // 이모티콘을 쓸 수 있는 범위: 관리자 전용·코드로 준 선물(@아이디)·선물받은 것 (lib/stickers)
+  useEffect(() => { setStickerAccess({ admin: isAdmin, handle: profile?.handle || null, grants: user ? stickerGrants : [] }); }, [isAdmin, profile?.handle, stickerGrants, user]);
   isAdminRef.current = isAdmin;
   // 로그인(관리자 여부)이 정해지면 기도지향을 다시 읽는다 (관리자는 올린 사람까지)
   useEffect(() => { if (user) fetchIntentions(); }, [user?.id, isAdmin]);
@@ -3235,7 +3247,7 @@ export default function Home() {
   const feedBanners = liveBanners.filter(b => b.placement !== 'top');
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
-  const otherModalOpen = !!(actionModalUser || showAuthModal || avatarFile || selectedPostDetail || selectedImage
+  const otherModalOpen = !!(actionModalUser || stickerGiftFor || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup;
@@ -3259,7 +3271,7 @@ export default function Home() {
     if (selectedImage) { setSelectedImage(null); return; }
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
-    setActionModalUser(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
+    setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
@@ -4881,6 +4893,11 @@ export default function Home() {
                     )}
                   </div>
                 )}
+                {isAdmin && u.id !== user?.id && (
+                  <button onClick={() => setStickerGiftFor({ id: u.id, name: u.baptismal_name || '교우', handle: u.handle })} className="mt-2.5 w-full py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">
+                    🎁 이모티콘 선물
+                  </button>
+                )}
                 <div className="mt-4 flex items-center justify-center gap-5 text-[0.8125rem] text-stone-400">
                   <button onClick={() => { setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="py-1">신고하기</button>
                   {blocked
@@ -4892,6 +4909,9 @@ export default function Home() {
           </div>
         );
       })()}
+
+      {/* 관리자: 전용 이모티콘 선물 (components/StickerGift) */}
+      {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
 
       {/* 후원 배너 관리 (관리자) */}
       {showSponsorAdmin && isAdmin && (

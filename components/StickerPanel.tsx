@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
-import { STICKER_PACKS, STICKERS, stripStickerWords, suggestStickers, type Sticker } from '@/lib/stickers';
+import { STICKER_PACKS, STICKERS, canUseSticker, onStickerAccess, stripStickerWords, suggestStickers, usablePacks, type Sticker } from '@/lib/stickers';
 import { toast } from '@/lib/chat-actions';
 
 // 이모티콘 보내기 (1:1 메시지·단체 채팅방·사랑방 공통)
@@ -18,6 +18,13 @@ export function useStickerPicker(send: (s: Sticker) => void | Promise<void>) {
   return { open, setOpen, picked, setPicked, pick, sendPicked, close: () => { setOpen(false); setPicked(null); } };
 }
 export type StickerPicker = ReturnType<typeof useStickerPicker>;
+
+// 쓸 수 있는 이모티콘이 바뀌면(로그인·관리자·선물) 다시 그림
+export function useStickerAccess() {
+  const [, setTick] = useState(0);
+  useEffect(() => onStickerAccess(() => setTick(t => t + 1)), []);
+  return usablePacks();
+}
 
 // 즐겨찾기 이모티콘: 이 휴대폰에만 저장 (localStorage 'stickerFavorites', 최근에 넣은 것이 앞).
 // 이모티콘 칸의 이모티콘을 꾹 누르거나, 고른 이모티콘 미리 보기의 ☆ 를 누르면 넣고 빼기. 여러 칸(메시지·댓글 등)이 함께 바뀜
@@ -44,7 +51,8 @@ export function useStickerFavorites() {
     try { navigator.vibrate?.(15); } catch { /* 무시 */ }
     toast(on ? '즐겨찾기에서 뺐어요' : '⭐ 즐겨찾기에 넣었어요');
   };
-  const list = ids.map(id => STICKERS.find(s => s.id === id)).filter((s): s is Sticker => !!s);
+  useStickerAccess();
+  const list = ids.map(id => STICKERS.find(s => s.id === id)).filter((s): s is Sticker => !!s && canUseSticker(s)); // 선물이 거둬진 전용 이모티콘은 빼고
   return { has: (s: Sticker) => ids.includes(s.id), list, toggle };
 }
 
@@ -184,7 +192,7 @@ function StickerCell({ s, active, fav, onPick, onToggleFav }: { s: Sticker; acti
 
 // 탭 순서: 이 휴대폰에만 저장 (localStorage 'stickerTabOrder'). 나중에 캐릭터가 늘면 저장된 순서 뒤에 붙는다
 const FAV_TAB = 'fav';
-const ALL_TABS = [FAV_TAB, ...STICKER_PACKS.map(p => p.id)];
+const ALL_TABS = [FAV_TAB, ...STICKER_PACKS.map(p => p.id)]; // 전용 이모티콘까지 모두 (보이는 것은 쓸 수 있는 것만)
 const ORDER_KEY = 'stickerTabOrder';
 const ORDER_EVENT = 'sticker-tab-order';
 const readOrder = (): string[] => {
@@ -193,7 +201,8 @@ const readOrder = (): string[] => {
   saved = Array.from(new Set(saved));
   return [...saved, ...ALL_TABS.filter(id => !saved.includes(id))];
 };
-const saveOrder = (order: string[]) => {
+const saveOrder = (shown: string[]) => {
+  const order = [...shown, ...readOrder().filter(id => !shown.includes(id))]; // 지금 안 보이는 탭(전용 이모티콘)은 뒤에 그대로
   try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch { /* 저장 불가 */ }
   window.dispatchEvent(new Event(ORDER_EVENT));
 };
@@ -207,20 +216,25 @@ const moveTo = (order: string[], id: string, to: number) => {
 //  - 탭 순서 바꾸기: 탭을 꾹 누른 채 옆으로 끌기, 또는 '순서' 단추 → ▲▼
 export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   const favs = useStickerFavorites();
-  const [packId, setPackId] = useState(() => {
+  const packs = useStickerAccess(); // 쓸 수 있는 캐릭터만 (전용 이모티콘은 관리자·선물받은 교우에게만)
+  const visible = [FAV_TAB, ...packs.map(p => p.id)];
+  const visibleKey = visible.join();
+  const [savedPack, setPackId] = useState(() => {
     try { const saved = localStorage.getItem('stickerPack'); if (saved && ALL_TABS.includes(saved)) return saved; } catch { /* 무시 */ }
     return STICKER_PACKS[0].id;
   });
-  const [order, setOrder] = useState<string[]>(ALL_TABS);
+  const packId = visible.includes(savedPack) ? savedPack : STICKER_PACKS[0].id;
+  const [order, setOrder] = useState<string[]>(visible);
   const orderRef = useRef(order);
   orderRef.current = order;
   useEffect(() => {
-    const load = () => setOrder(readOrder());
+    const shown = visibleKey.split(',');
+    const load = () => setOrder(readOrder().filter(id => shown.includes(id)));
     load();
     window.addEventListener(ORDER_EVENT, load);
     window.addEventListener('storage', load);
     return () => { window.removeEventListener(ORDER_EVENT, load); window.removeEventListener('storage', load); };
-  }, []);
+  }, [visibleKey]);
   const [arranging, setArranging] = useState(false); // '순서' 단추로 연 ▲▼ 목록
   const isFav = packId === FAV_TAB;
   const pack = STICKER_PACKS.find(p => p.id === packId) || STICKER_PACKS[0];

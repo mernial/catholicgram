@@ -1,9 +1,12 @@
-// 채팅 이모티콘 (1:1 메시지·단체 채팅방·사랑방): 캐릭터 넷 × 24개 (public/stickers/<dir>/01~24.webp)
-//  - 아멘이(양) · 몽글이(구름) · 딩동이(종) · 루(초)
+// 채팅 이모티콘 (1:1 메시지·단체 채팅방·사랑방): 캐릭터마다 24개 (public/stickers/<dir>/01~24.webp)
+//  - 아멘이(양) · 몽글이(구름) · 딩동이(종) · 루(초) · 신부님(관리자 전용) · 루비로사(루비로사 선물)
 // 메시지 글로는 '[아멘이] 안녕!' 처럼 보낸다 — 예전 앱·휴대폰 알림·대화 목록에서도 뜻이 보이고,
 // 이 글과 똑같으면 말풍선 대신 이모티콘 그림으로 보여 준다. (처음 보낸 양 이모티콘 '[양 이모티콘] …'도 아멘이로 읽음)
+// 전용 이모티콘: access 'admin' = 관리자만, 'gift' = giftHandles(@아이디)나 선물받은 교우만(sticker_grants) 고르고 보낼 수 있다.
+// 받은 사람에게는 누구나 그림으로 보인다 (고르기·추천에서만 가림)
 export interface Sticker { id: string; pack: string; packName: string; label: string; src: string }
-export interface StickerPack { id: string; name: string; stickers: Sticker[] }
+export type PackAccess = 'admin' | 'gift';
+export interface StickerPack { id: string; name: string; stickers: Sticker[]; access?: PackAccess; giftHandles?: string[] }
 
 const COMMON = [
   '안녕!', '좋은 아침!', '잘 자요', '고마워요',
@@ -13,7 +16,14 @@ const COMMON = [
   '잠깐만요', '확인했어요', '곧 도착!', '충전 중...',
   '보고 싶어', '기도할게요', '아멘!',
 ];
-const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; legacy?: string }[] = [
+// 사람 캐릭터 전용 이모티콘 (신부님·루비로사): 같은 24가지 말
+const PERSON = [
+  '안녕하세요!', '좋아요!', '사랑합니다', '기도합니다', '주님과 함께', '화이팅!',
+  '감사합니다', '어?!', 'ㅋㅋㅋ', '좋다~', '와!', '죄송합니다',
+  '아휴...', '음...', '맛있어요!', '커피 한잔 할까요?', '잘자요', '다녀올게요!',
+  '열일중...', '너무 바빠요!', '감동이에요...', '주님 도와주세요', '어떻게 할까요?', '축하합니다!',
+];
+const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; legacy?: string; access?: PackAccess; giftHandles?: string[] }[] = [
   {
     id: 'amen', name: '아멘이', dir: 'sheep', legacy: '양 이모티콘',
     labels: [
@@ -28,11 +38,15 @@ const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; lega
   { id: 'mong', name: '몽글이', dir: 'cloud', labels: [...COMMON, '평화를 빕니다'] },
   { id: 'ding', name: '딩동이', dir: 'bell', labels: [...COMMON, '미사 때 만나요'] },
   { id: 'roo', name: '루', dir: 'candle', labels: [...COMMON, '평화를 빕니다'] },
+  { id: 'father', name: '신부님', dir: 'priest', labels: PERSON, access: 'admin' },              // 관리자 전용
+  { id: 'ruby', name: '루비로사', dir: 'ruby', labels: PERSON, access: 'gift', giftHandles: ['rubyrosa'] }, // 루비로사 선물
 ];
 
 export const STICKER_PACKS: StickerPack[] = PACK_DEFS.map(p => ({
   id: p.id,
   name: p.name,
+  access: p.access,
+  giftHandles: p.giftHandles,
   stickers: p.labels.map((label, i) => {
     const n = String(i + 1).padStart(2, '0');
     return { id: `${p.id}-${n}`, pack: p.id, packName: p.name, label, src: `/stickers/${p.dir}/${n}.webp` };
@@ -48,6 +62,30 @@ PACK_DEFS.forEach(p => {
   STICKERS.filter(s => s.pack === p.id).forEach(s => BY_TEXT.set(`[${p.legacy}] ${s.label}`, s));
 });
 export const parseSticker = (content?: string | null): Sticker | null => (content ? BY_TEXT.get(content.trim()) ?? null : null);
+
+// 누가 어떤 이모티콘을 쓸 수 있는지 (앱이 로그인 정보로 채움: setStickerAccess)
+type Access = { admin: boolean; handle: string | null; grants: string[] };
+let access: Access = { admin: false, handle: null, grants: [] };
+const accessListeners = new Set<() => void>();
+export function setStickerAccess(next: Partial<Access>) {
+  const merged = { ...access, ...next };
+  if (merged.admin === access.admin && merged.handle === access.handle && merged.grants.join() === access.grants.join()) return;
+  access = merged;
+  accessListeners.forEach(f => f());
+}
+export const onStickerAccess = (f: () => void) => { accessListeners.add(f); return () => { accessListeners.delete(f); }; };
+export function canUsePack(p: StickerPack | undefined) {
+  if (!p) return false;
+  if (!p.access) return true;
+  if (access.grants.includes(p.id)) return true;
+  if (p.access === 'admin') return access.admin;
+  return !!access.handle && (p.giftHandles || []).includes(access.handle.toLowerCase());
+}
+const PACK_BY_ID = new Map(STICKER_PACKS.map(p => [p.id, p]));
+export const canUseSticker = (s: Sticker) => canUsePack(PACK_BY_ID.get(s.pack));
+export const usablePacks = () => STICKER_PACKS.filter(canUsePack);
+// 선물할 수 있는 이모티콘 (전용 이모티콘)
+export const giftablePacks = () => STICKER_PACKS.filter(p => !!p.access);
 
 // 글을 치면 비슷한 뜻의 이모티콘을 추천: 이모티콘 이름마다 떠올릴 만한 말 (띄어쓰기 없이 비교)
 const KEYWORDS: Record<string, string[]> = {
@@ -85,6 +123,30 @@ const KEYWORDS: Record<string, string[]> = {
   '아멘!': ['아멘', '알렐루야', '주님', '하느님'],
   '평화를 빕니다': ['평화', '평안', '찬미'],
   '미사 때 만나요': ['미사', '성당', '주일', '만나'],
+  // 신부님·루비로사
+  '안녕하세요!': ['안녕', '반가', '방가', '하이'],
+  '사랑합니다': ['사랑', '하트', '좋아해'],
+  '기도합니다': ['기도', '묵주', '은총'],
+  '주님과 함께': ['주님', '하느님', '함께'],
+  '화이팅!': ['화이팅', '파이팅', '힘내', '응원'],
+  '감사합니다': ['감사', '고마', '고맙', '땡큐'],
+  '어?!': ['어?', '뭐지', '어리둥절', '헐'],
+  'ㅋㅋㅋ': ['ㅋㅋ', 'ㅎㅎ', '웃겨', '웃기', '재밌', '재미있'],
+  '좋다~': ['좋다', '좋네', '행복'],
+  '와!': ['와!', '우와', '대박'],
+  '죄송합니다': ['죄송', '미안', '쏘리'],
+  '아휴...': ['아휴', '에휴', '한숨', '힘들'],
+  '음...': ['음...', '글쎄', '흠'],
+  '맛있어요!': ['맛있', '맛나', '밥', '식사', '먹었'],
+  '커피 한잔 할까요?': ['커피', '차한잔', '카페'],
+  '잘자요': ['잘자', '굿나잇', '좋은밤', '자러', '잘게'],
+  '다녀올게요!': ['다녀올', '다녀오', '갔다올', '나갈게', '출발'],
+  '열일중...': ['열일', '일하', '일중', '업무', '회의', '작업'],
+  '너무 바빠요!': ['바빠', '바쁘', '정신없'],
+  '감동이에요...': ['감동', '울컥', '눈물'],
+  '주님 도와주세요': ['도와주', '살려', '기도부탁'],
+  '어떻게 할까요?': ['어떻게', '어쩌', '어떡'],
+  '축하합니다!': ['축하', '생일', '축일', '합격', '결혼', '졸업'],
 };
 
 export const hasStickerSuggestion = (text: string) => suggestStickers(text, 1).length > 0;
@@ -111,6 +173,7 @@ export function suggestStickers(text: string, limit = 12): Sticker[] {
   if (text.replace(/\s+/g, '').length < 2) return [];
   const scored: { s: Sticker; score: number; i: number }[] = [];
   STICKERS.forEach((s, i) => {
+    if (!canUseSticker(s)) return; // 전용 이모티콘은 쓸 수 있는 사람에게만 추천
     const score = tailMatches(text, KEYWORDS[s.label] || []).hits.reduce((sum, h) => sum + h.len, 0);
     if (score > 0) scored.push({ s, score, i });
   });

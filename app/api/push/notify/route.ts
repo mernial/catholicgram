@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
-import { postPlainText } from '@/lib/stickers';
+import { STICKER_PACKS, postPlainText } from '@/lib/stickers';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -13,7 +13,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
+type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
 type Payload = { title: string; body: string; url: string; tag: string };
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
+  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -54,7 +54,19 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'group_message') {
+  if (type === 'sticker_gift') {
+    // 관리자가 전용 이모티콘을 선물 → 받은 교우에게 (관리자만 보낼 수 있음)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: grant } = await admin.from('sticker_grants').select('user_id, pack_id, created_at').eq('id', id).maybeSingle();
+    if (!grant) return Response.json({ error: 'not found' }, { status: 404 });
+    if (Date.now() - new Date(grant.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const pack = STICKER_PACKS.find(p => p.id === grant.pack_id);
+    list.push({ recipientId: grant.user_id as string, payload: {
+      title: '🎁 이모티콘 선물이 도착했어요',
+      body: `'${pack?.name || '전용'}' 이모티콘을 선물받았어요. 메시지·댓글의 😊 에서 써 보세요`,
+      url: '/', tag: `sticker-gift-${grant.pack_id}`,
+    } });
+  } else if (type === 'group_message') {
     // 단체 채팅방 새 메시지 → 그 방의 다른 교우들에게 (보낸 교우를 차단한 교우는 빼고, 방에 없는 관리자에게는 가지 않음)
     const { data: msg } = await admin.from('group_chat_messages').select('id, chat_id, user_id, content, kind, created_at').eq('id', id).maybeSingle();
     if (!msg || msg.user_id !== user.id || msg.kind !== 'text') return Response.json({ error: 'forbidden' }, { status: 403 });
