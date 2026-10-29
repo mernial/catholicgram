@@ -78,7 +78,7 @@ export default function MediaStorage({ onClose }: { onClose: () => void }) {
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="font-bold text-stone-900"><Icon name="camera" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />사진 저장소</h2>
+            <h2 className="font-bold text-stone-900"><Icon name="image" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />사진 저장소</h2>
             <p className="text-xs text-stone-400 mt-0.5">Cloudflare R2 · 내려받는 전송량 무료 · 관리자만 보여요</p>
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1" aria-label="닫기">×</button>

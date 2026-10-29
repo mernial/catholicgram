@@ -31,7 +31,7 @@ const RULES: [RegExp, Partial<ConfirmOptions>][] = [
   [/내릴까요/, { ok: '내리기', danger: true, icon: 'trash' }],
   [/거둘까요/, { ok: '거두기', danger: true, icon: 'gift' }],
   [/뗄까요/, { ok: '떼기', danger: true, icon: 'tag' }],
-  [/보낼까요/, { ok: '보내기', icon: 'send' }],
+  [/보낼까요/, { ok: '보내기', icon: 'sendRight' }],
   [/뽑을까요/, { ok: '뽑기', icon: 'gift' }],
   [/옮길까요/, { ok: '옮기기' }],
   [/닫을까요/, { ok: '닫기', cancel: '계속 고치기', danger: true, icon: 'pencil' }],

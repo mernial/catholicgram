@@ -466,7 +466,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           <h2 className="font-bold text-[1.0625rem] text-stone-900 truncate">👥 {name || '단체 채팅방'}</h2>
           <p className="text-[0.8125rem] text-stone-500">{members.length}명 함께하는 중 <span className="text-stone-400">▾ 누구?</span></p>
         </button>
-        {bookmarks.list.length > 0 && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}>🔖</button>}
+        {bookmarks.list.length > 0 && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
         <button onClick={() => setShowMembers(true)} className="w-11 h-11 flex items-center justify-center text-stone-600" aria-label="채팅방 메뉴">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>

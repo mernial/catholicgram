@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState } from 'react';
 import { SWIPE_REPLY } from '@/lib/use-press-gestures';
+import Icon, { type IconName } from '@/components/Icon';
 
 // 메시지·댓글을 꾹 누르면 그 자리에 뜨는 메뉴: 바로 위에 감정 표시 줄, 바로 아래에 할 일(답장·고치기·삭제 …)
 // 자리가 없으면 둘 다 아래로 또는 둘 다 위로, 그래도 없으면(긴 말풍선) 둘을 붙여 화면 안에 — 감정 줄과 메뉴는 서로 가리지 않는다.
@@ -13,6 +14,14 @@ export const MORE_EMOJIS = ['✅', '👏', '🙌', '🥰', '😍', '😆', '🤗
 
 export interface MenuAnchor { top: number; bottom: number; left: number; right: number }
 export interface MenuAction { label: string; run: () => void; danger?: boolean }
+
+// 할 일 앞의 그림 (운영자 아이콘 시안: 답장·복사·수정·저장·삭제 …). 글 앞의 이모티콘(🗑 ✏️ ↩️ 🚨)은 그림으로 바꿔 보여 준다
+const ACTION_ICONS: [RegExp, IconName][] = [
+  [/답장|답글/, 'reply'], [/복사/, 'stack'], [/고치기|수정/, 'pencil'], [/책갈피/, 'bookmark'], [/캡처/, 'camera'],
+  [/삭제|지우기/, 'trash'], [/신고/, 'siren'], [/프로필/, 'user'],
+];
+const LEADING_EMOJI = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation})\uFE0F?\s*/u;
+const actionIcon = (label: string) => ACTION_ICONS.find(([re]) => re.test(label))?.[1];
 
 export const anchorOf = (el: Element | null | undefined): MenuAnchor | null => {
   const r = el?.getBoundingClientRect();
@@ -40,7 +49,8 @@ export default function MessageMenu({ anchor, alignRight, emojis, moreEmojis, se
   const plus = showBar && !!moreEmojis?.length;
   // 감정 줄은 글씨 크기와 상관없이 같은 크기 (px)
   const barW = Math.min(vw - edge * 2, ((emojis?.length || 0) + (plus ? 1 : 0)) * 44 + 16), barH = showBar ? 52 : 0;
-  const menuW = Math.min(vw - edge * 2, 220);
+  const menuW = Math.min(vw - edge * 2, 240);
+  const withIcons = actions.some(a => actionIcon(a.label));
   const fitX = (w: number) => Math.max(edge, Math.min(vw - w - edge, alignRight ? a.right - w : a.left));
   const fits = (top: number, h: number) => top >= edge && top + h <= vh - edge;
   const below = a.bottom + gap;
@@ -106,9 +116,15 @@ export default function MessageMenu({ anchor, alignRight, emojis, moreEmojis, se
       {actions.length > 0 && (
         <div ref={menuRef} onClick={e => e.stopPropagation()} className={`absolute bg-white rounded-2xl shadow-xl flex flex-col divide-y divide-stone-100 ${menuMax ? 'overflow-y-auto' : 'overflow-hidden'}`}
           style={{ top: menuTop, left: fitX(menuW), width: menuW, maxHeight: menuMax }}>
-          {actions.map(act => (
-            <button key={act.label} onClick={act.run} className={`w-full px-4 py-3 text-left text-[1rem] font-bold active:bg-stone-50 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>{act.label}</button>
-          ))}
+          {actions.map(act => {
+            const icon = actionIcon(act.label);
+            return (
+              <button key={act.label} onClick={act.run} className={`w-full px-4 py-3 text-left text-[1rem] font-bold active:bg-stone-50 flex items-center gap-2.5 ${act.danger ? 'text-red-600' : 'text-stone-800'}`}>
+                {withIcons && (icon ? <Icon name={icon} className={`w-5 h-5 ${act.danger ? '' : 'text-stone-600'}`} /> : <span className="w-5 shrink-0" />)}
+                <span className="min-w-0">{icon ? act.label.replace(LEADING_EMOJI, '') : act.label}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

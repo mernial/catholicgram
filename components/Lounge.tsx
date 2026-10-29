@@ -595,7 +595,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <p className="text-[0.8125rem] font-bold text-emerald-700"><span className={`inline-block w-2 h-2 rounded-full mr-1 align-middle ${online > 0 ? 'bg-emerald-500' : 'bg-stone-300'}`} />👥 지금 {online}명 함께하는 중</p>
           )}
         </div>
-        {bookmarks.list.length > 0 && !trash && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}>🔖</button>}
+        {bookmarks.list.length > 0 && !trash && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
         {isAdmin && <button onClick={openTrash} className="px-2.5 py-1.5 mr-1 rounded-lg border border-stone-200 text-[0.75rem] text-stone-600">{trash ? '대화로' : '지운 대화'}</button>}
       </div>
       {isAdmin && showWho && (
