@@ -591,7 +591,7 @@ export default function Home() {
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
   // 앱 사용 중 새 알림을 화면 위에 잠깐 보여주는 배너
   // stay: 누르면 아무 데도 가지 않는 배너(알림 켜짐·종료 안내) — 그 밖의 배너는 누르면 보던 창을 모두 닫고 그 화면으로
-  const [toast, setToast] = useState<{ key: string; icon: string; title: string; body: string; action: () => void; stay?: boolean } | null>(null);
+  const [toast, setToast] = useState<{ key: string; icon: React.ReactNode; title: string; body: string; action: () => void; stay?: boolean } | null>(null);
   const [updateReady, setUpdateReady] = useState(false); // 새 버전이 나왔는데 앱을 켜 둔 채라 아직 옛 화면일 때
   const updateDismissedRef = useRef(false);
   const [alertSoundOn, setAlertSoundOn] = useState(true);
@@ -2346,7 +2346,7 @@ export default function Home() {
       return next;
     });
     if (profileMusicNowRef.current?.userId === user.id) stopProfileMusic();
-    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '배경음악을 정했어요' : '배경음악을 껐어요', body: track ? `교우가 내 공간에 들어오면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
+    setToast({ key: `pmusic-${Date.now()}`, icon: <Icon name="music" className="w-7 h-7 text-violet-700" />, title: track ? '배경음악을 정했어요' : '배경음악을 껐어요', body: track ? `교우가 내 공간에 들어오면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
     return true;
   };
   // 공간·프로필 카드의 음악 막대 (누르면 멈춤·다시 듣기)
@@ -2358,7 +2358,7 @@ export default function Home() {
       <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '배경음악 멈추기' : '배경음악 듣기'}>
         <span className="w-8 h-8 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
         <span className="min-w-0 text-left">
-          <span className="block text-[0.8125rem] font-bold text-violet-900 truncate">🎵 {profileMusicMap[userId]?.title || track.title}</span>
+          <span className="block text-[0.8125rem] font-bold text-violet-900 truncate"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{profileMusicMap[userId]?.title || track.title}</span>
           <span className="block text-[0.6875rem] text-violet-700/80">{playing ? '흐르는 중 · 누르면 멈춰요' : '눌러서 듣기'}</span>
         </span>
         {playing && (
@@ -4817,24 +4817,25 @@ export default function Home() {
                   {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
                 </div>
               )}
-              {/* 배경음악이 아직 없을 때도 재생칸을 보여 줌 (운영자 요청): 내 공간은 누구나, 다른 교우 공간은 관리자에게만(누르면 노래 선물) */}
-              {viewingUserId && !profileTrack(viewingUserId) && (viewingUserId === user?.id || isAdmin) && (() => {
+              {/* 배경음악이 아직 없을 때도 재생칸을 보여 줌 (운영자 요청): 어느 공간에서나 — 내 공간은 넣기, 관리자는 노래 선물, 다른 교우는 안내 */}
+              {viewingUserId && !profileTrack(viewingUserId) && (() => {
                 const own = viewingUserId === user?.id;
                 const gifted = !isAdmin && myMusicGifts.length > 0;
-                const sub = !own ? '🎁 눌러서 노래 선물하기'
+                const sub = !own ? (isAdmin ? '🎁 눌러서 노래 선물하기' : '아직 배경음악이 없어요')
                   : isAdmin ? (profileMusicReady === false ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : '눌러서 배경음악 넣기')
                   : gifted ? '🎁 선물받은 노래를 넣을 수 있어요' : '관리자가 선물한 노래를 넣을 수 있어요';
                 const press = () => {
+                  if (!own && !isAdmin) { showAlert({ title: '아직 배경음악이 없어요', message: '배경음악은 관리자가 선물한 노래로 넣을 수 있어요 🎁\n노래를 선물받은 교우는 자기 공간에 배경음악을 넣을 수 있어요.', icon: 'music' }); return; }
                   if (!own) { if (viewingProfile) setMemberMusicGift({ id: viewingProfile.id, name: viewingProfile.baptismal_name || '교우', handle: viewingProfile.handle }); return; }
                   if (canPickProfileMusic) { setShowProfileMusicPicker(true); return; }
                   showAlert({ title: '배경음악은 관리자가 선물한 노래로 넣을 수 있어요 🎁', message: '노래를 선물받으면 여기를 눌러 내 공간 배경음악으로 넣을 수 있어요. 교우들이 내 공간에 들어오면 그 노래가 흘러요.', icon: 'music' });
                 };
                 return (
                   <div className="mt-2">
-                    <button type="button" onClick={press} className={`max-w-full inline-flex items-center gap-2 rounded-full border border-dashed pl-1 pr-3.5 py-1 ${gifted ? 'bg-amber-50 border-amber-300' : 'bg-stone-50 border-stone-300'}`} aria-label={own ? '배경음악 넣기' : '노래 선물하기'}>
+                    <button type="button" onClick={press} className={`max-w-full inline-flex items-center gap-2 rounded-full border border-dashed pl-1 pr-3.5 py-1 ${gifted ? 'bg-amber-50 border-amber-300' : 'bg-stone-50 border-stone-300'}`} aria-label={own ? '배경음악 넣기' : isAdmin ? '노래 선물하기' : '배경음악 없음'}>
                       <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center shrink-0"><Icon name="play" fill className="w-3.5 h-3.5" /></span>
                       <span className="min-w-0 text-left">
-                        <span className="block text-[0.8125rem] font-bold text-stone-700 truncate">🎵 배경음악 {own ? '' : '없음'}</span>
+                        <span className="block text-[0.8125rem] font-bold text-stone-700 truncate"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />배경음악{own ? '' : ' 없음'}</span>
                         <span className={`block text-[0.6875rem] truncate ${gifted ? 'text-amber-700 font-bold' : 'text-stone-500'}`}>{sub}</span>
                       </span>
                     </button>
@@ -5508,7 +5509,7 @@ export default function Home() {
                       🎁 이모티콘 선물
                     </button>
                     <button onClick={() => setMemberMusicGift({ id: u.id, name: u.baptismal_name || '교우', handle: u.handle })} className="py-3 rounded-2xl bg-violet-50 border border-violet-200 text-violet-800 text-[0.9375rem] font-bold">
-                      🎵 노래 선물
+                      <Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />노래 선물
                     </button>
                   </div>
                 )}
@@ -6294,13 +6295,33 @@ export default function Home() {
         <BottomSheet bare label="알림" onClose={() => setShowNotifications(false)} z="z-[70]">
           <div className="flex-1 min-h-0 flex flex-col pb-safe">
             <div className="shrink-0 px-4 pb-3 pt-1 border-b border-stone-100 flex flex-col gap-2.5">
-              <div className="flex items-center justify-between">
-              <h2 className="font-bold text-stone-900">알림</h2>
-              <div className="flex items-center gap-2">
-                <button onClick={toggleAlertSound} className="text-xs px-2.5 py-1 rounded-lg border border-stone-200 text-stone-600">
-                  {alertSoundOn ? <><Icon name="speaker" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 켜짐</> : <><Icon name="mute" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />소리 꺼짐</>}
+              <div className="flex items-center justify-between gap-2">
+              <h2 className="font-bold text-stone-900 shrink-0">알림</h2>
+              {/* 소리 켜기·끄기와 휴대폰 알림 받기를 나란히 (운영자 요청) — 같은 높이의 칸 */}
+              <div className="flex items-center justify-end gap-1.5 flex-wrap min-w-0">
+                <button onClick={toggleAlertSound} className="h-8 text-xs px-2.5 rounded-lg border border-stone-200 text-stone-600 inline-flex items-center gap-1 shrink-0">
+                  {alertSoundOn ? <><Icon name="speaker" className="w-[1.1em] h-[1.1em]" />소리 켜짐</> : <><Icon name="mute" className="w-[1.1em] h-[1.1em]" />소리 꺼짐</>}
                 </button>
-                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1" aria-label="알림 닫기">×</button>
+                {(pushStatus === 'on' || pushStatus === 'off') && (() => {
+                  const shownOn = pushWant ?? pushStatus === 'on';
+                  return (
+                    <div className="h-8 pl-2.5 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1.5 shrink-0">
+                      <Icon name="phone" className="w-[1.1em] h-[1.1em]" />
+                      <span>{pushBusy ? '설정 중…' : '휴대폰 알림'}</span>
+                      <Switch size="sm" label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
+                        onChange={next => { setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null)); }} />
+                    </div>
+                  );
+                })()}
+                {pushStatus === 'denied' && (
+                  <button onClick={() => showAlert({ title: '휴대폰 알림이 차단되어 있어요', message: '휴대폰 설정에서 이 사이트(앱)의 알림을 허용해 주세요. 허용한 뒤 앱을 다시 열면 켤 수 있어요.', icon: 'bell' })}
+                    className="h-8 text-xs px-2.5 rounded-lg border border-red-200 text-red-600 inline-flex items-center gap-1 shrink-0"><Icon name="phone" className="w-[1.1em] h-[1.1em]" />알림 차단됨</button>
+                )}
+                {pushStatus === 'ios-needs-install' && (
+                  <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }}
+                    className="h-8 text-xs px-2.5 rounded-lg border border-stone-200 text-stone-600 inline-flex items-center gap-1 shrink-0"><Icon name="phone" className="w-[1.1em] h-[1.1em]" />휴대폰 알림 받는 법</button>
+                )}
+                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="알림 닫기">×</button>
               </div>
               </div>
               {/* 지우기: 확인한(눌러 본) 알림만 / 확인하지 않은 알림까지 모두 */}
@@ -6309,27 +6330,6 @@ export default function Home() {
                 <button onClick={clearAllAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-red-200 text-red-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모두 지우기</button>
               </div>
             </div>
-            {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (() => {
-              // 휴대폰 알림 켜기·끄기: 밀기 단추 (누르거나 옆으로 밀면 바뀜). 켜는 동안(알림 허용 묻기)에는 켜진 쪽으로 가 있고, 안 되면 돌아옴
-              const switchable = pushStatus === 'on' || pushStatus === 'off';
-              const shownOn = pushWant ?? pushStatus === 'on';
-              return (
-                <div className="shrink-0 px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
-                  <IconBadge name="phone" tone="sky" />
-                  <div className="flex-1 min-w-0 text-xs text-stone-700 leading-snug">
-                    {switchable && <><b className="text-[0.875rem] text-stone-900">휴대폰 알림 받기</b><br />{pushBusy ? '설정하는 중…' : shownOn ? '켜짐 · 앱을 닫아도 댓글·메시지 알림이 와요' : '꺼짐 · 켜면 앱을 닫아도 알림을 받아요'}</>}
-                    {pushStatus === 'denied' && <><b>알림이 차단되어 있어요</b><br />휴대폰 설정에서 이 사이트(앱)의 알림을 허용해주세요</>}
-                    {pushStatus === 'ios-needs-install' && <><b>아이폰은 홈 화면 앱에서만</b> 알림을 받을 수 있어요<br />먼저 홈 화면에 추가한 뒤 그 아이콘으로 열어주세요</>}
-                  </div>
-                  {switchable && (
-                    <Switch label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
-                      onChange={next => { setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null)); }} />
-                  )}
-                  {pushStatus === 'denied' && <Switch label="휴대폰 알림 받기 (차단됨)" on={false} disabled onChange={() => {}} />}
-                  {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
-                </div>
-              );
-            })()}
             <div ref={alertListRef} className="relative flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
               {isMyFeastToday && !feastCleared && (
                 <div data-flip-key="feast-me" className="p-4 bg-amber-50/60">
