@@ -3,6 +3,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 import { TEXT_SIZE_BOOT_SCRIPT } from "@/lib/text-size";
 import { THEME_BOOT_SCRIPT } from "@/lib/theme";
+import { DEVICE_BOOT_SCRIPT } from "@/lib/device";
 import PinchPeek from "@/components/PinchPeek";
 import ConfirmHost from "@/components/ConfirmDialog";
 
@@ -57,6 +58,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: TEXT_SIZE_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: DEVICE_BOOT_SCRIPT }} />
       </head>
       <body className="min-h-full flex flex-col">{children}<PinchPeek /><ConfirmHost /></body>
     </html>
