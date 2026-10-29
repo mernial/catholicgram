@@ -60,7 +60,7 @@ import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
-import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
+import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic } from '@/lib/music';
 import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -216,6 +216,10 @@ const openShownNotification = async (since = 0) => {
 };
 
 const ALERT_KEEP_MS = 3 * 24 * 60 * 60 * 1000; // 알림 보관 기간 (3일)
+// 앱이 뒤에 켜져 있다가 돌아오면 보던 화면 그대로, 이만큼 넘게 떠나 있었으면 홈부터 (운영자 요청).
+// 휴대폰은 '바탕화면 아이콘으로 다시 열었는지 · 최근 앱 목록으로 돌아왔는지'를 앱에 알려 주지 않아서
+// 앱을 완전히 닫았다 연 것(새로 켜짐) 또는 오래 떠나 있었던 것을 '아이콘으로 새로 연 것'으로 본다
+const RESUME_HOME_AFTER = 30 * 60 * 1000;
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
@@ -471,7 +475,7 @@ export default function Home() {
   const [detailImageIndex, setDetailImageIndex] = useState(0);
   const [postMenuId, setPostMenuId] = useState<string | null>(null);
   // 배경음악: 목록, 글쓰기에서 고른 음악, 게시물 보기에서 재생 중 여부
-  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>(BUILTIN_BGM);
+  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([...BUILTIN_BGM, ...RETIRED_BGM]); // 예전 곡(active: false)은 예전 게시물 재생용, 고르기 목록에는 없음
   const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [showBgmAdmin, setShowBgmAdmin] = useState(false);
@@ -698,9 +702,15 @@ export default function Home() {
     if (!initialLink) setTimeout(() => { if (!linkHandledAt) openShownNotification(); }, 1500);
 
     // 앱을 새로 켜면(휴대폰을 껐다 켬·앱을 완전히 닫았다 엶) 홈에서 시작한다.
-    // 앱이 켜져 있는 동안 새로고침된 경우(새 버전 적용 등)만 보던 화면을 이어서 연다 — sessionStorage 는 앱을 닫으면 지워진다
+    // 앱이 켜져 있는 동안 새로고침된 경우(새 버전 적용 등)만 보던 화면을 이어서 연다 — sessionStorage 는 앱을 닫으면 지워진다.
+    // 단 30분 넘게 떠나 있었던 뒤면(휴대폰이 뒤에 둔 앱을 정리했다가 다시 띄운 경우 등) 홈부터 (RESUME_HOME_AFTER)
     const sameSession = (() => {
-      try { const had = sessionStorage.getItem('appOpened') === '1'; sessionStorage.setItem('appOpened', '1'); return had; } catch { return false; }
+      try {
+        const had = sessionStorage.getItem('appOpened') === '1';
+        sessionStorage.setItem('appOpened', '1');
+        const hiddenAt = Number(storageGet('appHiddenAt') || 0);
+        return had && !(hiddenAt && Date.now() - hiddenAt >= RESUME_HOME_AFTER);
+      } catch { return false; }
     })();
     const savedTab = sameSession ? storageGet('activeTab') as Tab | null : null;
     const savedUserId = storageGet('viewingUserId');
@@ -758,20 +768,24 @@ export default function Home() {
     const onAppResume = async () => {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       if (!hiddenAt || Date.now() - hiddenAt < 15 * 1000) { setTimeout(consumePendingLink, 400); return; } // 아주 잠깐이면 그대로
+      const hiddenSince = hiddenAt;
       hiddenAt = 0;
       // 알림을 눌러 돌아온 것이면 그 화면부터 (새 버전 확인을 기다리지 않는다)
       await consumePendingLink();
+      const awayLong = Date.now() - hiddenSince >= RESUME_HOME_AFTER;
       try {
         const res = await fetch('/api/version', { cache: 'no-store' });
         const { version } = await res.json();
         // 방금 알림으로 화면을 열었으면 새로고침은 다음에 (연 화면이 사라지지 않게)
         const justOpened = !!lastOpenedLink && Date.now() - lastOpenedLink.at < 15 * 1000;
-        // 입력칸에 보내지 않은 글이 있으면(건의·댓글·메시지를 쓰다 잠깐 나갔다 옴) 새로고침하지 않고 '새로 고침' 띠만
-        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened && hasUnsentText()) setUpdateReady(true);
-        else if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
+        const newer = !!version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION;
+        // 30분 안에 돌아왔거나(보던 화면 그대로 쓰는 중) 입력칸에 보내지 않은 글이 있으면(건의·댓글·메시지를 쓰다 잠깐 나갔다 옴)
+        // 저절로 새로고침하지 않고 '새로 고침' 띠만
+        if (newer && !justOpened && (!awayLong || hasUnsentText())) setUpdateReady(true);
+        else if (newer && !justOpened) {
           // 로그인 토큰을 새로 받는 중이면 끝난 뒤에 새로고침 (도중에 끊기면 로그인이 풀릴 수 있음)
           await supabase.auth.getSession().catch(() => {});
-          // 앱을 나갔다가 돌아온 것이므로 새로고침 뒤에도 메인 화면부터 (글을 쓰는 중이면 그 화면 그대로)
+          // 오래 떠나 있다 돌아온 것이므로 새로고침 뒤에도 메인 화면부터 (글을 쓰는 중이면 그 화면 그대로)
           if (!composerOpenRef.current) storageSet('activeTab', 'home');
           window.location.reload(); // 알림으로 가야 할 곳은 적어 둔 채로 새로고침 → 다시 열리면 그리로
           return;
@@ -2135,7 +2149,7 @@ export default function Home() {
   const fetchBgmTracks = async () => {
     const { data } = await supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').eq('active', true).order('sort').order('created_at');
     // 관리자가 올린 곡 + 앱에 기본으로 들어 있는 곡
-    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM]);
+    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM, ...RETIRED_BGM]);
   };
 
   // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
@@ -2972,9 +2986,10 @@ export default function Home() {
     window.addEventListener('pageshow', onVisible);
     return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('pageshow', onVisible); };
   }, []);
-  // 앱을 나갔다가(홈 화면·다른 앱) 다시 열면 메인 화면(홈 맨 위)부터 (운영자 요청).
+  // 앱을 나갔다가(홈 화면·다른 앱) 다시 열면: 30분 안이면 보던 화면 그대로, 30분 넘게 떠나 있었으면 메인 화면(홈 맨 위)부터
+  // (운영자 요청 — 예전엔 3초만 지나도 메인으로 가서, 최근 앱 목록으로 잠깐 다른 앱에 다녀와도 보던 화면이 사라졌음. RESUME_HOME_AFTER).
   // 그사이 알림이 왔는데 알림 대신 앱 아이콘(숫자가 붙은)을 눌러 돌아오면 그 알림 화면으로 (루비로사 건의).
-  // 그대로 두는 때: 알림을 눌러 돌아옴(그 화면으로 감) · 사진 고르기·공유·다른 앱 열기처럼 앱에서 잠깐 밖에 다녀옴 · 글을 쓰는 중이거나 쓰던 글이 있음
+  // 메인으로 가지 않는 때: 알림을 눌러 돌아옴(그 화면으로 감) · 사진 고르기·공유·다른 앱 열기처럼 앱에서 잠깐 밖에 다녀옴 · 글을 쓰는 중이거나 쓰던 글이 있음
   useEffect(() => {
     let hiddenAt = 0;
     let awayAt = 0; // 앱이 스스로 밖으로 보낸 때 (사진·파일 고르기, 공유 창, 다른 앱·브라우저로 여는 링크, 내려받기)
@@ -3009,16 +3024,19 @@ export default function Home() {
       linkLog('resume', `메인 화면으로 (${cur.tab})`);
     };
     const onVis = () => {
-      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      // 숨은 때를 저장해 둔다 (뒤에 있는 동안 휴대폰이 앱을 정리했다 다시 띄워도 얼마나 떠나 있었는지 알게) — 다시 보이면 지움
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); storageSet('appHiddenAt', String(hiddenAt)); return; }
+      storageSet('appHiddenAt', '');
       const since = hiddenAt;
       hiddenAt = 0;
       if (!since || Date.now() - since < 3000) return;
+      const long = Date.now() - since >= RESUME_HOME_AFTER;
       const handled = () => linkHandledAt > since || (!!lastOpenedLink && lastOpenedLink.at > since);
       setTimeout(async () => {
         if (document.visibilityState !== 'visible' || handled() || await pendingLink()) return; // 알림을 눌러 돌아옴 → 그 화면으로
         if (composerOpenRef.current || hasUnsentText() || awayAt >= since - 5000) return;            // 쓰던 글·잠깐 밖에 다녀옴 → 그대로
-        backToMain();
-        setTimeout(() => { if (document.visibilityState === 'visible' && !handled()) openShownNotification(since); }, 900);
+        if (long) backToMain();                                                                    // 오래 떠나 있었음 → 메인부터
+        setTimeout(() => { if (document.visibilityState === 'visible' && !handled()) openShownNotification(since); }, long ? 900 : 600);
       }, 300);
     };
     document.addEventListener('visibilitychange', onVis);
@@ -5945,7 +5963,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}

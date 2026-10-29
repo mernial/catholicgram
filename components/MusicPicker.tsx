@@ -32,7 +32,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
 }) {
-  // 저작권 걱정 없는 배경음악이 있으면 그것부터
+  // 가톨릭그램 음악(관리자가 넣은 곡·앱 기본 곡)이 있으면 그것부터
   const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length > 0 ? 'bgm' : 'youtube');
 
   // 노래 검색 (유튜브 뮤직·유튜브의 음악)
@@ -152,7 +152,7 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
           </div>
         ) : (<>
         <div className="flex border-b border-stone-100">
-          {tabBtn('bgm', '저작권 걱정 없는 음악')}
+          {tabBtn('bgm', '가톨릭그램 음악')}
           {tabBtn('youtube', '유튜브 뮤직에서 찾기')}
         </div>
 
