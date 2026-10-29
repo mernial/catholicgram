@@ -64,6 +64,38 @@ export function leaveInputForPanel(input: HTMLElement | null) {
   if (!realKeys || softKeyboardUp()) input?.blur();
 }
 
+// 실제 자판(아이패드+매직 키보드·블루투스 자판·컴퓨터)으로 대화방을 보는 중: 입력칸 밖에서 엔터를 누르거나 글자를 치면
+// 입력칸으로 들어가 바로 쓸 수 있게 (운영자 요청 — 예전엔 입력칸을 손으로 눌러야 했음). 화면 자판은 입력칸을 눌러야 뜨므로
+// 입력칸 밖의 키 입력은 실제 자판에서만 온다. 대화방 위에 다른 창(꾹 누르기 메뉴·사진 크게 보기·프로필 카드 등)이 떠 있거나
+// 단추에 초점이 있을 때의 엔터(그 단추 누르기)는 그대로 둔다
+export function useTypeToInput(getInput: () => HTMLTextAreaElement | null, enabled = true) {
+  const getRef = useRef(getInput);
+  getRef.current = getInput;
+  useEffect(() => {
+    if (!enabled) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+      const input = getRef.current();
+      if (!input || input.disabled || input.readOnly || !input.isConnected) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active === input || (active && (isTextInput(active) || active.isContentEditable || active.tagName === 'SELECT'))) return;
+      if (Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"]')).some(d => !d.contains(input))) return;
+      const enter = e.key === 'Enter';
+      const typing = e.key.length === 1 || e.key === 'Process' || e.keyCode === 229; // 글자 (한글 조합 시작 포함)
+      if (!enter && !typing) return;
+      const onControl = !!active && active !== document.body && !!active.closest('button, a, [role="button"], [role="tab"]');
+      if (onControl && (enter || e.key === ' ')) return;
+      if (enter) e.preventDefault(); // 엔터는 입력칸으로 들어가기만 (보내거나 줄을 바꾸지 않음)
+      setRealKeys(true);
+      input.focus({ preventScroll: true });
+      const end = input.value.length;
+      try { input.setSelectionRange(end, end); } catch { /* 무시 */ }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [enabled]);
+}
+
 export function useEnterSend(send: (typed: string) => void, value?: string) {
   const [enterSends, setEnterSends] = useState(false);
   useEffect(() => {

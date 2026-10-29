@@ -18,7 +18,7 @@ import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@
 import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
-import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
@@ -1596,6 +1596,8 @@ export default function Home() {
   const dmEnterRef = dmEnter.ref;
   const setDmInputEl = useCallback((el: HTMLTextAreaElement | null) => { messageInputRef.current = el; dmEnterRef(el); }, [dmEnterRef]);
   const dmRequest = activeTab === 'chat' && !!currentChatUser && isRequestThread(currentChatUser.id, chatMessages);
+  // 실제 자판으로 대화방을 볼 때 입력칸 밖에서 엔터·글자 → 입력칸으로 (메시지 요청은 빼고)
+  useTypeToInput(() => messageInputRef.current, activeTab === 'chat' && !dmRequest);
   dmRequestRef.current = dmRequest;
   // 입력 중 표시 (요청을 수락하기 전에는 내가 치는 것도 알리지 않음)
   const dmTyping = useTyping(activeTab === 'chat' && currentChatUser && user ? `dm:${[user.id, currentChatUser.id].sort().join(':')}` : null, user?.id, !dmRequest);

@@ -16,7 +16,7 @@ import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-act
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
-import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { askConfirm } from '@/components/ConfirmDialog';
@@ -411,6 +411,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   const me = members.some(m => m.user_id === user.id);
   const canWrite = !adminView && me && !error;
+  useTypeToInput(() => inputRef.current, !!canWrite); // 실제 자판: 입력칸 밖에서 엔터·글자 → 입력칸으로
   const canWriteRef = useRef(canWrite);
   canWriteRef.current = canWrite;
   const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
