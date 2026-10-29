@@ -299,10 +299,10 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
                     <div className="flex items-end justify-around" onPointerDown={e => e.stopPropagation()}>
                       <button onClick={() => onReact(current.id, 'pray')} className={item} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{current.pray}</button>
                       <button onClick={() => onReact(current.id, 'like')} className={item} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{current.like}</button>
-                      <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={item} aria-label="댓글"><Icon name="chat" className="w-8 h-8" />{commentCounts[current.id] || 0}</button>
+                      <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={item} aria-label="댓글"><Icon name="reply" className="w-8 h-8" />{commentCounts[current.id] || 0}</button>
                       {!mine && me && a && (
                         <button onClick={() => { setViewerOpen(false); onMessage({ id: g.userId, baptismal_name: a.baptismal_name, avatar_url: a.avatar_url || undefined, handle: (a as Author).handle || undefined, badge_type: (a as Author).badge_type || undefined }); }} className={item} aria-label="메시지">
-                          <Icon name="send" className="w-7 h-7" />메시지
+                          <Icon name="message" className="w-7 h-7" />메시지
                         </button>
                       )}
                     </div>

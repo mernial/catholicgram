@@ -307,7 +307,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                       ))}
                     </div>
                     <textarea value={reportReplyDrafts[r.id] || ''} onChange={e => setReportReplyDrafts(prev => ({ ...prev, [r.id]: e.target.value }))} rows={2} maxLength={500} placeholder="처리 결과를 적어주세요" className="w-full p-2.5 text-sm bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
-                    <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40"><Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />답변 보내기</button>
+                    <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40"><Icon name="sendRight" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />답변 보내기</button>
                   </div>
                 )}
               </div>
@@ -365,7 +365,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                     <b className="text-sm text-stone-900 truncate">{item.author_name || '교우'}</b>
                     {item.author_handle && <span className="text-xs text-stone-400 truncate">@{item.author_handle}</span>}
                   </span>
-                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.image_url && <Icon name="camera" className="w-3.5 h-3.5 inline-block align-[-0.15em] mr-1 text-stone-400" />}{item.content}</span>
+                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.image_url && <Icon name="image" className="w-3.5 h-3.5 inline-block align-[-0.15em] mr-1 text-stone-400" />}{item.content}</span>
                 </span>
                 <span className="text-stone-300 shrink-0">›</span>
               </button>
@@ -403,7 +403,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
                 {view === 'answered' && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1"><Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />보낸 답변{item.replied_at && <span className="font-normal text-blue-500"> · {new Date(item.replied_at).toLocaleString('ko-KR')}</span>}</p>
+                    <p className="text-[0.8125rem] font-bold text-blue-700 mb-1"><Icon name="reply" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />보낸 답변{item.replied_at && <span className="font-normal text-blue-500"> · {new Date(item.replied_at).toLocaleString('ko-KR')}</span>}</p>
                     <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
                   </div>
                 )}

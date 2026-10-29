@@ -79,7 +79,7 @@ export default function PostVideo({ src, poster, overlays, hasMusic, musicTitle,
           <Icon name="music" className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{musicTitle}</span>
         </button>
       ) : (
-        <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />숏폼</span>
+        <span className="absolute top-2.5 left-2.5 text-[0.75rem] font-bold text-white bg-black/45 rounded-full px-2 py-0.5"><Icon name="video" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />숏폼</span>
       )}
       {onOpen && (
         <button onClick={onOpen} className="absolute top-2.5 right-2.5 w-8 h-8 rounded-full bg-black/45 text-white text-sm flex items-center justify-center" aria-label="크게 보기"><Icon name="expand" className="w-4 h-4" /></button>
