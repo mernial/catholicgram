@@ -22,6 +22,7 @@ import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInpu
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { same } from '@/lib/typing-guard';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -108,7 +109,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         if (savingReactions.current.has(r.message_id)) return;
         next[r.message_id] = [...(next[r.message_id] || []), { user_id: r.user_id, emoji: r.emoji }];
       });
-      return next;
+      return same(prev, next); // 5초마다 다시 받을 때 바뀐 게 없으면 다시 그리지 않음 (치는 글자를 지키려고)
     });
   };
   const textIds = (rows: GroupMessage[]) => rows.filter(r => r.kind === 'text').map(r => r.id);

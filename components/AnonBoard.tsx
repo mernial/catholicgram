@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import type { ReportTarget } from '@/components/ReportDialog';
 import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { afterTyping } from '@/lib/typing-guard';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -162,8 +163,9 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
   useEffect(() => {
     if (!user) return;
     fetchPosts();
-    const refresh = setInterval(() => { if (document.visibilityState !== 'hidden') fetchPosts(); }, 60000);
-    const tick = setInterval(() => setTick(t => t + 1), 60000);
+    // 고민글·답글을 쓰는 중이면 손을 멈춘 뒤에 (다시 그리면 아이폰 한글 자판이 조합 중이던 글자를 잃음, lib/typing-guard)
+    const refresh = setInterval(() => { if (document.visibilityState !== 'hidden') afterTyping('anon-posts', fetchPosts); }, 60000);
+    const tick = setInterval(() => afterTyping('anon-tick', () => setTick(t => t + 1)), 60000);
     return () => { clearInterval(refresh); clearInterval(tick); };
   }, [user]);
 

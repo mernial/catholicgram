@@ -41,6 +41,7 @@ import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
+import { afterTyping, hasUnsentText, same } from '@/lib/typing-guard';
 import ReportDialog, { ReportTarget } from '@/components/ReportDialog';
 import SettingsModal from '@/components/SettingsModal';
 import AdminMembers from '@/components/AdminMembers';
@@ -750,7 +751,7 @@ export default function Home() {
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
     const savedVisibility = storageGet('postVisibility');
     if (savedVisibility === 'followers' || savedVisibility === 'private') setComposerVisibility(savedVisibility);
-    const intentionTimer = setInterval(() => { if (document.visibilityState !== 'hidden') fetchIntentions(); }, 3 * 60 * 1000);
+    const intentionTimer = setInterval(() => { if (document.visibilityState !== 'hidden') afterTyping('intentions', fetchIntentions); }, 3 * 60 * 1000);
 
     // 앱을 닫았다가(다른 앱으로 갔다가) 다시 열면: 새 버전이면 새로고침, 아니면 글·기도지향·공지를 새로 불러오기
     let hiddenAt = 0;
@@ -765,7 +766,9 @@ export default function Home() {
         const { version } = await res.json();
         // 방금 알림으로 화면을 열었으면 새로고침은 다음에 (연 화면이 사라지지 않게)
         const justOpened = !!lastOpenedLink && Date.now() - lastOpenedLink.at < 15 * 1000;
-        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
+        // 입력칸에 보내지 않은 글이 있으면(건의·댓글·메시지를 쓰다 잠깐 나갔다 옴) 새로고침하지 않고 '새로 고침' 띠만
+        if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened && hasUnsentText()) setUpdateReady(true);
+        else if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
           // 로그인 토큰을 새로 받는 중이면 끝난 뒤에 새로고침 (도중에 끊기면 로그인이 풀릴 수 있음)
           await supabase.auth.getSession().catch(() => {});
           // 앱을 나갔다가 돌아온 것이므로 새로고침 뒤에도 메인 화면부터 (글을 쓰는 중이면 그 화면 그대로)
@@ -1356,7 +1359,7 @@ export default function Home() {
       .order('created_at', { ascending: true });
     const data = all ? all.filter(m => afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
     if (data) {
-      setChatMessages(data);
+      setChatMessages(prev => same(prev, data)); // 15초마다 다시 받을 때 바뀐 게 없으면 다시 그리지 않음 (치는 글자를 지키려고)
       // 메시지 요청이면 수락하기 전까지 읽음 표시를 하지 않는다 (상대가 읽었는지 모르게)
       if (!isRequestThread(partnerId, data) && data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
       loadMessageHearts(data.slice(-200).map(m => m.id));
@@ -1427,7 +1430,7 @@ export default function Home() {
     });
     setMessageHearts(prev => {
       savingHearts.current.forEach(k => { next[k] = prev[k] || []; });
-      return next;
+      return same(prev, next);
     });
   };
   // 내 감정 표시를 정하기: 같은 것을 다시 고르면 취소
@@ -1889,7 +1892,7 @@ export default function Home() {
   const [storyOpenRequest, setStoryOpenRequest] = useState<string | null>(null);
   // 앱을 보고 있는 동안 스토리를 3분마다 새로 (새로 올라온 스토리가 보이게)
   useEffect(() => {
-    const t = setInterval(() => { if (document.visibilityState !== 'hidden') fetchStories(); }, 3 * 60 * 1000);
+    const t = setInterval(() => { if (document.visibilityState !== 'hidden') afterTyping('stories', fetchStories); }, 3 * 60 * 1000);
     return () => clearInterval(t);
   }, []);
   const fetchStories = async () => {
@@ -2981,8 +2984,6 @@ export default function Home() {
         return !!p?.at && Date.now() - p.at < 2 * 60 * 1000;
       } catch { return false; }
     };
-    const typing = () => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('textarea, input[type=text], input:not([type])')]
-      .some(el => el.value.trim() && el.offsetParent !== null && !el.readOnly);
     const backToMain = () => {
       closeOverlaysForLink();
       const cur = currentScreenRef.current;
@@ -3003,7 +3004,7 @@ export default function Home() {
       const handled = () => linkHandledAt > since || (!!lastOpenedLink && lastOpenedLink.at > since);
       setTimeout(async () => {
         if (document.visibilityState !== 'visible' || handled() || await pendingLink()) return; // 알림을 눌러 돌아옴 → 그 화면으로
-        if (composerOpenRef.current || typing() || awayAt >= since - 5000) return;            // 쓰던 글·잠깐 밖에 다녀옴 → 그대로
+        if (composerOpenRef.current || hasUnsentText() || awayAt >= since - 5000) return;            // 쓰던 글·잠깐 밖에 다녀옴 → 그대로
         backToMain();
         setTimeout(() => { if (document.visibilityState === 'visible' && !handled()) openShownNotification(since); }, 900);
       }, 300);
@@ -3202,7 +3203,8 @@ export default function Home() {
       if (storageGet('alertSound') !== 'off') playAlertSound();
     };
     // 휴대폰 알림(푸시)이 따로 오므로 1분마다만 확인, 앱이 뒤에 있으면 쉰다 (전송량 절약)
-    const interval = setInterval(() => { if (document.visibilityState !== 'hidden') refreshAlerts(user.id); }, 60000);
+    // 글을 치는 중이면 손을 멈춘 뒤에 (한꺼번에 여러 번 다시 그리면 아이폰 한글 자판이 조합 중이던 글자를 잃음, lib/typing-guard)
+    const interval = setInterval(() => { if (document.visibilityState !== 'hidden') afterTyping('alerts', () => refreshAlerts(user.id)); }, 60000);
     const onVisible = () => { if (document.visibilityState === 'visible') refreshAlerts(user.id); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {

@@ -23,6 +23,7 @@ import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { same } from '@/lib/typing-guard';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -483,7 +484,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         if (savingReactions.current.has(r.message_id)) return;
         next[r.message_id] = [...(next[r.message_id] || []), { user_id: r.user_id, emoji: r.emoji }];
       });
-      return next;
+      return same(prev, next); // 5초마다 다시 받을 때 바뀐 게 없으면 다시 그리지 않음 (치는 글자를 지키려고)
     });
   };
   useEffect(() => {
