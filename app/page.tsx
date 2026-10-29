@@ -362,9 +362,10 @@ export default function Home() {
   const [composerStickers, setComposerStickers] = useState<Sticker[]>([]); // 글쓰기: 붙인 이모티콘 (글 끝에 한 줄씩 저장)
   const [composerStickerOpen, setComposerStickerOpen] = useState(false);
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
+  const [editingPhotoStep, setEditingPhotoStep] = useState<'crop' | 'sticker'>('crop'); // '이모티콘 붙이기'로 열면 바로 내 이모티콘
   // 글 고치기의 사진: 원래 사진은 주소만, 새로 넣거나 편집한 사진은 파일과 미리보기 주소
   const [editPhotos, setEditPhotos] = useState<{ url: string; file?: File }[]>([]);
-  const [editPhotoEditor, setEditPhotoEditor] = useState<{ idx: number; file: File; step?: 'crop' | 'cover' } | null>(null);
+  const [editPhotoEditor, setEditPhotoEditor] = useState<{ idx: number; file: File; step?: 'crop' | 'cover' | 'sticker' } | null>(null);
   const [editPhotoLoading, setEditPhotoLoading] = useState(false);
   const captionRef = useRef<HTMLTextAreaElement>(null);
   const [composerVisibility, setComposerVisibility] = useState<Visibility>('public'); // 새 글 공개 범위 (마지막 선택 기억)
@@ -2544,7 +2545,7 @@ export default function Home() {
     else window.prompt('이 주소를 복사하세요', url);
   };
   // 글 고치기: 사진 편집 열기 (원래 사진은 내려받아 파일로)
-  const openEditPhotoEditor = async (idx: number, step: 'crop' | 'cover' = 'crop') => {
+  const openEditPhotoEditor = async (idx: number, step: 'crop' | 'cover' | 'sticker' = 'crop') => {
     const ph = editPhotos[idx];
     if (!ph) return;
     if (ph.file) { setEditPhotoEditor({ idx, file: ph.file, step }); return; }
@@ -4450,9 +4451,15 @@ export default function Home() {
                       </div>
                     )}
                     {previewUrls.length > 0 && !videoPreviewUrl && (
-                      <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진 자르기·가리기">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
-                      </button>
+                      <>
+                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-3 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진 자르기·가리기">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                        </button>
+                        {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
+                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-16 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진에 이모티콘 붙이기">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2" /><path d="M9 9.5h.01M15 9.5h.01" strokeWidth="3" /></svg>
+                        </button>
+                      </>
                     )}
                     {videoPreviewUrl && <button type="button" onClick={clearVideo} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white text-xl leading-none" aria-label="영상 빼기">×</button>}
                     {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/55 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
@@ -4544,7 +4551,11 @@ export default function Home() {
                     <div className="relative bg-stone-100 flex justify-center">
                       <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
                       {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
-                      <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">✂️ 자르기·가리기</button>
+                      <div className="absolute bottom-3 left-3 flex gap-2">
+                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">✂️ 자르기·가리기</button>
+                        {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
+                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">🙂 이모티콘 붙이기</button>
+                      </div>
                     </div>
                     <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
                       {previewUrls.map((url, idx) => (
@@ -4653,6 +4664,7 @@ export default function Home() {
             {editingPhotoIdx !== null && selectedFiles[editingPhotoIdx] && (
               <PhotoEditor
                 file={selectedFiles[editingPhotoIdx]}
+                startStep={editingPhotoStep}
                 onCancel={() => setEditingPhotoIdx(null)}
                 onDone={edited => {
                   const idx = editingPhotoIdx;
@@ -6054,7 +6066,7 @@ export default function Home() {
         };
         const chevron = <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-5 h-5 text-stone-400 shrink-0" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>;
         const row = 'w-full min-h-[3.75rem] px-4 py-3 flex items-center gap-4 text-left active:bg-stone-50';
-        const tool = 'inline-flex items-center gap-2 py-2 text-[1rem] text-stone-800 disabled:opacity-40';
+        const tool = 'inline-flex items-center gap-1.5 py-2 text-[0.9375rem] text-stone-800 disabled:opacity-40';
         return (
           <div className="fixed inset-0 z-[75] bg-black/50 flex items-stretch sm:items-center justify-center">
             <section role="dialog" aria-label="게시글 수정" className="bg-stone-50 w-full h-full sm:h-[90dvh] sm:max-w-xl sm:rounded-3xl overflow-hidden flex flex-col">
@@ -6090,14 +6102,17 @@ export default function Home() {
                       <>
                         <PhotoStrip photos={editPhotos} selected={sel} onSelect={setEditSelIdx} onMove={movePhoto} />
                         {/* 고른 사진에 할 일 */}
-                        <div className="px-4 mt-2 flex items-center gap-6">
+                        <div className="px-4 mt-2 flex items-center justify-between gap-2">
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'crop')} disabled={editPhotoLoading} className={tool}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" /></svg>자르기
                           </button>
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'cover')} disabled={editPhotoLoading} className={tool}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><circle cx="11" cy="7.5" r="3.5" /><path d="M4 20c0-3.6 3.1-6 7-6 1.3 0 2.5.3 3.5.8" strokeDasharray="2 2.4" /><circle cx="18.5" cy="17.5" r="2.5" strokeDasharray="1.6 1.6" /></svg>가리기
                           </button>
-                          <button type="button" onClick={removeSelected} className={`${tool} ml-auto`}>
+                          <button type="button" onClick={() => openEditPhotoEditor(sel, 'sticker')} disabled={editPhotoLoading} className={tool}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2" /><path d="M9 9.5h.01M15 9.5h.01" strokeWidth="3" /></svg>이모티콘
+                          </button>
+                          <button type="button" onClick={removeSelected} className={tool}>
                             <Icon name="trash" className="w-6 h-6" />삭제
                           </button>
                         </div>

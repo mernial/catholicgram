@@ -269,7 +269,7 @@ const moveTo = (order: string[], id: string, to: number) => {
 
 // 입력칸 아래 이모티콘 칸: 위에 탭(★ 즐겨찾기 + 캐릭터들, 옆으로 밀어 보기), 아래에 그 탭의 이모티콘 (마지막에 본 탭을 기억)
 //  - 탭 순서 바꾸기: 탭을 꾹 누른 채 옆으로 끌기, 또는 '순서' 단추 → 목록에서 줄을 꾹 누른 채 위아래로 끌기
-export default function StickerPanel({ picker }: { picker: StickerPicker }) {
+export default function StickerPanel({ picker, closable = true }: { picker: StickerPicker; closable?: boolean }) {
   const favs = useStickerFavorites();
   const packs = useStickerAccess(); // 쓸 수 있는 캐릭터만 (전용 이모티콘은 관리자·선물받은 교우에게만)
   const visible = [FAV_TAB, ...packs.map(p => p.id)];
@@ -507,7 +507,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
             <span className="text-base leading-none" aria-hidden="true">⇄</span>순서
           </button>
         </div>
-        <button type="button" onClick={picker.close} className="shrink-0 w-9 rounded-xl text-stone-400 text-2xl leading-none" aria-label="이모티콘 닫기">×</button>
+        {closable && <button type="button" onClick={picker.close} className="shrink-0 w-9 rounded-xl text-stone-400 text-2xl leading-none" aria-label="이모티콘 닫기">×</button>}
       </div>
       {arranging ? (
         // 탭 순서 바꾸기: 줄을 꾹 누른 채 위아래로 끌기 (오른쪽 ≡ 는 잡자마자 끌림, 키보드는 ≡ 에서 ↑↓)
