@@ -3408,6 +3408,7 @@ export default function Home() {
   const closeAllModals = () => {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
+    if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
     if (actionModalUser) { setActionModalUser(null); return; }
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
@@ -3766,11 +3767,12 @@ export default function Home() {
             <button onClick={() => window.history.back()} className="text-stone-600 hover:text-black" aria-label="뒤로">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <div className="flex items-center gap-2 min-w-0">
+            {/* 사진·이름을 누르면 그 교우 프로필 카드 (공간 방문하기·팔로우·소개, 사진은 카드에서 눌러 크게) */}
+            <button type="button" disabled={!currentChatUser}
+              onClick={() => currentChatUser && openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })}
+              className="flex items-center gap-2 min-w-0 text-left" aria-label={`${currentChatUser?.baptismal_name || '교우'}님 프로필 보기`}>
               {currentChatUser?.avatar_url ? (
-                <button onClick={() => setAvatarPreview({ url: currentChatUser.avatar_url!, name: currentChatUser.baptismal_name })} className="shrink-0" aria-label="프로필 사진 크게 보기">
-                  <img loading="lazy" src={currentChatUser.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
-                </button>
+                <img loading="lazy" src={currentChatUser.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(currentChatUser?.baptismal_name)}</div>
               )}
@@ -3781,7 +3783,7 @@ export default function Home() {
                 </div>
                 <p className="text-[0.75rem] text-stone-400 truncate">@{currentChatUser?.handle}</p>
               </div>
-            </div>
+            </button>
           </div>
         ) : null}
         {activeTab === 'chat' && currentChatUser ? (
@@ -4786,11 +4788,16 @@ export default function Home() {
             {!partner.isRequest && idx === requestCount && requestCount > 0 && <p className="px-4 py-2 bg-stone-50 text-[0.8125rem] font-bold text-stone-500">대화</p>}
             <SwipeRow {...swipe(`dm-${partner.id}`, () => leaveDmThread(partner))}>
             <button onClick={() => openChatRoom(partner)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
-              {partner.avatar_url ? (
-                <img loading="lazy" src={partner.avatar_url} alt="프로필" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</div>
-              )}
+              {/* 사진만 누르면 프로필 카드 (카카오톡처럼), 줄의 나머지는 대화방 */}
+              <span role="button" tabIndex={0} aria-label={`${partner.baptismal_name}님 프로필 보기`} className="shrink-0 rounded-full"
+                onClick={e => { e.stopPropagation(); openProfileCard({ id: partner.id, name: partner.baptismal_name, avatar_url: partner.avatar_url, handle: partner.handle, badge_type: partner.badge_type }); }}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openProfileCard({ id: partner.id, name: partner.baptismal_name, avatar_url: partner.avatar_url, handle: partner.handle, badge_type: partner.badge_type }); } }}>
+                {partner.avatar_url ? (
+                  <img loading="lazy" src={partner.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
+                ) : (
+                  <span className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</span>
+                )}
+              </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
@@ -5033,7 +5040,7 @@ export default function Home() {
               <div className="px-6 pt-8 pb-5 flex flex-col items-center text-center">
                 <CelebrateAvatar size={13} birthday={actionUserDays?.id === u.id && isTodayMonthDay(actionUserDays.birthday)} feast={actionUserDays?.id === u.id && isTodayMonthDay(actionUserDays.feast_day)}>
                   {u.avatar_url
-                    ? <img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-stone-300" />
+                    ? <button type="button" onClick={() => setAvatarPreview({ url: u.avatar_url!, name: u.baptismal_name })} className="rounded-full" aria-label="프로필 사진 크게 보기"><img src={u.avatar_url} alt={`${u.baptismal_name}님 프로필 사진`} className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full object-cover border-4 border-white shadow-lg ring-1 ring-stone-300" /></button>
                     : <span className="w-52 h-52 max-w-[64vw] max-h-[64vw] rounded-full bg-stone-200 text-stone-600 text-7xl font-serif font-bold flex items-center justify-center border-4 border-white shadow-lg">{initial(u.baptismal_name, '교')}</span>}
                 </CelebrateAvatar>
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
