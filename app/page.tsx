@@ -19,7 +19,7 @@ import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
-import { askConfirm } from '@/components/ConfirmDialog';
+import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
@@ -1731,6 +1731,12 @@ export default function Home() {
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([row]));
+    // 생일 칸을 앱이 읽을 권한이 없으면(birthday.sql 의 grant 전 — 이메일 감추기로 앱은 허락된 칸만 읽음) 생일 없이라도 저장
+    let birthdaySkipped = false;
+    if (error && error.code !== '23505' && birthday && /birthday|permission denied|42501/i.test(`${error.code} ${error.message}`)) {
+      ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]));
+      birthdaySkipped = !error;
+    }
 
     if (!error) {
       // 실명은 비공개 표에, 내가 쓴 글/댓글의 작성자 이름은 새 닉네임으로
@@ -1741,8 +1747,10 @@ export default function Home() {
       setNeedsProfileSetup(false);
       setProfileEditMode(false);
       fetchPosts();
+      if (birthdaySkipped) showAlert({ title: '생일은 아직 저장하지 못했어요', message: isAdmin ? '나머지는 저장했어요.\n관리자: Supabase 에서 supabase/birthday.sql 을 다시 실행해 주세요 (생일 칸 읽기 권한).' : '나머지는 저장했어요. 운영자가 준비를 마치면 생일도 저장할 수 있어요.', icon: 'calendar' });
     } else {
-      setSetupError(error.code === '23505' ? '이미 사용 중인 핸들(@아이디)입니다. 다른 아이디를 입력해주세요.' : '저장하지 못했어요. 잠시 후 다시 시도해주세요.');
+      // 이유를 작게 함께 보여 줌 (무엇 때문인지 알 수 있게)
+      setSetupError(error.code === '23505' ? '이미 사용 중인 핸들(@아이디)입니다. 다른 아이디를 입력해주세요.' : `저장하지 못했어요. 잠시 후 다시 시도해주세요.\n(${error.message || error.code})`);
     }
     setLoading(false);
   };
@@ -6385,7 +6393,7 @@ export default function Home() {
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 프로필 사진 아래에 &lsquo;오늘 축일이에요&rsquo; 비둘기가 날아와요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
 
-              {setupError && <p className="text-red-500 text-xs text-center">{setupError}</p>}
+              {setupError && <p className="text-red-500 text-xs text-center whitespace-pre-line break-words">{setupError}</p>}
               
               <button 
                 type="submit" 
