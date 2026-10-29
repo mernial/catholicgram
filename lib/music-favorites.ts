@@ -45,3 +45,14 @@ export function useMusicFavorites() {
   };
   return { list, has: (f: MusicFavorite) => keys.has(musicFavKey(f)), toggle };
 }
+
+// 같은 노래가 둘이라 하나를 지우고 다른 곡으로 합쳤을 때(관리자 음악 중복 정리) 즐겨찾기도 남긴 곡으로
+export function replaceMusicFavorite(dropId: string, keepId: string, keepTitle: string) {
+  const cur = readMusicFavorites();
+  if (!cur.some(f => f.kind === 'bgm' && f.id === dropId)) return;
+  const keepKey = `bgm:${keepId}`;
+  const hasKeep = cur.some(f => musicFavKey(f) === keepKey);
+  const next = cur.flatMap(f => (f.kind === 'bgm' && f.id === dropId ? (hasKeep ? [] : [{ kind: 'bgm' as const, id: keepId, title: keepTitle }]) : [f]));
+  try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* 저장 불가 */ }
+  window.dispatchEvent(new Event(EVENT));
+}
