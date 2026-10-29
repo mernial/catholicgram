@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react';
 import { STICKER_PACKS } from '@/lib/stickers';
+import Icon from '@/components/Icon';
 
 // 관리자가 보낸 선물이 도착하면 뜨는 선물 상자 (전용 이모티콘 선물 · 사연 선물 · 앞으로 더할 선물).
 // 상자를 누르면 빛나며 열리고(축하 소리: 팡파르 + 박수), 꽃가루가 터지며 선물한 이모티콘 하나가 상자에서 튀어나온 뒤
@@ -144,7 +145,7 @@ export default function GiftBox({ gift, onOpened, onClose, onShowLetters, onUseM
               </button>
               {onUseMusic && (
                 <button type="button" onClick={useMusic} disabled={usedMusic !== null} className={`w-full py-3 rounded-2xl font-bold ${usedMusic === 'done' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-violet-700 text-white disabled:opacity-60'}`}>
-                  {usedMusic === 'done' ? '✓ 내 공간 배경음악으로 정했어요' : usedMusic === 'busy' ? '정하는 중…' : '🎵 내 공간 배경음악으로 하기'}
+                  {usedMusic === 'done' ? '✓ 내 공간 배경음악으로 정했어요' : usedMusic === 'busy' ? '정하는 중…' : <><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />내 공간 배경음악으로 하기</>}
                 </button>
               )}
               <p className="text-[0.875rem] text-stone-600 leading-relaxed">교우들이 내 공간을 누르면 이 노래가 흘러요.<br />글을 쓸 때 <b>음악 추가 › 🎁 선물받은 노래</b>에서도 고를 수 있어요</p>

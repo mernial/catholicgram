@@ -71,7 +71,7 @@ export default function MemberMusicGift({ user, onClose, onGifted, onOpenVault }
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="font-bold text-stone-900">🎵 {user.name}님께 노래 선물</h2>
+            <h2 className="font-bold text-stone-900 flex items-center gap-1.5"><Icon name="music" className="w-5 h-5 text-violet-700 shrink-0" />{user.name}님께 노래 선물</h2>
             <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">🔒 보관 음악에 올려 둔 노래 중에서 골라요. 받은 교우는 내 공간 배경음악·게시글 음악으로 쓸 수 있어요.</p>
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="닫기">×</button>

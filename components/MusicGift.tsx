@@ -82,7 +82,7 @@ export default function MusicGift({ track, onClose, onGifted }: {
         <div className="p-4 border-b border-stone-100 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-bold text-stone-900">🎁 노래 선물하기</h2>
-            <p className="mt-0.5 text-sm text-violet-800 font-bold truncate">🎵 {track.title}</p>
+            <p className="mt-0.5 text-sm text-violet-800 font-bold truncate"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{track.title}</p>
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="닫기">×</button>
         </div>
