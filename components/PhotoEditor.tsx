@@ -3,15 +3,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Cropper from 'react-easy-crop';
 import Icon from '@/components/Icon';
+import StickerPanel, { useStickerPicker } from '@/components/StickerPanel';
+import type { Sticker } from '@/lib/stickers';
 
-// 사진 편집: ① 원하는 부분만 자르기 → ② 이모티콘·모자이크로 가리기(옮기기·크기·회전)
-// 가린 것은 사진에 합쳐서 새 사진으로 만든다 (원본의 가린 부분은 올라가지 않음).
+// 사진 편집: ① 원하는 부분만 자르기 → ② 꾸미기·가리기: 내 이모티콘(채팅 이모티콘, 선물받은·관리자 전용 포함)·그림 문자·모자이크
+//    (옮기기·크기·회전·좌우 뒤집기). 붙인 것은 사진에 합쳐서 새 사진으로 만든다 (원본의 가린 부분은 올라가지 않음).
 
 type Area = { x: number; y: number; width: number; height: number };
 interface Cover {
   id: string;
-  kind: 'emoji' | 'mosaic';
+  kind: 'emoji' | 'mosaic' | 'sticker';
   emoji?: string;
+  src?: string;           // 내 이모티콘 그림 (kind 'sticker')
+  label?: string;
+  flip?: boolean;         // 좌우 뒤집기
   x: number; y: number;   // 가운데 위치 (사진 너비·높이 대비 0~1)
   size: number;           // 크기 (사진 너비 대비)
   rotation: number;       // 도(°)
@@ -41,7 +46,8 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   file: File;
   onDone: (edited: File) => void;
   onCancel: () => void;
-  startStep?: 'crop' | 'cover'; // 'cover': 자르지 않고 바로 ② 가리기 (게시글 수정의 '가리기')
+  // 'cover': 자르지 않고 바로 ② (게시글 수정의 '가리기'), 'sticker': 바로 ② 의 '내 이모티콘' (글쓰기·수정의 '이모티콘 붙이기')
+  startStep?: 'crop' | 'cover' | 'sticker';
 }) {
   const srcUrl = useMemo(() => URL.createObjectURL(file), [file]);
   useEffect(() => () => URL.revokeObjectURL(srcUrl), [srcUrl]);
@@ -60,6 +66,22 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const [covers, setCovers] = useState<Cover[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [tool, setTool] = useState<'sticker' | 'emoji'>(startStep === 'cover' ? 'emoji' : 'sticker'); // 아래 칸: 내 이모티콘 / 그림 문자·모자이크
+  // 이모티콘 칸(채팅과 같은 칸 — 즐겨찾기·탭 순서·전용 이모티콘 그대로): 고르면 바로 사진 가운데에 붙임
+  const pickerBase = useStickerPicker(() => {});
+  const stickerPicker = { ...pickerBase, open: true, picked: null, pick: (st: Sticker) => addCover({ kind: 'sticker', src: st.src, label: st.label, size: 0.32 }) };
+  // 사진 칸 크기: 남은 자리(위 머리줄·아래 칸을 뺀 곳)에 사진 비율대로 꽉 차게
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [stage, setStage] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const measure = () => setStage({ w: el.clientWidth, h: el.clientHeight });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [step]);
   const boxRef = useRef<HTMLDivElement>(null);
   const coversRef = useRef(covers);
   coversRef.current = covers;
@@ -93,7 +115,7 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   // '가리기'로 열면 사진 전체를 그대로 두고 바로 가리기 단계로
   const startedCover = useRef(false);
   useEffect(() => {
-    if (startStep !== 'cover' || !natural || startedCover.current) return;
+    if (startStep === 'crop' || !natural || startedCover.current) return;
     startedCover.current = true;
     goCover({ x: 0, y: 0, width: natural.w, height: natural.h });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -184,6 +206,12 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
     out.width = W; out.height = H;
     const ctx = out.getContext('2d')!;
     ctx.drawImage(base, 0, 0);
+    // 내 이모티콘 그림은 미리 다 불러 둠
+    const stickerImgs = new Map<string, HTMLImageElement>();
+    for (const c of covers) {
+      if (c.kind !== 'sticker' || !c.src || stickerImgs.has(c.src)) continue;
+      try { stickerImgs.set(c.src, await loadImage(c.src)); } catch { /* 못 불러온 그림은 빼고 */ }
+    }
     // 모자이크용: 작게 줄였다가 크게 늘린 사진
     let pixel: HTMLCanvasElement | null = null;
     if (covers.some(c => c.kind === 'mosaic')) {
@@ -210,9 +238,22 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
         ctx.clip();
         ctx.drawImage(pixel, 0, 0);
         ctx.restore();
+      } else if (c.kind === 'sticker' && c.src) {
+        const im = stickerImgs.get(c.src);
+        if (!im) continue;
+        // 칸(s×s) 안에 비율대로
+        const a = im.naturalWidth / Math.max(1, im.naturalHeight);
+        const dw = a >= 1 ? s : s * a, dh = a >= 1 ? s / a : s;
+        ctx.save();
+        ctx.translate(cx, cy); ctx.rotate(rad);
+        if (c.flip) ctx.scale(-1, 1);
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(im, -dw / 2, -dh / 2, dw, dh);
+        ctx.restore();
       } else if (c.emoji) {
         ctx.save();
         ctx.translate(cx, cy); ctx.rotate(rad);
+        if (c.flip) ctx.scale(-1, 1);
         ctx.font = `${s}px ${EMOJI_FONT}`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(c.emoji, 0, s * 0.05);
@@ -257,14 +298,14 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
         </>
       ) : (
         <>
-          {head('가리기·꾸미기',
+          {head('꾸미기·가리기',
             <button onClick={() => { setStep('crop'); setSelectedId(null); }} className="px-2 py-2 text-[1rem] text-white/80">← 자르기</button>,
             <button onClick={finish} disabled={saving} className="px-2 py-2 text-[1rem] font-bold text-[#fbe7b0] disabled:opacity-40">{saving ? '만드는 중' : '완료'}</button>)}
-          <div className="flex-1 min-h-0 flex items-center justify-center px-3">
+          <div ref={stageRef} className="flex-1 min-h-0 flex items-center justify-center px-3 py-2">
             <div
               ref={boxRef}
               className="relative touch-none overflow-hidden [container-type:inline-size]"
-              style={{ aspectRatio: String(ratio), width: `min(100%, calc((100dvh - 330px) * ${ratio}))` }}
+              style={{ aspectRatio: String(ratio), width: stage ? Math.max(40, Math.min(stage.w - 24, (stage.h - 16) * ratio)) : '100%' }}
               onPointerDown={onBoxDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
             >
               {cropped && <img src={cropped.url} alt="" className="absolute inset-0 w-full h-full pointer-events-none" draggable={false} />}
@@ -277,7 +318,9 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
                 >
                   {c.kind === 'mosaic'
                     ? <span className="absolute inset-0 rounded-[18%] backdrop-blur-md bg-white/10 border border-white/40" />
-                    : <span style={{ fontSize: `${c.size * 100}cqw`, lineHeight: 1, fontFamily: EMOJI_FONT }}>{c.emoji}</span>}
+                    : c.kind === 'sticker'
+                      ? <img src={c.src} alt={c.label || '이모티콘'} draggable={false} className="w-full h-full object-contain pointer-events-none" style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
+                      : <span style={{ fontSize: `${c.size * 100}cqw`, lineHeight: 1, fontFamily: EMOJI_FONT, transform: c.flip ? 'scaleX(-1)' : undefined }}>{c.emoji}</span>}
                   {selectedId === c.id && (
                     <span onPointerDown={e => onHandleDown(e, c)} className="absolute -right-5 -bottom-5 w-11 h-11 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white flex items-center justify-center font-black text-2xl shadow-lg" style={{ transform: `rotate(${-c.rotation}deg)` }} aria-label="돌리기·크기">↻</span>
                   )}
@@ -285,32 +328,48 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
               ))}
             </div>
           </div>
-          <div className="shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-3 bg-black">
-            {selected ? (
-              <>
-                <label className="flex items-center gap-3 text-white text-[0.875rem]">
-                  <span className="w-10 shrink-0">크기</span>
-                  <input type="range" min={0.05} max={0.9} step={0.01} value={selected.size} onChange={e => update(selected.id, { size: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" />
-                </label>
-                <label className="flex items-center gap-3 text-white text-[0.875rem]">
-                  <span className="w-10 shrink-0">회전</span>
-                  <input type="range" min={-180} max={180} step={1} value={selected.rotation} onChange={e => update(selected.id, { rotation: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" />
-                </label>
-                <div className="flex gap-2">
-                  <button onClick={() => setSelectedId(null)} className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-[0.875rem] font-bold">다른 것 붙이기</button>
-                  <button onClick={() => { setCovers(prev => prev.filter(c => c.id !== selected.id)); setSelectedId(null); }} className="flex-1 py-2.5 rounded-xl bg-red-500/90 text-white text-[0.875rem] font-bold"><Icon name="trash" className="w-4 h-4 inline-block align-[-0.2em] mr-1" />지우기</button>
+          {selected ? (
+            <div className="shrink-0 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-3 bg-black">
+              <label className="flex items-center gap-3 text-white text-[0.875rem]">
+                <span className="w-10 shrink-0">크기</span>
+                <input type="range" min={0.05} max={0.9} step={0.01} value={selected.size} onChange={e => update(selected.id, { size: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" aria-label="크기" />
+              </label>
+              <label className="flex items-center gap-3 text-white text-[0.875rem]">
+                <span className="w-10 shrink-0">회전</span>
+                <input type="range" min={-180} max={180} step={1} value={selected.rotation} onChange={e => update(selected.id, { rotation: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" aria-label="회전" />
+                <button onClick={() => update(selected.id, { rotation: 0 })} disabled={!selected.rotation} className="shrink-0 px-2.5 py-1 rounded-lg bg-white/10 text-[0.8125rem] font-bold disabled:opacity-30">바로</button>
+              </label>
+              <div className="flex gap-2">
+                {selected.kind !== 'mosaic' && (
+                  <button onClick={() => update(selected.id, { flip: !selected.flip })} className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-[0.875rem] font-bold">⇋ 좌우 뒤집기</button>
+                )}
+                <button onClick={() => setSelectedId(null)} className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-[0.875rem] font-bold">＋ 더 붙이기</button>
+                <button onClick={() => { setCovers(prev => prev.filter(c => c.id !== selected.id)); setSelectedId(null); }} className="flex-1 py-2.5 rounded-xl bg-red-500/90 text-white text-[0.875rem] font-bold"><Icon name="trash" className="w-4 h-4 inline-block align-[-0.2em] mr-1" />지우기</button>
+              </div>
+              <p className="text-center text-[0.75rem] text-white/60">끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 크기·회전을 바꿔요</p>
+            </div>
+          ) : (
+            <div className="shrink-0 bg-black">
+              {/* 아래 칸: 내 이모티콘 / 그림 문자·모자이크 */}
+              <div className="flex gap-2 px-4 pt-2 pb-2" role="tablist" aria-label="붙일 것">
+                {([['sticker', '내 이모티콘'], ['emoji', '그림 문자 · 모자이크']] as const).map(([k, label]) => (
+                  <button key={k} role="tab" aria-selected={tool === k} onClick={() => setTool(k)}
+                    className={`flex-1 py-2 rounded-xl text-[0.875rem] font-bold ${tool === k ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{k === 'sticker' ? '🙂 ' : ''}{label}</button>
+                ))}
+              </div>
+              {tool === 'sticker' ? (
+                <StickerPanel picker={stickerPicker} closable={false} />
+              ) : (
+                <div className="px-4 pt-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
+                  <button onClick={() => addCover({ kind: 'mosaic', size: 0.3 })} className="w-full py-2.5 rounded-xl bg-white text-stone-900 text-[0.9375rem] font-bold">▦ 모자이크로 가리기</button>
+                  <div className="grid grid-cols-9 gap-1">
+                    {EMOJIS.map(e => <button key={e} onClick={() => addCover({ kind: 'emoji', emoji: e, size: 0.25 })} className="text-[1.6rem] py-1 rounded-lg active:bg-white/10" style={{ fontFamily: EMOJI_FONT }} aria-label={`${e} 붙이기`}>{e}</button>)}
+                  </div>
+                  <p className="text-center text-[0.75rem] text-white/60">붙인 것을 끌어서 옮기고, ↻ 손잡이나 아래 막대로 크기·회전을 바꿔요</p>
                 </div>
-              </>
-            ) : (
-              <>
-                <button onClick={() => addCover({ kind: 'mosaic', size: 0.3 })} className="w-full py-2.5 rounded-xl bg-white text-stone-900 text-[0.9375rem] font-bold">▦ 모자이크로 가리기</button>
-                <div className="grid grid-cols-9 gap-1">
-                  {EMOJIS.map(e => <button key={e} onClick={() => addCover({ kind: 'emoji', emoji: e, size: 0.25 })} className="text-[1.6rem] py-1 rounded-lg active:bg-white/10" style={{ fontFamily: EMOJI_FONT }} aria-label={`${e} 붙이기`}>{e}</button>)}
-                </div>
-                <p className="text-center text-[0.75rem] text-white/60">붙인 것을 끌어서 옮기고, ↻ 손잡이나 아래 막대로 크기·회전을 바꿔요</p>
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
