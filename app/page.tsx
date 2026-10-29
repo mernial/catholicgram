@@ -2227,22 +2227,49 @@ export default function Home() {
     }
     const audio = profileAudioRef.current;
     if (audio.dataset.track !== track.id) { audio.src = track.url; audio.dataset.track = track.id; }
-    setProfileMusicNow({ userId, playing: false });
-    audio.play().catch(() => { /* 휴대폰이 막으면 ▶ 로 */ });
+    const started = audio.play();
+    setProfileMusicNow({ userId, playing: !audio.paused }); // play() 를 부르면 바로 재생 중으로 바뀜 (막히면 그대로 멈춤)
+    started.catch((e: unknown) => {
+      // 휴대폰이 막음(아직 화면을 누른 적이 없을 때 — 앱을 열자마자 이 공간이 뜬 경우 등): 화면을 처음 누를 때 튼다
+      if (e instanceof DOMException && e.name === 'NotAllowedError') playOnFirstTouch(userId);
+    });
   };
-  // 교우의 공간·프로필 카드를 여는 순간: 그 교우의 공간 음악이 있으면 튼다. 내 공간은 저절로 틀지 않음(▶ 로 들어 보기)
+  const profileMusicPlaying = (userId: string) => profileMusicNowRef.current?.userId === userId && !!profileAudioRef.current && !profileAudioRef.current.paused;
+  // 휴대폰이 소리를 막았을 때: 화면 어디든 처음 누르는 순간 튼다 (음악 막대를 누른 것은 막대가 알아서)
+  const firstTouchRef = useRef<(() => void) | null>(null);
+  const playOnFirstTouch = (userId: string) => {
+    firstTouchRef.current?.();
+    const kinds = ['pointerup', 'touchend', 'keydown'];
+    const cleanup = () => { kinds.forEach(k => document.removeEventListener(k, go, true)); firstTouchRef.current = null; };
+    function go(e: Event) {
+      cleanup();
+      if ((e.target as Element | null)?.closest?.('[data-profile-music]')) return;
+      if (profileMusicNowRef.current?.userId === userId) playProfileMusic(userId);
+    }
+    kinds.forEach(k => document.addEventListener(k, go, true));
+    firstTouchRef.current = cleanup;
+  };
+  // 공간·프로필 카드를 여는 순간(누른 그 순간에 틀어야 휴대폰이 소리를 막지 않음): 곡이 있으면 튼다
   const startProfileMusic = (userId: string) => {
-    if (userId === user?.id) return;
-    const now = profileMusicNowRef.current;
-    if (now?.userId === userId && now.playing) return; // 이미 흐르는 중 (프로필 카드 → 공간 방문하기)
+    if (profileMusicPlaying(userId)) return; // 이미 흐르는 중 (프로필 카드 → 공간 방문하기)
     playProfileMusic(userId);
   };
   const toggleProfileMusic = (userId: string) => {
-    const now = profileMusicNowRef.current;
-    if (now?.userId === userId && now.playing) { profileAudioRef.current?.pause(); return; }
+    firstTouchRef.current?.();
+    if (profileMusicPlaying(userId)) { profileAudioRef.current?.pause(); return; }
     playProfileMusic(userId);
   };
-  const stopProfileMusic = () => { profileAudioRef.current?.pause(); setProfileMusicNow(null); };
+  const stopProfileMusic = () => { firstTouchRef.current?.(); profileAudioRef.current?.pause(); setProfileMusicNow(null); };
+  // 공간에 들어오면 저절로 (운영자 요청): 어느 길로 들어왔든(아래 '내 공간' 탭·뒤로가기·알림·링크·앱을 다시 띄움) 그 공간 주인의 곡을 튼다.
+  // 한 번 들어올 때 한 번만 (그 공간에서 ❚❚ 로 멈추면 다시 틀지 않음, 다른 화면에 갔다 오면 다시). 관리자 자신의 공간도
+  const spaceOwner = activeTab === 'profile' ? viewingUserId : null;
+  const spaceAutoRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (spaceAutoRef.current !== spaceOwner) spaceAutoRef.current = null;
+    if (!spaceOwner || spaceAutoRef.current || !profileTrack(spaceOwner)) return; // 곡 정보가 아직이면 오는 대로
+    spaceAutoRef.current = spaceOwner;
+    startProfileMusic(spaceOwner);
+  }, [spaceOwner, profileMusicMap, bgmTracks]);
   // 그 교우의 공간·프로필 카드를 벗어나면 멈춤
   useEffect(() => {
     const now = profileMusicNow;
@@ -2250,9 +2277,15 @@ export default function Home() {
     const shown = actionModalUser?.id === now.userId || (activeTab === 'profile' && viewingUserId === now.userId);
     if (!shown) stopProfileMusic();
   }, [actionModalUser?.id, activeTab, viewingUserId, profileMusicNow?.userId]);
-  // 앱을 나가면(홈 화면·다른 앱) 멈춤 — 돌아와서 ▶ 로 다시
+  // 앱을 나가면(홈 화면·다른 앱) 멈추고, 그 공간 그대로 돌아오면 이어서
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === 'hidden') profileAudioRef.current?.pause(); };
+    let resume = false;
+    const onVis = () => {
+      const audio = profileAudioRef.current;
+      if (document.visibilityState === 'hidden') { resume = !!audio && !audio.paused; audio?.pause(); return; }
+      if (resume && audio && profileMusicNowRef.current) audio.play().catch(() => { /* 막히면 ▶ 로 */ });
+      resume = false;
+    };
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
@@ -2281,7 +2314,7 @@ export default function Home() {
     if (!track) return null;
     const playing = profileMusicNow?.userId === userId && profileMusicNow.playing;
     return (
-      <button type="button" onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '공간 음악 멈추기' : '공간 음악 듣기'}>
+      <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '공간 음악 멈추기' : '공간 음악 듣기'}>
         <span className="w-8 h-8 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
         <span className="min-w-0 text-left">
           <span className="block text-[0.8125rem] font-bold text-violet-900 truncate">🎵 {profileMusicMap[userId]?.title || track.title}</span>
