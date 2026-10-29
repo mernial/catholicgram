@@ -18,12 +18,6 @@ module.exports = {
   ],
   theme: {
     extend: {
-      // tablet: 아이패드 같은 큰 터치 화면 → 가운데 좁은 칸 대신 화면 가득 (컴퓨터는 그대로)
-      screens: {
-        tablet: { raw: '(min-width: 700px) and (any-pointer: coarse)' },
-        // 그중 가로로 든 화면 (게시글 크게 보기: 사진 왼쪽 · 글 오른쪽)
-        'tablet-land': { raw: '(min-width: 700px) and (any-pointer: coarse) and (orientation: landscape)' },
-      },
       // 글씨 크기: 55세 이상 이용자를 위해 기본보다 한 단계씩 크게
       // (rem 단위라 설정의 '글씨 크기'를 바꾸면 전체가 함께 커지고 작아짐)
       fontSize: {
@@ -60,5 +54,14 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // tablet: 아이패드 같은 큰 터치 화면 → 가운데 좁은 칸 대신 화면 가득 (컴퓨터는 그대로).
+    // 창 너비 미디어 쿼리 대신 시작할 때 기기 화면 크기로 한 번 정한 html[data-tablet] (lib/device.ts) — 아이패드에서 알림을 눌러
+    // 앱이 다시 뜰 때 잠깐 창 크기가 다르게 잡히면 좁은 칸 ↔ 화면 가득이 바뀌며 화면이 치우쳤다가 펴졌다 (운영자)
+    require('tailwindcss/plugin')(({ addVariant }) => {
+      addVariant('tablet', ':is([data-tablet] &)');
+      // 그중 가로로 든 화면 (게시글 크게 보기: 사진 왼쪽 · 글 오른쪽)
+      addVariant('tablet-land', '@media (orientation: landscape) { :is([data-tablet] &) }');
+    }),
+  ],
 }

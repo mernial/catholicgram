@@ -2891,9 +2891,15 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') visibleSinceRef.current = Date.now(); };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      visibleSinceRef.current = Date.now();
+      // 앱이 다시 뜰 때(아이패드에서 알림을 누름 등) 화면이 옆으로 밀려 있으면 제자리로 (가로로 밀리는 화면은 없음)
+      if (window.scrollX !== 0) window.scrollTo(0, window.scrollY);
+    };
     document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onVisible);
+    return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('pageshow', onVisible); };
   }, []);
   // 앱이 뒤에 있는 동안 알림이 왔는데 알림 대신 앱 아이콘을 눌러 돌아오면: 그사이 온 알림 중 가장 최근 것의 화면으로.
   // 알림을 눌러 돌아온 경우는 그 알림으로 이미 가므로 그대로, 글을 쓰는 중이면 쓰던 글을 지키려고 그대로
