@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { uploadMedia } from '@/lib/upload';
-import { BUILTIN_BGM, type BgmTrack } from '@/lib/music';
+import { BUILTIN_BGM, type BgmTrack, normTrackTitle } from '@/lib/music';
 import BottomSheet from '@/components/BottomSheet';
 import Icon from '@/components/Icon';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
@@ -22,7 +22,7 @@ interface Picked { key: string; file: File; ext: string; title: string; artist: 
 // 같은 곡: 어디에 있는 무엇과 (exact = 같은 소리 파일, similar = 다른 파일이지만 같은 노래로 보임)
 interface Dup { title: string; where: string; kind: 'exact' | 'similar' }
 const DEDUPE_SETUP = '같은 곡이 올라가 있는지 확인하려면 supabase/bgm-dedupe.sql 을 Supabase SQL Editor 에서 한 번 실행해 주세요.';
-const normTitle = (t: string) => t.replace(/\s+/g, '').toLowerCase();
+const normTitle = normTrackTitle;
 const extOfUrl = (u: string) => (u.split('?')[0].split('.').pop() || '').toLowerCase();
 const storagePath = (url: string) => (url.includes('/storage/v1/') ? url.split('/bgm/')[1] : null); // 수파베이스 저장소 파일만 (R2 파일은 남겨 둠)
 // '같은 노래로 보여요'에서 '그대로 두기'를 고른 두 곡 (이 기기에 기억 — 다음에 다시 묻지 않게)
@@ -163,8 +163,23 @@ export default function BgmAdmin({ onClose, onChanged, vault = false, onGift, re
     const rank = (t: BgmTrack) => (t.private ? 2 : t.active === false ? 1 : 0);
     const order = (a: BgmTrack, b: BgmTrack) => rank(a) - rank(b) || String(a.created_at || '').localeCompare(String(b.created_at || ''));
     const done = new Set<string>();
+    const dropped = new Set<string>();
     const mergedTitles: string[] = [];
     const ignore = new Set(keptBoth());
+    const remember = (a: string, b: string) => {
+      ignore.add(pairKey(a, b));
+      try { localStorage.setItem(KEEP_BOTH, JSON.stringify([...keptBoth(), pairKey(a, b)])); } catch { /* 저장 불가 */ }
+    };
+    // 지울 곡을 쓰던 게시글·배경음악·선물을 남길 곡으로 옮기고 지움
+    const mergeOne = async (d: BgmTrack, keepRef: string, keepTitle: string) => {
+      const { error } = await supabase.rpc('merge_bgm_track', { drop_id: d.id, keep_ref: keepRef });
+      if (error) { await showAlert({ title: '같은 곡을 정리하지 못했어요', message: `'${d.title}': ${error.message}` }); return; }
+      const path = storagePath(d.url);
+      if (path) await supabase.storage.from('bgm').remove([path]);
+      replaceMusicFavorite(d.id, keepRef, keepTitle);
+      dropped.add(d.id);
+      mergedTitles.push(normTitle(d.title) === normTitle(keepTitle) ? `'${keepTitle}'` : `'${d.title}'(→ '${keepTitle}')`);
+    };
     for (const r of [...rows].sort(order)) {
       if (done.has(r.id)) continue;
       const builtinId = Object.keys(builtin).find(id => sameAudio(r, builtin[id]));
@@ -200,18 +215,32 @@ export default function BgmAdmin({ onClose, onChanged, vault = false, onGift, re
             message: `'${d.title}'${wa(d.title)} '${keepTitle}'\n소리가 거의 같아요. '${keepTitle}' 하나만 남길까요?\n(지우는 곡을 쓰던 게시글·배경음악·선물은 남긴 곡으로 옮겨요)`,
             ok: '하나만 남기기', icon: 'music',
           });
-          if (!ok) {
-            try { localStorage.setItem(KEEP_BOTH, JSON.stringify([...keptBoth(), pairKey(d.id, keepRef)])); } catch { /* 저장 불가 */ }
-            continue;
-          }
+          if (!ok) { remember(d.id, keepRef); continue; }
         }
-        const { error } = await supabase.rpc('merge_bgm_track', { drop_id: d.id, keep_ref: keepRef });
-        if (error) { await showAlert({ title: '같은 곡을 정리하지 못했어요', message: `'${d.title}': ${error.message}` }); continue; }
-        const path = storagePath(d.url);
-        if (path) await supabase.storage.from('bgm').remove([path]);
-        replaceMusicFavorite(d.id, keepRef, keepTitle);
-        mergedTitles.push(`'${d.title}'(→ '${keepTitle}')`);
+        await mergeOne(d, keepRef, keepTitle);
       }
+    }
+    // 같은 제목인데 소리가 다른 곡(같은 노래를 다시 만든 판 등, 운영자: '같은 음악이 올라가 있는데 같은 건 지워줘'):
+    // 공개 곡·앱 기본 곡끼리 제목마다 물어보고 하나만 남김 (보관 음악은 선물용이라 그대로)
+    const byTitle = new Map<string, BgmTrack[]>();
+    rows.filter(r => !dropped.has(r.id) && !r.private).forEach(r => {
+      const k = normTitle(r.title);
+      if (k) byTitle.set(k, [...(byTitle.get(k) || []), r]);
+    });
+    for (const [k, list] of byTitle) {
+      const builtinTrack = BUILTIN_BGM.find(t => normTitle(t.title) === k);
+      const giftedRows = list.filter(m => gifted.has(m.id)).sort(order);
+      // 남길 곡: 앱 기본 곡(선물한 곡이 있으면 그 곡 — 선물은 앱 기본 곡으로 옮길 수 없음) > '가톨릭그램 음악'에 나오는 곡 > 먼저 올린 곡
+      const keep = builtinTrack && !giftedRows.length ? builtinTrack : giftedRows[0] || [...list].sort(order)[0];
+      const drops = list.filter(m => m.id !== keep.id && !ignore.has(pairKey(m.id, keep.id)));
+      if (!drops.length) continue;
+      const ok = await askConfirm({
+        title: '같은 제목의 곡이 있어요',
+        message: `'${keep.title}' 곡이 ${drops.length + 1}개 올라가 있어요.\n하나만 남기고 나머지는 지울까요?\n(지우는 곡을 쓰던 게시글·배경음악·선물은 남는 곡으로 옮겨요)`,
+        ok: '하나만 남기기', cancel: '그대로 두기', icon: 'music',
+      });
+      if (!ok) { drops.forEach(d => remember(d.id, keep.id)); continue; }
+      for (const d of drops) await mergeOne(d, keep.id, keep.title);
     }
     return mergedTitles;
   };
@@ -271,6 +300,15 @@ export default function BgmAdmin({ onClose, onChanged, vault = false, onGift, re
     });
     return out;
   }, [picked, allRows, builtins]);
+  // 같은 제목으로 겹쳐 있는 곡 (공개 곡·앱 기본 곡) — SQL 전이면 위에 알려 줌
+  const sameTitleGroups = useMemo(() => {
+    const count = new Map<string, { title: string; count: number }>();
+    [...BUILTIN_BGM, ...(allRows || []).filter(t => !t.private)].forEach(t => {
+      const k = normTitle(t.title);
+      if (k) count.set(k, { title: count.get(k)?.title || t.title, count: (count.get(k)?.count || 0) + 1 });
+    });
+    return [...count.values()].filter(g => g.count > 1);
+  }, [allRows]);
   const sameTitleOf = (p: Picked) => {
     const n = normTitle(p.title);
     return !!n && [...BUILTIN_BGM, ...(allRows || [])].some(t => normTitle(t.title) === n);
@@ -443,7 +481,12 @@ export default function BgmAdmin({ onClose, onChanged, vault = false, onGift, re
           </div>
 
           {scan && <p className="mx-4 mt-4 px-3 py-2 rounded-xl bg-violet-50 text-xs text-violet-800 font-bold">🔍 올라가 있는 곡 중 같은 노래가 있는지 확인하는 중… ({scan.done}/{scan.total})</p>}
-          {hasKeys === false && <p className="mx-4 mt-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">{DEDUPE_SETUP}</p>}
+          {hasKeys === false && (
+            <p className="mx-4 mt-4 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 leading-relaxed">
+              {sameTitleGroups.length > 0 && <b className="block mb-0.5">⚠️ 같은 제목의 곡이 겹쳐 있어요: {sameTitleGroups.map(g => `'${g.title}' ${g.count}개`).join(', ')}</b>}
+              {sameTitleGroups.length > 0 ? '하나만 남기려면 supabase/bgm-dedupe.sql 을 Supabase SQL Editor 에서 한 번 실행한 뒤 이 창을 다시 열어 주세요.' : DEDUPE_SETUP}
+            </p>
+          )}
           <p className="px-4 pt-4 pb-1 text-xs font-bold text-stone-500">{vault ? '보관한 음악' : '올린 음악'} {tracks?.length ? `${tracks.length}곡` : ''}</p>
           {error ? (
             <div className="p-8 text-center text-sm text-red-600">{error}</div>

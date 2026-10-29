@@ -64,7 +64,7 @@ import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
-import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic, encodeBgm } from '@/lib/music';
+import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic, encodeBgm, uniqueTitles } from '@/lib/music';
 import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -6230,17 +6230,21 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} giftTracks={myMusicGifts.map(g => g.track)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker tracks={uniqueTitles(bgmTracks.filter(t => t.active !== false))} giftTracks={myMusicGifts.map(g => g.track)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
-      {showProfileMusicPicker && canPickProfileMusic && user && (
-        <ProfileMusicPicker onPick={saveProfileMusic} onClose={() => setShowProfileMusicPicker(false)}
-          {...(isAdmin
-            ? { tracks: bgmTracks.filter(t => t.active !== false), onAddMusic: () => setShowBgmAdmin(true) }
-            : { tracks: myMusicGifts.map(g => g.track), gifts: Object.fromEntries(myMusicGifts.map(g => [g.track.id, g.note || '관리자의 선물'])) })}
-          current={(() => { const m = parsePostMusic(profileMusicMap[user.id]?.value); return m?.kind === 'bgm' ? m.trackId : null; })()} />
-      )}
+      {showProfileMusicPicker && canPickProfileMusic && user && (() => {
+        const m = parsePostMusic(profileMusicMap[user.id]?.value);
+        const current = m?.kind === 'bgm' ? m.trackId : null;
+        return (
+          <ProfileMusicPicker onPick={saveProfileMusic} onClose={() => setShowProfileMusicPicker(false)}
+            {...(isAdmin
+              ? { tracks: uniqueTitles(bgmTracks.filter(t => t.active !== false), current), onAddMusic: () => setShowBgmAdmin(true) }
+              : { tracks: myMusicGifts.map(g => g.track), gifts: Object.fromEntries(myMusicGifts.map(g => [g.track.id, g.note || '관리자의 선물'])) })}
+            current={current} />
+        );
+      })()}
       {/* 관리자: 🔒 보관 음악 (비공개 · 선물용) + 한 곡 선물하기 */}
       {showMusicVault && isAdmin && (
         <BgmAdmin vault refreshKey={vaultRefresh} onGift={t => setMusicGiftTrack(t)} onClose={() => setShowMusicVault(false)} onChanged={fetchBgmTracks} />

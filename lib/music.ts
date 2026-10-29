@@ -49,6 +49,20 @@ export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
 
 // 게시물 음악 고르기의 '가톨릭그램 음악' (public/bgm). 운영자가 직접 만든 곡 (2026-10-29 운영자 요청으로 예전 곡을 모두 빼고 이 곡들로). 새 곡은 관리자가 '게시글 음악 추가·관리'(BgmAdmin)에서 파일로 올림 → bgm_tracks.
 // 파일은 운영자가 준 mp3 그대로(다시 압축하지 않음), 이름 등 꼬리표만 지움.
+// 같은 제목의 곡은 고르기 목록에 하나만 (운영자: '같은 음악이 올라가 있는데 같은 건 지워줘').
+// 곡 줄은 그대로 있어 그 곡을 쓴 게시글은 그대로 나옴 — 실제 정리는 관리자 음악 창(components/BgmAdmin)이 함.
+// prefer: 지금 고른 곡처럼 꼭 보여야 하는 곡 (같은 제목 무리에서 그 곡을 남김)
+export const normTrackTitle = (t: string) => t.replace(/\s+/g, '').toLowerCase();
+export function uniqueTitles(tracks: BgmTrack[], prefer?: string | null): BgmTrack[] {
+  const pick = new Map<string, BgmTrack>();
+  for (const t of tracks) {
+    const k = normTrackTitle(t.title);
+    if (!k) continue;
+    if (!pick.has(k) || t.id === prefer) pick.set(k, t);
+  }
+  return tracks.filter(t => !normTrackTitle(t.title) || pick.get(normTrackTitle(t.title)) === t);
+}
+
 export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-calm-piano', title: '잔잔한 피아노', artist: '가톨릭그램', url: '/bgm/calm-piano.mp3' },
   { id: 'builtin-new-beginning', title: '새로운 시작', artist: '가톨릭그램', url: '/bgm/new-beginning.mp3' },
