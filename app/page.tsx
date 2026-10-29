@@ -47,6 +47,8 @@ import SettingsModal from '@/components/SettingsModal';
 import AdminMembers from '@/components/AdminMembers';
 import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/components/MusicPicker';
 import BgmAdmin from '@/components/BgmAdmin';
+import Switch from '@/components/Switch';
+import ProfileMusicPicker from '@/components/ProfileMusicPicker';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
 import { mediaMenuActions } from '@/lib/save-media';
@@ -60,7 +62,7 @@ import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
-import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic } from '@/lib/music';
+import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic, encodeBgm } from '@/lib/music';
 import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -223,6 +225,7 @@ const RESUME_HOME_AFTER = 30 * 60 * 1000;
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
+const storageRemove = (key: string) => { try { localStorage.removeItem(key); } catch { /* 저장 불가 환경 */ } };
 const isStorageAvailable = () => {
   try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; } catch { return false; }
 };
@@ -410,6 +413,7 @@ export default function Home() {
   const [blockedIds, setBlockedIds] = useState<Set<string>>(new Set());
   // 휴대폰 푸시 알림 상태
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
+  const [pushWant, setPushWant] = useState<boolean | null>(null); // 밀기 단추를 바꾼 뒤 켜기·끄기가 끝나기 전 (단추는 바꾼 쪽에)
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
@@ -481,6 +485,14 @@ export default function Home() {
   const [showBgmAdmin, setShowBgmAdmin] = useState(false);
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  // 공간 음악 (관리자의 공간·프로필 카드를 누르면 흐르는 곡): 누가 곡을 정해 두었는지 · 지금 흐르는 곡
+  const [profileMusicMap, setProfileMusicMap] = useState<Record<string, { value: string; title: string }>>({});
+  const [profileMusicReady, setProfileMusicReady] = useState<boolean | null>(null); // false = supabase/profile-music.sql 실행 전
+  const [profileMusicNow, setProfileMusicNow] = useState<{ userId: string; playing: boolean } | null>(null);
+  const profileMusicNowRef = useRef(profileMusicNow);
+  profileMusicNowRef.current = profileMusicNow;
+  const profileAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [showProfileMusicPicker, setShowProfileMusicPicker] = useState(false);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
@@ -756,6 +768,7 @@ export default function Home() {
     checkUser();
     fetchPosts();
     fetchBgmTracks();
+    fetchProfileMusic();
     fetchIntentions();
     fetchNotices();
     try { setHiddenNotices(JSON.parse(storageGet('noticeHidden') || '[]')); } catch { /* 무시 */ }
@@ -987,6 +1000,7 @@ export default function Home() {
 
   const goToProfile = (targetUserId: string) => {
     linkLog('profile', `${targetUserId.slice(0, 8)} ${Date.now() - lastTouchAt < 1500 ? '손으로 누름' : '자동'}`);
+    startProfileMusic(targetUserId);
     navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
     setActionModalUser(null);
   };
@@ -1261,6 +1275,7 @@ export default function Home() {
   const openProfileCard = (target: { id: string; name?: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }) => {
     if (!user) { setShowAuthModal(true); return; }
     if (target.id === user.id) { closeOverlaysForLink(); goToProfile(user.id); return; }
+    startProfileMusic(target.id);
     profileCardIdRef.current = target.id;
     setActionUserBio('');
     setActionUserFollowStatus('none');
@@ -2155,6 +2170,7 @@ export default function Home() {
   // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
   // (휴대폰 브라우저는 사용자가 누른 순간에만 소리 재생을 허용하므로 누른 즉시 재생을 시작)
   const openPostViewer = (post: Post, imageIndex = 0) => {
+    if (post.music) profileAudioRef.current?.pause(); // 글의 음악이 나오면 공간 음악은 멈춤 (▶ 로 다시)
     setViewerTextOpen(false);
     setSelectedPostDetail(post);
     setDetailImageIndex(imageIndex);
@@ -2183,6 +2199,101 @@ export default function Home() {
     if (!audio) return;
     if (audio.paused) audio.play().then(() => setBgmPlaying(true)).catch(() => {});
     else { audio.pause(); setBgmPlaying(false); }
+  };
+
+  // ── 공간 음악 (운영자 요청): 관리자의 공간·프로필 카드를 누르면 관리자가 '내 공간 → 🎵 공간 음악'에서 고른 곡이 흐른다 ──
+  // 곡은 profiles.profile_music ('bgm:<배경음악 id>', supabase/profile-music.sql — 관리자만 정할 수 있음).
+  // 휴대폰은 누른 그 순간에 튼 소리만 허락하므로, 누가 곡을 정해 두었는지는 앱을 열 때 미리 알아 두고 누를 때 바로 튼다
+  const fetchProfileMusic = async () => {
+    const { data, error } = await supabase.from('profiles').select('id, profile_music, profile_music_title').not('profile_music', 'is', null);
+    if (error) { setProfileMusicReady(false); return; }
+    setProfileMusicReady(true);
+    setProfileMusicMap(Object.fromEntries((data || []).map(r => [r.id as string, { value: r.profile_music as string, title: (r.profile_music_title as string | null) || '' }])));
+  };
+  const profileTrack = (userId?: string | null) => {
+    const m = userId ? parsePostMusic(profileMusicMap[userId]?.value) : null;
+    return m?.kind === 'bgm' ? bgmTracks.find(t => t.id === m.trackId) || null : null;
+  };
+  const playProfileMusic = (userId: string) => {
+    const track = profileTrack(userId);
+    if (!track) return;
+    bgmAudioRef.current?.pause(); setBgmPlaying(false);
+    if (!profileAudioRef.current) {
+      const audio = new Audio();
+      audio.loop = true;
+      audio.onplay = () => setProfileMusicNow(cur => cur && { ...cur, playing: true });
+      audio.onpause = () => setProfileMusicNow(cur => cur && { ...cur, playing: false });
+      profileAudioRef.current = audio;
+    }
+    const audio = profileAudioRef.current;
+    if (audio.dataset.track !== track.id) { audio.src = track.url; audio.dataset.track = track.id; }
+    setProfileMusicNow({ userId, playing: false });
+    audio.play().catch(() => { /* 휴대폰이 막으면 ▶ 로 */ });
+  };
+  // 교우의 공간·프로필 카드를 여는 순간: 그 교우의 공간 음악이 있으면 튼다. 내 공간은 저절로 틀지 않음(▶ 로 들어 보기)
+  const startProfileMusic = (userId: string) => {
+    if (userId === user?.id) return;
+    const now = profileMusicNowRef.current;
+    if (now?.userId === userId && now.playing) return; // 이미 흐르는 중 (프로필 카드 → 공간 방문하기)
+    playProfileMusic(userId);
+  };
+  const toggleProfileMusic = (userId: string) => {
+    const now = profileMusicNowRef.current;
+    if (now?.userId === userId && now.playing) { profileAudioRef.current?.pause(); return; }
+    playProfileMusic(userId);
+  };
+  const stopProfileMusic = () => { profileAudioRef.current?.pause(); setProfileMusicNow(null); };
+  // 그 교우의 공간·프로필 카드를 벗어나면 멈춤
+  useEffect(() => {
+    const now = profileMusicNow;
+    if (!now) return;
+    const shown = actionModalUser?.id === now.userId || (activeTab === 'profile' && viewingUserId === now.userId);
+    if (!shown) stopProfileMusic();
+  }, [actionModalUser?.id, activeTab, viewingUserId, profileMusicNow?.userId]);
+  // 앱을 나가면(홈 화면·다른 앱) 멈춤 — 돌아와서 ▶ 로 다시
+  useEffect(() => {
+    const onVis = () => { if (document.visibilityState === 'hidden') profileAudioRef.current?.pause(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+  const saveProfileMusic = async (track: BgmTrack | null) => {
+    if (!user) return false;
+    const value = track ? encodeBgm(track.id) : null;
+    const { error } = await supabase.from('profiles').update({ profile_music: value, profile_music_title: track ? track.title : null }).eq('id', user.id);
+    if (error) {
+      const setup = error.code === 'PGRST204' || error.code === '42703' || /profile_music/.test(error.message);
+      await showAlert({ title: '공간 음악을 저장하지 못했어요', message: setup ? '먼저 supabase/profile-music.sql 을 Supabase SQL Editor 에서 한 번 실행해 주세요.' : error.message });
+      return false;
+    }
+    setProfileMusicReady(true);
+    setProfileMusicMap(prev => {
+      const next = { ...prev };
+      if (track && value) next[user.id] = { value, title: track.title }; else delete next[user.id];
+      return next;
+    });
+    if (profileMusicNowRef.current?.userId === user.id) stopProfileMusic();
+    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '공간 음악을 정했어요' : '공간 음악을 껐어요', body: track ? `교우가 내 공간·프로필을 누르면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
+    return true;
+  };
+  // 공간·프로필 카드의 음악 막대 (누르면 멈춤·다시 듣기)
+  const profileMusicBar = (userId: string) => {
+    const track = profileTrack(userId);
+    if (!track) return null;
+    const playing = profileMusicNow?.userId === userId && profileMusicNow.playing;
+    return (
+      <button type="button" onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '공간 음악 멈추기' : '공간 음악 듣기'}>
+        <span className="w-8 h-8 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
+        <span className="min-w-0 text-left">
+          <span className="block text-[0.8125rem] font-bold text-violet-900 truncate">🎵 {profileMusicMap[userId]?.title || track.title}</span>
+          <span className="block text-[0.6875rem] text-violet-700/80">{playing ? '흐르는 중 · 누르면 멈춰요' : '눌러서 듣기'}</span>
+        </span>
+        {playing && (
+          <span className="flex items-end gap-[2px] h-3.5 shrink-0" aria-hidden="true">
+            {[0, 0.25, 0.5].map(d => <span key={d} className="eq-bar w-[3px] h-full rounded-sm bg-violet-600" style={{ animationDelay: `${d}s` }} />)}
+          </span>
+        )}
+      </button>
+    );
   };
 
   const videoJobRef = useRef(0); // 고른 영상 차례 (뒤에서 용량을 줄이는 중에 빼거나 바꾸면 그 작업은 버린다)
@@ -2912,7 +3023,7 @@ export default function Home() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      if (await savePushSubscription(sub, user.id)) { setPushStatus('on'); return true; }
+      if (await savePushSubscription(sub, user.id)) { setPushStatus('on'); if (!silent) storageRemove(`pushOff:${user.id}`); return true; }
       if (!silent) alert('알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
       return false;
     } catch {
@@ -2932,6 +3043,8 @@ export default function Home() {
         await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint);
         await sub.unsubscribe();
       }
+      // 직접 끈 것을 기억 → 앱을 다시 열어도 저절로 다시 켜지 않음 (예전엔 휴대폰 알림 허용이 남아 있으면 다음에 열 때 다시 켜졌음)
+      if (user) storageSet(`pushOff:${user.id}`, '1');
       setPushStatus('off');
     } finally {
       setPushBusy(false);
@@ -2958,7 +3071,7 @@ export default function Home() {
   useEffect(() => {
     if (!user || needsProfileSetup || pushStatus !== 'off' || pushPromptCheckedRef.current) return;
     pushPromptCheckedRef.current = true;
-    if (Notification.permission === 'granted') { enablePush(true); return; }
+    if (Notification.permission === 'granted') { if (storageGet(`pushOff:${user.id}`) !== '1') enablePush(true); return; }
     if (Notification.permission !== 'default') return;
     const key = `pushPromptAt:${user.id}`;
     const last = Number(storageGet(key) || 0);
@@ -3138,7 +3251,7 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
-    setShowBgmAdmin(false); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
+    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
@@ -3584,7 +3697,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
@@ -3610,13 +3723,13 @@ export default function Home() {
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
     if (actionModalUser) { setActionModalUser(null); return; }
-    if (showBgmAdmin && showMusicPicker) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
+    if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setShowProfileMusicPicker(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
     // 문구 쓰기 단계에서 뒤로 → 사진 고르기 단계로
     if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) { if (showComposer && composerStep === 'write') setComposerStep('pick'); else if (showComposer) leaveComposer(); }
@@ -4619,6 +4732,22 @@ export default function Home() {
               ) : viewingUserId === user?.id && (
                 <button onClick={() => setBioDraft('')} className="mt-1 text-[0.8125rem] text-stone-500"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
               )}
+              {/* 공간 음악: 교우가 이 공간을 누르면 흐르는 곡 (관리자만 정함) */}
+              {viewingUserId && profileTrack(viewingUserId) && (
+                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                  {profileMusicBar(viewingUserId)}
+                  {isAdmin && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
+                </div>
+              )}
+              {isAdmin && viewingUserId === user?.id && !profileTrack(user.id) && (
+                <button onClick={() => setShowProfileMusicPicker(true)} className="mt-2 w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-3 py-2.5 text-left flex items-center gap-2.5">
+                  <span className="w-9 h-9 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-5 h-5" /></span>
+                  <span className="min-w-0">
+                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 공간 음악 넣기 <span className="text-xs font-normal text-violet-700/70">(관리자)</span></span>
+                    <span className="block text-xs text-violet-700/80">{profileMusicReady === false ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : '교우가 내 공간·프로필을 누르면 고른 곡이 흘러요'}</span>
+                  </span>
+                </button>
+              )}
               {isAdmin && viewingRealName && (
                 <p className="inline-block text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
               )}
@@ -5264,6 +5393,7 @@ export default function Home() {
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
+                {profileTrack(u.id) && <div className="mt-2.5">{profileMusicBar(u.id)}</div>}
                 <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
                   🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기
                 </button>
@@ -5968,6 +6098,10 @@ export default function Home() {
       )}
 
       {/* 관리자: 배경음악 관리 */}
+      {showProfileMusicPicker && isAdmin && user && (
+        <ProfileMusicPicker tracks={bgmTracks.filter(t => t.active !== false)} onPick={saveProfileMusic} onAddMusic={() => setShowBgmAdmin(true)} onClose={() => setShowProfileMusicPicker(false)}
+          current={(() => { const m = parsePostMusic(profileMusicMap[user.id]?.value); return m?.kind === 'bgm' ? m.trackId : null; })()} />
+      )}
       {showBgmAdmin && isAdmin && (
         <BgmAdmin onClose={() => setShowBgmAdmin(false)} onChanged={fetchBgmTracks} />
       )}
@@ -6061,20 +6195,27 @@ export default function Home() {
                 <button onClick={clearAllAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-red-200 text-red-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />모두 지우기</button>
               </div>
             </div>
-            {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (
-              <div className="shrink-0 px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
-                <IconBadge name="phone" tone="sky" />
-                <div className="flex-1 text-xs text-stone-700 leading-snug">
-                  {pushStatus === 'on' && <><b>휴대폰 알림 켜짐</b><br />앱을 닫아도 댓글·메시지 알림이 와요</>}
-                  {pushStatus === 'off' && <><b>휴대폰 알림 받기</b><br />앱을 닫아도 댓글·메시지 알림을 받아요</>}
-                  {pushStatus === 'denied' && <><b>알림이 차단되어 있어요</b><br />휴대폰 설정에서 이 사이트(앱)의 알림을 허용해주세요</>}
-                  {pushStatus === 'ios-needs-install' && <><b>아이폰은 홈 화면 앱에서만</b> 알림을 받을 수 있어요<br />먼저 홈 화면에 추가한 뒤 그 아이콘으로 열어주세요</>}
+            {pushStatus !== 'checking' && pushStatus !== 'unsupported' && (() => {
+              // 휴대폰 알림 켜기·끄기: 밀기 단추 (누르거나 옆으로 밀면 바뀜). 켜는 동안(알림 허용 묻기)에는 켜진 쪽으로 가 있고, 안 되면 돌아옴
+              const switchable = pushStatus === 'on' || pushStatus === 'off';
+              const shownOn = pushWant ?? pushStatus === 'on';
+              return (
+                <div className="shrink-0 px-4 py-3 bg-stone-50 border-b border-stone-100 flex items-center gap-3">
+                  <IconBadge name="phone" tone="sky" />
+                  <div className="flex-1 min-w-0 text-xs text-stone-700 leading-snug">
+                    {switchable && <><b className="text-[0.875rem] text-stone-900">휴대폰 알림 받기</b><br />{pushBusy ? '설정하는 중…' : shownOn ? '켜짐 · 앱을 닫아도 댓글·메시지 알림이 와요' : '꺼짐 · 켜면 앱을 닫아도 알림을 받아요'}</>}
+                    {pushStatus === 'denied' && <><b>알림이 차단되어 있어요</b><br />휴대폰 설정에서 이 사이트(앱)의 알림을 허용해주세요</>}
+                    {pushStatus === 'ios-needs-install' && <><b>아이폰은 홈 화면 앱에서만</b> 알림을 받을 수 있어요<br />먼저 홈 화면에 추가한 뒤 그 아이콘으로 열어주세요</>}
+                  </div>
+                  {switchable && (
+                    <Switch label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
+                      onChange={next => { setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null)); }} />
+                  )}
+                  {pushStatus === 'denied' && <Switch label="휴대폰 알림 받기 (차단됨)" on={false} disabled onChange={() => {}} />}
+                  {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
                 </div>
-                {pushStatus === 'on' && <button onClick={disablePush} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600 shrink-0">끄기</button>}
-                {pushStatus === 'off' && <button onClick={() => enablePush()} disabled={pushBusy} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">{pushBusy ? '설정 중...' : '켜기'}</button>}
-                {pushStatus === 'ios-needs-install' && <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">방법 보기</button>}
-              </div>
-            )}
+              );
+            })()}
             <div ref={alertListRef} className="relative flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
               {isMyFeastToday && !feastCleared && (
                 <div data-flip-key="feast-me" className="p-4 bg-amber-50/60">

@@ -513,3 +513,11 @@ html[data-theme="charcoal"] .text-yellow-950\/70 { color: rgb(254 249 195 / 0.7)
 html[data-theme="charcoal"] .from-yellow-50 { --tw-gradient-from: rgb(66 32 6 / 0.5) var(--tw-gradient-from-position); --tw-gradient-to: rgb(66 32 6 / 0) var(--tw-gradient-to-position); --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to); }
 html[data-theme="charcoal"] .to-yellow-50 { --tw-gradient-to: rgb(66 32 6 / 0.5) var(--tw-gradient-to-position); }
 /* THEME-END */
+
+/* 공간 음악이 흐르는 중: 작은 막대 셋이 오르내림 */
+@keyframes eqBar {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+.eq-bar { transform-origin: bottom; animation: eqBar 0.9s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .eq-bar { animation: none; } }
