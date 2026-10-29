@@ -94,6 +94,7 @@ import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-n
 import { outsideHref } from '@/lib/open-outside';
 import { watchVisualViewport } from '@/lib/visual-viewport';
 import ShareApp from '@/components/ShareApp';
+import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -1719,6 +1720,16 @@ export default function Home() {
   const dmRoom = currentChatUser ? `dm:${currentChatUser.id}` : null;
   const dmBookmarks = useBookmarks(user?.id, dmRoom);
   const dmHidden = useHiddenMessages(user?.id, dmRoom);
+  // 대화 내용 찾기 (머리줄 🔍, components/ChatSearch): 1:1 은 대화방의 대화를 모두 불러와 있어 화면에서 찾음
+  const dmSearch = useChatSearch({
+    items: chatMessages,
+    getId: m => String(m.id),
+    getAt: m => m.created_at,
+    getText: m => (dmHidden.hidden.has(String(m.id)) ? '' : chatSearchText(m)),
+    findElement: id => document.getElementById(`dm-${id}`),
+    onJump: () => { chatStick.atBottom.current = false; },
+  });
+  useEffect(() => { dmSearch.setOpen(false); }, [currentChatUser?.id, activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
   const [captureAsk, setCaptureAsk] = useState<string | null>(null);        // 캡처를 누른 메시지
   const [dmCapture, setDmCapture] = useState<Set<string> | null>(null);     // 대화 골라서 캡처하는 중
   const [captured, setCaptured] = useState<{ blob: Blob; title: string } | null>(null);
@@ -4170,7 +4181,9 @@ export default function Home() {
       
       {/* 헤더 */}
       <header className="sticky top-0 bg-white/90 backdrop-blur-md border-b border-stone-200 px-3 sm:px-4 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] flex items-center justify-between gap-2 z-20">
-        {activeTab === 'chat' ? (
+        {activeTab === 'chat' && dmSearch.open ? (
+          <ChatSearchBar s={dmSearch} />
+        ) : activeTab === 'chat' ? (
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             <button onClick={() => window.history.back()} className="text-stone-600 hover:text-black" aria-label="뒤로">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
@@ -4194,12 +4207,13 @@ export default function Home() {
             </button>
           </div>
         ) : null}
-        {activeTab === 'chat' && currentChatUser ? (
+        {activeTab === 'chat' && currentChatUser ? (dmSearch.open ? null : (
           <div className="flex items-center">
+            <ChatSearchButton onClick={() => dmSearch.setOpen(true)} />
             {dmBookmarks.list.length > 0 && <button onClick={() => setShowDmBookmarks(true)} className="w-10 h-10 flex items-center justify-center text-lg" aria-label={`책갈피 ${dmBookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
             <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
           </div>
-        ) : (
+        )) : (
           <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             {/* 인스타그램처럼: 왼쪽 + · 가운데 이름 ▾ · 오른쪽 ♡ */}
             <div className="flex items-center">
@@ -5346,7 +5360,7 @@ export default function Home() {
                           <div
                             data-bubble
                             {...dmGestures.bind(msg)}
-                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${isMe ? 'items-end' : 'items-start'}` : tone}`}
+                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${dmSearch.currentId === mid ? 'ring-4 ring-yellow-300' : ''} ${sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${isMe ? 'items-end' : 'items-start'}` : tone}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
@@ -5360,7 +5374,7 @@ export default function Home() {
                             )}
                             {/* 사진(묶음이면 바둑판)·동영상: 누르면 크게 보기·재생 (메뉴는 꾹 누르기로) */}
                             <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index, chat: true })} className="-mx-2 -mt-0.5 mb-1" />
-                            {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-4 py-2 rounded-2xl ${tone}`} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
+                            {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-4 py-2 rounded-2xl ${tone}`} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && (dmSearch.q ? <HighlightText text={msg.content} q={dmSearch.q} /> : msg.content)}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
                           {heartPop?.id === String(msg.id) && (
