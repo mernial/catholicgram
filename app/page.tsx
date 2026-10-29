@@ -84,6 +84,8 @@ import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, ch
 import CelebrateAvatar from '@/components/CelebrateAvatar';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 import { outsideHref } from '@/lib/open-outside';
+import { watchVisualViewport } from '@/lib/visual-viewport';
+import ShareApp from '@/components/ShareApp';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -493,6 +495,7 @@ export default function Home() {
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
   const [showMyComments, setShowMyComments] = useState(false); // 내 공간 → 내 댓글 모아 보기
+  const [showShareApp, setShowShareApp] = useState(false);     // 가톨릭그램 알리기 (내 공간·설정)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
   // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
@@ -3019,7 +3022,7 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
-    setShowBgmAdmin(false); setShowSponsorAdmin(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
+    setShowBgmAdmin(false); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
@@ -3559,6 +3562,7 @@ export default function Home() {
   const mainScrollRef = useRef<HTMLElement>(null); // 앱 화면의 스크롤 영역
   // 키보드가 올라오면 실제로 보이는 높이에 맞춤 (키보드가 화면 높이를 줄이지 않는 휴대폰 대비)
   const [visibleHeight, setVisibleHeight] = useState<number | null>(null);
+  useEffect(() => watchVisualViewport(), []); // 대화방(1:1·단체방·사랑방)이 쓰는 --vvh·--vvtop
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
@@ -3830,8 +3834,9 @@ export default function Home() {
     <main
       ref={mainScrollRef}
       // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
-      style={visibleHeight ? { height: visibleHeight } : undefined}
-      className={`w-full max-w-xl tablet:max-w-none mx-auto h-[100dvh] sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans relative ${activeTab === 'chat' ? 'overflow-hidden' : 'overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
+      // 1:1 대화방은 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라와 화면이 밀려도 위의 상대 프로필이 늘 보이게, lib/visual-viewport)
+      style={activeTab === 'chat' ? { top: 'var(--vvtop, 0px)', height: 'var(--vvh, 100dvh)' } : visibleHeight ? { height: visibleHeight } : undefined}
+      className={`w-full max-w-xl tablet:max-w-none mx-auto h-[100dvh] sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans ${activeTab === 'chat' ? 'fixed inset-x-0 overflow-hidden' : 'relative overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
     >
       
       {/* 헤더 */}
@@ -4509,6 +4514,10 @@ export default function Home() {
                     <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="reply" className={ico} />내 댓글</button>
                     <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className={btn}><Icon name="gear" className={ico} />설정</button>
                   </div>
+                  {/* 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp) */}
+                  <button onClick={() => setShowShareApp(true)} className="mt-1.5 w-full py-2.5 rounded-lg text-[0.875rem] font-bold bg-amber-50 border border-amber-200 text-amber-900 inline-flex items-center justify-center gap-1.5">
+                    <Icon name="megaphone" className={ico} />가톨릭그램 알리기 · 친구 초대
+                  </button>
                   <div className="mt-1.5 grid grid-cols-2 gap-1.5">
                     <button onClick={switchAccount} className={sub}><Icon name="users" className={ico} />다른 계정으로 로그인</button>
                     <button onClick={logout} className={sub}><Icon name="signout" className={ico} />로그아웃</button>
@@ -4698,6 +4707,7 @@ export default function Home() {
         );
       })()}
 
+      {showShareApp && <ShareApp onClose={() => setShowShareApp(false)} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
       {showMyComments && user && (
         <BottomSheet label="내 댓글" title="내 댓글" subtitle="내가 단 댓글을 모아 봤어요 · 나만 볼 수 있어요" onClose={() => setShowMyComments(false)} tone="bg-white">
@@ -5179,6 +5189,7 @@ export default function Home() {
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} baptismalName={myRealName || profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={openProfileEdit}
+          onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
           onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}

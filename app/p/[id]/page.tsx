@@ -42,7 +42,7 @@ async function getAuthor(userId: string | null): Promise<Author | null> {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   const post = await getPost(id).catch(() => null);
-  if (!post) return { ...SITE, openGraph: { ...SITE, siteName: SITE.title, images: ['/icon-v2-512.png'] } };
+  if (!post) return { ...SITE, openGraph: { ...SITE, siteName: SITE.title, images: ['/og-catholicgram.jpg'] } };
   const text = postPlainText(post.content).replace(/\s+/g, ' ').trim();
   const title = `${post.author_name || '교우'}님의 글 · 가톨릭그램`;
   const description = text ? (text.length > 80 ? `${text.slice(0, 80)}…` : text) : '가톨릭그램에서 사진을 보세요';
@@ -53,7 +53,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title, description,
     alternates: { canonical: url },
-    openGraph: { title, description, type: 'article', siteName: SITE.title, url, images: [image || '/icon-v2-512.png'] },
+    openGraph: { title, description, type: 'article', siteName: SITE.title, url, images: [image || '/og-catholicgram.jpg'] },
     twitter: { card: image ? 'summary_large_image' : 'summary', title, description },
   };
 }
