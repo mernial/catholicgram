@@ -9,7 +9,7 @@ import { copyText, toast } from '@/lib/chat-actions';
 //  - 공유: 휴대폰 공유 창에 파일 그대로. 파일을 못 보내는 곳은 주소로, 그것도 안 되면 주소 복사
 // 사진 저장소(R2 워커·수파베이스)는 누구나 읽을 수 있게(CORS *) 열려 있어 앱에서 파일로 받아 올 수 있다.
 // 아이폰은 공유 창을 누른 순간에 바로 열어야 해서(파일을 받는 동안 기다리면 막힘) 크게 보기를 열 때 미리 받아 둔다(prepareMedia)
-export type MediaResult = 'saved' | 'shared' | 'cancelled' | 'opened' | 'copied' | 'retry' | 'failed';
+export type MediaResult = 'saved' | 'shared' | 'cancelled' | 'opened' | 'copied' | 'retry' | 'failed' | 'panel';
 
 export const isAppleDevice = () => typeof navigator !== 'undefined'
   && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
@@ -52,7 +52,7 @@ const aborted = (e: unknown) => (e as { name?: string })?.name === 'AbortError';
 // 파일을 받는 동안 '누른 순간'이 지나 공유 창이 막힘(아이폰) → 이제 받아 두었으니 한 번 더 누르면 열림
 const blocked = (e: unknown) => (e as { name?: string })?.name === 'NotAllowedError';
 
-const download = (file: File) => {
+export const download = (file: File) => {
   const href = URL.createObjectURL(file);
   const a = document.createElement('a');
   a.href = href; a.download = file.name;
@@ -67,9 +67,26 @@ export async function saveMedia(urls: string[]): Promise<MediaResult> {
     try { await navigator.share({ files: list }); return 'shared'; }
     catch (e) { if (aborted(e)) return 'cancelled'; if (blocked(e)) return 'retry'; }
   }
-  list.forEach((f, i) => setTimeout(() => download(f), i * 400)); // 여러 장은 조금씩 띄워서
-  return 'saved';
+  download(list[0]);
+  if (list.length === 1) return 'saved';
+  // 여러 장: 크롬(안드로이드·컴퓨터)은 한 번 누를 때 하나만 내려받게 하고 나머지는 '여러 파일 다운로드 허용'을 묻거나 막는다
+  // (운영자: 묶음 4장을 저장했는데 1장만) → 첫 장은 지금 저장, 나머지는 저장 창(components/SavePanel)에서 사진마다 눌러 저장
+  openSavePanel(list, [0]);
+  return 'panel';
 }
+
+// 여러 장 저장 창 (components/SavePanel 이 그림, app/layout 에 붙음)
+export interface SavePanelState { files: File[]; saved: number[] }
+let panel: SavePanelState | null = null;
+const panelListeners = new Set<() => void>();
+const emitPanel = () => panelListeners.forEach(f => f());
+export const savePanelStore = {
+  subscribe: (f: () => void) => { panelListeners.add(f); return () => { panelListeners.delete(f); }; },
+  get: () => panel,
+  close: () => { panel = null; emitPanel(); },
+  markSaved: (idx: number[]) => { if (panel) { panel = { ...panel, saved: Array.from(new Set([...panel.saved, ...idx])) }; emitPanel(); } },
+};
+export function openSavePanel(files: File[], saved: number[] = []) { panel = { files, saved }; emitPanel(); }
 
 export async function shareMedia(urls: string[]): Promise<MediaResult> {
   const list = await getFiles(urls);
@@ -91,7 +108,7 @@ export const mediaResultText = (r: MediaResult, kind: '사진' | '동영상' = '
   copied: `${kind} 주소를 복사했어요. 보낼 곳에 붙여 넣어 주세요`,
   retry: '준비됐어요. 한 번 더 눌러 주세요',
   failed: `${kind}을 보내지 못했어요. 잠시 뒤에 다시 해 주세요`,
-  shared: '', cancelled: '',
+  shared: '', cancelled: '', panel: '',
 } as Record<MediaResult, string>)[r];
 
 // 꾹 누르기 메뉴(1:1·단체방·사랑방)의 '사진 저장'·'사진 공유' (묶음은 '사진 N장 …', 동영상은 '동영상 …')

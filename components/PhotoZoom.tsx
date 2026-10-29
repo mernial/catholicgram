@@ -11,7 +11,7 @@ import { toast } from '@/lib/chat-actions';
 //  - 여러 장이면 옆으로 밀거나 ‹ › 로 넘김
 //  - 컴퓨터: 마우스 휠로 확대, 끌어서 이동, Esc 닫기, ← → 넘기기
 // 브라우저의 화면 전체 확대를 쓰지 않고 사진만 직접 키운다 (화면이 커진 채 남거나 한 손가락 이동이 막히지 않게)
-// saveable: 대화(1:1·단체방·사랑방)의 사진이면 아래에 '저장'·'공유' 단추 (지금 보는 한 장, lib/save-media)
+// saveable: 대화(1:1·단체방·사랑방)의 사진이면 아래에 '저장'·'공유' 단추 (지금 보는 한 장, lib/save-media), 묶음 사진이면 'N장 모두 저장'도
 type Pt = { x: number; y: number };
 type View = { s: number; x: number; y: number }; // 배율, 가운데에서 옮긴 거리
 const ONE: View = { s: 1, x: 0, y: 0 };
@@ -35,14 +35,16 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
   });
   const lastTap = useRef<{ t: number; p: Pt } | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'all' | 'share' | null>(null);
   const apple = isAppleDevice();
+  const saveMany = !!saveable && images.length > 1;
   useEffect(() => { if (saveable && images[index]) prepareMedia([images[index]]); }, [saveable, images, index]); // 아이폰 공유 창이 바로 열리게 미리
-  const act = async (kind: 'save' | 'share') => {
+  useEffect(() => { if (saveMany && images.length <= 10) prepareMedia(images); }, [saveMany, images]); // 묶음은 'N장 모두 저장'을 위해 모두 미리
+  const act = async (kind: 'save' | 'all' | 'share') => {
     if (busy || !images[index]) return;
     setBusy(kind);
     try {
-      const text = mediaResultText(await (kind === 'save' ? saveMedia : shareMedia)([images[index]]));
+      const text = mediaResultText(await (kind === 'share' ? shareMedia : saveMedia)(kind === 'all' ? images : [images[index]]));
       if (text) toast(text, 2800);
     } finally { setBusy(null); }
   };
@@ -234,11 +236,16 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
       <button onClick={onClose} className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 w-11 h-11 rounded-full bg-black/55 text-white text-3xl leading-none flex items-center justify-center" aria-label="닫기">×</button>
       <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-0 right-0 flex flex-col items-center gap-2.5 pointer-events-none">
         {saveable && (
-          <div className="flex gap-3 pointer-events-auto">
-            <button onClick={() => act('save')} disabled={!!busy} className="h-12 px-6 rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60">
-              <Icon name="download" className="w-5 h-5" />{busy === 'save' ? '저장하는 중…' : '저장'}
+          <div className="flex flex-wrap justify-center gap-2.5 px-3 pointer-events-auto">
+            <button onClick={() => act('save')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60`}>
+              <Icon name="download" className="w-5 h-5" />{busy === 'save' ? '저장하는 중…' : saveMany ? '이 사진 저장' : '저장'}
             </button>
-            <button onClick={() => act('share')} disabled={!!busy} className="h-12 px-6 rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60">
+            {saveMany && (
+              <button onClick={() => act('all')} disabled={!!busy} className="h-12 px-4 rounded-full bg-white text-stone-900 text-[1rem] font-bold flex items-center gap-1.5 active:bg-white/80 disabled:opacity-60">
+                <Icon name="download" className="w-5 h-5" />{busy === 'all' ? '저장하는 중…' : `${images.length}장 모두`}
+              </button>
+            )}
+            <button onClick={() => act('share')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60`}>
               <Icon name="share" className="w-5 h-5" />{busy === 'share' ? '여는 중…' : '공유'}
             </button>
           </div>
