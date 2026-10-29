@@ -27,7 +27,11 @@ export function useTyping(room: string | null, userId: string | null | undefined
     const sync = () => {
       const now = Date.now();
       until.current.forEach((t, id) => { if (t < now) { until.current.delete(id); people.delete(id); } });
-      setTypers(Array.from(people.values()));
+      // 1초마다 확인하지만 누가 치는지 바뀌었을 때만 다시 그린다 (예전엔 1초마다 화면 전체를 다시 그려 아이폰 한글 자판이 조합 중이던 글자를 잃기도 함)
+      setTypers(prev => {
+        const next = Array.from(people.values());
+        return prev.length === next.length && prev.every((t, i) => t.id === next[i].id && t.name === next[i].name && t.avatar === next[i].avatar) ? prev : next;
+      });
     };
     const channel = supabase.channel(`typing:${room}`, { config: { broadcast: { self: false } } })
       .on('broadcast', { event: 'typing' }, ({ payload }) => {
