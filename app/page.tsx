@@ -6295,17 +6295,20 @@ export default function Home() {
         <BottomSheet bare label="알림" onClose={() => setShowNotifications(false)} z="z-[70]">
           <div className="flex-1 min-h-0 flex flex-col pb-safe">
             <div className="shrink-0 px-4 pb-3 pt-1 border-b border-stone-100 flex flex-col gap-2.5">
-              <div className="flex items-center justify-between gap-2">
-              <h2 className="font-bold text-stone-900 shrink-0">알림</h2>
-              {/* 소리 켜기·끄기와 휴대폰 알림 받기를 나란히 (운영자 요청) — 같은 높이의 칸 */}
-              <div className="flex items-center justify-end gap-1.5 flex-wrap min-w-0">
-                <button onClick={toggleAlertSound} className="h-8 text-xs px-2.5 rounded-lg border border-stone-200 text-stone-600 inline-flex items-center gap-1 shrink-0">
-                  {alertSoundOn ? <><Icon name="speaker" className="w-[1.1em] h-[1.1em]" />소리 켜짐</> : <><Icon name="mute" className="w-[1.1em] h-[1.1em]" />소리 꺼짐</>}
-                </button>
+              <div className="flex items-center gap-1.5">
+              <h2 className="font-bold text-stone-900 shrink-0 mr-auto">알림</h2>
+              {/* 소리 켜기·끄기와 휴대폰 알림 받기를 나란히 (운영자 요청) — 같은 높이의 칸, 좁은 화면(360px)에서도 한 줄 */}
+              <div className="flex items-center justify-end gap-1 flex-wrap min-w-0">
+                {/* 알림 소리 켜기·끄기도 밀기 단추로 (운영자 요청) — 휴대폰 알림 칸과 같은 모양 */}
+                <div className="h-8 pl-2 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1 shrink-0">
+                  <Icon name={alertSoundOn ? 'speaker' : 'mute'} className="w-[1.1em] h-[1.1em]" />
+                  <span>소리</span>
+                  <Switch size="sm" label="알림 소리" on={alertSoundOn} onChange={next => { if (next !== alertSoundOn) toggleAlertSound(); }} />
+                </div>
                 {(pushStatus === 'on' || pushStatus === 'off') && (() => {
                   const shownOn = pushWant ?? pushStatus === 'on';
                   return (
-                    <div className="h-8 pl-2.5 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1.5 shrink-0">
+                    <div className="h-8 pl-2 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1 shrink-0">
                       <Icon name="phone" className="w-[1.1em] h-[1.1em]" />
                       <span>{pushBusy ? '설정 중…' : '휴대폰 알림'}</span>
                       <Switch size="sm" label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
@@ -6321,8 +6324,8 @@ export default function Home() {
                   <button onClick={() => { setShowNotifications(false); setShowInstallGuide(true); }}
                     className="h-8 text-xs px-2.5 rounded-lg border border-stone-200 text-stone-600 inline-flex items-center gap-1 shrink-0"><Icon name="phone" className="w-[1.1em] h-[1.1em]" />휴대폰 알림 받는 법</button>
                 )}
-                <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="알림 닫기">×</button>
               </div>
+              <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-0.5 shrink-0" aria-label="알림 닫기">×</button>
               </div>
               {/* 지우기: 확인한(눌러 본) 알림만 / 확인하지 않은 알림까지 모두 */}
               <div className="flex gap-2">
