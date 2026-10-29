@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { mediaMenuActions } from '@/lib/save-media';
@@ -522,7 +522,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const gestures = usePressGestures<LoungeMessage>({
     keyOf: m => m.id,
     onTap: (m, el) => { if (m.user_id === user.id) openMenu(m, el); },
-    onDoubleTap: m => { if (canWriteRef.current && !stealth) react(m, '❤️'); },
+    onDoubleTap: m => { if (canWriteRef.current) react(m, '❤️'); }, // 몰래 보는 관리자도 감정 표시는 할 수 있게 (들어왔다는 안내는 그대로 없음)
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: m => { if (canWriteRef.current) startReply(m); },
   });
@@ -585,6 +585,26 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => { ro.disconnect(); el.removeEventListener('scroll', onScroll); };
   }, [trash === null]);
+  // 휴대폰: 관리자 칸은 글이면 두 줄 높이 그대로, 마지막 말씀이 이모티콘·사진이면 그 그림이 다 보이게 높이를 맞춘다
+  // (예전엔 두 줄 칸에 이모티콘이 '[신부님] 기도합니다' 글로만 보였음, 운영자). 화면의 35%까지. 넓은 화면(오른쪽 기둥)은 그대로
+  const lastAdminId = adminMsgs.length ? adminMsgs[adminMsgs.length - 1].id : '';
+  useLayoutEffect(() => {
+    const el = adminRef.current;
+    if (!el) return;
+    const fit = () => {
+      const last = el.lastElementChild as HTMLElement | null;
+      if (window.matchMedia('(min-width: 768px)').matches || last?.dataset.rich !== '1') { el.style.height = ''; return; }
+      const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+      const h = Math.min(Math.max(3.3 * rem, last.offsetHeight + 4), window.innerHeight * 0.35);
+      el.style.height = `${Math.round(h)}px`;
+      if (adminAtBottom.current) el.scrollTop = el.scrollHeight;
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    if (el.lastElementChild) ro.observe(el.lastElementChild);
+    window.addEventListener('resize', fit);
+    return () => { ro.disconnect(); window.removeEventListener('resize', fit); };
+  }, [lastAdminId, trash === null]);
 
   return (
     // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 방 이름이 늘 보이고 치우치지 않게, `.fit-visual`)
@@ -665,13 +685,32 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <div ref={adminRef} className="flex-1 min-w-0 h-[3.3rem] overflow-y-auto overscroll-contain text-right md:h-auto md:min-h-0 md:flex md:flex-col md:gap-2" aria-label="관리자 말씀">
               {adminMsgs.length === 0 ? (
                 <p className="text-[0.875rem] leading-[3.3rem] text-amber-800/60 md:leading-normal md:mt-2">📢 오늘의 관리자 말씀이 여기에 보여요</p>
-              ) : adminMsgs.map(m => (
-                <p key={m.id} id={`lounge-${m.id}`} className="text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words md:bg-white/70 md:rounded-2xl md:rounded-tr-md md:px-3.5 md:py-2 md:shadow-sm md:self-end md:max-w-full">
-                  {withCall(m.content, false)}
+              ) : adminMsgs.map(m => {
+                const tail = <>
                   <span className="ml-1.5 text-[0.6875rem] text-amber-800/70 whitespace-nowrap">{timeOf(m.created_at)}</span>
                   {isAdmin && <button onClick={() => remove(m)} className="ml-1 text-stone-400 text-base leading-none align-middle" aria-label="이 말씀 지우기">×</button>}
-                </p>
-              ))}
+                </>;
+                // 이모티콘(글과 함께 보낸 것도)·사진·동영상: 그림으로 (휴대폰 112px, 넓은 화면 144px)
+                const sticker = parseSticker(m.content) || chatStickerParts(m.content)?.sticker;
+                const media = !!(m.image_url || m.images?.length);
+                if (sticker || media) {
+                  const text = parseSticker(m.content) ? '' : chatStickerParts(m.content)?.text ?? (isMediaOnlyText(m.content) ? '' : m.content);
+                  return (
+                    <div key={m.id} id={`lounge-${m.id}`} data-rich="1" className="flex flex-col items-end py-0.5 md:self-end md:max-w-full">
+                      {media && <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className={(m.images?.length || 0) > 1 ? '!w-[min(44vw,10rem)] md:!w-[16rem]' : '!max-h-40 !max-w-[min(56vw,14rem)] md:!max-h-64'} />}
+                      {sticker && <StickerImage sticker={sticker} size="w-28 h-28 md:w-36 md:h-36" />}
+                      <p className={`text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words ${text ? 'md:bg-white/70 md:rounded-2xl md:rounded-tr-md md:px-3.5 md:py-2 md:shadow-sm md:max-w-full' : ''}`}>
+                        {text && withCall(text, false)}{tail}
+                      </p>
+                    </div>
+                  );
+                }
+                return (
+                  <p key={m.id} id={`lounge-${m.id}`} className="text-[1rem] leading-[1.65rem] text-stone-900 whitespace-pre-wrap break-words md:bg-white/70 md:rounded-2xl md:rounded-tr-md md:px-3.5 md:py-2 md:shadow-sm md:self-end md:max-w-full">
+                    {withCall(m.content, false)}{tail}
+                  </p>
+                );
+              })}
             </div>
             <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center md:w-auto md:flex-row md:justify-end md:gap-2 md:pb-2 md:border-b md:border-amber-200" aria-label="관리자 공간">
               <CelebrateBand id={adminId}>{a?.avatar_url
@@ -690,7 +729,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         {/* 대화가 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
-          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 매일 자정에 새로 시작돼요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.
+          모든 교우가 함께 보는 대화방이에요 🙏<br />서로 존중하는 말로 나눠 주세요. 대화는 매일 자정에 새로 시작돼요.<br />도움이 필요하면 <b className="text-amber-700">🙋 관리자 부르기</b>를 눌러 주세요.<br />대화를 <b className="text-stone-700">꾹 누르면</b> ❤️🙏😊 감정을 달 수 있어요 (두 번 누르면 ❤️)
         </div>
         {hasOlder && <button onClick={loadOlder} className="self-center text-[0.8125rem] text-stone-600 bg-white border border-stone-200 rounded-full px-4 py-1.5">이전 대화 더 보기</button>}
         {loading && <p className="text-center text-stone-400 text-sm py-10">불러오는 중...</p>}
@@ -885,7 +924,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const writable = !frozen || isAdmin;
         return (
           <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close} label="사랑방 메뉴"
-            emojis={writable && !stealth ? REACTION_EMOJIS : undefined} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
+            emojis={writable ? REACTION_EMOJIS : undefined} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}
             actions={[
               ...(text ? [
                 { label: '복사', run: async () => { close(); toast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },

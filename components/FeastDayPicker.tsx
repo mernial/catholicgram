@@ -1,16 +1,15 @@
 'use client';
 
-import { DAYS_IN_MONTH, formatFeastDay, suggestFeastDays, toFeastDay } from '@/lib/feast';
+import { DAYS_IN_MONTH, toFeastDay } from '@/lib/feast';
 
-// 축일(월/일) 선택 + 세례명에 맞는 대표 축일 추천. 생일(월/일)도 같은 칸을 쓴다 (what='생일', 추천 없음)
-export default function FeastDayPicker({ value, onChange, name, what = '축일' }: {
+// 축일(월/일) 선택. 생일(월/일)도 같은 칸을 쓴다 (what='생일')
+// 예전엔 세례명으로 대표 축일을 추천했는데, 같은 세례명의 성인이 여럿이라(요한·마리아·데레사…) 본인 축일과 다른 날이 나와 없앰 (운영자 요청)
+export default function FeastDayPicker({ value, onChange, what = '축일' }: {
   value: string;              // 'MM-DD' 또는 ''
   onChange: (value: string) => void;
-  name?: string;              // 이름 + 세례명 (추천용)
   what?: string;              // 읽어 주기용 이름 ('축일' · '생일')
 }) {
   const [month, day] = value ? value.split('-').map(Number) : [0, 0];
-  const suggestions = name ? suggestFeastDays(name) : [];
   const select = 'flex-1 p-3 text-sm font-medium border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400 bg-stone-50';
 
   const changeMonth = (m: number) => {
@@ -34,23 +33,7 @@ export default function FeastDayPicker({ value, onChange, name, what = '축일' 
           {Array.from({ length: DAYS_IN_MONTH[(month || 1) - 1] }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}일</option>)}
         </select>
       </div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <p className="text-[0.75rem] text-stone-500">세례명으로 찾은 축일 (눌러서 선택)</p>
-          <div className="flex flex-wrap gap-1.5">
-            {suggestions.map(s => (
-              <button
-                key={`${s.saint}-${s.date}`}
-                type="button"
-                onClick={() => onChange(s.date)}
-                className={`text-xs rounded-full px-2.5 py-1.5 border text-left ${value === s.date ? 'bg-stone-900 text-white border-stone-900' : 'bg-amber-50 text-stone-700 border-amber-200'}`}
-              >
-                🕯️ {s.saint} · {formatFeastDay(s.date)}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {what === '축일' && <p className="text-[0.75rem] text-stone-500 leading-snug">세례 때 정한 주보 성인의 축일을 골라 주세요. 같은 세례명이라도 성인에 따라 축일이 달라요. (잘 모르시면 세례 증명서나 본당에서 확인할 수 있어요)</p>}
     </div>
   );
 }
