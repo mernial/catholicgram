@@ -8,7 +8,8 @@ import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
 import { THEMES, AUTO_THEME, AUTO_OPTION, getThemeChoice, applyTheme, resolveTheme, prefersDark, isSamsungBrowser } from '@/lib/theme';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
-import { IconBadge } from '@/components/Icon';
+import Icon, { IconBadge } from '@/components/Icon';
+import { toast } from '@/lib/chat-actions';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
@@ -286,22 +287,37 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 <p>아이폰·아이패드는 휴대폰 위쪽에 뜨는 알림의 소리를 고를 수 없어요(애플이 기본 소리만 쓰게 해 두었어요). 휴대폰 <b>설정 → 알림 → 가톨릭그램</b>에서 <b>사운드</b>를 켜고 끌 수만 있어요.</p>
               ) : device.android ? (
                 <>
-                  <p className="mb-1.5">휴대폰 위쪽에 뜨는 알림의 소리는 <b>휴대폰 설정</b>에서 휴대폰에 들어 있는 소리 중에 골라요.</p>
+                  <p className="mb-2">휴대폰 위쪽에 뜨는 알림의 소리는 <b>휴대폰 설정</b>에서 골라요. 위의 가톨릭그램 소리도 파일로 받아 휴대폰 알림음으로 쓸 수 있어요.</p>
+                  {/* 가톨릭그램 소리 파일 (public/sounds/notify — 앱 안 소리와 같은 소리, 파일 안 제목이 '가톨릭그램 …'이라 휴대폰 소리 목록에서 찾기 쉬움.
+                      내려받는 이름은 영어로: 한글 이름은 크롬이 'download'로 바꿔 버림) */}
+                  <p className="font-bold">① 소리 파일 받기</p>
+                  <div className="grid grid-cols-2 gap-1.5 mt-1 mb-1">
+                    {ALERT_SOUNDS.filter(o => o.key !== 'praise').map(o => (
+                      <a key={o.key} href={`/sounds/notify/catholicgram-${o.key}.mp3`} download={`catholicgram-${o.key}.mp3`}
+                        onClick={() => toast(`'가톨릭그램 ${o.name}' 파일을 휴대폰 '다운로드'에 저장해요`, 2200)}
+                        className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white border border-sky-200 text-[0.875rem] font-bold text-sky-900 active:bg-sky-100">
+                        <span aria-hidden="true">{o.emoji}</span><span className="flex-1 min-w-0 truncate">{o.name}</span><Icon name="download" className="w-4 h-4 shrink-0 opacity-70" />
+                      </a>
+                    ))}
+                  </div>
+                  <p className="text-[0.8125rem] text-sky-800 mb-2">휴대폰 &apos;다운로드&apos;에 저장돼요. (&apos;찬미예수님&apos;은 휴대폰 목소리로 말하는 것이라 파일이 없어요)</p>
+                  <p className="font-bold">② 휴대폰 알림음으로 정하기</p>
                   {device.kind === 'browser' ? (
                     <ol className="list-decimal pl-5 space-y-0.5">
                       <li>휴대폰 <b>설정 → 애플리케이션 → {device.browser}</b></li>
                       <li><b>알림</b> → 알림 종류에서 <b>사이트</b>(또는 catholicgram) 누르기</li>
-                      <li><b>소리</b> → 원하는 소리 고르기</li>
+                      <li><b>소리</b> 누르기</li>
+                      <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
                     </ol>
                   ) : (
                     <>
                       <ol className="list-decimal pl-5 space-y-0.5">
                         <li>바탕화면의 <b>가톨릭그램 아이콘을 꾹</b> 누르기</li>
-                        <li><b>ⓘ (앱 정보)</b> 누르기</li>
-                        <li><b>알림</b> → 알림 종류(카테고리)를 하나 누르기</li>
-                        <li><b>소리</b> → 원하는 소리 고르기</li>
+                        <li><b>ⓘ (앱 정보)</b> → <b>알림</b></li>
+                        <li>알림 종류(카테고리)를 하나 누르고 <b>소리</b> 누르기</li>
+                        <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
                       </ol>
-                      <p className="mt-1.5 text-[0.8125rem] text-sky-800">앱 정보에 알림 종류가 없으면 <b>설정 → 애플리케이션 → {device.browser} → 알림</b>에서 catholicgram 사이트의 소리를 바꿔 주세요.</p>
+                      <p className="mt-1.5 text-[0.8125rem] text-sky-800">휴대폰에 들어 있는 다른 소리를 골라도 돼요. 앱 정보에 알림 종류가 없으면 <b>설정 → 애플리케이션 → {device.browser} → 알림</b>에서 catholicgram 사이트의 소리를 바꿔 주세요.</p>
                     </>
                   )}
                 </>
