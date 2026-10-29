@@ -173,7 +173,15 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
 // 지금 치는 낱말과 비슷한 이모티콘 추천 (× 를 누르면 다른 낱말을 칠 때까지 숨김)
 function StickerSuggest({ text, picked, onPick, collapsed }: { text: string; picked: Sticker | null; onPick: (s: Sticker) => void; collapsed?: boolean }) {
   const [hidden, setHidden] = useState(false);
-  const list = useMemo(() => suggestStickers(text), [text]);
+  // 추천도 이모티콘 칸에서 정한 탭 순서대로 (앞에 둔 캐릭터의 이모티콘부터, ★ 즐겨찾기 탭이 그보다 앞이면 즐겨찾기한 것부터)
+  const order = useTabOrder();
+  const favs = useStickerFavorites();
+  const favKey = favs.list.map(s => s.id).join();
+  const list = useMemo(() => {
+    const pos = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
+    return suggestStickers(text, 12, s => Math.min(pos(s.pack), favs.has(s) ? pos(FAV_TAB) : Infinity));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text, order.join(), favKey]);
   // × 로 숨겨도 새 낱말에 맞는 추천(목록이 바뀜)은 다시 보여 줌
   const listKey = list.map(s => s.id).join(',');
   useEffect(() => { setHidden(false); }, [listKey]);
@@ -238,6 +246,18 @@ const saveOrder = (shown: string[]) => {
   try { localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch { /* 저장 불가 */ }
   window.dispatchEvent(new Event(ORDER_EVENT));
 };
+// 지금 탭 순서 (다른 칸에서 바꾸면 함께 바뀜) — 추천 이모티콘 줄도 이 순서
+function useTabOrder() {
+  const [order, setOrder] = useState<string[]>(ALL_TABS);
+  useEffect(() => {
+    const load = () => setOrder(readOrder());
+    load();
+    window.addEventListener(ORDER_EVENT, load);
+    window.addEventListener('storage', load);
+    return () => { window.removeEventListener(ORDER_EVENT, load); window.removeEventListener('storage', load); };
+  }, []);
+  return order;
+}
 const moveTo = (order: string[], id: string, to: number) => {
   const next = order.filter(x => x !== id);
   next.splice(Math.max(0, Math.min(to, next.length)), 0, id);
