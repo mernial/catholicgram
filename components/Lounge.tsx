@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
+import { CelebrateBand } from '@/components/CelebrateAvatar';
 import type { ReportTarget } from '@/components/ReportDialog';
 import MentionSuggest from '@/components/MentionSuggest';
 import { extractMentions } from '@/lib/mentions';
@@ -668,9 +669,9 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               ))}
             </div>
             <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center md:w-auto md:flex-row md:justify-end md:gap-2 md:pb-2 md:border-b md:border-amber-200" aria-label="관리자 공간">
-              {a?.avatar_url
+              <CelebrateBand id={adminId}>{a?.avatar_url
                 ? <img src={a.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-amber-300" />
-                : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{initial(a?.baptismal_name, '📢')}</span>}
+                : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{initial(a?.baptismal_name, '📢')}</span>}</CelebrateBand>
               <span className="mt-0.5 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate flex items-center gap-0.5 md:order-first md:mt-0 md:text-[0.9375rem]"><span className="hidden md:inline text-amber-700 font-normal mr-1">📢 관리자 말씀 ·</span>{a?.baptismal_name || '관리자'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /></span>
             </button>
           </div>
@@ -734,9 +735,9 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                 {!mine && (
                   grouped ? <span className="w-10 shrink-0" /> : (
                     <button onClick={() => onOpenProfile(m.user_id)} className="shrink-0 self-start" aria-label={`${a?.baptismal_name || '교우'}님 공간`}>
-                      {a?.avatar_url
+                      <CelebrateBand id={m.user_id}>{a?.avatar_url
                         ? <img loading="lazy" src={a.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-stone-200" />
-                        : <span className="w-10 h-10 rounded-full bg-stone-300 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(a?.baptismal_name, '교')}</span>}
+                        : <span className="w-10 h-10 rounded-full bg-stone-300 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(a?.baptismal_name, '교')}</span>}</CelebrateBand>
                     </button>
                   )
                 )}
