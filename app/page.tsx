@@ -192,6 +192,23 @@ const consumePendingLink = async (staleSearch?: string, retried = false): Promis
   } catch { /* 무시 */ }
 };
 
+// 알림 대신 앱 아이콘(숫자가 붙은)을 눌러 들어온 경우 (루비로사 건의): 휴대폰 위쪽 줄에 아직 떠 있는 가톨릭그램 알림 중
+// 가장 최근 것(since 뒤에 온 것만)의 화면으로 바로 간다. 그 알림은 닫는다 (아이콘의 숫자도 하나 줄어듦)
+const openShownNotification = async (since = 0) => {
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    const at = (n: Notification) => (n as Notification & { timestamp?: number }).timestamp || 0; // sw.js 가 띄울 때 적은 시각
+    const list = ((await reg?.getNotifications()) || []).filter(n => at(n) >= since && typeof n.data?.url === 'string');
+    if (list.length === 0) return;
+    const latest = list.reduce((a, b) => (at(b) > at(a) ? b : a));
+    const url = new URL(latest.data.url, window.location.origin);
+    if (url.origin !== window.location.origin) return;
+    linkLog('icon', `${url.pathname}${url.search} (떠 있는 알림 ${list.length}개)`);
+    latest.close();
+    pendingLinkHandler?.(url.href);
+  } catch { /* 무시 */ }
+};
+
 const ALERT_KEEP_MS = 3 * 24 * 60 * 60 * 1000; // 알림 보관 기간 (3일)
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
@@ -661,6 +678,8 @@ export default function Home() {
       else if (initialLink.view) { if (markLinkOpened(search)) setDeepLink(initialLink); }
       else consumePendingLink(search);
     } else consumePendingLink(); // 알림을 눌러 열었는데 주소에 목적지가 없으면(새로고침 등) 적어 둔 곳으로
+    // 알림이 아니라 앱 아이콘을 눌러 켰으면(목적지가 없고 적어 둔 곳도 없음): 떠 있는 알림 중 가장 최근 것의 화면으로
+    if (!initialLink) setTimeout(() => { if (!linkHandledAt) openShownNotification(); }, 1500);
 
     // 앱을 새로 켜면(휴대폰을 껐다 켬·앱을 완전히 닫았다 엶) 홈에서 시작한다.
     // 앱이 켜져 있는 동안 새로고침된 경우(새 버전 적용 등)만 보던 화면을 이어서 연다 — sessionStorage 는 앱을 닫으면 지워진다
@@ -2874,6 +2893,27 @@ export default function Home() {
     const onVisible = () => { if (document.visibilityState === 'visible') visibleSinceRef.current = Date.now(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+  // 앱이 뒤에 있는 동안 알림이 왔는데 알림 대신 앱 아이콘을 눌러 돌아오면: 그사이 온 알림 중 가장 최근 것의 화면으로.
+  // 알림을 눌러 돌아온 경우는 그 알림으로 이미 가므로 그대로, 글을 쓰는 중이면 쓰던 글을 지키려고 그대로
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+      const since = hiddenAt;
+      hiddenAt = 0;
+      if (!since || Date.now() - since < 3000) return;
+      setTimeout(() => {
+        if (document.visibilityState !== 'visible') return;
+        if (linkHandledAt > since || (lastOpenedLink && lastOpenedLink.at > since)) return;
+        if (composerOpenRef.current) return;
+        const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
+        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.value.trim()) return;
+        openShownNotification(since);
+      }, 1200);
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
   }, []);
   // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동 (앱이 뒤에 있는 동안 온 것은 빼고: visibleSinceRef)
   useEffect(() => {
