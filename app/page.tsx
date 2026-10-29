@@ -4952,7 +4952,8 @@ export default function Home() {
                       const grouped = ALL_EMOJIS.map(e => ({ e, n: reactions.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
                       const quoted = msg.reply_to != null ? chatMessages.find(m => String(m.id) === String(msg.reply_to)) : undefined;
                       const sticker = parseSticker(msg.content);
-                      const withSticker = chatStickerParts(msg.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
+                      const withSticker = chatStickerParts(msg.content); // 글과 함께 보낸 이모티콘 → 이모티콘(말풍선 없이) + 글 말풍선, 숫자·시간은 하나
+                      const tone = isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm';
                       return (
                         <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
                           <div className="relative">
@@ -4961,13 +4962,13 @@ export default function Home() {
                           <div
                             data-bubble
                             {...dmGestures.bind(msg)}
-                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${isMe ? 'items-end' : 'items-start'}` : isMe ? 'bg-blue-500 text-white rounded-br-none' : 'bg-white text-stone-800 border border-stone-200 rounded-bl-none shadow-sm'}`}
+                            className={`relative px-4 py-2 rounded-2xl text-[1rem] whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashMessageId === String(msg.id) ? 'ring-4 ring-amber-300' : ''} ${sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${isMe ? 'items-end' : 'items-start'}` : tone}`}
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
                               <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
                                 aria-label={`${quoted ? (quoted.sender_id === user?.id ? '내' : `${currentChatUser?.baptismal_name || '상대'}님`) : '이전'} 메시지에 답장 · 눌러서 원래 메시지 보기`}
-                                className={`flex max-w-full items-center gap-1 text-left mb-0.5 text-[0.8125rem] leading-snug ${isMe && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
+                                className={`flex max-w-full items-center gap-1 text-left mb-0.5 text-[0.8125rem] leading-snug ${isMe && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                                 {quoted && !quoted.deleted_at && <QuoteThumb m={quoted} />}
                                 <span className="min-w-0 truncate">{!quoted ? '이전 대화의 메시지' : quoted.deleted_at ? '삭제된 메시지' : quoteLabel(quoted)}</span>
                                 <span aria-hidden="true" className="shrink-0">↵</span>
@@ -4975,7 +4976,7 @@ export default function Home() {
                             )}
                             {/* 사진(묶음이면 바둑판)·동영상: 누르면 크게 보기·재생 (메뉴는 꾹 누르기로) */}
                             <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index })} className="-mx-2 -mt-0.5 mb-1" />
-                            {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
+                            {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-4 py-2 rounded-2xl ${tone}`} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
                           {heartPop?.id === String(msg.id) && (

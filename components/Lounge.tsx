@@ -714,7 +714,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
           const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
           const sticker = parseSticker(m.content);
-          const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
+          const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 이모티콘(말풍선 없이) + 글 말풍선, 숫자·시간은 하나
+          const tone = mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm';
           const picked = !!capturePick?.has(m.id);
           const announceMsg = m.content.startsWith('📢') && m.is_admin;
           return (
@@ -757,19 +758,19 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                         {...gestures.bind(m)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                         {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
                         {m.reply_to && (
                           <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
                             aria-label={`${quoted ? authorName(quoted.user_id) : '이전 대화'}에게 답장 · 눌러서 원래 글 보기`}
-                            className={`flex max-w-full items-center gap-1 text-left font-normal mb-0.5 text-[0.8125rem] leading-snug ${mine && !announceMsg && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
+                            className={`flex max-w-full items-center gap-1 text-left font-normal mb-0.5 text-[0.8125rem] leading-snug ${mine && !announceMsg && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                             {quoted && !blockedIds.has(quoted.user_id) && <QuoteThumb m={quoted} />}
                             <span className="min-w-0 truncate">{quoted ? (blockedIds.has(quoted.user_id) ? '차단한 교우의 글' : quoteLabel(quoted)) : '이전 대화의 글'}</span>
                             <span aria-hidden="true" className="shrink-0">↵</span>
                           </button>
                         )}
                         <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />
-                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : withSticker && !announceMsg ? <StickerWithText parts={withSticker}>{withCall(withSticker.text, mine)}</StickerWithText> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
+                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : withSticker && !announceMsg ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`}>{withCall(withSticker.text, mine)}</StickerWithText> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
                       </div>
                       {heartPop?.id === m.id && (
                         <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">

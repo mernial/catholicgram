@@ -418,10 +418,13 @@ export function PostStickers({ stickers, size = 'w-28 h-28', onRemove }: { stick
 }
 
 // 말풍선 대신 보이는 이모티콘 그림 (누르기·꾹 누르기는 감싼 말풍선이 받는다)
-export function StickerImage({ sticker, size = 'w-32 h-32' }: { sticker: Sticker; size?: string }) {
+// 대화 속 이모티콘 크기 (휴대폰 144px, 넓은 화면 160px — 운영자: 예전 128px 보다 조금 크게)
+const CHAT_STICKER = 'w-36 h-36 sm:w-40 sm:h-40';
+export function StickerImage({ sticker, size = CHAT_STICKER }: { sticker: Sticker; size?: string }) {
   return <img src={sticker.src} alt={`이모티콘: ${sticker.label}`} draggable={false} className={`block ${size} object-contain pointer-events-none select-none`} />;
 }
-// 글과 함께 보낸 이모티콘 (lib/stickers chatStickerParts): 한 말풍선 안에 이모티콘(위) + 글(아래) — 카카오톡처럼
-export function StickerWithText({ parts, children }: { parts: { text: string; sticker: Sticker }; children?: React.ReactNode }) {
-  return <><StickerImage sticker={parts.sticker} size="w-28 h-28 -mx-1 mb-1" />{children ?? parts.text}</>;
+// 글과 함께 보낸 이모티콘 (lib/stickers chatStickerParts): 한 메시지라 숫자 1·시간은 하나, 그림은 이모티콘만 보낼 때처럼
+// 말풍선 없이(위) + 글은 자기 말풍선(아래, bubble = 그 대화의 말풍선 모양) — 카카오톡처럼 붙어서 보임
+export function StickerWithText({ parts, bubble, children }: { parts: { text: string; sticker: Sticker }; bubble: string; children?: React.ReactNode }) {
+  return <><StickerImage sticker={parts.sticker} size={`${CHAT_STICKER} mb-1`} /><div className={bubble}>{children ?? parts.text}</div></>;
 }

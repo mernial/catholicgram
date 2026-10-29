@@ -507,7 +507,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
             const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
             const sticker = parseSticker(m.content);
-            const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
+            const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 이모티콘(말풍선 없이) + 글 말풍선, 숫자·시간은 하나
+            const tone = mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm';
             if (hiddenMsgs.hidden.has(m.id)) return null; // 내 화면에서만 지운 메시지
             const picked = !!capturePick?.has(m.id);
             return (
@@ -541,12 +542,12 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                         <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                           {...gestures.bind(m)}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm'}`}>
+                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
                               aria-label={`${quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장 · 눌러서 원래 메시지 보기`}
-                              className={`flex max-w-full items-center gap-1 text-left not-italic mb-0.5 text-[0.8125rem] leading-snug ${mine && !sticker ? 'text-white/70' : 'text-stone-400'}`}>
+                              className={`flex max-w-full items-center gap-1 text-left not-italic mb-0.5 text-[0.8125rem] leading-snug ${mine && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                               {quoted && !(quoted.user_id && blockedIds.has(quoted.user_id)) && <QuoteThumb m={quoted} />}
                               <span className="min-w-0 truncate">{quoted ? preview(quoted) : '이전 대화의 메시지'}</span>
                               <span aria-hidden="true" className="shrink-0">↵</span>
@@ -554,7 +555,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           )}
                           {/* 사진(묶음이면 바둑판)·동영상 */}
                           {!blocked && <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />}
-                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
+                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
                         </div>
                         {/* 감정을 고르면 잠깐 크게 */}
                         {heartPop?.id === m.id && (
