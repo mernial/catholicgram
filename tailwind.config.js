@@ -56,7 +56,7 @@ module.exports = {
   },
   plugins: [
     // tablet: 아이패드 같은 큰 터치 화면 → 가운데 좁은 칸 대신 화면 가득 (컴퓨터는 그대로).
-    // 창 너비 미디어 쿼리 대신 시작할 때 기기 화면 크기로 한 번 정한 html[data-tablet] (lib/device.ts) — 아이패드에서 알림을 눌러
+    // 창 너비 미디어 쿼리 대신 기기 화면 크기로 정한 html[data-tablet] (lib/device.ts, 폴드는 펴고 접을 때 다시) — 아이패드에서 알림을 눌러
     // 앱이 다시 뜰 때 잠깐 창 크기가 다르게 잡히면 좁은 칸 ↔ 화면 가득이 바뀌며 화면이 치우쳤다가 펴졌다 (운영자)
     require('tailwindcss/plugin')(({ addVariant }) => {
       addVariant('tablet', ':is([data-tablet] &)');
