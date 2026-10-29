@@ -5,7 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { deleteMyAccount, signOutAndClear } from '@/lib/account';
 import { TEXT_SIZES, getTextSize, applyTextSize } from '@/lib/text-size';
-import { THEMES, DEFAULT_THEME, getTheme, applyTheme } from '@/lib/theme';
+import { THEMES, AUTO_THEME, AUTO_OPTION, getThemeChoice, applyTheme, resolveTheme, prefersDark, isSamsungBrowser } from '@/lib/theme';
 import { formatFeastDay } from '@/lib/feast';
 import FeastDayPicker from '@/components/FeastDayPicker';
 import { IconBadge } from '@/components/Icon';
@@ -49,9 +49,29 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   const [blocked, setBlocked] = useState<BlockedProfile[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [textSize, setTextSize] = useState('100%');
-  const [theme, setTheme] = useState(DEFAULT_THEME);
+  const [theme, setTheme] = useState(AUTO_THEME);
+  const [phoneDark, setPhoneDark] = useState(false);
+  const [samsung, setSamsung] = useState(false);
+  // 휴대폰 알림 상태 (설정 맨 아래 '지금 쓰는 앱'에 — 알림이 자꾸 꺼진다는 교우 휴대폰을 살펴볼 때)
+  const [pushInfo, setPushInfo] = useState('');
 
-  useEffect(() => { setTextSize(getTextSize()); setTheme(getTheme()); }, []);
+  useEffect(() => {
+    setTextSize(getTextSize()); setTheme(getThemeChoice()); setPhoneDark(prefersDark()); setSamsung(isSamsungBrowser());
+    (async () => {
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) { setPushInfo('이 브라우저는 휴대폰 알림을 쓸 수 없어요'); return; }
+      const word = (p: string) => (p === 'granted' ? '허용됨' : p === 'denied' ? '막힘' : '아직 안 물어봄');
+      const reg = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => undefined);
+      const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+      const pushPerm = reg ? await reg.pushManager.permissionState?.({ userVisibleOnly: true }).catch(() => null) : null;
+      const pp = pushPerm === 'prompt' ? 'default' : pushPerm;
+      setPushInfo(`휴대폰 알림: ${word(Notification.permission)}${pp && pp !== Notification.permission ? ` (알림 받기 ${word(pp)})` : ''} · 이 앱 알림 받기 ${sub ? '켜짐' : '꺼짐'}`);
+    })();
+    // 설정을 연 채로 휴대폰 다크 모드가 켜지고 꺼져도(다크 모드 예약 등) '지금 어두운/밝은 화면'이 맞게
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const onChange = () => setPhoneDark(prefersDark());
+    mq?.addEventListener?.('change', onChange);
+    return () => mq?.removeEventListener?.('change', onChange);
+  }, []);
 
   const changeTheme = (key: string) => {
     applyTheme(key);
@@ -114,10 +134,30 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 ))}
               </div>
             </div>
-            {/* 화면 색: 다섯 가지 중 고르기 (칸마다 그 색으로 미리 보여 줌, 이 휴대폰에만 저장) */}
+            {/* 화면 색: 휴대폰 설정 따라가기 + 다섯 가지 중 고르기 (칸마다 그 색으로 미리 보여 줌, 이 휴대폰에만 저장) */}
             <div className="p-4 border-b border-stone-100">
               <p className="text-sm mb-2.5 flex items-center gap-3"><IconBadge name="sparkle" tone="gold" />화면 색</p>
               <div className="flex flex-col gap-2" role="radiogroup" aria-label="화면 색">
+                {(() => {
+                  // 휴대폰 설정 따라가기: 밝은(세이지)·어두운(차콜) 칸을 반씩
+                  const on = theme === AUTO_THEME;
+                  const light = THEMES.find(t => t.key === 'sage')!, dark = THEMES.find(t => t.key === 'charcoal')!;
+                  const now = THEMES.find(t => t.key === resolveTheme(AUTO_THEME))!;
+                  return (
+                    <button type="button" role="radio" aria-checked={on} onClick={() => changeTheme(AUTO_THEME)}
+                      className={`flex items-center gap-3 px-3.5 py-3 rounded-2xl text-left border-2 transition-shadow ${on ? 'shadow-md' : 'border-transparent'}`}
+                      style={{ background: `linear-gradient(110deg, ${light.preview[0]} 0 50%, ${dark.preview[0]} 50% 100%)`, borderColor: on ? now.preview[1] : 'rgba(0,0,0,0.08)' }}>
+                      <span className="w-6 h-6 rounded-full shrink-0 overflow-hidden flex" aria-hidden="true" style={{ boxShadow: '0 0 0 1.5px rgba(127,127,127,0.35)' }}>
+                        <span className="w-1/2 h-full" style={{ backgroundColor: light.swatches[1] }} /><span className="w-1/2 h-full" style={{ backgroundColor: dark.swatches[1] }} />
+                      </span>
+                      <span className="flex-1 min-w-0 rounded-xl px-2 py-1" style={{ backgroundColor: `${now.preview[0]}e6`, color: now.preview[2] }}>
+                        <span className="block font-bold text-[1rem]">📱 {AUTO_OPTION.name}</span>
+                        <span className="block text-[0.8125rem] opacity-75">{AUTO_OPTION.desc}{on ? ` · 지금 ${phoneDark ? '어두운 화면' : '밝은 화면'}` : ''}</span>
+                      </span>
+                      <span className="shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[0.875rem] font-bold" style={on ? { backgroundColor: now.preview[1], color: now.preview[0] } : { boxShadow: `inset 0 0 0 2px ${now.preview[1]}55` }} aria-hidden="true">{on ? '✓' : ''}</span>
+                    </button>
+                  );
+                })()}
                 {THEMES.map(t => {
                   const [bg, accent, ink] = t.preview;
                   const on = theme === t.key;
@@ -137,6 +177,13 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                   );
                 })}
               </div>
+              {/* 삼성 인터넷 + 휴대폰 다크 모드 + 밝은 색: 브라우저가 화면을 억지로 어둡게 바꿀 수 있어 안내 */}
+              {samsung && phoneDark && resolveTheme(theme) !== 'charcoal' && (
+                <p className="mt-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200 text-[0.8125rem] text-amber-900 leading-relaxed">
+                  📱 휴대폰이 다크 모드예요. 화면이 이상하게 어둡게 보이면 위의 <b>휴대폰 설정 따라가기</b>나 <b>차콜 &amp; 샴페인</b>을 골라 주세요.
+                  밝은 색으로 보고 싶으면 <b>삼성 인터넷</b> 앱 → ≡ → 설정 → <b>실험실(Labs)</b> → <b>웹사이트 다크 테마 사용</b>을 켜 주세요.
+                </p>
+              )}
             </div>
             {onOpenNotices && (
               <button onClick={onOpenNotices} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />공지사항{onOpenMembers && <span className="text-xs text-stone-400"> (관리자: 공지 쓰기·알림 보내기)</span>}</span><span className="text-stone-300">›</span></button>
@@ -181,6 +228,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                   <p className="text-[0.8125rem] text-stone-500">지금 쓰는 앱</p>
                   <p className="text-[0.9375rem] font-bold text-stone-800">{appInfo.title}</p>
                   <p className="text-[0.8125rem] text-stone-500 leading-snug">{appInfo.detail}</p>
+                  {pushInfo && <p className="mt-1 text-[0.8125rem] text-stone-500 leading-snug">{pushInfo}</p>}
                 </div>
               </div>
             )}
