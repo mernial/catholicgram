@@ -11,7 +11,7 @@ import { extractMentions } from '@/lib/mentions';
 import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
-import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
+import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
@@ -562,6 +562,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   // 얼림: 오늘 마지막 얼림/다시 엶 안내가 '얼림'이면
   const lastFreeze = [...today].reverse().find(m => sysKind(m) === 'freeze' || sysKind(m) === 'unfreeze');
   const frozen = !!lastFreeze && sysKind(lastFreeze) === 'freeze';
+  useTypeToInput(() => inputRef.current, !(frozen && !isAdmin)); // 실제 자판: 입력칸 밖에서 엔터·글자 → 입력칸으로
   canWriteRef.current = !frozen || isAdmin;
   const lastClearAt = [...today].reverse().find(m => sysKind(m) === 'clear')?.created_at || '';
   const shown = today.filter(m => (isEnter(m) || !isAdminMsg(m)) && !blockedIds.has(m.user_id) && !(isEnter(m) && m.created_at < lastClearAt));
