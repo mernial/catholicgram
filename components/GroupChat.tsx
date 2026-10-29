@@ -17,8 +17,8 @@ import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
-import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
+import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { askConfirm } from '@/components/ConfirmDialog';
 
 // 단체 채팅방 (supabase/group-chats.sql)
@@ -267,16 +267,18 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     // 내 메시지 고치기
     if (editing) {
       const target = editing;
-      const { error: err } = await supabase.rpc('edit_group_message', { p_id: target.id, p_content: text.slice(0, 1000) });
+      const keep = chatStickerParts(target.content)?.sticker; // 함께 보낸 이모티콘은 그대로
+      const content = keep ? joinChatSticker(text.slice(0, 950), keep) : text.slice(0, 1000);
+      const { error: err } = await supabase.rpc('edit_group_message', { p_id: target.id, p_content: content });
       setSending(false);
       if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
       if (err) {
-        setInput(cur => (cur.trim() ? cur : raw));
+        setInput(cur => (cur.trim() ? cur : chatText(raw)));
         alert(isMissing(err) ? EXTRAS_HINT : /[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : `고치지 못했어요.\n(${err.message})`);
         return;
       }
       setEditing(null);
-      applyEdits([{ id: target.id, content: text.slice(0, 1000), edited_at: new Date().toISOString() }]);
+      applyEdits([{ id: target.id, content, edited_at: new Date().toISOString() }]);
       return;
     }
     const reply = replyTo;
@@ -292,7 +294,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     setSending(false);
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err || !data) {
-      setInput(cur => (cur.trim() ? cur : raw));
+      setInput(cur => (cur.trim() ? cur : chatText(raw)));
       setReplyTo(reply);
       alert(err && isGroupSetupError(err) ? GROUP_SETUP_HINT : err && /[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err?.message || ''})`);
       return;
@@ -323,13 +325,15 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
   const stickerPick = useStickerPicker(sendSticker);
   const stickerTap = useCloseStickersOnTap(stickerPick); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
-  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  // 보내기: 고른 이모티콘이 있으면 입력칸의 글과 함께 한 메시지로(한 말풍선에 이모티콘 + 글), 글이 없으면 이모티콘만
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (stickerPick.picked && !editing) {
-      const rest = inputRef.current?.value ?? input;
-      await stickerPick.sendPicked();
-      if (rest.trim()) send(undefined, rest);
+    const picked = stickerPick.picked;
+    if (picked && !editing) {
+      const rest = (inputRef.current?.value ?? input).trim();
+      if (!rest) { await stickerPick.sendPicked(); return; }
+      stickerPick.setPicked(null);
+      send(undefined, joinChatSticker(rest.slice(0, 950), picked));
       return;
     }
     send();
@@ -363,7 +367,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   const canEdit = (m: GroupMessage) => m.user_id === user.id && m.kind === 'text' && !isMediaOnlyText(m.content) && !parseSticker(m.content) && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
   const startReply = (m: GroupMessage) => { setMenuMsg(null); setEditing(null); setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 50); };
-  const startEdit = (m: GroupMessage) => { setMenuMsg(null); setReplyTo(null); setEditing(m); setInput(m.content); setTimeout(() => inputRef.current?.focus(), 50); };
+  const startEdit = (m: GroupMessage) => { setMenuMsg(null); setReplyTo(null); setEditing(m); setInput(chatText(m.content)); /* 이모티콘과 함께 보낸 글은 글만 고침 */ setTimeout(() => inputRef.current?.focus(), 50); };
   const cancelEdit = () => { setEditing(null); setInput(''); };
   // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
   const jumpTo = (id: string) => {
@@ -445,7 +449,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const blockedMsg = !!m.user_id && blockedIds.has(m.user_id);
         return {
           id: m.id, system: m.kind === 'system', mine: m.user_id === user.id, name: m.user_id === user.id ? undefined : nameOf(m.user_id), time: m.created_at,
-          text: blockedMsg ? '차단한 교우의 메시지예요' : isMediaOnlyText(m.content) ? '' : m.content,
+          text: blockedMsg ? '차단한 교우의 메시지예요' : isMediaOnlyText(m.content) ? '' : chatPreview(m.content),
           photos: blockedMsg ? undefined : m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
           video: !blockedMsg && isVideoUrl(m.image_url),
         };
@@ -503,6 +507,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
             const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
             const sticker = parseSticker(m.content);
+            const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
             if (hiddenMsgs.hidden.has(m.id)) return null; // 내 화면에서만 지운 메시지
             const picked = !!capturePick?.has(m.id);
             return (
@@ -549,7 +554,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           )}
                           {/* 사진(묶음이면 바둑판)·동영상 */}
                           {!blocked && <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />}
-                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
+                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
                         </div>
                         {/* 감정을 고르면 잠깐 크게 */}
                         {heartPop?.id === m.id && (
@@ -635,7 +640,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const myEmoji = (reactions[m.id] || []).find(r => r.user_id === user.id)?.emoji;
         const close = () => setMenuMsg(null);
         const blockedMsg = !!m.user_id && blockedIds.has(m.user_id);
-        const text = blockedMsg || isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : m.content;
+        const text = blockedMsg || isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : chatText(m.content);
         return (
           <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close}
             emojis={canWrite ? REACTION_EMOJIS : undefined} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []} onEmoji={e => react(m, e)}

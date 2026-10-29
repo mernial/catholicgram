@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { uploadMedia, uploadPhoto, isVideoUrl, isMediaOnlyText, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, photoBundleText } from '@/lib/upload';
-import { parseSticker } from '@/lib/stickers';
+import { chatStickerParts, parseSticker } from '@/lib/stickers';
 import { MAX_VIDEO_MB, SHRINK_OVER_MB, shrinkVideo } from '@/lib/video';
 
 // 대화방(1:1 메시지·단체 채팅방·사랑방) 공통: 사진·동영상 보내기와 보여 주기
@@ -201,11 +201,13 @@ type Quotable = { content?: string | null; image_url?: string | null; images?: s
 export const quoteLabel = (m: Quotable) => {
   const sticker = parseSticker(m.content);
   if (sticker) return `이모티콘 ${sticker.label}`;
+  const withSticker = chatStickerParts(m.content); // 이모티콘과 함께 보낸 글: 글만 (그림은 QuoteThumb)
+  if (withSticker) return withSticker.text;
   if (isMediaOnlyText(m.content)) return (m.content || '').replace(/^(📷|🎬)\s*/u, '');
   return m.content || '';
 };
 export function QuoteThumb({ m, size = 'w-10 h-10' }: { m: Quotable; size?: string }) {
-  const sticker = parseSticker(m.content);
+  const sticker = parseSticker(m.content) || chatStickerParts(m.content)?.sticker;
   if (sticker) return <img src={sticker.src} alt="" draggable={false} className={`${size} shrink-0 object-contain`} />;
   const src = m.images?.[0] || m.image_url;
   if (!src) return null;
