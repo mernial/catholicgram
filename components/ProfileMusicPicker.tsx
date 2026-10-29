@@ -45,7 +45,7 @@ export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic
         <div className="p-4 border-b border-stone-100 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-bold text-stone-900">🎵 내 공간 배경음악</h2>
-            <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">{gifts ? '🎁 선물받은 노래 중에서 골라요. ' : ''}교우가 내 공간이나 프로필을 누르면 이 곡이 흘러요. 듣는 분은 ❚❚ 로 멈출 수 있어요.</p>
+            <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">{gifts ? '🎁 선물받은 노래 중에서 골라요. ' : ''}교우가 내 공간에 들어오면 이 곡이 흘러요. 듣는 분은 ❚❚ 로 멈출 수 있어요.</p>
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="닫기">×</button>
         </div>

@@ -50,6 +50,7 @@ import BgmAdmin from '@/components/BgmAdmin';
 import Switch from '@/components/Switch';
 import ProfileMusicPicker from '@/components/ProfileMusicPicker';
 import MusicGift from '@/components/MusicGift';
+import MemberMusicGift from '@/components/MemberMusicGift';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
 import { mediaMenuActions } from '@/lib/save-media';
@@ -576,6 +577,7 @@ export default function Home() {
 
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
+  const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
   // 관리자의 선물 상자: 선물받은 사연(letters.gift), 연 선물(이 휴대폰 localStorage giftsOpened:아이디), 이번에 열지 않고 닫은 선물, 알림으로 연 선물
   const [giftLetters, setGiftLetters] = useState<string[]>([]);
@@ -1282,7 +1284,6 @@ export default function Home() {
   const openProfileCard = (target: { id: string; name?: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }) => {
     if (!user) { setShowAuthModal(true); return; }
     if (target.id === user.id) { closeOverlaysForLink(); goToProfile(user.id); return; }
-    startProfileMusic(target.id);
     profileCardIdRef.current = target.id;
     setActionUserBio('');
     setActionUserFollowStatus('none');
@@ -2311,13 +2312,12 @@ export default function Home() {
     spaceAutoRef.current = spaceOwner;
     startProfileMusic(spaceOwner);
   }, [spaceOwner, profileMusicMap, bgmTracks]);
-  // 그 교우의 공간·프로필 카드를 벗어나면 멈춤
+  // 그 교우의 공간을 벗어나면 멈춤 (프로필 카드에서는 틀지 않음 — 운영자 요청)
   useEffect(() => {
     const now = profileMusicNow;
     if (!now) return;
-    const shown = actionModalUser?.id === now.userId || (activeTab === 'profile' && viewingUserId === now.userId);
-    if (!shown) stopProfileMusic();
-  }, [actionModalUser?.id, activeTab, viewingUserId, profileMusicNow?.userId]);
+    if (!(activeTab === 'profile' && viewingUserId === now.userId)) stopProfileMusic();
+  }, [activeTab, viewingUserId, profileMusicNow?.userId]);
   // 앱을 나가면(홈 화면·다른 앱) 멈추고, 그 공간 그대로 돌아오면 이어서
   useEffect(() => {
     let resume = false;
@@ -2346,7 +2346,7 @@ export default function Home() {
       return next;
     });
     if (profileMusicNowRef.current?.userId === user.id) stopProfileMusic();
-    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '배경음악을 정했어요' : '배경음악을 껐어요', body: track ? `교우가 내 공간·프로필을 누르면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
+    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '배경음악을 정했어요' : '배경음악을 껐어요', body: track ? `교우가 내 공간에 들어오면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
     return true;
   };
   // 공간·프로필 카드의 음악 막대 (누르면 멈춤·다시 듣기)
@@ -3326,7 +3326,7 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
-    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
+    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null); setMemberMusicGift(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
@@ -3772,7 +3772,7 @@ export default function Home() {
   const feedBanners = liveBanners.filter(b => b.placement !== 'top');
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
-  const otherModalOpen = !!(actionModalUser || stickerGiftFor || showAuthModal || avatarFile || selectedPostDetail || selectedImage
+  const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
@@ -3798,6 +3798,7 @@ export default function Home() {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
+    if (stickerGiftFor || memberMusicGift) { setStickerGiftFor(null); setMemberMusicGift(null); return; } // 프로필 카드에서 연 선물 창만 닫고 카드는 그대로
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
@@ -4816,15 +4817,30 @@ export default function Home() {
                   {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
                 </div>
               )}
-              {canPickProfileMusic && viewingUserId === user?.id && !profileTrack(user.id) && (
-                <button onClick={() => setShowProfileMusicPicker(true)} className="mt-2 w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-3 py-2.5 text-left flex items-center gap-2.5">
-                  <span className="w-9 h-9 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-5 h-5" /></span>
-                  <span className="min-w-0">
-                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 배경음악 넣기 {isAdmin && <span className="text-xs font-normal text-violet-700/70">(관리자)</span>}</span>
-                    <span className="block text-xs text-violet-700/80">{profileMusicReady === false && isAdmin ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : isAdmin ? '교우가 내 공간·프로필을 누르면 고른 곡이 흘러요' : '🎁 선물받은 노래를 내 공간에 틀 수 있어요'}</span>
-                  </span>
-                </button>
-              )}
+              {/* 배경음악이 아직 없을 때도 재생칸을 보여 줌 (운영자 요청): 내 공간은 누구나, 다른 교우 공간은 관리자에게만(누르면 노래 선물) */}
+              {viewingUserId && !profileTrack(viewingUserId) && (viewingUserId === user?.id || isAdmin) && (() => {
+                const own = viewingUserId === user?.id;
+                const gifted = !isAdmin && myMusicGifts.length > 0;
+                const sub = !own ? '🎁 눌러서 노래 선물하기'
+                  : isAdmin ? (profileMusicReady === false ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : '눌러서 배경음악 넣기')
+                  : gifted ? '🎁 선물받은 노래를 넣을 수 있어요' : '관리자가 선물한 노래를 넣을 수 있어요';
+                const press = () => {
+                  if (!own) { if (viewingProfile) setMemberMusicGift({ id: viewingProfile.id, name: viewingProfile.baptismal_name || '교우', handle: viewingProfile.handle }); return; }
+                  if (canPickProfileMusic) { setShowProfileMusicPicker(true); return; }
+                  showAlert({ title: '배경음악은 관리자가 선물한 노래로 넣을 수 있어요 🎁', message: '노래를 선물받으면 여기를 눌러 내 공간 배경음악으로 넣을 수 있어요. 교우들이 내 공간에 들어오면 그 노래가 흘러요.', icon: 'music' });
+                };
+                return (
+                  <div className="mt-2">
+                    <button type="button" onClick={press} className={`max-w-full inline-flex items-center gap-2 rounded-full border border-dashed pl-1 pr-3.5 py-1 ${gifted ? 'bg-amber-50 border-amber-300' : 'bg-stone-50 border-stone-300'}`} aria-label={own ? '배경음악 넣기' : '노래 선물하기'}>
+                      <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center shrink-0"><Icon name="play" fill className="w-3.5 h-3.5" /></span>
+                      <span className="min-w-0 text-left">
+                        <span className="block text-[0.8125rem] font-bold text-stone-700 truncate">🎵 배경음악 {own ? '' : '없음'}</span>
+                        <span className={`block text-[0.6875rem] truncate ${gifted ? 'text-amber-700 font-bold' : 'text-stone-500'}`}>{sub}</span>
+                      </span>
+                    </button>
+                  </div>
+                );
+              })()}
               {isAdmin && viewingRealName && (
                 <p className="inline-block text-xs text-stone-500 mt-1 bg-stone-100 rounded-lg px-2 py-0.5"><Icon name="lock" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />실명: {viewingRealName} <span className="text-stone-400">(관리자만 보임)</span></p>
               )}
@@ -5471,7 +5487,6 @@ export default function Home() {
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
-                {profileTrack(u.id) && <div className="mt-2.5">{profileMusicBar(u.id)}</div>}
                 <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
                   🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기
                 </button>
@@ -5488,9 +5503,14 @@ export default function Home() {
                   </div>
                 )}
                 {isAdmin && u.id !== user?.id && (
-                  <button onClick={() => setStickerGiftFor({ id: u.id, name: u.baptismal_name || '교우', handle: u.handle })} className="mt-2.5 w-full py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">
-                    🎁 이모티콘 선물
-                  </button>
+                  <div className="mt-2.5 w-full grid grid-cols-2 gap-2">
+                    <button onClick={() => setStickerGiftFor({ id: u.id, name: u.baptismal_name || '교우', handle: u.handle })} className="py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">
+                      🎁 이모티콘 선물
+                    </button>
+                    <button onClick={() => setMemberMusicGift({ id: u.id, name: u.baptismal_name || '교우', handle: u.handle })} className="py-3 rounded-2xl bg-violet-50 border border-violet-200 text-violet-800 text-[0.9375rem] font-bold">
+                      🎵 노래 선물
+                    </button>
+                  </div>
                 )}
                 <div className="mt-4 flex items-center justify-center gap-5 text-[0.8125rem] text-stone-400">
                   <button onClick={() => { setActionModalUser(null); setReportTarget({ type: 'user', id: u.id, userId: u.id, userName: u.baptismal_name, preview: `${u.baptismal_name} @${u.handle || ''}` }); }} className="py-1">신고하기</button>
@@ -5511,6 +5531,10 @@ export default function Home() {
           onUseMusic={async trackId => { const g = myMusicGifts.find(x => x.track.id === trackId); return g ? saveProfileMusic(g.track) : false; }} />
       )}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
+      {memberMusicGift && isAdmin && (
+        <MemberMusicGift user={memberMusicGift} onClose={() => setMemberMusicGift(null)} onGifted={id => sendPush('music_gift', id)}
+          onOpenVault={() => { setMemberMusicGift(null); setActionModalUser(null); setShowMusicVault(true); }} />
+      )}
 
       {/* 후원 배너 관리 (관리자) */}
       {showSponsorAdmin && isAdmin && (
