@@ -1551,9 +1551,17 @@ export default function Home() {
     if (sent) sendPush('message', sent.id);
   };
 
-  // 이모티콘 보내기: 입력칸 옆 😊 → 아래 이모티콘 칸 (쓰던 글은 그대로 둔다)
+  // 이모티콘 보내기: 입력칸 옆 😊 → 아래 이모티콘 칸.
+  // 입력칸에 쓰던 글이 있으면(고른 이모티콘 미리 보기를 누르거나 같은 이모티콘을 한 번 더 눌러 보낼 때도) 글과 함께 한 메시지로 —
+  // 따로 보내면 휴대폰 알림이 두 번·시간이 두 번 보였음 (운영자)
   const sendDmSticker = async (s: Sticker) => {
     if (!user || !currentChatUser) return;
+    const typed = (messageInputRef.current?.value ?? messageInput).trim();
+    if (typed && !editingMessage) {
+      chatStick.atBottom.current = true;
+      await sendMessage(undefined, joinChatSticker(typed, s));
+      return;
+    }
     const to = currentChatUser.id;
     const reply = replyTo;
     setReplyTo(null);

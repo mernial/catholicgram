@@ -336,8 +336,11 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
 
   // 이모티콘 보내기 (입력칸에 쓰던 글은 그대로)
+  // 입력칸에 쓰던 글이 있으면(미리 보기를 누르거나 같은 이모티콘을 한 번 더 눌러도) 글과 함께 한 메시지로 (알림·시간 한 번)
   const sendSticker = async (s: Sticker) => {
     if (sending || error || (frozen && !isAdmin)) return;
+    const typed = (inputRef.current?.value ?? input).trim();
+    if (typed) { await send(undefined, joinChatSticker(typed.slice(0, 450), s)); return; }
     setSending(true);
     const reply = replyTo;
     setReplyTo(null);
