@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '@/components/Icon';
 import { STICKER_PACKS, STICKERS, canUseSticker, isPersonalSticker, onStickerAccess, stripStickerWords, suggestStickers, usablePacks, type Sticker } from '@/lib/stickers';
 import { toast } from '@/lib/chat-actions';
@@ -310,6 +311,8 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
 
   // 탭 꾹 눌러 옆으로 끌기 (끄는 동안에는 탭 줄이 스크롤되지 않게)
   const [dragId, setDragId] = useState<string | null>(null);
+  // 꾹 눌러 잡은 탭을 손가락 위쪽에 작게 띄워 보여 줌 (운영자: 손가락에 가려 잡혔는지 알 수 없음) — 탭 줄·'순서' 목록 공통
+  const [ghost, setGhost] = useState<{ id: string; x: number; y: number } | null>(null);
   const dragRef = useRef<string | null>(null);
   dragRef.current = dragId;
   const press = useRef<{ id: string; x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
@@ -321,10 +324,12 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     row.addEventListener('touchmove', stop, { passive: false });
     return () => row.removeEventListener('touchmove', stop);
   }, []);
-  const startDrag = (id: string) => {
+  const startDrag = (id: string, x: number, y: number) => {
     setDragId(id);
+    setGhost({ id, x, y });
     try { navigator.vibrate?.(15); } catch { /* 무시 */ }
     const onMove = (e: PointerEvent) => {
+      setGhost({ id, x: e.clientX, y: e.clientY });
       const row = rowRef.current;
       if (!row) return;
       const r = row.getBoundingClientRect();
@@ -342,6 +347,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
       window.removeEventListener('pointerup', onEnd);
       window.removeEventListener('pointercancel', onEnd);
       setDragId(null);
+      setGhost(null);
       suppressClick.current = true;
       setTimeout(() => { suppressClick.current = false; }, 400);
       saveOrder(orderRef.current);
@@ -354,7 +360,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     onPointerDown: (e: React.PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       if (press.current) clearTimeout(press.current.timer);
-      const p = { id, x: e.clientX, y: e.clientY, timer: setTimeout(() => { press.current = null; startDrag(id); }, 400) };
+      const p = { id, x: e.clientX, y: e.clientY, timer: setTimeout(() => { press.current = null; startDrag(id, p.x, p.y); }, 400) };
       press.current = p;
     },
     onPointerMove: (e: React.PointerEvent) => {
@@ -393,12 +399,13 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     el.style.transition = 'none';
     el.style.transform = `translateY(${rowDrag.y - grab.current - (list.getBoundingClientRect().top + el.offsetTop)}px)`;
   });
-  const startRowDrag = (id: string, y: number) => {
+  const startRowDrag = (id: string, y: number, x: number) => {
     const list = listRef.current;
     const el = list?.querySelector<HTMLElement>(`[data-row="${id}"]`);
     if (!list || !el) return;
     grab.current = y - el.getBoundingClientRect().top;
-    let lastY = y;
+    let lastY = y, lastX = x;
+    setGhost({ id, x, y });
     setRowDrag({ id, y });
     try { navigator.vibrate?.(15); } catch { /* 무시 */ }
     const reorder = () => {
@@ -410,6 +417,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
       const cur = orderRef.current;
       if (cur.indexOf(id) !== to) setOrder(moveTo(cur, id, to));
       setRowDrag({ id, y: lastY });
+      setGhost({ id, x: lastX, y: lastY });
     };
     let raf = 0;
     const edge = () => {
@@ -423,7 +431,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
       raf = requestAnimationFrame(edge);
     };
     raf = requestAnimationFrame(edge);
-    const onMove = (e: PointerEvent) => { lastY = e.clientY; reorder(); };
+    const onMove = (e: PointerEvent) => { lastY = e.clientY; lastX = e.clientX; reorder(); };
     const onEnd = () => {
       cancelAnimationFrame(raf);
       window.removeEventListener('pointermove', onMove);
@@ -432,6 +440,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
       const cur = list.querySelector<HTMLElement>(`[data-row="${id}"]`);
       if (cur) { cur.style.transition = 'transform 0.2s ease'; cur.style.transform = ''; } // 제자리로 내려놓기
       setRowDrag(null);
+      setGhost(null);
       saveOrder(orderRef.current);
     };
     window.addEventListener('pointermove', onMove);
@@ -443,8 +452,8 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     onPointerDown: (e: React.PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       clearRowPress();
-      const y = e.clientY;
-      rowPress.current = { x: e.clientX, y, timer: setTimeout(() => { rowPress.current = null; startRowDrag(id, y); }, 350) };
+      const x = e.clientX, y = e.clientY;
+      rowPress.current = { x, y, timer: setTimeout(() => { rowPress.current = null; startRowDrag(id, y, x); }, 350) };
     },
     onPointerMove: (e: React.PointerEvent) => {
       const p = rowPress.current;
@@ -470,6 +479,21 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
 
   return (
     <div data-no-sheet-drag className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
+      {/* 잡은 탭: 손가락 위쪽에 작게 (손가락을 따라옴, 놓으면 사라짐). 창이 움직여도 화면 기준으로 뜨게 body 에 */}
+      {ghost && createPortal(
+        <div aria-hidden="true" className="fixed z-[300] pointer-events-none"
+          style={{ left: Math.min(Math.max(ghost.x, 56), window.innerWidth - 56), top: Math.max(104, ghost.y - 48), transform: 'translate(-50%, -100%)' }}>
+          <div className="flex flex-col items-center px-3 pt-1.5 pb-1 rounded-2xl bg-white shadow-xl ring-2 ring-amber-400 origin-bottom [animation:dragGhostIn_0.22s_ease-out]">
+            {ghost.id === FAV_TAB
+              ? <span className="w-10 h-10 flex items-center justify-center text-[2rem] leading-none text-amber-400">★</span>
+              : <img src={STICKER_PACKS.find(p => p.id === ghost.id)!.stickers[0].src} alt="" draggable={false} className="w-10 h-10 object-contain" />}
+            <span className="text-[0.75rem] font-bold text-stone-800 whitespace-nowrap">{tabName(ghost.id)}</span>
+            <span className="text-[0.6875rem] font-bold text-amber-700 whitespace-nowrap">옮기는 중</span>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {ghost && <span className="sr-only" role="status">{tabName(ghost.id)} 골랐어요. 원하는 자리에 놓으세요</span>}
       {/* 탭: 즐겨찾기 + 캐릭터들 (그림 위, 이름 아래). 꾹 눌러 옆으로 끌면 순서 바꾸기 */}
       <div className="flex items-stretch gap-1 pl-2 pr-1 pt-2 pb-1 border-b border-stone-100">
         <div ref={rowRef} className="flex-1 min-w-0 flex gap-1 overflow-x-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ touchAction: 'pan-x' }} role="tablist" aria-label="이모티콘 캐릭터">
@@ -502,7 +526,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
                   {tabIcon(id)}
                   <span className="flex-1 min-w-0 truncate text-[1rem] font-bold text-stone-800">{tabName(id)}</span>
                   <button type="button" style={{ touchAction: 'none' }} aria-label={`${tabName(id)} 순서 옮기기 (위아래 화살표)`}
-                    onPointerDown={e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.stopPropagation(); e.preventDefault(); clearRowPress(); startRowDrag(id, e.clientY); }}
+                    onPointerDown={e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.stopPropagation(); e.preventDefault(); clearRowPress(); startRowDrag(id, e.clientY, e.clientX); }}
                     onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); move(id, e.key === 'ArrowUp' ? -1 : 1); } }}
                     className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center cursor-grab ${dragging ? 'text-amber-600' : 'text-stone-400'}`}>
                     <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14" /></svg>
