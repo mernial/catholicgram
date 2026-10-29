@@ -81,7 +81,8 @@ import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
 import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, cheerWordOfMany, formatFeastDay, isTodayMonthDay, isValidFeastDay, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
-import CelebrateAvatar from '@/components/CelebrateAvatar';
+import CelebrateAvatar, { CelebrateBand } from '@/components/CelebrateAvatar';
+import { refreshCelebrations } from '@/lib/celebrations';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 import { outsideHref } from '@/lib/open-outside';
 import { watchVisualViewport } from '@/lib/visual-viewport';
@@ -1117,6 +1118,7 @@ export default function Home() {
     setFollowingIds(new Set((data || []).map(f => f.following_id)));
   };
   useEffect(() => { if (user) loadFollowing(user.id); else setFollowingIds(new Set()); }, [user?.id]);
+  useEffect(() => { refreshCelebrations(); }, [user?.id]); // 생일·축일 리본 (로그인하면 생일 칸도 읽힘)
 
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
@@ -1204,6 +1206,7 @@ export default function Home() {
     const { error } = await supabase.from('profiles').update({ feast_day: value }).eq('id', user.id);
     if (error) return false;
     setProfile(prev => prev ? { ...prev, feast_day: value } : prev);
+    refreshCelebrations();
     return true;
   };
 
@@ -1747,6 +1750,7 @@ export default function Home() {
       setNeedsProfileSetup(false);
       setProfileEditMode(false);
       fetchPosts();
+      refreshCelebrations(); // 오늘로 생일·축일을 적었으면 바로 리본
       if (birthdaySkipped) showAlert({ title: '생일은 아직 저장하지 못했어요', message: isAdmin ? '나머지는 저장했어요.\n관리자: Supabase 에서 supabase/birthday.sql 을 다시 실행해 주세요 (생일 칸 읽기 권한).' : '나머지는 저장했어요. 운영자가 준비를 마치면 생일도 저장할 수 있어요.', icon: 'calendar' });
     } else {
       // 이유를 작게 함께 보여 줌 (무엇 때문인지 알 수 있게)
@@ -3858,11 +3862,11 @@ export default function Home() {
             <button type="button" disabled={!currentChatUser}
               onClick={() => currentChatUser && openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })}
               className="flex items-center gap-2 min-w-0 text-left" aria-label={`${currentChatUser?.baptismal_name || '교우'}님 프로필 보기`}>
-              {currentChatUser?.avatar_url ? (
+              <CelebrateBand id={currentChatUser?.id}>{currentChatUser?.avatar_url ? (
                 <img loading="lazy" src={currentChatUser.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(currentChatUser?.baptismal_name)}</div>
-              )}
+              )}</CelebrateBand>
               <div className="min-w-0">
                 <div className="flex items-center gap-1 min-w-0">
                   <h1 className="font-bold text-stone-900 text-sm truncate">{currentChatUser?.baptismal_name}</h1>
@@ -4034,9 +4038,9 @@ export default function Home() {
                   {visibleFeastFriends.map(f => (
                     <div key={f.id} className="flex items-center gap-2.5">
                       <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
-                        {f.avatar_url
+                        <CelebrateBand id={f.id}>{f.avatar_url
                           ? <img loading="lazy" src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
-                          : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(f.baptismal_name)}</div>}
+                          : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(f.baptismal_name)}</div>}</CelebrateBand>
                         <span className="text-sm text-stone-800 truncate">{CHEER_ICON[friendCheer(f)]} <b>{f.baptismal_name}</b>님의 {CHEER_WORD[friendCheer(f)]}이에요</span>
                       </button>
                       <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
@@ -4346,9 +4350,9 @@ export default function Home() {
                   {/* 인스타그램처럼: 맨 위 프로필·이름·⋯ → 사진 → 버튼 → 숫자 → 글 → 댓글 n개 → 시간 */}
                   <div className="flex items-center gap-2.5 px-3 sm:px-4 py-2.5">
                     <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="shrink-0" aria-label={`${post.author_name}님 프로필`}>
-                      {post.avatar_url
+                      <CelebrateBand id={post.user_id}>{post.avatar_url
                         ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-300" />
-                        : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}
+                        : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}</CelebrateBand>
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
                       <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
@@ -4694,9 +4698,9 @@ export default function Home() {
                       {/* 아래: 작성자·글·음악 */}
                       <div className="absolute left-0 right-14 bottom-0 z-10 px-4 pb-4 pt-16 bg-gradient-to-t from-black/75 via-black/30 to-transparent text-white flex flex-col gap-2">
                         <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="self-start flex items-center gap-2">
-                          {post.avatar_url
+                          <CelebrateBand id={post.user_id}>{post.avatar_url
                             ? <img loading="lazy" src={post.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-white/70" />
-                            : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}
+                            : <span className="w-9 h-9 rounded-full bg-white/25 text-white text-sm font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}</CelebrateBand>
                           <span className="font-bold text-[0.9375rem]">{post.author_name}</span>
                         </button>
                         {post.content && (
@@ -4884,11 +4888,11 @@ export default function Home() {
               <span role="button" tabIndex={0} aria-label={`${partner.baptismal_name}님 프로필 보기`} className="shrink-0 rounded-full"
                 onClick={e => { e.stopPropagation(); openProfileCard({ id: partner.id, name: partner.baptismal_name, avatar_url: partner.avatar_url, handle: partner.handle, badge_type: partner.badge_type }); }}
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); openProfileCard({ id: partner.id, name: partner.baptismal_name, avatar_url: partner.avatar_url, handle: partner.handle, badge_type: partner.badge_type }); } }}>
-                {partner.avatar_url ? (
+                <CelebrateBand id={partner.id}>{partner.avatar_url ? (
                   <img loading="lazy" src={partner.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover border border-stone-200" />
                 ) : (
                   <span className="w-12 h-12 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold text-lg">{initial(partner.baptismal_name)}</span>
-                )}
+                )}</CelebrateBand>
               </span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
@@ -5398,7 +5402,7 @@ export default function Home() {
                   <span className="shrink-0 px-3 py-1.5 rounded-full bg-stone-800 text-white text-[0.8125rem] font-bold">글 보기</span>
                 </button>
               )}
-              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3 flex flex-col gap-4">
+              <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 pt-4 pb-3 flex flex-col gap-4">
                 {list.length === 0 && (
                   <div className="py-16 text-center">
                     <p className="font-bold text-stone-800 text-lg">아직 댓글이 없어요</p>
@@ -5420,7 +5424,7 @@ export default function Home() {
                   );
                   return (
                     <div key={c.id} id={`comment-${c.id}`} className={`flex gap-3 rounded-xl transition-colors duration-700 ${c._isReply ? 'ml-11' : ''} ${highlightCommentId === c.id ? 'bg-amber-100/80 -mx-2 px-2 py-1.5' : ''}`}>
-                      <button onClick={() => { if (c.user_id) openProfileCard({ id: c.user_id, name: authorName(c) }); }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 프로필`}>{avatarOf(c.user_id, authorName(c))}</button>
+                      <button onClick={() => { if (c.user_id) openProfileCard({ id: c.user_id, name: authorName(c) }); }} className="shrink-0 self-start" aria-label={`${authorName(c)}님 프로필`}><CelebrateBand id={c.user_id}>{avatarOf(c.user_id, authorName(c))}</CelebrateBand></button>
                       <div className="flex-1 min-w-0">
                         {editingCommentId === c.id ? (
                           <div className="flex flex-col gap-1.5 mt-1">
@@ -5616,9 +5620,9 @@ export default function Home() {
               {followList.items?.length === 0 && <div className="p-10 text-center text-sm text-stone-400">{followList.mode === 'followers' ? '아직 팔로워가 없어요.' : '아직 팔로우한 사람이 없어요.'}</div>}
               {followList.items?.map(p => (
                 <button key={p.id} onClick={() => openProfileCard({ id: p.id, name: p.baptismal_name, avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type })} className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
-                  {p.avatar_url
+                  <CelebrateBand id={p.id}>{p.avatar_url
                     ? <img loading="lazy" src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
-                    : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{initial(p.baptismal_name)}</span>}
+                    : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{initial(p.baptismal_name)}</span>}</CelebrateBand>
                   <span className="min-w-0">
                     <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /></span>
                     <span className="block text-xs text-stone-400">@{p.handle}</span>
@@ -5973,11 +5977,11 @@ export default function Home() {
               {listedFollows.map(r => (
                 <div key={r.id} data-flip-key={`f:${r.id}`} className={`p-4 flex items-center gap-3 ${readAlerts.has(`f:${r.id}`) || readAlerts.has(`fu:${r.follower.id}`) ? 'opacity-55' : r.created_at && notificationsLastSeen && new Date(r.created_at) <= new Date(notificationsLastSeen) ? '' : 'bg-blue-50/40'}`}>
                   <button onClick={() => { markAlertRead(`f:${r.id}`); setShowNotifications(false); goToProfile(r.follower.id); }} className="flex-1 flex items-center gap-2.5 text-left min-w-0">
-                    {r.follower.avatar_url ? (
+                    <CelebrateBand id={r.follower.id}>{r.follower.avatar_url ? (
                       <img loading="lazy" src={r.follower.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                     ) : (
                       <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(r.follower.baptismal_name)}</div>
-                    )}
+                    )}</CelebrateBand>
                     <p className="text-[0.9375rem] text-stone-800 min-w-0">
                       <Icon name="userPlus" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /><b className="inline-flex items-center gap-1">{r.follower.baptismal_name}<RoleBadge type={r.follower.badge_type} size="xs" showLabel={false} /></b>님이 회원님을 팔로우하기 시작했어요
                     </p>
@@ -6170,11 +6174,11 @@ export default function Home() {
           >
             <div className="p-4 tablet:pt-[calc(0.75rem+env(safe-area-inset-top))] tablet:pb-3 border-b border-stone-100 flex items-center justify-between shrink-0">
               <button onClick={() => { const d = selectedPostDetail; openProfileCard({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
-                {selectedPostDetail.avatar_url ? (
+                <CelebrateBand id={selectedPostDetail.user_id}>{selectedPostDetail.avatar_url ? (
                   <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{initial(selectedPostDetail.author_name, '교')}</div>
-                )}
+                )}</CelebrateBand>
                 <div>
                   <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
                   <span className="text-[0.75rem] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>

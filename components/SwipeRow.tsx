@@ -23,7 +23,8 @@ export default function SwipeRow({ open, anyOpen, onOpen, onClose, onAction, act
   const transition = dragX === null ? '0.22s ease' : 'none';
 
   return (
-    <div className="relative overflow-hidden">
+    // 옆으로만 자름(clip): 위아래로 삐져나오는 생일 리본·축일 비둘기(CelebrateBand)는 보이게 (clip 을 모르는 브라우저는 overflow-hidden 그대로)
+    <div className="relative overflow-hidden [overflow:clip_visible]">
       <button type="button" data-swipe-action onClick={() => { onClose(); onAction(); }} tabIndex={open ? 0 : -1} aria-hidden={!open}
         className="absolute inset-y-0 right-0 overflow-hidden bg-red-500 text-white font-bold text-[0.9375rem] whitespace-nowrap flex items-center justify-center"
         style={{ width: -offset, transition: `width ${transition}` }}>

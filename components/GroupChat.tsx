@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { CelebrateBand } from '@/components/CelebrateAvatar';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
 import type { ReportTarget } from '@/components/ReportDialog';
@@ -526,9 +527,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                   )}
                   {!mine && (grouped ? <span className="w-10 shrink-0" /> : (
                     <button onClick={() => m.user_id && onOpenProfile(m.user_id)} className="shrink-0 self-start" aria-label={`${a?.baptismal_name || '교우'}님 공간`}>
-                      {a?.avatar_url
+                      <CelebrateBand id={m.user_id}>{a?.avatar_url
                         ? <img loading="lazy" src={a.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-stone-200" />
-                        : <span className="w-10 h-10 rounded-full bg-stone-300 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(a?.baptismal_name, '교')}</span>}
+                        : <span className="w-10 h-10 rounded-full bg-stone-300 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(a?.baptismal_name, '교')}</span>}</CelebrateBand>
                     </button>
                   ))}
                   <div className={`min-w-0 max-w-[78%] flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
@@ -696,9 +697,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                 const p = people[m.user_id];
                 return (
                   <button key={m.user_id} onClick={() => { setShowMembers(false); onOpenProfile(m.user_id); }} className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
-                    {p?.avatar_url
+                    <CelebrateBand id={m.user_id}>{p?.avatar_url
                       ? <img loading="lazy" src={p.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-stone-200" />
-                      : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}
+                      : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
                     <span className="flex-1 min-w-0">
                       <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900">{p?.baptismal_name || '교우'}{m.user_id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} /></span>
                       {p?.handle && <span className="block text-[0.8125rem] text-stone-500">@{p.handle}</span>}

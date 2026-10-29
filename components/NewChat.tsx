@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { CelebrateBand } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
@@ -21,9 +22,9 @@ const friendly = (e: { code?: string; message?: string }, fallback: string) =>
 // 검색어에서 PostgREST 거르기 문법을 깨는 글자(쉼표·괄호·별표 등)는 뺀다
 const cleanQuery = (q: string) => q.trim().replace(/^@+/, '').replace(/[^0-9A-Za-z_.가-힣ㄱ-ㅎㅏ-ㅣ\s-]/g, '').slice(0, 30);
 
-const Avatar = ({ p, size = 'w-11 h-11' }: { p: ChatPerson; size?: string }) => p.avatar_url
+const Avatar = ({ p, size = 'w-11 h-11' }: { p: ChatPerson; size?: string }) => <CelebrateBand id={p.id}>{p.avatar_url
   ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
-  : <span className={`${size} rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center shrink-0`}>{initial(p.baptismal_name, '교')}</span>;
+  : <span className={`${size} rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center shrink-0`}>{initial(p.baptismal_name, '교')}</span>}</CelebrateBand>;
 
 export default function NewChat({ user, mode, chatId, excludeIds = [], blockedIds, suggestions = [], onClose, onOpenDM, onCreated, onInvited }: {
   user: User;

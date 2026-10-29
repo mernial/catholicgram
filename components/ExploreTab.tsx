@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { CelebrateBand, CelebrateFor } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
 import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
@@ -50,11 +51,14 @@ const timeAgo = (iso: string) => {
 // 서버 검색에 넣으면 문법이 깨지는 문자 제거
 const safeForFilter = (q: string) => q.replace(/[,()%*\\]/g, ' ').trim();
 
-function Avatar({ p, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal_name?: string; author_name?: string }; size?: string }) {
+// uid: 그 교우 (글이면 user_id) — 오늘 생일·축일이면 리본·비둘기
+function Avatar({ p, uid, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal_name?: string; author_name?: string }; uid?: string; size?: string }) {
   const name = p.baptismal_name || p.author_name || '교';
-  return p.avatar_url
-    ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
-    : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{initial(name)}</div>;
+  return (
+    <CelebrateBand id={uid}>{p.avatar_url
+      ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
+      : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{initial(name)}</div>}</CelebrateBand>
+  );
 }
 
 function Chip({ label, onClick, onRemove, active }: { label: string; onClick: () => void; onRemove?: () => void; active?: boolean }) {
@@ -299,7 +303,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
     <button key={post.id} onClick={() => openPost(post)} className="w-full text-left p-4 flex gap-3 hover:bg-stone-50 transition-colors">
       <div className="flex-1 min-w-0 flex flex-col gap-1.5">
         <div className="flex items-center gap-2 min-w-0">
-          <Avatar p={post} size="w-7 h-7" />
+          <Avatar p={post} uid={post.user_id} size="w-7 h-7" />
           <span className="text-xs font-bold text-stone-800 truncate">{post.author_name}</span>
           <RoleBadge type={post.badge_type} size="xs" showLabel={false} />
           <span className="text-[0.75rem] text-stone-400 shrink-0">· {timeAgo(post.created_at)}</span>
@@ -316,7 +320,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
 
   const renderPersonRow = (p: Person) => (
     <button key={p.id} onClick={() => { recordInterest(user?.id, 'search', term || p.baptismal_name); onOpenProfile(p.id); }} className="w-full text-left p-4 flex items-center gap-3 hover:bg-stone-50">
-      <Avatar p={p} />
+      <Avatar p={p} uid={p.id} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</span>
@@ -407,7 +411,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
                   <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x">
                     {recommendedPeople.map(p => (
                       <button key={p.id} onClick={() => onOpenProfile(p.id)} className="snap-start shrink-0 w-36 border border-stone-200 rounded-2xl p-3 flex flex-col items-center gap-1.5 text-center bg-stone-50/50">
-                        <Avatar p={p} size="w-14 h-14" />
+                        <CelebrateFor id={p.id} size={3.5}><Avatar p={p} size="w-14 h-14" /></CelebrateFor>
                         <span className="flex items-center gap-1 max-w-full">
                           <span className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</span>
                           <RoleBadge type={p.badge_type} size="xs" showLabel={false} />
