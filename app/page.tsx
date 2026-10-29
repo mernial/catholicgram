@@ -80,7 +80,7 @@ import MyComments from '@/components/MyComments';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import { startVisitTracking } from '@/lib/visit';
-import { birthdayFromMeta, formatFeastDay, isTodayMonthDay, isValidFeastDay, todayFeastKeys, todayKst } from '@/lib/feast';
+import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, cheerWordOfMany, formatFeastDay, isTodayMonthDay, isValidFeastDay, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
 import CelebrateAvatar from '@/components/CelebrateAvatar';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 
@@ -91,6 +91,8 @@ const deepLinkFromSearch = (search: string) => {
   const params = new URLSearchParams(search);
   const post = params.get('post') || undefined;
   const chat = params.get('chat') || undefined;
+  const cheerRaw = params.get('cheer');                // chat 과 함께: 생일·축일 축하 인사를 입력칸에 채워 둠
+  const cheer = cheerRaw === 'birthday' || cheerRaw === 'feast' || cheerRaw === 'both' ? cheerRaw as CheerKind : undefined;
   const alerts = params.get('alerts') === '1';
   const feedback = params.get('feedback') === '1';
   const notice = params.get('notice') || undefined;
@@ -106,7 +108,7 @@ const deepLinkFromSearch = (search: string) => {
   const tester = params.get('tester') === '1';        // 안드로이드 테스터 신청 창 (구글 등록 완료 알림)
   const group = params.get('group') || undefined;     // 단체 채팅방 (새 메시지 알림)
   const gift = params.get('gift') || undefined;       // 관리자의 선물 상자 ('sticker:팩' · 'letter:사연id')
-  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester || group || gift ? { post, chat, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester, group, gift } : null;
+  return post || chat || alerts || feedback || notice || reports || view || profile || story || anon || letters || lounge || tester || group || gift ? { post, chat, cheer, alerts, feedback, notice, reports, comment, view, profile, story, anon, reply, letters, lounge, tester, group, gift } : null;
 };
 
 // 인스타그램처럼 '3시간 전', 일주일 넘으면 날짜
@@ -380,7 +382,7 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
-  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
+  const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
   // 공지사항
   const [notices, setNotices] = useState<Notice[]>([]);
@@ -1157,14 +1159,17 @@ export default function Home() {
     setFollowRequests(data.filter(r => byId[r.follower_id]).map(r => ({ id: r.id, follower: byId[r.follower_id], created_at: r.created_at, iFollow: iFollow.has(r.follower_id) })));
   };
 
-  // 오늘이 축일인 팔로잉 교우
+  // 오늘이 생일·축일인 팔로잉 교우 (생일 칸이 아직 없으면 축일만)
   const fetchFeastFriends = async (userId: string) => {
     const { data: follows } = await supabase.from('follows').select('following_id').eq('follower_id', userId).eq('status', 'accepted');
     const ids = (follows || []).map(f => f.following_id);
     if (ids.length === 0) { setFeastFriends([]); return; }
-    const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day')
-      .in('id', ids).in('feast_day', todayFeastKeys());
-    setFeastFriends((data || []) as UserProfile[]);
+    const keys = todayFeastKeys().map(k => `"${k}"`).join(',');
+    const withBirthday = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, birthday')
+      .in('id', ids).or(`feast_day.in.(${keys}),birthday.in.(${keys})`);
+    const { data } = withBirthday.error ? await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day')
+      .in('id', ids).in('feast_day', todayFeastKeys()) : withBirthday;
+    setFeastFriends(((data || []) as UserProfile[]).filter(f => cheerKindOf(f)));
   };
 
   // 설정에서 축일을 바꾼 경우
@@ -2579,18 +2584,21 @@ export default function Home() {
   };
   const feastCleared = [feastClearedAt, notificationsClearedAt].some(at => !!at && todayKst(new Date(at)) === todayKst());
 
-  // 축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
-  const isMyFeastToday = !!profile?.feast_day && todayFeastKeys().includes(profile.feast_day);
+  // 생일·축일 알림: 오늘 알림 목록을 아직 안 열어봤으면 새 알림으로 센다
+  const myCheer = cheerKindOf(profile);
+  const isMyFeastToday = !!myCheer; // 내 생일 또는 축일
+  const myCheerText = myCheer ? selfCheer(profile?.baptismal_name || '교우', myCheer) : null;
   const visibleFeastFriends = feastFriends.filter(f => !blockedIds.has(f.id));
+  const friendCheer = (f: UserProfile): CheerKind => cheerKindOf(f) || 'feast';
   const feastAlertCount = !user || (notificationsLastSeen && todayKst(new Date(notificationsLastSeen)) === todayKst())
     ? 0 : visibleFeastFriends.length + (isMyFeastToday ? 1 : 0);
   const unreadCount = unreadCommentCount + listedMessages.reduce((sum, u) => sum + u.count, 0) + newFollowerCount + feastAlertCount;
 
-  // 축일 축하 메시지 보내기: 대화방을 열고 인사말을 미리 채워둔다
+  // 생일·축일 축하 메시지 보내기: 대화방을 열고 인사말을 미리 채워둔다
   const congratulateFeast = (friend: UserProfile) => {
     setShowNotifications(false);
     openChatRoom(friend);
-    setMessageInput(`${friend.baptismal_name}님, 축일 축하드려요! 🎉 주님의 은총이 가득하시길 기도할게요 🙏`);
+    setMessageInput(cheerMessage(friend.baptismal_name, friendCheer(friend)));
   };
 
   const dismissFeastCard = () => {
@@ -2904,16 +2912,18 @@ export default function Home() {
     setFeastPromptDismissed(storageGet(`feastPromptDismissed:${user.id}`) === '1');
   }, [user]);
 
-  // 축일 알림 배너는 하루에 한 번만
+  // 생일·축일 알림 배너는 하루에 한 번만
   useEffect(() => {
     if (!user || needsProfileSetup || (!isMyFeastToday && visibleFeastFriends.length === 0)) return;
     const key = `feastToast:${user.id}`;
     if (storageGet(key) === todayKst()) return;
     storageSet(key, todayKst());
     const first = visibleFeastFriends[0];
-    setToast(isMyFeastToday
-      ? { key: 'feast:me', icon: '🎉', title: '축일을 축하드립니다!', body: `${profile?.baptismal_name}님, 주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏`, action: () => goToHome() }
-      : { key: `feast:${first.id}`, icon: '🎉', title: `오늘은 ${first.baptismal_name}님의 축일이에요`, body: visibleFeastFriends.length > 1 ? `외 ${visibleFeastFriends.length - 1}명도 축일이에요. 축하 메시지를 보내보세요` : '축하 메시지를 보내보세요', action: () => openNotifications() });
+    setToast(myCheer && myCheerText
+      ? { key: 'feast:me', icon: CHEER_ICON[myCheer], title: myCheerText.title, body: myCheerText.body, action: () => goToHome() }
+      : visibleFeastFriends.length === 1
+        ? { key: `feast:${first.id}`, icon: CHEER_ICON[friendCheer(first)], title: `오늘은 ${first.baptismal_name}님의 ${CHEER_WORD[friendCheer(first)]}입니다`, body: '축하해 주세요! 🙏 눌러서 인사 보내기', action: () => congratulateFeast(first) }
+        : { key: `feast:${first.id}`, icon: '🎉', title: `오늘은 ${first.baptismal_name}님 외 ${visibleFeastFriends.length - 1}명의 ${cheerWordOfMany(visibleFeastFriends.map(friendCheer))}입니다`, body: '축하해 주세요! 🙏 눌러서 보기', action: () => openNotifications() });
     if (alertSoundOn) playAlertSound();
   }, [user, needsProfileSetup, isMyFeastToday, feastFriends]);
 
@@ -3001,7 +3011,12 @@ export default function Home() {
     } else if (deepLink.chat) {
       supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', deepLink.chat).maybeSingle()
         // 알림으로 연 대화방도 뒤로가기를 하면 대화 목록으로 가도록 목록을 한 칸 깔고 연다 (상대를 못 찾으면 대화 목록)
-        .then(({ data }) => { if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' }); if (data) openChatRoom(data); });
+        .then(({ data }) => {
+          if (currentScreenRef.current.tab !== 'messages') navigate({ screen: true, tab: 'messages' });
+          if (!data) return;
+          openChatRoom(data);
+          if (deepLink.cheer) setMessageInput(cheerMessage(data.baptismal_name || '교우', deepLink.cheer)); // 생일·축일 알림: 축하 인사를 채워 둠
+        });
     } else if (deepLink.alerts) {
       openNotifications();
     } else if (deepLink.feedback) {
@@ -3937,20 +3952,20 @@ export default function Home() {
               {isMyFeastToday && (
                 <div className="text-center pr-4">
                   <div className="flex justify-center"><IconBadge name="candle" tone="gold" size="lg" /></div>
-                  <p className="font-serif font-bold text-stone-900 mt-1">{profile?.baptismal_name}님, 축일을 축하드립니다!</p>
-                  <p className="text-sm text-stone-600 mt-1 leading-relaxed">주님의 은총과 주보성인의 전구가<br />늘 함께하시길 기도합니다 🙏</p>
+                  <p className="font-serif font-bold text-stone-900 mt-1">{profile?.baptismal_name}님, {myCheerText?.title}</p>
+                  <p className="text-sm text-stone-600 mt-1 leading-relaxed">{myCheer === 'birthday' ? <>태어나신 오늘,<br />주님의 축복이 가득하시길 기도합니다 🙏</> : myCheer === 'both' ? <>주님의 축복과 주보성인의 전구가<br />늘 함께하시길 기도합니다 🙏</> : <>주님의 은총과 주보성인의 전구가<br />늘 함께하시길 기도합니다 🙏</>}</p>
                 </div>
               )}
               {visibleFeastFriends.length > 0 && (
                 <div className={`flex flex-col gap-2 ${isMyFeastToday ? 'mt-3 pt-3 border-t border-amber-200' : ''}`}>
-                  <p className="text-sm font-bold text-stone-800 pr-4"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />오늘 축일인 교우</p>
+                  <p className="text-sm font-bold text-stone-800 pr-4"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />오늘 {cheerWordOfMany(visibleFeastFriends.map(friendCheer))}인 교우</p>
                   {visibleFeastFriends.map(f => (
                     <div key={f.id} className="flex items-center gap-2.5">
                       <button onClick={() => goToProfile(f.id)} className="flex-1 flex items-center gap-2.5 min-w-0 text-left">
                         {f.avatar_url
                           ? <img loading="lazy" src={f.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />
                           : <div className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(f.baptismal_name)}</div>}
-                        <span className="text-sm text-stone-800 truncate"><b>{f.baptismal_name}</b>님의 축일이에요</span>
+                        <span className="text-sm text-stone-800 truncate">{CHEER_ICON[friendCheer(f)]} <b>{f.baptismal_name}</b>님의 {CHEER_WORD[friendCheer(f)]}이에요</span>
                       </button>
                       <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
                     </div>
@@ -5860,14 +5875,15 @@ export default function Home() {
             <div ref={alertListRef} className="relative flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
               {isMyFeastToday && !feastCleared && (
                 <div data-flip-key="feast-me" className="p-4 bg-amber-50/60">
-                  <p className="text-[0.9375rem] text-stone-800">🎉 <b>{profile?.baptismal_name}</b>님, 오늘 축일을 축하드립니다!</p>
-                  <p className="text-xs text-stone-600 mt-1">주님의 은총과 주보성인의 전구가 늘 함께하시길 기도합니다 🙏</p>
+                  <p className="text-[0.9375rem] text-stone-800">{myCheer && CHEER_ICON[myCheer]} <b>{profile?.baptismal_name}</b>님, 오늘 {myCheerText?.title}</p>
+                  <p className="text-xs text-stone-600 mt-1">{myCheerText?.body.replace(/^.*?님, /, '')}</p>
                 </div>
               )}
               {!feastCleared && visibleFeastFriends.map(f => (
                 <div key={`feast-${f.id}`} data-flip-key={`feast-${f.id}`} className="p-4 flex items-center gap-3 bg-amber-50/60">
                   <button onClick={() => { setShowNotifications(false); goToProfile(f.id); }} className="flex-1 text-left min-w-0 text-[0.9375rem] text-stone-800">
-                    🎉 오늘은 <b>{f.baptismal_name}</b>님의 축일이에요
+                    {CHEER_ICON[friendCheer(f)]} 오늘은 <b>{f.baptismal_name}</b>님의 {CHEER_WORD[friendCheer(f)]}입니다
+                    <span className="block text-xs text-stone-500 mt-0.5">축하해 주세요!</span>
                   </button>
                   <button onClick={() => congratulateFeast(f)} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">축하하기</button>
                 </div>
@@ -6279,7 +6295,7 @@ export default function Home() {
               <div>
                 <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🎂 나의 생일 <span className="font-normal text-stone-400">(월·일, 선택)</span></label>
                 <FeastDayPicker value={birthdayInput} onChange={setBirthdayInput} what="생일" />
-                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">생일 날 프로필 사진 위에 &lsquo;오늘 생일이에요&rsquo; 리본이 달려요. 태어난 해는 받지 않아요.</p>
+                <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">생일 날 프로필 사진 위에 &lsquo;오늘 생일이에요&rsquo; 리본이 달리고, 나를 팔로우하는 교우에게 축하해 달라는 알림이 가요. 태어난 해는 받지 않아요.</p>
               </div>
 
               <div>
