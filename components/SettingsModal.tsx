@@ -17,7 +17,7 @@ import { appKindLabel } from '@/lib/app-kind';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -31,6 +31,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
   onOpenStats?: () => void;   // 관리자에게만 전달
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
+  onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast'>(initialView);
   const [appInfo, setAppInfo] = useState<{ title: string; detail: string } | null>(null);
@@ -158,6 +159,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
             )}
             {onOpenBgm && (
               <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />배경음악 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+            )}
+            {onShareApp && (
+              <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
             <a href="/terms" className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
