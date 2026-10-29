@@ -4153,8 +4153,10 @@ export default function Home() {
       ref={mainScrollRef}
       // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
       // 1:1 대화방은 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 상대 프로필이 늘 보이고 치우치지 않게, `.fit-visual`)
+      // 컴퓨터(맥 등 스크롤 막대가 보이는 화면): 막대 자리를 양쪽에 똑같이 두어(.main-scroll) 칸이 한쪽으로 치우치거나 옆으로 밀려 왼쪽이 잘리지 않게
       style={activeTab !== 'chat' && visibleHeight ? { height: visibleHeight } : undefined}
-      className={`max-w-xl tablet:max-w-none mx-auto sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans ${activeTab === 'chat' ? 'fit-visual overflow-hidden' : 'w-full h-[100dvh] relative overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
+      onScroll={e => { const el = e.currentTarget; if (el.scrollLeft) el.scrollLeft = 0; }}
+      className={`max-w-xl tablet:max-w-none mx-auto sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans ${activeTab === 'chat' ? 'fit-visual overflow-hidden' : 'main-scroll w-full h-[100dvh] relative overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
     >
       
       {/* 헤더 */}

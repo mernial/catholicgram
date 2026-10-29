@@ -10,6 +10,13 @@ html {
 }
 /* 대화방(1:1·단체방·사랑방): 실제로 보이는 화면에 딱 맞춤 (lib/visual-viewport — 아이패드에서 자판이 올라오거나 화면이 옆으로 밀려도
    위의 프로필이 가려지거나 한쪽으로 치우치지 않게). 가운데 정렬(mx-auto·max-w)은 그 안에서 그대로 */
+/* 앱 가운데 칸(홈·내 공간·탐색 등, page.tsx main): 가로로는 움직이지 않게(트랙패드로 옆으로 밀거나 화면이 저절로 옆으로 스크롤되면 왼쪽이 잘려 보였음).
+   컴퓨터(마우스·트랙패드)에서 스크롤 막대가 늘 보이면(맥 '스크롤 막대 항상 보기'·마우스 연결) 막대가 칸 안 오른쪽을 차지해 글·사진이 왼쪽으로 치우쳤음
+   → 막대 자리를 양쪽에 똑같이 두어 가운데에 맞추고(아래 탭과 줄이 맞음, 탭마다 칸 너비가 바뀌지 않음), 막대는 가늘게. 휴대폰처럼 막대가 떠 있는 화면은 그대로 */
+.main-scroll { overflow-x: hidden; }
+@media (hover: hover) and (pointer: fine) {
+  .main-scroll { scrollbar-gutter: stable both-edges; scrollbar-width: thin; }
+}
 .fit-visual {
   position: fixed;
   top: var(--vvtop, 0px);
