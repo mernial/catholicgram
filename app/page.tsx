@@ -37,7 +37,7 @@ import { extractMentions, mentionsHandle } from '@/lib/mentions';
 import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
-import { playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
+import { ALERT_SOUND_EVENT, playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
@@ -474,7 +474,7 @@ export default function Home() {
   const [appNoticeHidden, setAppNoticeHidden] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [testerPromptDismissed, setTesterPromptDismissed] = useState(true);
-  const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
+  const [settingsView, setSettingsView] = useState<'main' | 'feast' | 'sound'>('main');
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
   const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number; chat?: boolean } | null>(null); // chat: 대화의 사진이면 저장·공유 단추
@@ -2744,6 +2744,12 @@ export default function Home() {
     storageSet('alertSound', next ? 'on' : 'off');
     if (next) playAlertSound();
   };
+  // 설정 → 알림 소리에서 고르거나 '소리 없음'으로 바꾸면 알림창의 소리 밀기 단추도 같이
+  useEffect(() => {
+    const sync = () => setAlertSoundOn(storageGet('alertSound') !== 'off');
+    window.addEventListener(ALERT_SOUND_EVENT, sync);
+    return () => window.removeEventListener(ALERT_SOUND_EVENT, sync);
+  }, []);
 
   // 고민상담 새 글 수 (마지막으로 고민상담을 본 뒤, 내 글 제외)
   const fetchAnonUnread = async (userId: string) => {
@@ -6325,9 +6331,13 @@ export default function Home() {
               {/* 소리 켜기·끄기와 휴대폰 알림 받기를 나란히 (운영자 요청) — 같은 높이의 칸, 좁은 화면(360px)에서도 한 줄 */}
               <div className="flex items-center justify-end gap-1 flex-wrap min-w-0">
                 {/* 알림 소리 켜기·끄기도 밀기 단추로 (운영자 요청) — 휴대폰 알림 칸과 같은 모양 */}
-                <div className="h-8 pl-2 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1 shrink-0">
-                  <Icon name={alertSoundOn ? 'speaker' : 'mute'} className="w-[1.1em] h-[1.1em]" />
-                  <span>소리</span>
+                <div className="h-8 pl-1 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-0.5 shrink-0">
+                  {/* '소리'를 누르면 설정 → 알림 소리 (여러 가지 소리 중 고르기) */}
+                  <button type="button" onClick={() => { setShowNotifications(false); setSettingsView('sound'); setShowSettings(true); }}
+                    className="h-full pl-1 pr-0.5 inline-flex items-center gap-1" aria-label="알림 소리 고르기">
+                    <Icon name={alertSoundOn ? 'speaker' : 'mute'} className="w-[1.1em] h-[1.1em]" />
+                    <span>소리</span><span className="text-stone-400 -ml-0.5" aria-hidden="true">›</span>
+                  </button>
                   <Switch size="sm" label="알림 소리" on={alertSoundOn} onChange={next => { if (next !== alertSoundOn) toggleAlertSound(); }} />
                 </div>
                 {(pushStatus === 'on' || pushStatus === 'off') && (() => {
