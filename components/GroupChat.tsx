@@ -23,6 +23,7 @@ import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithTex
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
+import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -442,6 +443,38 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const [showBookmarks, setShowBookmarks] = useState(false);
   const bookmarks = useBookmarks(user.id, `group:${chatId}`);
   const hiddenMsgs = useHiddenMessages(user.id, `group:${chatId}`);
+  // 대화 내용 찾기 (머리줄 🔍, components/ChatSearch): 최근 대화만 불러와 있어 서버에서도 찾고, 찾은 옛 대화까지 불러와서 보여 줌
+  const searchable = (m: { id: string; user_id: string | null; content: string; image_url?: string | null }) =>
+    hiddenMsgs.hidden.has(m.id) || (!!m.user_id && blockedIds.has(m.user_id)) ? '' : chatSearchText(m);
+  const search = useChatSearch({
+    items: messages,
+    getId: m => m.id,
+    getAt: m => m.created_at,
+    getText: m => (m.kind === 'text' ? searchable(m) : ''),
+    findElement: id => document.getElementById(`gm-${id}`),
+    remote: async q => {
+      const { data } = await supabase.from('group_chat_messages').select('id, user_id, content, image_url, created_at')
+        .eq('chat_id', chatId).eq('kind', 'text').ilike('content', likePattern(q)).order('created_at', { ascending: false }).limit(200);
+      const needle = q.toLowerCase();
+      return ((data || []) as { id: string; user_id: string | null; content: string; image_url: string | null; created_at: string }[])
+        .filter(r => searchable(r).toLowerCase().includes(needle)).map(r => ({ id: r.id, at: r.created_at }));
+    },
+    // 찾은 대화가 아직 안 불러온 옛 대화면 그 대화부터 지금 불러온 것 앞까지 한 번에
+    ensureLoaded: async hit => {
+      const first = messagesRef.current[0];
+      if (!first || hit.at >= first.created_at) return;
+      const { data } = await supabase.from('group_chat_messages').select('*')
+        .eq('chat_id', chatId).gte('created_at', hit.at).lt('created_at', first.created_at).order('created_at', { ascending: true }).limit(1000);
+      const rows = (data || []) as GroupMessage[];
+      if (!rows.length) return;
+      atBottomRef.current = false;
+      setMessages(prev => [...rows.filter(r => !prev.some(p => p.id === r.id)), ...prev]);
+      loadPeople(rows.map(r => r.user_id));
+      loadReactions(textIds(rows));
+      await new Promise(r => setTimeout(r, 80));
+    },
+    onJump: () => { atBottomRef.current = false; },
+  });
   const [captureAsk, setCaptureAsk] = useState<string | null>(null);
   const [capturePick, setCapturePick] = useState<Set<string> | null>(null);
   const [captured, setCaptured] = useState<Blob | null>(null);
@@ -470,6 +503,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 방 이름이 늘 보이고 치우치지 않게, `.fit-visual`)
     <div className="fit-visual z-[75] bg-blue-50 flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
+        {search.open ? <ChatSearchBar s={search} /> : (<>
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -477,10 +511,12 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           <h2 className="font-bold text-[1.0625rem] text-stone-900 truncate">👥 {name || '단체 채팅방'}</h2>
           <p className="text-[0.8125rem] text-stone-500">{members.length}명 함께하는 중 <span className="text-stone-400">▾ 누구?</span></p>
         </button>
+        <ChatSearchButton onClick={() => search.setOpen(true)} className="w-11 h-11 text-stone-600" />
         {bookmarks.list.length > 0 && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
         <button onClick={() => setShowMembers(true)} className="w-11 h-11 flex items-center justify-center text-stone-600" aria-label="채팅방 메뉴">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
         </button>
+        </>)}
       </div>
       {adminView && (
         <p className="shrink-0 bg-stone-800 text-white px-4 py-2 text-[0.8125rem] leading-snug">🔒 관리자 보기 · 읽기만 할 수 있어요. 교우들에게는 관리자가 본다는 표시가 나타나지 않아요.</p>
@@ -549,7 +585,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                         <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                           {...gestures.bind(m)}
                           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
+                          className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${search.currentId === m.id ? 'ring-4 ring-yellow-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
                             <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -562,7 +598,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           )}
                           {/* 사진(묶음이면 바둑판)·동영상 */}
                           {!blocked && <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />}
-                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : m.content}
+                          {blocked ? '차단한 교우의 메시지예요' : sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : search.q ? <HighlightText text={m.content} q={search.q} /> : m.content}
                         </div>
                         {/* 감정을 고르면 잠깐 크게 */}
                         {heartPop?.id === m.id && (

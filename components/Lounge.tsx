@@ -24,6 +24,7 @@ import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-act
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
+import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -266,6 +267,38 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   }, [trash === null]);
   // 새 대화가 오면: 맨 아래를 보고 있었으면 따라 내려간다
   useEffect(() => { if (atBottomRef.current) scrollToBottom(true); }, [messages.length]);
+
+  // 대화 내용 찾기 (머리줄 🔍, components/ChatSearch): 오늘 대화 중 최근 것만 불러와 있어 서버에서도 찾고, 찾은 앞 대화까지 불러와서 보여 줌
+  const searchable = (m: { id: string; user_id: string; content: string; image_url?: string | null }) =>
+    hiddenMsgs.hidden.has(m.id) || blockedIds.has(m.user_id) ? '' : chatSearchText(m);
+  const search = useChatSearch({
+    items: messages,
+    getId: m => m.id,
+    getAt: m => m.created_at,
+    getText: searchable,
+    // 위 관리자 칸에도 같은 id 가 있어 대화 목록의 것(마지막)으로
+    findElement: id => { const els = document.querySelectorAll<HTMLElement>(`[id="lounge-${id}"]`); return els[els.length - 1] || null; },
+    remote: async q => {
+      const { data } = await supabase.from('lounge_messages').select('id, user_id, content, image_url, created_at')
+        .gte('created_at', todayStartIso()).ilike('content', likePattern(q)).order('created_at', { ascending: false }).limit(200);
+      const needle = q.toLowerCase();
+      return ((data || []) as { id: string; user_id: string; content: string; image_url: string | null; created_at: string }[])
+        .filter(r => searchable(r).toLowerCase().includes(needle)).map(r => ({ id: r.id, at: r.created_at }));
+    },
+    ensureLoaded: async hit => {
+      const first = messagesRef.current[0];
+      if (!first || hit.at >= first.created_at) return;
+      const { data } = await supabase.from('lounge_messages').select('*')
+        .gte('created_at', hit.at).lt('created_at', first.created_at).order('created_at', { ascending: true }).limit(1000);
+      const rows = (data || []) as LoungeMessage[];
+      if (!rows.length) return;
+      atBottomRef.current = false;
+      setMessages(prev => [...rows.filter(r => !prev.some(p => p.id === r.id)), ...prev]);
+      loadAuthors(rows.map(r => r.user_id));
+      await new Promise(r => setTimeout(r, 80));
+    },
+    onJump: () => { atBottomRef.current = false; },
+  });
 
   const loadOlder = async () => {
     const first = messages[0];
@@ -616,6 +649,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     <div className="fit-visual z-[75] bg-stone-100 flex flex-col" role="dialog" aria-label="모두의 사랑방">
       {/* 맨 위 */}
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
+        {search.open && !trash ? <ChatSearchBar s={search} /> : (<>
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
         </button>
@@ -630,8 +664,10 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <p className="text-[0.8125rem] font-bold text-emerald-700"><span className={`inline-block w-2 h-2 rounded-full mr-1 align-middle ${online > 0 ? 'bg-emerald-500' : 'bg-stone-300'}`} />👥 지금 {online}명 함께하는 중</p>
           )}
         </div>
+        {!trash && <ChatSearchButton onClick={() => search.setOpen(true)} className="w-11 h-11 text-stone-600" />}
         {bookmarks.list.length > 0 && !trash && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
         {isAdmin && <button onClick={openTrash} className="px-2.5 py-1.5 mr-1 rounded-lg border border-stone-200 text-[0.75rem] text-stone-600">{trash ? '대화로' : '지운 대화'}</button>}
+        </>)}
       </div>
       {isAdmin && showWho && (
         <div className="shrink-0 bg-white border-b border-stone-200 px-4 py-2.5 text-[0.875rem] text-stone-700">
@@ -810,7 +846,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       <div data-bubble role="button" tabIndex={0} aria-haspopup="dialog"
                         {...gestures.bind(m)}
                         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openMenu(m, e.currentTarget); } }}
-                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
+                        className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${search.currentId === m.id ? 'ring-4 ring-yellow-300' : ''} ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                         {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
                         {m.reply_to && (
                           <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
@@ -822,7 +858,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                           </button>
                         )}
                         <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />
-                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : withSticker && !announceMsg ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`}>{withCall(withSticker.text, mine)}</StickerWithText> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
+                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : withSticker && !announceMsg ? <StickerWithText parts={withSticker} bubble={`px-3.5 py-2 rounded-2xl ${tone}`}>{withCall(withSticker.text, mine)}</StickerWithText> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : search.q ? <HighlightText text={m.content} q={search.q} /> : withCall(m.content, mine && !announceMsg)}
                       </div>
                       {heartPop?.id === m.id && (
                         <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
