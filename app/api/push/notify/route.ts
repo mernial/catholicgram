@@ -14,7 +14,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
+type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
+  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -93,6 +93,20 @@ export async function POST(request: Request) {
     const { data: signup } = await admin.from('tester_signups').select('user_id, status').eq('user_id', id).maybeSingle();
     if (!signup || signup.status !== 'added') return Response.json({ skipped: 'not added' });
     list.push({ recipientId: signup.user_id, payload: { title: '🎉 안드로이드 테스터 등록이 끝났어요', body: '눌러서 테스트 앱 설치 방법을 확인해 주세요 🙏', url: '/?tester=1', tag: 'tester-added' } });
+  } else if (type === 'tester_remind') {
+    // 관리자: 구글에 등록했는데('등록함') 아직 Play 테스트 앱을 한 번도 열지 않은(설치 확인 전) 테스터에게만 설치 안내 (id = 'all' 또는 한 사람)
+    // 설치 확인은 tester-installs.sql 의 play_first_at — 그 칸이 없으면 누가 설치했는지 몰라 보내지 않는다
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    let query = admin.from('tester_signups').select('user_id').eq('status', 'added').is('play_first_at', null);
+    if (id !== 'all') query = query.eq('user_id', id);
+    const { data: rows, error } = await query;
+    if (error) return Response.json({ error: 'install tracking not set up' }, { status: 409 });
+    (rows || []).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
+      title: '📱 가톨릭그램 앱 설치를 기다리고 있어요',
+      body: '테스터 교우님, 아직 Play 스토어 앱 설치가 확인되지 않았어요. 눌러서 설치 방법을 확인해 주세요 🙏',
+      url: '/?tester=1', tag: 'tester-added',
+    } }));
+    if (list.length === 0) return Response.json({ sent: 0, targets: 0, missed: [] });
   } else if (type === 'letter_gift') {
     // 관리자가 사연을 선물 대상으로 뽑음 → 보낸 분께
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
@@ -338,7 +352,9 @@ export async function POST(request: Request) {
   const { data: rows } = await admin.from('push_subscriptions')
     .select('*').in('user_id', targets.map(t => t.recipientId));
   const subscriptions = onePerDevice((rows || []) as (PushSub & { user_id: string })[]); // 같은 기기에는 한 번만
-  if (subscriptions.length === 0) return Response.json({ sent: 0 });
+  // 설치 안내는 알림을 못 받은 테스터(알림을 끄거나 허락하지 않음)를 관리자 화면에 알려 준다 → 카카오톡 등으로 따로 연락
+  const missedOf = (reached: Set<string>) => (type === 'tester_remind' ? { targets: targets.length, missed: targets.map(t => t.recipientId).filter(u => !reached.has(u)) } : {});
+  if (subscriptions.length === 0) return Response.json({ sent: 0, ...missedOf(new Set()) });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
   const results = await Promise.allSettled(subscriptions.map(sub =>
@@ -353,5 +369,8 @@ export async function POST(request: Request) {
   });
   if (expired.length > 0) await admin.from('push_subscriptions').delete().in('id', expired.map(s => s.id));
 
-  return Response.json({ sent: results.filter(r => r.status === 'fulfilled').length });
+  return Response.json({
+    sent: results.filter(r => r.status === 'fulfilled').length,
+    ...missedOf(new Set(subscriptions.filter((_, i) => results[i].status === 'fulfilled').map(s => s.user_id))),
+  });
 }
