@@ -1,6 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Icon from '@/components/Icon';
+import { isAppleDevice, mediaResultText, prepareMedia, saveMedia, shareMedia } from '@/lib/save-media';
+import { toast } from '@/lib/chat-actions';
 
 // 사진만 화면 가득 크게 보기
 //  - 한 번 누르면 닫힘 (확대해 둔 상태면 먼저 원래 크기로)
@@ -8,13 +11,14 @@ import { useEffect, useRef, useState } from 'react';
 //  - 여러 장이면 옆으로 밀거나 ‹ › 로 넘김
 //  - 컴퓨터: 마우스 휠로 확대, 끌어서 이동, Esc 닫기, ← → 넘기기
 // 브라우저의 화면 전체 확대를 쓰지 않고 사진만 직접 키운다 (화면이 커진 채 남거나 한 손가락 이동이 막히지 않게)
+// saveable: 대화(1:1·단체방·사랑방)의 사진이면 아래에 '저장'·'공유' 단추 (지금 보는 한 장, lib/save-media)
 type Pt = { x: number; y: number };
 type View = { s: number; x: number; y: number }; // 배율, 가운데에서 옮긴 거리
 const ONE: View = { s: 1, x: 0, y: 0 };
 const MAX_SCALE = 5;
 const DOUBLE_TAP_SCALE = 2.5;
 
-export default function PhotoZoom({ images, start = 0, onClose }: { images: string[]; start?: number; onClose: () => void }) {
+export default function PhotoZoom({ images, start = 0, saveable, onClose }: { images: string[]; start?: number; saveable?: boolean; onClose: () => void }) {
   const last = images.length - 1;
   const [index, setIndex] = useState(Math.min(Math.max(0, start), last));
   const [view, setView] = useState<View>(ONE);
@@ -31,6 +35,17 @@ export default function PhotoZoom({ images, start = 0, onClose }: { images: stri
   });
   const lastTap = useRef<{ t: number; p: Pt } | null>(null);
   const tapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [busy, setBusy] = useState<'save' | 'share' | null>(null);
+  const apple = isAppleDevice();
+  useEffect(() => { if (saveable && images[index]) prepareMedia([images[index]]); }, [saveable, images, index]); // 아이폰 공유 창이 바로 열리게 미리
+  const act = async (kind: 'save' | 'share') => {
+    if (busy || !images[index]) return;
+    setBusy(kind);
+    try {
+      const text = mediaResultText(await (kind === 'save' ? saveMedia : shareMedia)([images[index]]));
+      if (text) toast(text, 2800);
+    } finally { setBusy(null); }
+  };
 
   const frame = () => {
     const r = stage.current?.getBoundingClientRect();
@@ -217,11 +232,23 @@ export default function PhotoZoom({ images, start = 0, onClose }: { images: stri
         </>
       )}
       <button onClick={onClose} className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 w-11 h-11 rounded-full bg-black/55 text-white text-3xl leading-none flex items-center justify-center" aria-label="닫기">×</button>
-      <p className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-0 right-0 flex justify-center pointer-events-none">
+      <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-0 right-0 flex flex-col items-center gap-2.5 pointer-events-none">
+        {saveable && (
+          <div className="flex gap-3 pointer-events-auto">
+            <button onClick={() => act('save')} disabled={!!busy} className="h-12 px-6 rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60">
+              <Icon name="download" className="w-5 h-5" />{busy === 'save' ? '저장하는 중…' : '저장'}
+            </button>
+            <button onClick={() => act('share')} disabled={!!busy} className="h-12 px-6 rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60">
+              <Icon name="share" className="w-5 h-5" />{busy === 'share' ? '여는 중…' : '공유'}
+            </button>
+          </div>
+        )}
         <span className="text-xs text-white/80 bg-black/45 rounded-full px-3 py-1">
-          {view.s > 1 ? '한 손가락으로 끌어서 옮겨 보세요 · 한 번 누르면 원래 크기' : '누르면 닫혀요 · 두 손가락으로 벌리면 커져요'}
+          {view.s > 1 ? '한 손가락으로 끌어서 옮겨 보세요 · 한 번 누르면 원래 크기'
+            : saveable && apple ? "저장을 누르고 '이미지 저장'을 고르면 사진첩에 들어가요"
+            : '누르면 닫혀요 · 두 손가락으로 벌리면 커져요'}
         </span>
-      </p>
+      </div>
     </div>
   );
 }

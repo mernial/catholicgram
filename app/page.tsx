@@ -48,6 +48,7 @@ import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/comp
 import BgmAdmin from '@/components/BgmAdmin';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
+import { mediaMenuActions } from '@/lib/save-media';
 import InstallGuide from '@/components/InstallGuide';
 import StickerGift from '@/components/StickerGift';
 import YouTubePlayer from '@/components/YouTubePlayer';
@@ -458,7 +459,7 @@ export default function Home() {
   const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
-  const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number; chat?: boolean } | null>(null); // chat: 대화의 사진이면 저장·공유 단추
   const zoomPhoto = (url?: string | null) => setSelectedImage(url ? { images: [url], index: 0 } : null);
   const [selectedPostDetail, setSelectedPostDetail] = useState<Post | null>(null);
   const [detailImageIndex, setDetailImageIndex] = useState(0);
@@ -4734,7 +4735,7 @@ export default function Home() {
 
       {/* 3. 메시지 목록 탭 */}
       {showLounge && user && (
-        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline} onlineIds={loungeOnlineIds} onZoom={(images, index) => setSelectedImage({ images, index })}
+        <Lounge user={user} isAdmin={isAdmin} blockedIds={blockedIds} focusId={loungeFocusId} online={loungeOnline} onlineIds={loungeOnlineIds} onZoom={(images, index) => setSelectedImage({ images, index, chat: true })}
           stealth={isAdmin && loungeStealth} onReveal={() => setLoungeStealth(false)}
           onCallAdmin={id => sendPush('lounge_call', id)}
           onMention={id => sendPush('lounge_mention', id)}
@@ -4752,7 +4753,7 @@ export default function Home() {
       )}
       {/* 단체 채팅방 (관리자는 '모든 단체방'에서 몰래 읽기만) */}
       {openGroup && user && (
-        <GroupChat key={openGroup.id} user={user} chatId={openGroup.id} adminView={openGroup.adminView && isAdmin} blockedIds={blockedIds} onZoom={(images, index) => setSelectedImage({ images, index })}
+        <GroupChat key={openGroup.id} user={user} chatId={openGroup.id} adminView={openGroup.adminView && isAdmin} blockedIds={blockedIds} onZoom={(images, index) => setSelectedImage({ images, index, chat: true })}
           onClose={() => { setOpenGroup(null); fetchGroupChats(); }}
           onOpenProfile={id => openProfileCard({ id })}
           onReport={t => setReportTarget(t)}
@@ -5008,7 +5009,7 @@ export default function Home() {
                               </button>
                             )}
                             {/* 사진(묶음이면 바둑판)·동영상: 누르면 크게 보기·재생 (메뉴는 꾹 누르기로) */}
-                            <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index })} className="-mx-2 -mt-0.5 mb-1" />
+                            <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index, chat: true })} className="-mx-2 -mt-0.5 mb-1" />
                             {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} bubble={`px-4 py-2 rounded-2xl ${tone}`} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
@@ -5112,6 +5113,7 @@ export default function Home() {
                     { label: '복사', run: async () => { close(); showToast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
                     { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
                   ] : []),
+                  ...mediaMenuActions(m, close),
                   ...(dmRequest ? [] : [{ label: '답장', run: () => startReply(m) }]),
                   ...(canEditMessage(m) ? [{ label: '고치기', run: () => startEditMessage(m) }] : []),
                   { label: dmBookmarks.has(mid) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); dmBookmarks.toggle({ id: mid, text: text || (parseSticker(m.content) ? m.content : isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: mine ? '나' : currentChatUser?.baptismal_name || '상대', at: m.created_at }); } },
@@ -6305,7 +6307,7 @@ export default function Home() {
         </div>
       )}
 
-      {selectedImage && <PhotoZoom images={selectedImage.images} start={selectedImage.index} onClose={() => setSelectedImage(null)} />}
+      {selectedImage && <PhotoZoom images={selectedImage.images} start={selectedImage.index} saveable={selectedImage.chat} onClose={() => setSelectedImage(null)} />}
 
       {/* 최초 로그인 시 이름(세례명) + 고유 핸들 강제 입력 모달 */}
       {user && ((needsProfileSetup && !setupDismissed) || profileEditMode) && (

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 // 책갈피와 '내 화면에서만 지우기'는 이 휴대폰에만 저장한다 (서버에 남기지 않음)
 
 // 잠깐 떴다 사라지는 안내 (예: '복사했어요')
-export function toast(message: string) {
+export function toast(message: string, ms = 1300) {
   if (typeof document === 'undefined') return;
   const el = document.createElement('div');
   el.textContent = message;
@@ -15,8 +15,8 @@ export function toast(message: string) {
     + 'background:rgba(28,25,23,.9);color:#fff;font-size:15px;font-weight:700;padding:10px 18px;border-radius:999px;pointer-events:none;'
     + 'transition:opacity .3s;max-width:80vw;text-align:center';
   document.body.appendChild(el);
-  setTimeout(() => { el.style.opacity = '0'; }, 1300);
-  setTimeout(() => el.remove(), 1700);
+  setTimeout(() => { el.style.opacity = '0'; }, ms);
+  setTimeout(() => el.remove(), ms + 400);
 }
 
 // 글 복사 (클립보드를 못 쓰는 브라우저는 예전 방식으로)
