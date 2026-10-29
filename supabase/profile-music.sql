@@ -13,12 +13,13 @@ alter table public.profiles add constraint profiles_profile_music_format
   check (profile_music is null or (profile_music ~ '^bgm:[A-Za-z0-9_-]{1,80}$' and char_length(coalesce(profile_music_title, '')) <= 80));
 
 -- 관리자가 아니면 공간 음악을 넣거나 바꿀 수 없다 (자기 프로필이라도). 대시보드에서 직접 고치는 것은 허용
+-- (관리자 이메일은 admin-badges.sql 과 같음 — 바꿀 때 함께)
 create or replace function public.protect_profile_music()
 returns trigger
 language plpgsql
 as $$
 begin
-  if public.is_app_admin()
+  if coalesce(auth.jwt() ->> 'email', '') = 'yunho-jo@casuwon.or.kr'
      or auth.role() = 'service_role'
      or current_user in ('postgres', 'supabase_admin') then
     return new;

@@ -9,6 +9,7 @@
 - PR 브랜치는 Vercel 미리보기 빌드를 건너뛴다(Ignored Build Step). 합치기 전에 로컬 `npm run build`로 확인하고, 합친 뒤 main 커밋의 Vercel 상태가 success인지 본다
 - 로컬 빌드에는 `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`가 필요하다(없으면 정적 페이지 생성에서 실패). 실제 값은 Vercel에만 있다
 - 관리자 계정: `lib/admin.ts`의 `ADMIN_EMAILS`. 관리자 전용 화면·API는 화면(`isAdmin`)과 서버(`/api/push/notify` 등) 양쪽에서 막는다
+- SQL 실행이 필요한 변경을 보고할 때는 '꼭 해 주실 일'에 SQL 전문을 복사용 코드 블록으로 붙이고, Supabase SQL 편집기 링크 https://supabase.com/dashboard/project/_/sql/new 를 함께 띄운다 (운영자 요청 2026-10-29: 파일 이름만 알려 주면 휴대폰에서 찾아 실행하기 어려움)
 
 ## 운영 자료 (저장소 밖)
 - 앱 서명 키스토어(`signing.keystore`), Google Play 패키지, 스토어 이미지, 각종 복구 코드는 운영자 iCloud Drive `가톨릭그램 관리자` 폴더에 있다. 키스토어를 잃으면 Play 앱을 업데이트할 수 없다. 저장소에 올리지 않는다
