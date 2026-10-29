@@ -60,7 +60,7 @@ import HeartBurst from '@/components/HeartBurst';
 import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
-import { type BgmTrack, BUILTIN_BGM, parsePostMusic } from '@/lib/music';
+import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic } from '@/lib/music';
 import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -475,7 +475,7 @@ export default function Home() {
   const [detailImageIndex, setDetailImageIndex] = useState(0);
   const [postMenuId, setPostMenuId] = useState<string | null>(null);
   // 배경음악: 목록, 글쓰기에서 고른 음악, 게시물 보기에서 재생 중 여부
-  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>(BUILTIN_BGM);
+  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([...BUILTIN_BGM, ...RETIRED_BGM]); // 예전 곡(active: false)은 예전 게시물 재생용, 고르기 목록에는 없음
   const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [showBgmAdmin, setShowBgmAdmin] = useState(false);
@@ -2149,7 +2149,7 @@ export default function Home() {
   const fetchBgmTracks = async () => {
     const { data } = await supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').eq('active', true).order('sort').order('created_at');
     // 관리자가 올린 곡 + 앱에 기본으로 들어 있는 곡
-    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM]);
+    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM, ...RETIRED_BGM]);
   };
 
   // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
@@ -5963,7 +5963,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
