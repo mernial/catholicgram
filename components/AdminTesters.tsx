@@ -24,6 +24,10 @@ export default function AdminTesters({ onClose, sendPush }: {
   const [busy, setBusy] = useState(false);
   const [resent, setResent] = useState(false);
   const [installSetupNeeded, setInstallSetupNeeded] = useState(false);
+  const [reminding, setReminding] = useState(false);
+  const [remindResult, setRemindResult] = useState<{ people: number; missed: string[] } | null>(null);
+  const [lastRemindAt, setLastRemindAt] = useState<string | null>(null); // 이 휴대폰에서 마지막으로 보낸 때
+  useEffect(() => { try { setLastRemindAt(localStorage.getItem('testerRemindAt')); } catch { /* 기억 못 함 */ } }, []);
 
   const fetchList = async () => {
     const first = await supabase.from('tester_signups').select('user_id, google_email, status, created_at, play_first_at, play_opened_at').order('created_at', { ascending: true });
@@ -74,6 +78,29 @@ export default function AdminTesters({ onClose, sendPush }: {
     added.forEach(s => sendPush('tester_added', s.user_id));
     setResent(true);
   };
+
+  // 구글에 등록했는데 아직 Play 테스트 앱을 한 번도 열지 않은 분들께만 설치 안내 (서버가 다시 골라서 보냄: /api/push/notify tester_remind)
+  const notInstalled = added.filter(s => !s.play_first_at);
+  const remind = async () => {
+    if (reminding || notInstalled.length === 0) return;
+    if (!(await askConfirm(`아직 설치 확인이 안 된 ${notInstalled.length}명에게 설치 안내 알림을 보낼까요?\nPlay 스토어 테스트 앱을 한 번도 열지 않은 분들이에요. 이미 설치한 ${installed.length}명에게는 가지 않아요.`))) return;
+    setReminding(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ type: 'tester_remind', id: 'all' }),
+      });
+      const out = await res.json().catch(() => ({})) as { targets?: number; missed?: string[]; error?: string };
+      if (!res.ok || !out.missed) { alert('보내지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+      const now = new Date().toISOString();
+      try { localStorage.setItem('testerRemindAt', now); } catch { /* 기억 못 함 */ }
+      setLastRemindAt(now);
+      setRemindResult({ people: (out.targets ?? notInstalled.length) - out.missed.length, missed: out.missed });
+    } finally { setReminding(false); }
+  };
+  const when = (iso: string) => { const d = new Date(iso); return `${md(iso)} ${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   const remove = async (s: Signup) => {
     if (!(await askConfirm(`${s.google_email} 신청을 지울까요?\nPlay Console 테스터 목록에서도 직접 빼 주세요.`))) return;
@@ -126,6 +153,20 @@ export default function AdminTesters({ onClose, sendPush }: {
                           ? <>12번째 분이 {md(installed[TESTER_GOAL - 1].play_first_at!)}에 설치했어요 → <b>{md(readyOn.toISOString())}쯤</b>부터 정식 출시를 신청할 수 있어요 (그동안 지우지 않으면)</>
                           : <>Play 스토어 테스트 앱을 열면 저절로 표시돼요. 12명이 설치한 날부터 14일 뒤 정식 출시를 신청할 수 있어요.</>}
                       </p>
+                      {notInstalled.length > 0 && !remindResult && (
+                        <button onClick={remind} disabled={reminding} className="mt-2.5 w-full py-2.5 rounded-xl bg-sky-600 text-white text-sm font-bold disabled:bg-stone-300">
+                          {reminding ? '보내는 중…' : `📣 설치 안 한 ${notInstalled.length}명에게만 설치 안내 보내기`}
+                        </button>
+                      )}
+                      {remindResult && (
+                        <div className="mt-2.5 rounded-xl bg-sky-50 border border-sky-200 p-2.5 text-xs text-sky-900 leading-relaxed">
+                          <p className="font-bold">✅ {remindResult.people}명에게 설치 안내 알림을 보냈어요</p>
+                          {remindResult.missed.length > 0 && (
+                            <p className="mt-1 text-stone-700">알림을 꺼 두어 못 받은 분 {remindResult.missed.length}명: <b>{remindResult.missed.map(id => who[id]?.baptismal_name || '교우').join(', ')}</b><br />카카오톡이나 메시지로 따로 알려 주세요.</p>
+                          )}
+                        </div>
+                      )}
+                      {lastRemindAt && !remindResult && <p className="mt-1 text-[0.6875rem] text-stone-400 text-center">이 휴대폰에서 마지막으로 보낸 때: {when(lastRemindAt)}</p>}
                     </>
                   )}
                 </div>
