@@ -3886,9 +3886,8 @@ export default function Home() {
     if (images.length) setSelectedImage({ images, index: Math.min(detailImageIndex, images.length - 1) });
   }, viewerDoubleTapLike);
 
-  // 기도·공감·댓글·메시지 버튼 (피드와 크게 보기에서 같이 씀)
-  // showCounts=false: 피드처럼 숫자는 버튼 아래 줄에 따로 보여 줄 때
-  const reactionButtons = (post: Post, onComment: () => void, showCounts = true) => (
+  // 기도·공감·댓글·메시지 버튼 (피드와 크게 보기에서 같이 씀). 숫자는 버튼 바로 옆에 (루비로사 건의: 아래의 '기도 N명 · 공감 N명 · 댓글 N개' 줄 대신)
+  const reactionButtons = (post: Post, onComment: () => void) => (
     <>
       {(() => {
         const prayed = myPostReactions.has(`${post.id}:pray`);
@@ -3898,11 +3897,11 @@ export default function Home() {
             {/* 글자 없이 그림만. 누르면 손·하트가 진한 색으로 꽉 채워짐 */}
             <button onClick={() => handleReaction(post.id, 'pray')} aria-pressed={prayed} aria-label={`기도 ${post.pray_count || 0}`} className={`flex items-center gap-1.5 ${prayed ? 'text-amber-900 font-bold' : 'text-stone-600'}`}>
               <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${prayed ? 'bg-amber-100 text-amber-700' : 'bg-amber-50 text-amber-700'}`}><Icon name="pray" fill={prayed} className="w-[1.375rem] h-[1.375rem]" /></span>
-              {showCounts && post.pray_count > 0 && post.pray_count}
+              {post.pray_count > 0 && <span className="text-[0.9375rem] font-bold text-amber-900">{post.pray_count}</span>}
             </button>
             <button onClick={() => handleReaction(post.id, 'like')} aria-pressed={liked} aria-label={`공감 ${post.like_count || 0}`} className={`flex items-center gap-1.5 ${liked ? 'text-rose-700 font-bold' : 'text-stone-600'}`}>
               <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full transition-colors ${liked ? 'bg-rose-100 text-rose-600' : 'bg-rose-50 text-rose-600'}`}><Icon name="heart" fill={liked} className="w-[1.375rem] h-[1.375rem]" /></span>
-              {showCounts && post.like_count > 0 && post.like_count}
+              {post.like_count > 0 && <span className="text-[0.9375rem] font-bold text-rose-700">{post.like_count}</span>}
             </button>
           </>
         );
@@ -4482,15 +4481,10 @@ export default function Home() {
                   )}
 
                   <div className="px-3 sm:px-4 flex flex-col gap-1.5">
-                    {/* 기도·공감·댓글·메시지 버튼 (숫자는 아래 줄에) */}
+                    {/* 기도·공감·댓글·메시지 버튼 (숫자는 버튼 옆에) */}
                     <div className={`flex items-center gap-x-2.5 ${(post.images && post.images.length > 0) || post.video_url ? 'pt-2' : ''}`}>
-                      {reactionButtons(post, () => toggleCommentBox(post.id), false)}
+                      {reactionButtons(post, () => toggleCommentBox(post.id))}
                     </div>
-                    {(post.pray_count > 0 || post.like_count > 0 || (commentCounts[post.id] || 0) > 0) && (
-                      <p className="text-[0.875rem] font-bold text-stone-900">
-                        {[post.pray_count > 0 && `기도 ${post.pray_count}명`, post.like_count > 0 && `공감 ${post.like_count}명`, (commentCounts[post.id] || 0) > 0 && `댓글 ${commentCounts[post.id]}개`].filter(Boolean).join(' · ')}
-                      </p>
-                    )}
                     {(() => {
                       // 사진·영상이 있는 글은 첫 줄, 글만 있는 글은 두 줄만 보이고 끝에 '... 더 보기' → 누르면 전체
                       const hasMedia = !!post.video_url || !!(post.images && post.images.length > 0);
