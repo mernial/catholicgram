@@ -12,10 +12,12 @@ const askViewing = (client, url) => new Promise(resolve => {
 });
 // 같은 tag 의 알림이 이미 떠 있으면 새로 쌓지 않고 하나로 합친다 (카카오톡처럼): 제목에 개수, 내용은 최근 것부터 다섯 줄.
 // 묶음 알림(data.group: 여러 글에 달린 댓글처럼)은 '💬 새 댓글 3개'. 누르면 가장 최근 소식의 그 글·대화로 바로
+// 아이폰·아이패드는 알림을 고쳐 쓰지 못하고 매번 새 배너로 띄워서, 합치면 확인하지 않은 앞 알림 내용이 새 배너에 또 나온다(운영자: 아이패드)
+// → 애플 기기는 합치지 않고 새 소식만
 async function combined(data, title) {
   const body = data.body || '';
   const url = data.url || '/';
-  const prev = data.tag ? (await self.registration.getNotifications({ tag: data.tag }).catch(() => []))[0] : null;
+  const prev = data.tag && !isApple() ? (await self.registration.getNotifications({ tag: data.tag }).catch(() => []))[0] : null;
   if (!prev) return { title, body, data: { url, count: 1, lines: [body] } };
   const p = prev.data || {};
   const count = (p.count || 1) + 1;
@@ -38,7 +40,9 @@ self.addEventListener('push', (event) => {
       // 지금 그 대화방(1:1·단체)을 보고 있으면 휴대폰 알림을 띄우지 않는다 (대화하는 중에 알림이 계속 뜨지 않게).
       // 아이폰·아이패드·맥 사파리는 푸시마다 알림을 꼭 띄워야 해서(안 띄우면 알림 권한을 거둠) 소리 없이 띄웠다가 바로 닫는다
       const viewing = (await Promise.all(visible.map(c => askViewing(c, data.url || '/')))).some(Boolean);
-      visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '' }));
+      // appleBanner: 아이폰·아이패드는 앱을 보는 중에도 휴대폰 알림 배너가 떠서, 앱 화면 배너까지 띄우면 같은 알림이 두 번 보인다
+      visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '', appleBanner: isApple() && !viewing }));
+      if (!viewing) windows.forEach(c => c.postMessage({ type: 'push-shown' }));
       if (viewing && !isApple()) return;
       // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄운다.
       // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)
@@ -59,6 +63,9 @@ self.addEventListener('push', (event) => {
       }
       return;
     }
+    // 휴대폰 알림 배너를 띄웠다고 앱에 알림 → 앱이 1분마다 새 소식을 확인할 때 같은 소식을 앱 화면 배너로 또 띄우지 않는다
+    // (앱이 화면에 있는데도 '안 보임'으로 잡히는 때·잠깐 뒤로 갔다 돌아온 때)
+    windows.forEach(c => c.postMessage({ type: 'push-shown' }));
     const shown = await combined(data, title);
     await self.registration.showNotification(shown.title, {
       body: shown.body,
