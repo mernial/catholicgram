@@ -288,6 +288,9 @@ input, textarea, select {
   --blue-950: 247 239 222;
 }
 html[data-theme="charcoal"] { color-scheme: dark; }
+/* 밝은 색: 삼성 인터넷에는 color-scheme 'light dark'를 알리지만(억지 다크 모드 막기, lib/theme) 입력칸·화면 바탕은 밝게 그대로 */
+html:not([data-theme="charcoal"]) :is(input, textarea, select) { color-scheme: light; }
+html { background-color: rgb(var(--page)); }
 /* 어두운 화면: 흰 바탕 칸은 카드색으로 (글자 text-white 는 그대로 밝게) */
 html[data-theme="charcoal"] .bg-white { background-color: rgb(var(--card)); }
 html[data-theme="charcoal"] .bg-white\/95 { background-color: rgb(var(--card) / 0.95); }

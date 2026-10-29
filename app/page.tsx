@@ -3074,12 +3074,21 @@ export default function Home() {
       setPushStatus(ios && !standalone ? 'ios-needs-install' : 'unsupported');
       return;
     }
-    if (Notification.permission === 'denied') { setPushStatus('denied'); return; }
     const reg = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => undefined);
-    const sub = reg ? await reg.pushManager.getSubscription() : null;
-    if (sub && Notification.permission === 'granted') {
+    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    // 허용 상태: Notification.permission 과 알림 받기(push) 허용을 함께 본다. 일부 휴대폰(삼성 인터넷으로 열리는 Play 앱 등)은
+    // 앱을 다시 열면 이미 허용했는데도 '아직 안 물어봄'으로 알려 줘서 켠 알림이 꺼진 것처럼 보였음(루비로사)
+    const pushPerm = reg ? await reg.pushManager.permissionState?.({ userVisibleOnly: true }).catch(() => null) : null;
+    const granted = Notification.permission === 'granted' || pushPerm === 'granted';
+    if (!granted && (Notification.permission === 'denied' || pushPerm === 'denied')) { setPushStatus('denied'); return; }
+    if (sub) {
+      // 알림 받기가 이 앱에 남아 있으면 켜짐 (허용을 거두면 브라우저가 알림 받기를 지움)
       await savePushSubscription(sub, userId); // 로그인 계정이 바뀌었을 수 있으므로 갱신
       setPushStatus('on');
+    } else if (granted && storageGet(`pushOff:${userId}`) !== '1') {
+      // 허용은 되어 있는데 알림 받기가 빠졌으면(브라우저가 정리하는 등) 조용히 다시 켠다
+      setPushStatus('off');
+      enablePush(true);
     } else {
       setPushStatus('off');
     }
