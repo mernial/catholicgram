@@ -7,6 +7,8 @@ export const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${A
 export const TESTER_GOAL = 12;
 
 export type TesterStatus = 'none' | 'requested' | 'added';
+// 아직 비공개 테스트 중 — Play 앱 맨 위에 '✓ Play 테스트 앱' 표시(components/AppKindNotice). 정식 출시 뒤에는 false 로
+export const PLAY_IN_TESTING = true;
 
 export const isAndroidDevice = () => typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent);
 export const isValidEmail = (s: string) => s.length <= 254 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s);

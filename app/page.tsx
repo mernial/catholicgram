@@ -24,7 +24,7 @@ import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
 import { MAX_POST_STICKERS, STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
-import { appKind } from '@/lib/app-kind';
+import { appKind, type AppKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -71,7 +71,8 @@ import AdminStats from '@/components/AdminStats';
 import AdminUsage from '@/components/AdminUsage';
 import TesterSignup from '@/components/TesterSignup';
 import AdminTesters from '@/components/AdminTesters';
-import { TesterStatus, isAndroidDevice } from '@/lib/android-test';
+import { PLAY_IN_TESTING, TesterStatus, isAndroidDevice } from '@/lib/android-test';
+import { AppKindCard, AppKindPill, type AppMark } from '@/components/AppKindNotice';
 import DeletedMessages from '@/components/DeletedMessages';
 import MediaStorage from '@/components/MediaStorage';
 import LoadMore from '@/components/LoadMore';
@@ -454,6 +455,9 @@ export default function Home() {
   const [showTesterSignup, setShowTesterSignup] = useState(false);
   const [showAdminTesters, setShowAdminTesters] = useState(false);
   const [testerStatus, setTesterStatus] = useState<TesterStatus | null>(null);
+  const [testerInstalled, setTesterInstalled] = useState<boolean | null>(null); // Play 테스트 앱을 연 적 있음(tester-installs.sql 전이면 모름 = null)
+  const [myAppKind, setMyAppKind] = useState<AppKind | null>(null);              // 지금 보고 있는 앱 (Play 앱·홈 화면 앱·인터넷 창)
+  const [appNoticeHidden, setAppNoticeHidden] = useState(false);
   const [isAndroid, setIsAndroid] = useState(false);
   const [testerPromptDismissed, setTesterPromptDismissed] = useState(true);
   const [settingsView, setSettingsView] = useState<'main' | 'feast'>('main');
@@ -2663,12 +2667,31 @@ export default function Home() {
   // 테스터 모집 카드: 안드로이드 폰에서, 아직 신청 안 했고 닫지 않았을 때만 (신청 표가 아직 없으면 안 보임)
   useEffect(() => {
     if (!user) return;
-    supabase.from('tester_signups').select('status').eq('user_id', user.id).maybeSingle().then(({ data, error }) => {
+    (async () => {
+      const withInstall = await supabase.from('tester_signups').select('status, play_first_at').eq('user_id', user.id).maybeSingle();
+      const { data, error } = withInstall.error ? await supabase.from('tester_signups').select('status').eq('user_id', user.id).maybeSingle() : withInstall; // 설치 확인 칸 전
       setIsAndroid(isAndroidDevice());
       setTesterPromptDismissed(storageGet(`testerPromptDismissed:${user.id}`) === '1');
       setTesterStatus(error ? null : ((data?.status as TesterStatus | undefined) || 'none'));
-    });
+      setTesterInstalled(withInstall.error || !data ? null : !!(data as { play_first_at?: string | null }).play_first_at);
+    })();
   }, [user]);
+  // 앱이 둘인 테스터: 지금 보는 앱이 Play 테스트 앱인지 예전 앱(홈 화면에 추가한 앱)인지 맨 위·홈 첫머리에 표시 (components/AppKindNotice)
+  useEffect(() => {
+    const kind = appKind();
+    setMyAppKind(kind);
+    try { setAppNoticeHidden(localStorage.getItem(`appNoticeSeen:${kind}`) === '1' || sessionStorage.getItem(`appNoticeClosed:${kind}`) === '1'); } catch { /* 무시 */ }
+  }, []);
+  // 예전 앱 표시는 구글에 등록된 안드로이드 테스터에게만, Play 앱을 아직 한 번도 안 열었으면(설치 전) 지우라고 하지 않음
+  const appMark: AppMark | null = myAppKind === 'play' && PLAY_IN_TESTING ? 'play'
+    : myAppKind === 'home' && isAndroid && testerStatus === 'added' && testerInstalled !== false ? 'old' : null;
+  const closeAppNotice = () => {
+    setAppNoticeHidden(true);
+    try {
+      if (myAppKind === 'play') localStorage.setItem('appNoticeSeen:play', '1'); // Play 앱은 '확인했어요'면 다시 안 보임
+      else sessionStorage.setItem(`appNoticeClosed:${myAppKind}`, '1');        // 예전 앱은 이번에만 닫음 (지울 때까지 다시 알림)
+    } catch { /* 무시 */ }
+  };
 
   // 알림창: 사연함·고민상담과 같은 아래에서 올라오는 창(BottomSheet, 늘 같은 높이), 아래로 끌어 닫기.
   // 지운 알림 아래 줄들은 스르륵 올라온다 (useFlipList)
@@ -3891,12 +3914,13 @@ export default function Home() {
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="w-7 h-7"><path d="M12 4.5v15M4.5 12h15" /></svg>
               </button>
             </div>
-            <div className="relative">
+            <div className="relative flex flex-col items-center">
               <button onClick={() => { if (activeTab !== 'home') { goToHome(); return; } setFeedMenuOpen(o => !o); }} className="flex items-center gap-1" aria-label="보기 고르기" aria-expanded={feedMenuOpen}>
                 <img loading="lazy" src="/icon-v2-192.png" alt="" className="w-6 h-6 rounded-md shadow-sm" />
                 <h1 className="font-serif font-bold text-stone-900 tracking-tight text-[1.1875rem] whitespace-nowrap">가톨릭그램</h1>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className={`w-4 h-4 text-stone-700 transition-transform ${feedMenuOpen ? 'rotate-180' : ''}`}><path d="M6 9l6 6 6-6" /></svg>
               </button>
+              {appMark && <AppKindPill mark={appMark} />}
               {feedMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(false)} />
@@ -4023,6 +4047,10 @@ export default function Home() {
             </div>
           )}
           {topBanner && <SponsorBanner banner={topBanner} variant="top" />}
+          {/* 앱이 둘인 테스터: 이 앱이 Play 테스트 앱인지 예전 앱인지 (홈 첫머리 맨 앞) */}
+          {user && profile && appMark && !appNoticeHidden && (
+            <AppKindCard mark={appMark} onClose={closeAppNotice} onHowToDelete={() => setShowTesterSignup(true)} />
+          )}
           {user && !feastCardDismissed && (isMyFeastToday || visibleFeastFriends.length > 0) && (
             <div className="mx-4 mt-3 p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-violet-50 border border-amber-200 shadow-sm relative">
               <button onClick={dismissFeastCard} className="absolute top-2 right-3 text-stone-400 hover:text-stone-700 text-lg leading-none" aria-label="닫기">×</button>

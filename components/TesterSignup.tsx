@@ -12,6 +12,14 @@ import { type AppKind, appKind } from '@/lib/app-kind';
 // 안드로이드 앱 테스터 신청: 회원이 동의하고 플레이 스토어 구글 계정을 적어 낸다 (supabase/android-testers.sql)
 // 관리자가 구글에 등록하면('등록함') 설치 방법을 보여 준다: 참여 → 설치 → 같은 방법으로 로그인 → 예전 앱 지우기 → 14일.
 // 이 화면은 보통 예전 앱(홈 화면에 추가한 앱)에서 알림을 눌러 열리므로, 예전 앱 지우기는 새 앱에 로그인한 뒤 맨 나중에
+// 아이콘이 똑같아 어느 쪽이 예전 앱인지 모를 때 (components/AppKindNotice 의 맨 위 표시로 구별)
+const WHICH_ICON = (
+  <span className="mt-1.5 block rounded-lg bg-stone-50 border border-stone-200 p-2 text-[0.8125rem] text-stone-700">
+    🔍 <b>어느 아이콘인지 모르겠으면</b> 하나씩 눌러 열어 보세요. 맨 위 이름 아래에 <b className="text-emerald-800">✓ Play 테스트 앱</b>이 보이면 새 앱,
+    <b className="text-amber-800"> 예전 앱</b>이 보이면 예전 앱이에요. 예전 앱이면 홈 화면으로 나가 <b>방금 누른 그 아이콘</b>을 꾹 눌러 삭제해요.
+  </span>
+);
+
 export default function TesterSignup({ user, onClose, onStatusChange }: {
   user: User;
   onClose: () => void;
@@ -140,7 +148,7 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
               <p className="text-sm text-stone-700 mt-1">설치가 끝났어요. 함께해 주셔서 감사해요 🙏</p>
             </div>
             <ol className="flex flex-col gap-3">
-              {step(1, <>홈 화면에 <b>예전 가톨릭그램 아이콘</b>이 남아 있으면 꾹 눌러 <b>[삭제]</b>해 주세요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>)}
+              {step(1, <>홈 화면에 <b>예전 가톨릭그램 아이콘</b>이 남아 있으면 꾹 눌러 <b>[삭제]</b>해 주세요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span>{WHICH_ICON}</>)}
               {step(2, <><b>14일 동안 지우지 말고</b> 하루 한 번쯤 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
             </ol>
           </>
@@ -167,7 +175,7 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
                 : <>새로 설치한 가톨릭그램을 열어요. <b>보통은 이미 로그인되어 있어요</b>(휴대폰 인터넷 창의 로그인이 이어져요). 로그인 화면이 나오면 <b>처음 가입할 때 쓴 방법 그대로</b> 로그인해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>)}
               {step(4, kind === 'home'
                 ? <>새 앱에 로그인이 되면, <b>지금 보고 계신 이 앱(예전 앱)</b>의 아이콘을 홈 화면에서 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>
-                : <>홈 화면에 <b>예전에 추가한 가톨릭그램 아이콘</b>이 있으면 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>)}
+                : <>홈 화면에 <b>예전에 추가한 가톨릭그램 아이콘</b>이 있으면 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span>{WHICH_ICON}</>)}
               {step(5, <><b>14일 동안 지우지 말고</b> 하루 한 번쯤 열어 주세요. 그래야 정식 출시를 신청할 수 있어요 🙏</>)}
             </ol>
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-xs text-stone-700 leading-relaxed flex flex-col gap-2">
