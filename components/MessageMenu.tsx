@@ -18,7 +18,7 @@ export interface MenuAction { label: string; run: () => void; danger?: boolean }
 // 할 일 앞의 그림 (운영자 아이콘 시안: 답장·복사·수정·저장·삭제 …). 글 앞의 이모티콘(🗑 ✏️ ↩️ 🚨)은 그림으로 바꿔 보여 준다
 const ACTION_ICONS: [RegExp, IconName][] = [
   [/답장|답글/, 'reply'], [/복사/, 'stack'], [/고치기|수정/, 'pencil'], [/책갈피/, 'bookmark'], [/캡처/, 'camera'],
-  [/삭제|지우기/, 'trash'], [/신고/, 'siren'], [/프로필/, 'user'],
+  [/삭제|지우기/, 'trash'], [/신고/, 'siren'], [/프로필/, 'user'], [/저장/, 'download'], [/공유/, 'share'],
 ];
 const LEADING_EMOJI = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation})\uFE0F?\s*/u;
 const actionIcon = (label: string) => ACTION_ICONS.find(([re]) => re.test(label))?.[1];

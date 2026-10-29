@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { mediaMenuActions } from '@/lib/save-media';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
@@ -653,6 +654,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                 { label: '복사', run: async () => { close(); toast((await copyText(text)) ? '복사했어요' : '복사하지 못했어요'); } },
                 { label: '선택 복사', run: () => { close(); setSelectCopy(text); } },
               ] : []),
+              ...(blockedMsg ? [] : mediaMenuActions(m, close)),
               ...(canWrite ? [{ label: '답장', run: () => startReply(m) }] : []),
               ...(canWrite && canEdit(m) ? [{ label: '고치기', run: () => startEdit(m) }] : []),
               { label: bookmarks.has(m.id) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); bookmarks.toggle({ id: m.id, text: text || (parseSticker(m.content) ? m.content : isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: nameOf(m.user_id), at: m.created_at }); } },
