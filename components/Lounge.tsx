@@ -581,8 +581,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   }, [trash === null]);
 
   return (
-    // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라와도 위의 방 이름이 늘 보이게, lib/visual-viewport)
-    <div className="fixed inset-x-0 top-[var(--vvtop,0px)] h-[var(--vvh,100dvh)] z-[75] bg-stone-100 flex flex-col" role="dialog" aria-label="모두의 사랑방">
+    // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 방 이름이 늘 보이고 치우치지 않게, `.fit-visual`)
+    <div className="fit-visual z-[75] bg-stone-100 flex flex-col" role="dialog" aria-label="모두의 사랑방">
       {/* 맨 위 */}
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">

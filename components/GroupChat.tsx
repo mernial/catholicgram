@@ -462,8 +462,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   return (
-    // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라와도 위의 방 이름이 늘 보이게, lib/visual-viewport)
-    <div className="fixed inset-x-0 top-[var(--vvtop,0px)] h-[var(--vvh,100dvh)] z-[75] bg-blue-50 flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
+    // 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 방 이름이 늘 보이고 치우치지 않게, `.fit-visual`)
+    <div className="fit-visual z-[75] bg-blue-50 flex flex-col" role="dialog" aria-label={`단체 채팅방 ${name}`}>
       <div className="shrink-0 bg-white border-b border-stone-200 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 flex items-center gap-1">
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>

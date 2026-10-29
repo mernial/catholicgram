@@ -3834,9 +3834,9 @@ export default function Home() {
     <main
       ref={mainScrollRef}
       // 페이지 전체가 아니라 앱 안쪽만 스크롤 → 휴대폰 브라우저가 스스로 띄우는 '맨 위로' 버튼이 나오지 않음
-      // 1:1 대화방은 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라와 화면이 밀려도 위의 상대 프로필이 늘 보이게, lib/visual-viewport)
-      style={activeTab === 'chat' ? { top: 'var(--vvtop, 0px)', height: 'var(--vvh, 100dvh)' } : visibleHeight ? { height: visibleHeight } : undefined}
-      className={`w-full max-w-xl tablet:max-w-none mx-auto h-[100dvh] sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans ${activeTab === 'chat' ? 'fixed inset-x-0 overflow-hidden' : 'relative overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
+      // 1:1 대화방은 실제로 보이는 화면에 딱 맞춤 (아이패드에서 자판·단축 막대가 올라오거나 화면이 옆으로 밀려도 위의 상대 프로필이 늘 보이고 치우치지 않게, `.fit-visual`)
+      style={activeTab !== 'chat' && visibleHeight ? { height: visibleHeight } : undefined}
+      className={`max-w-xl tablet:max-w-none mx-auto sm:border-x tablet:border-x-0 border-stone-200 bg-stone-50/30 flex flex-col font-sans ${activeTab === 'chat' ? 'fit-visual overflow-hidden' : 'w-full h-[100dvh] relative overflow-y-auto overscroll-contain [&>*]:shrink-0 pb-[calc(4.5rem+env(safe-area-inset-bottom))]'}`}
     >
       
       {/* 헤더 */}
