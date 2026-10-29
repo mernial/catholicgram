@@ -17,7 +17,7 @@ import { appKindLabel } from '@/lib/app-kind';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -26,6 +26,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
+  onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
   onOpenTester?: () => void;  // 안드로이드 앱 테스터 신청 (신청 표가 준비된 경우)
   onOpenStats?: () => void;   // 관리자에게만 전달
   onEditProfile?: () => void;
@@ -157,7 +158,10 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="users" tone="sky" />회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onOpenBgm && (
-              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />게시글 음악 추가·관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />게시글 음악 추가·관리 <span className="text-xs text-stone-400">(공개 · 관리자)</span></span><span className="text-stone-300">›</span></button>
+            )}
+            {onOpenVault && (
+              <button onClick={onOpenVault} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="lock" tone="gold" />보관 음악 <span className="text-xs text-stone-400">(비공개 · 선물용 · 관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onShareApp && (
               <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>

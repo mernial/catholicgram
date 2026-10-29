@@ -26,15 +26,16 @@ export interface SelectedMusic { value: string; title: string }
 export interface MusicSegmentTarget { videoId?: string; trackId?: string; audioUrl?: string; title: string; start: number; clip?: number }
 
 // 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 노래 검색 · 유튜브 뮤직 링크)
-export default function MusicPicker({ tracks, initialSegment, onSelect, onClose, onAddMusic }: {
+export default function MusicPicker({ tracks, giftTracks = [], initialSegment, onSelect, onClose, onAddMusic }: {
   tracks: BgmTrack[];
+  giftTracks?: BgmTrack[]; // 내가 선물받은 노래 (관리자의 보관 음악 → 나만 고를 수 있음, 글을 보는 교우는 누구나 들음)
   onAddMusic?: () => void; // 관리자에게만: '가톨릭그램 음악'에 음악 파일 올리기 (BgmAdmin)
   initialSegment?: MusicSegmentTarget | null; // 이미 고른 곡의 구간만 다시 고치기
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
 }) {
   // 가톨릭그램 음악(관리자가 넣은 곡·앱 기본 곡)이 있으면 그것부터
-  const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length > 0 ? 'bgm' : 'youtube');
+  const [tab, setTab] = useState<'bgm' | 'youtube'>(tracks.length + giftTracks.length > 0 ? 'bgm' : 'youtube');
 
   // 노래 검색 (유튜브 뮤직·유튜브의 음악)
   const [query, setQuery] = useState('');
@@ -66,6 +67,19 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose,
     audio.play().catch(() => {});
     setPreviewId(track.id);
   };
+  // '가톨릭그램 음악' 한 줄 (선물받은 노래도 같은 모양, 아래에 🎁)
+  const trackRow = (t: BgmTrack, gift = false) => (
+    <div key={`${gift ? 'g' : 't'}-${t.id}`} className={`p-3.5 flex items-center gap-3 ${gift ? 'bg-amber-50/40' : ''}`}>
+      <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">
+        <Icon name={previewId === t.id ? 'pause' : 'play'} fill className="w-4 h-4" />
+      </button>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
+        {gift ? <p className="text-xs text-amber-700 truncate">🎁 선물받은 노래</p> : t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
+      </div>
+      <button onClick={() => { audioRef.current?.pause(); setPreviewId(null); setSegmentFor({ trackId: t.id, audioUrl: t.url, title: t.title, start: 0 }); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
+    </div>
+  );
 
   const search = async (text = query) => {
     const q = text.trim();
@@ -168,20 +182,16 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose,
                 </span>
               </button>
             )}
+            {giftTracks.length > 0 && (
+              <>
+                <p className="px-4 pt-3 pb-1.5 text-xs font-bold text-amber-700 bg-amber-50/60">🎁 선물받은 노래 <span className="font-normal text-amber-700/70">· 나만 고를 수 있어요</span></p>
+                {giftTracks.map(t => trackRow(t, true))}
+                <p className="px-4 pt-3 pb-1.5 text-xs font-bold text-stone-500">가톨릭그램 음악</p>
+              </>
+            )}
             {tracks.length === 0 ? (
               <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 게시글 음악 추가·관리)<br />유튜브 뮤직에서 찾아 넣을 수도 있어요.</div>
-            ) : tracks.map(t => (
-              <div key={t.id} className="p-3.5 flex items-center gap-3">
-                <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">
-                  <Icon name={previewId === t.id ? 'pause' : 'play'} fill className="w-4 h-4" />
-                </button>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
-                  {t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
-                </div>
-                <button onClick={() => { audioRef.current?.pause(); setPreviewId(null); setSegmentFor({ trackId: t.id, audioUrl: t.url, title: t.title, start: 0 }); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
-              </div>
-            ))}
+            ) : tracks.map(t => trackRow(t))}
           </div>
         ) : (
           <div className="overflow-y-auto flex flex-col">

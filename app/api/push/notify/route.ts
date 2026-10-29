@@ -14,7 +14,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
+type NotifyBody = { type?: 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
+  if (!id || !type || !['sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -70,6 +70,13 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(grant.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     if (!STICKER_PACKS.some(p => p.id === grant.pack_id)) return Response.json({ error: 'not found' }, { status: 404 });
     list.push({ recipientId: grant.user_id as string, payload: giftPayload(`sticker:${grant.pack_id}`) });
+  } else if (type === 'music_gift') {
+    // 관리자가 보관 음악(노래)을 선물 → 받은 교우에게 (관리자만 보낼 수 있음, 선물 상자로 열림)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: grant } = await admin.from('music_grants').select('user_id, track_id, created_at').eq('id', id).maybeSingle();
+    if (!grant) return Response.json({ error: 'not found' }, { status: 404 });
+    if (Date.now() - new Date(grant.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    list.push({ recipientId: grant.user_id as string, payload: giftPayload(`music:${grant.track_id}`) });
   } else if (type === 'group_message') {
     // 단체 채팅방 새 메시지 → 그 방의 다른 교우들에게 (보낸 교우를 차단한 교우는 빼고, 방에 없는 관리자에게는 가지 않음)
     const { data: msg } = await admin.from('group_chat_messages').select('id, chat_id, user_id, content, kind, created_at').eq('id', id).maybeSingle();
