@@ -2552,6 +2552,9 @@ export default function Home() {
     if (!ch) return;
     (loungePresent ? ch.track({ at: Date.now() }) : ch.untrack()).catch(() => {});
   }, [loungePresent]);
+  // 사랑방을 열거나 닫으면(어느 길로든: 뒤로 단추·휴대폰 뒤로가기·알림 이동) 새 대화 숫자를 지운다.
+  // 예전엔 화면의 '뒤로' 단추만 지워서, 휴대폰 뒤로가기로 나오면 본 대화 숫자가 메시지 화면에 그대로 남았음 (운영자)
+  useEffect(() => { setLoungeNew(0); }, [showLounge]);
   // 사랑방: 마지막으로 본 뒤 다른 교우가 쓴 대화 수
   const fetchLoungeNew = async (userId: string) => {
     const since = storageGet(loungeSeenKey(userId));
