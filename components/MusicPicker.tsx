@@ -26,8 +26,9 @@ export interface SelectedMusic { value: string; title: string }
 export interface MusicSegmentTarget { videoId?: string; trackId?: string; audioUrl?: string; title: string; start: number; clip?: number }
 
 // 글쓰기: 배경음악 고르기 (앱 배경음악 목록 / 노래 검색 · 유튜브 뮤직 링크)
-export default function MusicPicker({ tracks, initialSegment, onSelect, onClose }: {
+export default function MusicPicker({ tracks, initialSegment, onSelect, onClose, onAddMusic }: {
   tracks: BgmTrack[];
+  onAddMusic?: () => void; // 관리자에게만: '가톨릭그램 음악'에 음악 파일 올리기 (BgmAdmin)
   initialSegment?: MusicSegmentTarget | null; // 이미 고른 곡의 구간만 다시 고치기
   onSelect: (music: SelectedMusic) => void;
   onClose: () => void;
@@ -158,8 +159,17 @@ export default function MusicPicker({ tracks, initialSegment, onSelect, onClose 
 
         {tab === 'bgm' ? (
           <div className="overflow-y-auto divide-y divide-stone-100">
+            {onAddMusic && (
+              <button type="button" onClick={() => { audioRef.current?.pause(); setPreviewId(null); onAddMusic(); }} className="w-full p-3.5 flex items-center gap-3 text-left bg-violet-50/60 active:bg-violet-100">
+                <span className="w-10 h-10 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="plus" className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-bold text-violet-900">음악 파일 올리기</span>
+                  <span className="block text-xs text-violet-700/80">관리자 · 올리면 이 목록에 바로 나와요</span>
+                </span>
+              </button>
+            )}
             {tracks.length === 0 ? (
-              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 배경음악 관리에서 추가)<br />유튜브 뮤직에서 찾아 넣을 수도 있어요.</div>
+              <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 게시글 음악 추가·관리)<br />유튜브 뮤직에서 찾아 넣을 수도 있어요.</div>
             ) : tracks.map(t => (
               <div key={t.id} className="p-3.5 flex items-center gap-3">
                 <button onClick={() => togglePreview(t)} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${previewId === t.id ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-700'}`} aria-label="미리 듣기">

@@ -41,7 +41,7 @@ export const parseYouTubeUrl = (input: string): { videoId: string; start: number
 export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
   `yt:${videoId}${start > 0 || clip ? `@${start}` : ''}${clip ? `+${clip}` : ''}`;
 
-// 게시물 음악 고르기의 '가톨릭그램 음악' (public/bgm). 운영자가 직접 만든 곡 (Suno, 2026-10-29 운영자 요청으로 예전 곡을 모두 빼고 이 곡들로).
+// 게시물 음악 고르기의 '가톨릭그램 음악' (public/bgm). 운영자가 직접 만든 곡 (2026-10-29 운영자 요청으로 예전 곡을 모두 빼고 이 곡들로). 새 곡은 관리자가 '게시글 음악 추가·관리'(BgmAdmin)에서 파일로 올림 → bgm_tracks.
 // 파일은 운영자가 준 mp3 그대로(다시 압축하지 않음), 이름 등 꼬리표만 지움.
 export const BUILTIN_BGM: BgmTrack[] = [
   { id: 'builtin-calm-piano', title: '잔잔한 피아노', artist: '가톨릭그램', url: '/bgm/calm-piano.mp3' },

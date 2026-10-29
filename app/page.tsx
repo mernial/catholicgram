@@ -3610,6 +3610,7 @@ export default function Home() {
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
     if (actionModalUser) { setActionModalUser(null); return; }
+    if (showBgmAdmin && showMusicPicker) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
@@ -5963,7 +5964,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} initialSegment={musicSegment} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}

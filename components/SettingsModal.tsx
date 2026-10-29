@@ -157,7 +157,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <button onClick={onOpenMembers} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="users" tone="sky" />회원 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onOpenBgm && (
-              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />배경음악 관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
+              <button onClick={onOpenBgm} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="music" tone="violet" />게시글 음악 추가·관리 <span className="text-xs text-stone-400">(관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onShareApp && (
               <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
