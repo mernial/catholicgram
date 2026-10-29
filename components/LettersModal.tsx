@@ -23,6 +23,8 @@ interface Letter {
   broadcast_ok: boolean;
   status: 'new' | 'read' | 'aired';
   gift?: boolean;           // 선물 대상으로 뽑힘 (supabase/letters-gift.sql)
+  reply?: string | null;    // 관리자 답장 (supabase/letters-reply.sql)
+  replied_at?: string | null;
   created_at: string;
 }
 
@@ -34,10 +36,11 @@ const STATUS: Record<Letter['status'], { label: string; mine: string; className:
 
 const when = (iso: string) => new Date(iso).toLocaleString('ko-KR', { month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 const SETUP_HINT = '사연 보내기를 준비 중이에요. (관리자: supabase/letters.sql 실행 필요)';
+const REPLY_SETUP = { title: '사연 답장을 준비 중이에요', message: '관리자: Supabase 에서 supabase/letters-reply.sql 을 한 번 실행해 주세요.\n그 전에는 아이디를 밝힌 사연에 ✉️ 메시지로 답할 수 있어요.', icon: 'envelope' as const };
 const isSetupError = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
 
-export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onStickerGifted, onMessage }: {
+export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onStickerGifted, onMessage, onOpenProfile, onReplied }: {
   user: User;
   authorName: string;
   authorHandle?: string | null;
@@ -46,6 +49,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   onGift?: (id: string) => void;    // 관리자: 선물 대상으로 뽑았을 때 보낸 분께 알림
   onStickerGifted?: (grantId: string) => void; // 관리자: 보낸 분께 이모티콘을 선물했을 때 알림
   onMessage?: (userId: string) => void; // 관리자: 보낸 분께 메시지 (선물 안내)
+  onOpenProfile?: (target: { id: string; name: string; handle?: string }) => void; // 관리자: 보낸 분 프로필 카드
+  onReplied?: (letterId: string) => void; // 관리자: 답장을 쓰면 보낸 분께 알림
   onClose: () => void;
   onSent: (id: string) => void;    // 관리자에게 알림 보내기
   onChanged?: () => void;          // 관리자: 새 사연 수 다시 세기
@@ -59,6 +64,9 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const [reading, setReading] = useState<Letter | null>(null); // 방송용 크게 읽기
   const [zoom, setZoom] = useState<string | null>(null);
   const [giftFor, setGiftFor] = useState<Letter | null>(null); // 관리자: 보낸 분께 선물하기 (이모티콘 · 사연 선물 대상)
+  const [replyFor, setReplyFor] = useState<string | null>(null); // 관리자: 답장 쓰는 사연
+  const [replyText, setReplyText] = useState('');
+  const [replying, setReplying] = useState(false);
   // 쓰기
   const [content, setContent] = useState('');
   const [nameDisplay, setNameDisplay] = useState<Letter['name_display']>('anonymous');
@@ -130,6 +138,49 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
     setItems(prev => prev?.filter(x => x.id !== l.id) || prev);
     onChanged?.();
   };
+  // 관리자: 답장 쓰기 (다시 쓰면 고쳐짐) → 보낸 분 '보낸 사연'에 보이고 휴대폰 알림
+  const startReply = (l: Letter) => { setReplyFor(l.id); setReplyText(l.reply || ''); };
+  const saveReply = async (l: Letter) => {
+    const text = replyText.trim();
+    if (!text || replying) return;
+    setReplying(true);
+    const replied_at = new Date().toISOString();
+    const status = l.status === 'new' ? 'read' : l.status;
+    const { error: e } = await supabase.from('letters').update({ reply: text.slice(0, 3000), replied_at, status }).eq('id', l.id);
+    setReplying(false);
+    if (e) { await showAlert(/reply|replied_at|schema cache/.test(e.message) ? REPLY_SETUP : `답장을 보내지 못했어요\n${e.message}`); return; }
+    const next = { ...l, reply: text.slice(0, 3000), replied_at, status };
+    setItems(prev => prev?.map(x => x.id === l.id ? next : x) || prev);
+    if (reading?.id === l.id) setReading(next);
+    setReplyFor(null); setReplyText('');
+    onReplied?.(l.id);
+    onChanged?.();
+    await showAlert({ title: '답장을 보냈어요', message: `${l.author_name || '교우'}님께 알림이 가요.\n'보낸 사연'에서 답장을 볼 수 있어요.`, icon: 'check' });
+  };
+  // 답장 쓰는 칸 (목록·크게 읽기 공통)
+  const replyBox = (l: Letter, big = false) => replyFor === l.id && (
+    <div className={`flex flex-col gap-2 ${big ? 'mt-6' : ''}`}>
+      <textarea value={replyText} onChange={e => setReplyText(e.target.value.slice(0, 3000))} rows={big ? 5 : 4} autoFocus
+        placeholder={`${l.author_name || '교우'}님께 보낼 답장을 적어 주세요`}
+        className={`w-full px-3.5 py-3 rounded-2xl border border-stone-300 bg-white leading-relaxed focus:outline-none focus:border-stone-500 resize-none ${big ? 'text-[1.125rem]' : 'text-[0.9375rem]'}`} />
+      <div className="flex gap-2 justify-end">
+        <button onClick={() => { setReplyFor(null); setReplyText(''); }} className="px-4 py-2 rounded-xl border border-stone-300 text-stone-600 text-[0.875rem] font-bold">취소</button>
+        <button onClick={() => saveReply(l)} disabled={!replyText.trim() || replying} className="px-4 py-2 rounded-xl bg-stone-900 disabled:bg-stone-300 text-white text-[0.875rem] font-bold">{replying ? '보내는 중...' : l.reply ? '답장 고쳐 보내기' : '답장 보내기'}</button>
+      </div>
+    </div>
+  );
+  // 보낸 답장 (관리자 목록·교우 '보낸 사연')
+  const replyShown = (l: Letter) => l.reply && replyFor !== l.id && (
+    <div className="rounded-xl bg-sky-50 border border-sky-200 px-3 py-2">
+      <p className="text-[0.75rem] font-bold text-sky-800">💌 {view === 'mine' ? '운영자 답장' : '보낸 답장'}{l.replied_at && <span className="ml-1.5 font-normal text-sky-700/70">{when(l.replied_at)}</span>}</p>
+      <p className="mt-0.5 text-[0.9375rem] text-stone-800 whitespace-pre-wrap break-words">{l.reply}</p>
+    </div>
+  );
+  // 관리자: 보낸 분 이름을 누르면 프로필 카드
+  const senderButton = (l: Letter, className: string) => onOpenProfile
+    ? <button type="button" onClick={() => onOpenProfile({ id: l.user_id, name: l.author_name || '교우', handle: handles[l.user_id] })} className={`${className} underline decoration-stone-300 underline-offset-2`} aria-label={`${l.author_name || '교우'}님 프로필 보기`}>{realSender(l)}</button>
+    : <span className={className}>{realSender(l)}</span>;
+
   // 관리자: 열어 보면 '읽음'으로
   const openReading = (l: Letter) => {
     if (l.status === 'new') { setReading({ ...l, status: 'read' }); setStatus(l, 'read'); }
@@ -159,13 +210,16 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
           </div>
           <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6">
             <p className="text-[1.125rem] font-bold text-stone-500 mb-1">{displayName(reading)}의 사연</p>
-            <p className="text-[0.875rem] text-stone-400 mb-5">{when(reading.created_at)} · 보낸 분: {realSender(reading)}{reading.name_display === 'anonymous' && ' (익명 요청 · 관리자만 보임)'}</p>
+            <p className="text-[0.875rem] text-stone-400 mb-5">{when(reading.created_at)} · 보낸 분: {senderButton(reading, 'text-stone-500')}{reading.name_display === 'anonymous' && ' (익명 요청 · 관리자만 보임)'}</p>
             {reading.gift && <p className="mb-4 text-[0.9375rem] font-bold text-amber-700">🎁 선물 대상으로 뽑은 사연이에요</p>}
             {!reading.broadcast_ok && <p className="mb-4 text-[0.9375rem] font-bold text-red-600">⚠️ 방송에서 소개하지 말아 달라고 하셨어요</p>}
             <p className="text-[1.5rem] leading-[1.8] text-stone-900 whitespace-pre-wrap break-words">{reading.content}</p>
             {reading.image_url && <img src={reading.image_url} alt="사연 사진" onClick={() => setZoom(reading.image_url)} className="mt-6 max-w-full rounded-2xl" />}
+            {reading.reply && replyFor !== reading.id && <div className="mt-6">{replyShown(reading)}</div>}
+            {replyBox(reading, true)}
           </div>
           <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2 flex-wrap">
+            <button onClick={() => startReply(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-sky-600 text-white">💬 {reading.reply ? '답장 고치기' : '답장하기'}</button>
             <button onClick={() => setGiftFor(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-amber-500 text-white">🎁 선물하기</button>
             {onMessage && reading.name_display === 'name' && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
             {reading.status !== 'aired'
@@ -278,7 +332,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className={`text-[0.75rem] font-bold px-2 py-0.5 rounded-full border ${STATUS[l.status].className}`}>{view === 'mine' ? STATUS[l.status].mine : STATUS[l.status].label}</span>
                     {view === 'inbox' && <span className="text-[0.8125rem] font-bold text-stone-800">{displayName(l)}</span>}
-                    {view === 'inbox' && <span className="text-[0.75rem] text-stone-400">({realSender(l)})</span>}
+                    {view === 'inbox' && <span className="text-[0.75rem] text-stone-400">({senderButton(l, 'text-stone-500')})</span>}
+                    {l.reply && <span className="text-[0.75rem] font-bold px-2 py-0.5 rounded-full bg-sky-50 text-sky-800 border border-sky-200">{view === 'mine' ? '💌 답장 도착' : '답장함'}</span>}
                     {view === 'mine' && <span className="text-[0.75rem] text-stone-500">{l.name_display === 'name' ? '🙋 아이디 공개' : '🙈 익명'}</span>}
                     {l.gift && <span className="text-[0.75rem] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">🎁 선물</span>}
                     {!l.broadcast_ok && <span className="text-[0.75rem] font-bold text-red-600">방송 소개 안 함</span>}
@@ -287,10 +342,13 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                   {view === 'mine' && l.gift && <p className="text-[0.875rem] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">🎉 이 사연이 선물 대상으로 뽑혔어요! 운영자가 메시지로 연락드릴게요.</p>}
                   <p className={`text-[0.9375rem] text-stone-800 whitespace-pre-wrap break-words ${view === 'inbox' ? 'line-clamp-4' : ''}`}>{l.content}</p>
                   {l.image_url && <button onClick={() => setZoom(l.image_url)} className="self-start"><img loading="lazy" src={l.image_url} alt="사연 사진" className="max-h-32 rounded-xl border border-stone-200 object-cover" /></button>}
-                  <div className="flex gap-2">
+                  {replyShown(l)}
+                  {replyBox(l)}
+                  <div className="flex gap-2 flex-wrap">
                     {view === 'inbox' && <button onClick={() => openReading(l)} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white text-[0.8125rem] font-bold">크게 읽기</button>}
                     {view === 'inbox' && l.status === 'new' && <button onClick={() => setStatus(l, 'read')} className="px-3 py-1.5 rounded-lg border border-stone-200 text-stone-700 text-[0.8125rem] font-bold">읽음으로</button>}
                     {view === 'inbox' && l.status !== 'aired' && <button onClick={() => setStatus(l, 'aired')} className="px-3 py-1.5 rounded-lg border border-emerald-200 text-emerald-700 text-[0.8125rem] font-bold">소개함</button>}
+                    {view === 'inbox' && replyFor !== l.id && <button onClick={() => startReply(l)} className="px-3 py-1.5 rounded-lg border border-sky-200 text-sky-700 text-[0.8125rem] font-bold">💬 {l.reply ? '답장 고치기' : '답장'}</button>}
                     {view === 'inbox' && <button onClick={() => setGiftFor(l)} className="px-3 py-1.5 rounded-lg border border-amber-200 text-amber-700 text-[0.8125rem] font-bold">🎁 선물</button>}
                     {(view === 'inbox' || l.status === 'new') && <button onClick={() => remove(l)} className="ml-auto px-2 py-1.5 text-stone-400 text-[0.8125rem]">지우기</button>}
                   </div>

@@ -2751,7 +2751,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'sticker_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'sticker_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -5524,6 +5524,8 @@ export default function Home() {
             setShowLetters(false);
             openChatRoom(data);
           }}
+          onOpenProfile={t => openProfileCard({ id: t.id, name: t.name, handle: t.handle })}
+          onReplied={id => sendPush('letter_reply', id)}
           onClose={() => setShowLetters(false)}
           onSent={id => sendPush('letter', id)}
           onChanged={fetchLetterCount}

@@ -14,7 +14,7 @@ export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸�
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
+type NotifyBody = { type?: 'sticker_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
+  if (!id || !type || !['sticker_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -99,6 +99,13 @@ export async function POST(request: Request) {
     const { data: letter } = await admin.from('letters').select('id, user_id, gift').eq('id', id).maybeSingle();
     if (!letter || !letter.gift) return Response.json({ skipped: 'not a gift' });
     list.push({ recipientId: letter.user_id, payload: giftPayload(`letter:${letter.id}`) });
+  } else if (type === 'letter_reply') {
+    // 관리자가 사연함에서 답장 → 보낸 분께 ('보낸 사연'에서 봄)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: letter } = await admin.from('letters').select('id, user_id, reply, replied_at').eq('id', id).maybeSingle();
+    if (!letter || !letter.reply || !letter.replied_at) return Response.json({ error: 'bad request' }, { status: 400 });
+    if (Date.now() - new Date(letter.replied_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    list.push({ recipientId: letter.user_id, payload: { title: '💌 운영자가 사연에 답장했어요', body: truncate(letter.reply), url: '/?letters=1', tag: `letter-reply-${letter.id}` } });
   } else if (type === 'lounge_call') {
     // 사랑방에서 '@관리자'로 부름 → 관리자에게만 (사랑방의 다른 대화는 알림 없음)
     const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();
