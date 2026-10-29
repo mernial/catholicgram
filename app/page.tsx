@@ -4224,8 +4224,8 @@ export default function Home() {
               {user ? (
                 <div className="flex items-center gap-2.5 min-w-0">
                   {/* 사연 보내기 (관리자에게만) — 관리자는 사연함 */}
-                  <button onClick={() => { setLettersStart('write'); setShowLetters(true); }} className="relative text-[1.3125rem] leading-none" aria-label={isAdmin ? '사연함' : '사연 보내기'}>
-                    💌
+                  <button onClick={() => { setLettersStart('write'); setShowLetters(true); }} className={`relative ${showLetters ? 'text-rose-600' : 'text-stone-800'} hover:text-stone-900`} aria-label={isAdmin ? '사연함' : '사연 보내기'}>
+                    <Icon name="loveLetter" className="w-[1.625rem] h-[1.625rem]" />
                     {isAdmin && letterNewCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{letterNewCount > 9 ? '9+' : letterNewCount}</span>
                     )}
