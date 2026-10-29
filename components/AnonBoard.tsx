@@ -345,7 +345,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                     );
                   })}
                   <button onClick={() => toggleReplies(post.id)} className="flex items-center gap-1.5 text-stone-600">
-                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-5 h-5" /></span>
+                    <span className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-sky-50 text-sky-800"><Icon name="reply" className="w-5 h-5" /></span>
                     답글{post.reply_count > 0 && ` ${post.reply_count}`}
                   </button>
                 </div>

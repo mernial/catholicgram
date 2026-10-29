@@ -3758,7 +3758,7 @@ export default function Home() {
         );
       })()}
       <button onClick={onComment} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
-        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="chat" className="w-[1.375rem] h-[1.375rem]" /></span>
+        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="reply" className="w-[1.375rem] h-[1.375rem]" /></span>
         {/* 댓글 수는 언제나 말풍선 옆에 */}
         {commentCounts[post.id] ? <span className="text-[0.9375rem] font-bold text-sky-900">{commentCounts[post.id]}</span> : null}
       </button>
@@ -3769,7 +3769,7 @@ export default function Home() {
           aria-label={`${post.author_name}님에게 메시지 보내기`}
           className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-50 text-emerald-700"
         >
-          <Icon name="send" className="w-[1.25rem] h-[1.25rem]" />
+          <Icon name="message" className="w-[1.375rem] h-[1.375rem]" />
         </button>
       )}
     </>
@@ -3811,7 +3811,7 @@ export default function Home() {
         ) : null}
         {activeTab === 'chat' && currentChatUser ? (
           <div className="flex items-center">
-            {dmBookmarks.list.length > 0 && <button onClick={() => setShowDmBookmarks(true)} className="w-10 h-10 flex items-center justify-center text-lg" aria-label={`책갈피 ${dmBookmarks.list.length}개 보기`}>🔖</button>}
+            {dmBookmarks.list.length > 0 && <button onClick={() => setShowDmBookmarks(true)} className="w-10 h-10 flex items-center justify-center text-lg" aria-label={`책갈피 ${dmBookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
             <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
           </div>
         ) : (
@@ -3832,7 +3832,7 @@ export default function Home() {
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setFeedMenuOpen(false)} />
                   <div className="absolute left-1/2 -translate-x-1/2 top-full mt-2 w-52 bg-white rounded-2xl shadow-xl border border-stone-200 overflow-hidden z-40" role="menu">
-                    {([['all', '전체 보기', 'stack'], ['media', '사진·영상만', 'camera'], ['text', '글만', 'pencil']] as const).map(([key, label, icon]) => (
+                    {([['all', '전체 보기', 'stack'], ['media', '사진·영상만', 'image'], ['text', '글만', 'pencil']] as const).map(([key, label, icon]) => (
                       <button key={key} role="menuitem" onClick={() => { setFeedFilter(key); setFeedMenuOpen(false); window.scrollTo({ top: 0 }); }} className="w-full flex items-center gap-3 px-4 py-3.5 text-left text-[1rem] text-stone-900 border-b border-stone-100 last:border-0 active:bg-stone-50">
                         <Icon name={icon} className="w-5 h-5 text-stone-700" />
                         <span className="flex-1">{label}</span>
@@ -3862,7 +3862,7 @@ export default function Home() {
                   </button>
                   {/* 알림 ♡ (인스타그램처럼 빨간 점) */}
                   <button onClick={openNotifications} className="relative text-stone-900" aria-label="알림">
-                    <Icon name="heart" className="w-[1.625rem] h-[1.625rem]" />
+                    <Icon name="bell" className="w-[1.625rem] h-[1.625rem]" />
                     {unreadCount > 0 && (
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>
                     )}
@@ -4064,10 +4064,10 @@ export default function Home() {
                       <Icon name="camera" className="w-8 h-8" /><span className="text-[0.75rem]">사진 찍기</span>
                     </label>
                     <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#3a3a3a] flex flex-col items-center justify-center gap-1 text-white">
-                      <Icon name="stack" className="w-8 h-8" /><span className="text-[0.75rem] font-bold">사진첩 열기</span>
+                      <Icon name="image" className="w-8 h-8" /><span className="text-[0.75rem] font-bold">사진첩 열기</span>
                     </label>
                     <label htmlFor="video-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
-                      <Icon name="film" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
+                      <Icon name="video" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
                     </label>
                     {/* 사진첩에서 고른 사진 미리보기 (최근 것이 앞에) */}
                     {tray.map(item => {
@@ -4154,16 +4154,16 @@ export default function Home() {
                   <div className="bg-stone-50 border-b border-stone-100 px-4 py-6 flex flex-col items-center gap-3">
                     <div className="flex gap-3 w-full max-w-sm">
                       <label htmlFor="photo-upload" className="flex-1 cursor-pointer rounded-2xl bg-white border border-stone-200 py-5 flex flex-col items-center gap-1.5 shadow-sm">
-                        <Icon name="camera" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">사진 선택</span><span className="text-[0.75rem] text-stone-400">최대 {MAX_PHOTOS}장</span>
+                        <Icon name="image" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">사진 선택</span><span className="text-[0.75rem] text-stone-400">최대 {MAX_PHOTOS}장</span>
                       </label>
                       <label htmlFor="video-upload" className="flex-1 cursor-pointer rounded-2xl bg-white border border-stone-200 py-5 flex flex-col items-center gap-1.5 shadow-sm">
-                        <Icon name="film" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">영상 선택</span><span className="text-[0.75rem] text-stone-400">1분 이하</span>
+                        <Icon name="video" className="w-8 h-8 text-stone-800" /><span className="text-[0.9375rem] font-bold text-stone-800">영상 선택</span><span className="text-[0.75rem] text-stone-400">1분 이하</span>
                       </label>
                     </div>
                     <p className="text-[0.8125rem] text-stone-400">사진 없이 글만 써도 돼요</p>
                   </div>
                 )}
-                {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-700 font-bold bg-violet-50"><Icon name="film" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{videoStatus}</p>}
+                {videoStatus && <p className="px-4 py-2 text-[0.8125rem] text-violet-700 font-bold bg-violet-50"><Icon name="video" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />{videoStatus}</p>}
 
                 {/* 프로필 사진 + 문구 입력 */}
                 <div className="flex gap-3 px-4 pt-4 pb-2">
@@ -4452,10 +4452,10 @@ export default function Home() {
                   <div className="mt-3 grid grid-cols-2 gap-1.5">
                     <button onClick={openProfileEdit} className={btnPrimary}><Icon name="pencil" className={ico} />프로필 편집</button>
                     <button onClick={() => goToTab('messages')} className={btn}>
-                      <Icon name="send" className={ico} />메시지
+                      <Icon name="message" className={ico} />메시지
                       {messageBadgeCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>}
                     </button>
-                    <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="chat" className={ico} />내 댓글</button>
+                    <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="reply" className={ico} />내 댓글</button>
                     <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className={btn}><Icon name="gear" className={ico} />설정</button>
                   </div>
                   <div className="mt-1.5 grid grid-cols-2 gap-1.5">
@@ -4484,7 +4484,7 @@ export default function Home() {
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
-                        <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="camera" className="w-3.5 h-3.5" />사진 저장소</button>
+                        <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="image" className="w-3.5 h-3.5" />사진 저장소</button>
                         <button onClick={() => setShowLetters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-rose-200 bg-rose-50 text-rose-800 inline-flex items-center gap-1">💌 사연함{letterNewCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] rounded-full flex items-center justify-center">{letterNewCount}</span>}</button>
                       </>
                     )}
@@ -4521,7 +4521,7 @@ export default function Home() {
 
           {/* 아이콘 탭: 게시물 / 영상 / 태그됨 */}
           <div className="flex border-t border-stone-200 bg-white">
-            {([['posts', '게시물', 'stack'], ['videos', '영상', 'film'], ['tagged', '태그됨', 'user']] as const).map(([key, label, icon]) => (
+            {([['posts', '게시물', 'stack'], ['videos', '영상', 'video'], ['tagged', '태그됨', 'user']] as const).map(([key, label, icon]) => (
               <button key={key} onClick={() => setProfileTab(key)} aria-label={label} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-[0.75rem] font-bold border-t-2 -mt-px ${profileTab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>
                 <Icon name={icon} className="w-6 h-6" />{label}
               </button>
@@ -4592,7 +4592,7 @@ export default function Home() {
             <p className="absolute top-0 left-0 z-10 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] text-white text-xl font-bold drop-shadow pointer-events-none">영상</p>
             {reels.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 text-white/80 text-center px-6">
-                <Icon name="film" className="w-12 h-12" />
+                <Icon name="video" className="w-12 h-12" />
                 <p className="font-bold text-lg">아직 올라온 영상이 없어요</p>
                 <p className="text-sm text-white/60">아래 ＋ 를 눌러 첫 영상을 올려 보세요</p>
               </div>
@@ -4617,9 +4617,9 @@ export default function Home() {
                       <div className="absolute right-2 bottom-28 flex flex-col items-center gap-5 z-10">
                         <button onClick={() => handleReaction(post.id, 'pray')} className={side} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{post.pray_count || 0}</button>
                         <button onClick={() => handleReaction(post.id, 'like')} className={side} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{post.like_count || 0}</button>
-                        <button onClick={() => toggleCommentBox(post.id)} className={side} aria-label="댓글"><Icon name="chat" className="w-8 h-8" />{commentCounts[post.id] || 0}</button>
+                        <button onClick={() => toggleCommentBox(post.id)} className={side} aria-label="댓글"><Icon name="reply" className="w-8 h-8" />{commentCounts[post.id] || 0}</button>
                         {user?.id !== post.user_id && (
-                          <button onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className={side} aria-label="메시지"><Icon name="send" className="w-7 h-7" /></button>
+                          <button onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className={side} aria-label="메시지"><Icon name="message" className="w-8 h-8" /></button>
                         )}
                         {user && <button onClick={() => setPostMenuId(post.id)} className={`${side} text-2xl leading-none`} aria-label="더보기 (고치기·지우기)">⋯</button>}
                       </div>
@@ -5007,7 +5007,7 @@ export default function Home() {
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
             <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { closePanelOnInputFocus(() => dmSticker.setOpen(false)); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim() && !dmSticker.picked} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 ml-0.5"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              <Icon name="sendRight" className="w-[1.375rem] h-[1.375rem]" />
             </button>
           </form>}
           {dmSticker.open && !dmCapture && !dmRequest && !editingMessage && <StickerPanel picker={dmSticker} />}
@@ -5083,7 +5083,7 @@ export default function Home() {
                     </button>
                     {!chattingWith && (
                       <button onClick={() => { closeOverlaysForLink(); openChatRoom(u); }} className="py-3 rounded-2xl bg-white border border-stone-300 text-stone-700 text-[0.9375rem] font-bold">
-                        <Icon name="send" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />메시지
+                        <Icon name="message" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />메시지
                       </button>
                     )}
                   </div>
@@ -5713,7 +5713,7 @@ export default function Home() {
                   </div>
                   {target.video_url && (
                     <button type="button" onClick={() => setShowEditVideoEditor(true)} className={row}>
-                      <Icon name="film" className="w-6 h-6 text-stone-800 shrink-0" />
+                      <Icon name="video" className="w-6 h-6 text-stone-800 shrink-0" />
                       <span className="flex-1 text-[1.0625rem] text-stone-900">영상 위 글자·이모티콘</span>
                       <span className="shrink-0 text-[0.9375rem] text-stone-500">{hasOverlays(editOverlays) ? '있음' : '없음'}</span>
                       {chevron}
@@ -5935,7 +5935,7 @@ export default function Home() {
                   <button onClick={() => openNotification(n)} className="w-full p-4 pr-10 text-left hover:bg-stone-50 transition-colors flex items-center gap-3">
                     <span className="flex-1 min-w-0 flex flex-col gap-1">
                     <p className="text-[0.9375rem] text-stone-800">
-                      {n.anon ? <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /> : n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}{n.anon === 'mine' ? <><b>익명 교우</b>가 회원님의 고민글에 답글을 남겼어요</> : n.anon === 'author' ? <><b>고민글 작성자</b>가 답글을 남겼어요</> : <><b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}</>}
+                      {n.anon ? <Icon name="reply" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-sky-600" /> : n.mention ? <Icon name="tag" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" /> : <Icon name="chat" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-emerald-600" />}{n.anon === 'mine' ? <><b>익명 교우</b>가 회원님의 고민글에 답글을 남겼어요</> : n.anon === 'author' ? <><b>고민글 작성자</b>가 답글을 남겼어요</> : <><b>{n.author_name}</b>님이 {n.mention === 'post' ? '글에서 회원님을 언급했어요' : n.mention === 'comment' ? '댓글에서 회원님을 언급했어요' : n.is_reply ? '회원님에게 답글을 남겼습니다' : '회원님의 글에 댓글을 남겼습니다'}</>}
                     </p>
                     <p className="text-xs text-stone-600 line-clamp-2">&ldquo;{postPlainText(n.content)}&rdquo;</p>
                     <p className="text-[0.8125rem] text-stone-400 truncate">
@@ -6358,8 +6358,8 @@ export default function Home() {
               <div {...postMenuSheet.handleProps} className="sm:hidden pt-2.5 pb-4 flex justify-center touch-none cursor-grab" aria-hidden="true"><span className="w-10 h-1.5 rounded-full bg-stone-300" /></div>
               <div className="grid grid-cols-3 gap-3 px-5">
                 <button onClick={() => { close(); openPostViewer(post); }} className={tile}><span className={tileBox}><Icon name="expand" className="w-7 h-7" /></span>크게 보기</button>
-                <button onClick={() => { close(); sharePost(post); }} className={tile}><span className={tileBox}><Icon name="send" className="w-7 h-7" /></span>공유하기</button>
-                <button onClick={async () => { close(); if (await copyText(postLink(post))) showToast('링크를 복사했어요'); else window.prompt('이 주소를 복사하세요', postLink(post)); }} className={tile}><span className={tileBox}><Icon name="stack" className="w-7 h-7" /></span>링크 복사</button>
+                <button onClick={() => { close(); sharePost(post); }} className={tile}><span className={tileBox}><Icon name="share" className="w-7 h-7" /></span>공유하기</button>
+                <button onClick={async () => { close(); if (await copyText(postLink(post))) showToast('링크를 복사했어요'); else window.prompt('이 주소를 복사하세요', postLink(post)); }} className={tile}><span className={tileBox}><Icon name="link" className="w-7 h-7" /></span>링크 복사</button>
               </div>
               <div className="mt-4 pt-1 border-t border-stone-100">
                 {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
@@ -6415,16 +6415,16 @@ export default function Home() {
             return (
               <>
                 <button onClick={() => tapTab('home', goToHome)} className={`${cls} ${tone(activeTab === 'home')}`}>
-                  <svg viewBox="0 0 24 24" fill={activeTab === 'home' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+                  <Icon name="house" fill={activeTab === 'home'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">홈</span>
                 </button>
                 <button onClick={() => goToTab('reels')} className={`${cls} ${tone(activeTab === 'reels')}`}>
-                  <Icon name="film" fill={activeTab === 'reels'} className="w-7 h-7" />
+                  <Icon name="video" fill={activeTab === 'reels'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">영상</span>
                 </button>
                 <button onClick={() => { if (!user) { setShowAuthModal(true); return; } tapTabRefresh(msgOn, () => goToTab('messages')); }} className={`${cls} ${tone(msgOn)}`} aria-label={messageBadgeCount > 0 ? `메시지 (안 읽은 ${messageBadgeCount}개)` : '메시지'}>
                   <span className="relative">
-                    <Icon name="send" fill={msgOn} className="w-7 h-7" />
+                    <Icon name="message" fill={msgOn} className="w-7 h-7" />
                     {messageBadgeCount > 0 && (
                       <span className="absolute -top-1.5 -right-2 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center border-2 border-white">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>
                     )}
@@ -6432,13 +6432,13 @@ export default function Home() {
                   <span className="text-[0.75rem] font-medium">메시지</span>
                 </button>
                 <button onClick={() => tapTab('explore', () => { setExploreQuery(''); goToTab('explore'); })} className={`${cls} ${tone(activeTab === 'explore')}`}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={activeTab === 'explore' ? 2.6 : 2} className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M10.5 18a7.5 7.5 0 100-15 7.5 7.5 0 000 15z" /></svg>
+                  <Icon name="search" fill={activeTab === 'explore'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">탐색</span>
                 </button>
                 <button onClick={() => { if (!user) setShowAuthModal(true); else tapTabRefresh(meOn, () => goToProfile(user.id)); }} className={`${cls} ${tone(meOn)}`}>
                   {profile?.avatar_url
                     ? <img loading="lazy" src={profile.avatar_url} alt="" className={`w-7 h-7 rounded-full object-cover ${meOn ? (dark ? 'ring-2 ring-white' : 'ring-2 ring-stone-900') : ''}`} />
-                    : <svg viewBox="0 0 24 24" fill={meOn ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+                    : <Icon name="user" fill={meOn} className="w-7 h-7" />}
                   <span className="text-[0.75rem] font-medium">내 공간</span>
                 </button>
               </>
