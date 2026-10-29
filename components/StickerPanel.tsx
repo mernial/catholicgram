@@ -371,6 +371,13 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     ? <span className="w-8 h-8 flex items-center justify-center text-[1.625rem] leading-none text-amber-400" aria-hidden="true">★</span>
     : <img src={STICKER_PACKS.find(p => p.id === id)!.stickers[0].src} alt="" draggable={false} className="w-8 h-8 object-contain pointer-events-none" />;
   const tabName = (id: string) => (id === FAV_TAB ? '즐겨찾기' : STICKER_PACKS.find(p => p.id === id)!.name);
+  // 탭 이름이 길어 잘려도 끝의 숫자는 늘 보이게 ('소화데레…1' · '소화데레…2' — 둘이 같은 이름으로 보이지 않게)
+  const tabLabel = (id: string) => {
+    const [, base, num] = tabName(id).match(/^(.*?)(\d+)$/) || [, tabName(id), ''];
+    return num
+      ? <span className="max-w-full min-w-0 flex"><span className="truncate">{base}</span><span className="shrink-0">{num}</span></span>
+      : <span className="max-w-full truncate">{base}</span>;
+  };
 
   return (
     <div data-no-sheet-drag className="shrink-0 bg-white border-t border-stone-200 pb-[env(safe-area-inset-bottom)]" role="region" aria-label="이모티콘">
@@ -380,7 +387,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
           {order.map(id => (
             <button key={id} type="button" role="tab" data-tab={id} aria-selected={id === packId} {...tabHandlers(id)} className={tabClass(id === packId, dragId === id)}>
               {tabIcon(id)}
-              <span className="max-w-full truncate">{tabName(id)}</span>
+              {tabLabel(id)}
             </button>
           ))}
           <button type="button" onClick={() => setArranging(a => !a)} aria-pressed={arranging} className={`shrink-0 w-11 rounded-xl text-[0.6875rem] font-bold leading-tight flex flex-col items-center justify-center gap-0.5 ${arranging ? 'bg-stone-900 text-white' : 'text-stone-500'}`} aria-label="탭 순서 바꾸기">
