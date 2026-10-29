@@ -871,6 +871,15 @@ export default function Home() {
   }, [showAnon, user?.id]);
   // 영상 탭·태그됨은 필요할 때 따로 불러온다
   useEffect(() => { if (activeTab === 'reels') fetchVideoPosts(); }, [activeTab]);
+  // 영상 탭에서 영상 아이콘을 한 번 더 누르면: 첫 영상(가장 최근)으로 올라가며 새로 불러오기 (홈처럼, 운영자: 영상 탭은 새로고침이 안 됐음)
+  const reelsListRef = useRef<HTMLDivElement>(null);
+  const [reelsRefreshing, setReelsRefreshing] = useState(false);
+  const refreshReels = async () => {
+    reelsListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    setReelsRefreshing(true);
+    await fetchVideoPosts().catch(() => {});
+    setTimeout(() => setReelsRefreshing(false), 500);
+  };
   useEffect(() => {
     if (activeTab === 'profile' && profileTab === 'tagged' && viewingProfile?.handle) fetchMentionPosts(viewingProfile.handle);
   }, [activeTab, profileTab, viewingProfile?.handle]);
@@ -4749,6 +4758,7 @@ export default function Home() {
         return (
           <div className="fixed inset-x-0 top-0 max-w-xl tablet:max-w-none mx-auto bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-30 bg-black">
             <p className="absolute top-0 left-0 z-10 px-4 pt-[calc(0.875rem+env(safe-area-inset-top))] text-white text-xl font-bold drop-shadow pointer-events-none">영상</p>
+            {reelsRefreshing && <p className="absolute top-0 left-1/2 -translate-x-1/2 z-10 mt-[calc(0.875rem+env(safe-area-inset-top))] px-3 py-1 rounded-full bg-black/60 text-white text-[0.8125rem] font-bold pointer-events-none" role="status">새 영상 불러오는 중…</p>}
             {reels.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center gap-2 text-white/80 text-center px-6">
                 <Icon name="video" className="w-12 h-12" />
@@ -4756,7 +4766,7 @@ export default function Home() {
                 <p className="text-sm text-white/60">아래 ＋ 를 눌러 첫 영상을 올려 보세요</p>
               </div>
             ) : (
-              <div className="h-full overflow-y-auto snap-y snap-mandatory overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <div ref={reelsListRef} className="h-full overflow-y-auto snap-y snap-mandatory overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {reels.map(post => {
                   const prayed = myPostReactions.has(`${post.id}:pray`);
                   const liked = myPostReactions.has(`${post.id}:like`);
@@ -6581,7 +6591,7 @@ export default function Home() {
                   <Icon name="house" fill={activeTab === 'home'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">홈</span>
                 </button>
-                <button onClick={() => goToTab('reels')} className={`${cls} ${tone(activeTab === 'reels')}`}>
+                <button onClick={() => (activeTab === 'reels' ? refreshReels() : goToTab('reels'))} className={`${cls} ${tone(activeTab === 'reels')}`}>
                   <Icon name="video" fill={activeTab === 'reels'} className="w-7 h-7" />
                   <span className="text-[0.75rem] font-medium">영상</span>
                 </button>
