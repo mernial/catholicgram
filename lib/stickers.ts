@@ -39,6 +39,13 @@ const PETIT = [
   '기도 부탁해요', '사랑합니다', '맛있게 드세요', '조심히 가요',
   '어머나!', '기뻐요', '슬퍼요', '곧 연락할게요',
 ];
+// 귀여운세실리아 전용 이모티콘의 24가지 말 (운영자가 준 판 순서대로, 6칸 × 4줄 — 판에 적힌 글 그대로, 3번째는 글 없는 손하트)
+const CECILIA = [
+  '안녕', '감사', '손하트', '축복', '기도', '평화',
+  '응원', '화이팅!', '기뻐요', '속상...', '어?!', '사랑해요',
+  '아멘', '말씀', '하느님', '부탁해요', '미안해요', '수고했어요',
+  '잘자요', '좋은아침', '좋은하루', '축하해요', 'ㅋㅋㅋ', '또봐요',
+];
 const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; legacy?: string; access?: PackAccess; giftHandles?: string[] }[] = [
   {
     id: 'amen', name: '아멘이', dir: 'sheep', legacy: '양 이모티콘',
@@ -62,6 +69,8 @@ const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; lega
   { id: 'serafina', name: '양양세라피나', dir: 'serafina', labels: GREETINGS, access: 'gift', giftHandles: [] },
   // 쁘띠비비 선물: 운영자가 따로 선물 (프로필 카드·사연함의 '🎁', sticker_grants)
   { id: 'petit', name: '쁘띠비비', dir: 'petit', labels: PETIT, access: 'gift', giftHandles: [] },
+  // 귀여운세실리아 선물: 운영자가 따로 선물 (프로필 카드·사연함의 '🎁', sticker_grants)
+  { id: 'cecilia', name: '귀여운세실리아', dir: 'cecilia', labels: CECILIA, access: 'gift', giftHandles: [] },
 ];
 
 export const STICKER_PACKS: StickerPack[] = PACK_DEFS.map(p => ({
@@ -205,6 +214,21 @@ const KEYWORDS: Record<string, string[]> = {
   '기뻐요': ['기뻐', '기쁘', '기쁜', '행복', '신나', '신난'],
   '슬퍼요': ['슬퍼', '슬프', '눈물', '우울', '속상', '울고'],
   '곧 연락할게요': ['연락', '전화', '이따가', '나중에'],
+  // 귀여운세실리아 (화이팅!·기뻐요·어?!·사랑해요·아멘·미안해요·수고했어요·잘자요·축하해요·ㅋㅋㅋ 는 위의 말을 같이 씀)
+  '안녕': ['안녕', '반가', '방가', '하이'],
+  '감사': ['감사', '고마', '고맙', '땡큐'],
+  '손하트': ['하트', '사랑', '좋아해', '♥'],
+  '축복': ['축복', '은총', '은혜', '복받'],
+  '기도': ['기도', '묵주', '은총'],
+  '평화': ['평화', '평안', '샬롬', '찬미'],
+  '응원': ['응원', '힘내', '화이팅', '파이팅'],
+  '속상...': ['속상', '슬퍼', '슬프', '우울', '눈물', 'ㅠ', 'ㅜ', '서운'],
+  '말씀': ['말씀', '성경', '복음', '묵상'],
+  '하느님': ['하느님', '주님', '하나님'],
+  '부탁해요': ['부탁', '기도해줘', '기도해주', '도와줘', '도와주'],
+  '좋은아침': ['좋은아침', '굿모닝', '아침', '일어났', '기상'],
+  '좋은하루': ['좋은하루', '오늘도', '하루', '화이팅'],
+  '또봐요': ['또봐', '또만나', '다음에', '나중에', '안녕히', '바이', '빠이'],
 };
 
 export const hasStickerSuggestion = (text: string) => suggestStickers(text, 1).length > 0;
