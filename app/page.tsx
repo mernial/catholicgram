@@ -255,7 +255,8 @@ interface BeforeInstallPromptEvent extends Event {
 type FollowStatus = 'none' | 'pending' | 'accepted';
 type Tab = 'home' | 'explore' | 'reels' | 'profile' | 'messages' | 'chat' | 'anon';
 // 뒤로가기(쓸어 넘기기)를 위해 휴대폰 이동 기록(history)에 남기는 화면 정보
-interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null }
+// base: 앱으로 돌아와 메인 화면으로 바꾼 자리 — 이 아래 기록(예전 화면들)은 뒤로가기 때 건너뜀
+interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null; base?: true }
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
 interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
@@ -533,6 +534,7 @@ export default function Home() {
   const exitArmedAtRef = useRef(0);
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
+  const rewindRef = useRef(false);      // 메인 화면으로 돌아온 자리(base)에서 뒤로가기: 아래의 예전 화면 기록은 건너뛰고 종료 확인으로
   const pushAlertRef = useRef<(url: string, title: string, body: string, appleBanner?: boolean) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
   const viewingRef = useRef<(url: string) => boolean>(() => false); // 이 알림 주소의 대화방(1:1·단체)을 지금 보고 있는지 (아래에서 채움)
   const pushToastAtRef = useRef(0); // 푸시 내용을 배너로 띄운 시각 (같은 알림을 배너로 또 띄우지 않게)
@@ -766,6 +768,8 @@ export default function Home() {
         if (version && version !== 'dev' && version !== process.env.NEXT_PUBLIC_APP_VERSION && !justOpened) {
           // 로그인 토큰을 새로 받는 중이면 끝난 뒤에 새로고침 (도중에 끊기면 로그인이 풀릴 수 있음)
           await supabase.auth.getSession().catch(() => {});
+          // 앱을 나갔다가 돌아온 것이므로 새로고침 뒤에도 메인 화면부터 (글을 쓰는 중이면 그 화면 그대로)
+          if (!composerOpenRef.current) storageSet('activeTab', 'home');
           window.location.reload(); // 알림으로 가야 할 곳은 적어 둔 채로 새로고침 → 다시 열리면 그리로
           return;
         }
@@ -933,7 +937,7 @@ export default function Home() {
     const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
     // 아직 기록을 깔기 전(첫 터치 전)이면 지금 칸만 바꿔 둔다 → 첫 터치 때 그 위에 기록을 깐다
     if (same || !historyReadyRef.current) window.history.replaceState(st, '');
-    else window.history.pushState(st, '');
+    else { window.history.pushState(st, ''); rewindRef.current = false; }
     applyScreen(st);
   };
 
@@ -2953,26 +2957,59 @@ export default function Home() {
     window.addEventListener('pageshow', onVisible);
     return () => { document.removeEventListener('visibilitychange', onVisible); window.removeEventListener('pageshow', onVisible); };
   }, []);
-  // 앱이 뒤에 있는 동안 알림이 왔는데 알림 대신 앱 아이콘을 눌러 돌아오면: 그사이 온 알림 중 가장 최근 것의 화면으로.
-  // 알림을 눌러 돌아온 경우는 그 알림으로 이미 가므로 그대로, 글을 쓰는 중이면 쓰던 글을 지키려고 그대로
+  // 앱을 나갔다가(홈 화면·다른 앱) 다시 열면 메인 화면(홈 맨 위)부터 (운영자 요청).
+  // 그사이 알림이 왔는데 알림 대신 앱 아이콘(숫자가 붙은)을 눌러 돌아오면 그 알림 화면으로 (루비로사 건의).
+  // 그대로 두는 때: 알림을 눌러 돌아옴(그 화면으로 감) · 사진 고르기·공유·다른 앱 열기처럼 앱에서 잠깐 밖에 다녀옴 · 글을 쓰는 중이거나 쓰던 글이 있음
   useEffect(() => {
     let hiddenAt = 0;
+    let awayAt = 0; // 앱이 스스로 밖으로 보낸 때 (사진·파일 고르기, 공유 창, 다른 앱·브라우저로 여는 링크, 내려받기)
+    const markAway = (e: Event) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.('input[type=file], a[target=_blank], a[download], a[href^="intent:"], a[href^="kakaotalk:"], a[href^="tel:"], a[href^="sms:"], a[href^="mailto:"]')) awayAt = Date.now();
+    };
+    document.addEventListener('click', markAway, true);
+    const nav = navigator as Navigator & { __awayWrapped?: boolean };
+    if (nav.share && !nav.__awayWrapped) {
+      const share = nav.share.bind(nav);
+      nav.share = (data?: ShareData) => { awayAt = Date.now(); return share(data); };
+      nav.__awayWrapped = true;
+    }
+    const pendingLink = async () => {
+      try {
+        const res = await (await caches.open(PENDING_CACHE)).match('/__pending');
+        const p = res ? await res.json() as { at?: number } : null;
+        return !!p?.at && Date.now() - p.at < 2 * 60 * 1000;
+      } catch { return false; }
+    };
+    const typing = () => [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('textarea, input[type=text], input:not([type])')]
+      .some(el => el.value.trim() && el.offsetParent !== null && !el.readOnly);
+    const backToMain = () => {
+      closeOverlaysForLink();
+      const cur = currentScreenRef.current;
+      if (cur.tab !== 'home') {
+        const st: ScreenState = { screen: true, tab: 'home', base: true };
+        window.history.replaceState(st, '');
+        if (historyReadyRef.current) rewindRef.current = true;
+        applyScreen(st);
+      }
+      setTimeout(() => mainScrollRef.current?.scrollTo({ top: 0 }), 0);
+      linkLog('resume', `메인 화면으로 (${cur.tab})`);
+    };
     const onVis = () => {
       if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
       const since = hiddenAt;
       hiddenAt = 0;
       if (!since || Date.now() - since < 3000) return;
-      setTimeout(() => {
-        if (document.visibilityState !== 'visible') return;
-        if (linkHandledAt > since || (lastOpenedLink && lastOpenedLink.at > since)) return;
-        if (composerOpenRef.current) return;
-        const el = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
-        if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') && el.value.trim()) return;
-        openShownNotification(since);
-      }, 1200);
+      const handled = () => linkHandledAt > since || (!!lastOpenedLink && lastOpenedLink.at > since);
+      setTimeout(async () => {
+        if (document.visibilityState !== 'visible' || handled() || await pendingLink()) return; // 알림을 눌러 돌아옴 → 그 화면으로
+        if (composerOpenRef.current || typing() || awayAt >= since - 5000) return;            // 쓰던 글·잠깐 밖에 다녀옴 → 그대로
+        backToMain();
+        setTimeout(() => { if (document.visibilityState === 'visible' && !handled()) openShownNotification(since); }, 900);
+      }, 300);
     };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    return () => { document.removeEventListener('visibilitychange', onVis); document.removeEventListener('click', markAway, true); };
   }, []);
   // 앱을 쓰는 동안 새로 도착한 알림 → 화면 위 배너 + 소리 + 진동 (앱이 뒤에 있는 동안 온 것은 빼고: visibleSinceRef)
   useEffect(() => {
@@ -3577,6 +3614,10 @@ export default function Home() {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
     const staleModalEntry = !!st && 'modal' in st;
     if (skipNextPopRef.current) { skipNextPopRef.current = false; return; }
+    // 메인 화면으로 돌아온 자리에서 더 뒤로: 그 아래 예전 화면들은 건너뛰고 맨 앞(종료 확인)까지
+    if (rewindRef.current && !anyModalOpen && st && !('guard' in st)) { window.history.back(); return; }
+    if (rewindRef.current && st && 'guard' in st) rewindRef.current = false;
+    if (st && 'screen' in st && st.base && !anyModalOpen) { rewindRef.current = true; applyScreen(st); return; }
     if (anyModalOpen) {
       closeAllModals();
       // 창을 열 때 쌓아 둔 칸이 빠진 것이면 그대로 끝 (기록을 다시 쌓지 않아야 브라우저가 앞 칸을 건너뛰지 않는다)
