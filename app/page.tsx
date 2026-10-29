@@ -226,6 +226,7 @@ const RESUME_HOME_AFTER = 30 * 60 * 1000;
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
 const storageRemove = (key: string) => { try { localStorage.removeItem(key); } catch { /* 저장 불가 환경 */ } };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isStorageAvailable = () => {
   try { localStorage.setItem('__test__', '1'); localStorage.removeItem('__test__'); return true; } catch { return false; }
 };
@@ -493,6 +494,8 @@ export default function Home() {
   profileMusicNowRef.current = profileMusicNow;
   const profileAudioRef = useRef<HTMLAudioElement | null>(null);
   const [showProfileMusicPicker, setShowProfileMusicPicker] = useState(false);
+  const [extraTracks, setExtraTracks] = useState<BgmTrack[]>([]); // 목록에 없는(숨겨 둔) 곡 중 누군가의 공간 음악·내가 선물받은 노래
+  const [myMusicGifts, setMyMusicGifts] = useState<{ note: string | null; letter_id: string | null; track: BgmTrack }[]>([]);
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [expandedPosts, setExpandedPosts] = useState<Set<string>>(new Set()); // 사진·영상 글: 펼쳐 본 글
   const [feedFilter, setFeedFilter] = useState<'all' | 'media' | 'text'>('all');
@@ -2201,19 +2204,40 @@ export default function Home() {
     else { audio.pause(); setBgmPlaying(false); }
   };
 
-  // ── 공간 음악 (운영자 요청): 관리자의 공간·프로필 카드를 누르면 관리자가 '내 공간 → 🎵 공간 음악'에서 고른 곡이 흐른다 ──
-  // 곡은 profiles.profile_music ('bgm:<배경음악 id>', supabase/profile-music.sql — 관리자만 정할 수 있음).
+  // ── 공간 음악 (운영자 요청): 공간·프로필 카드를 누르면 그 교우가 '내 공간 → 🎵 공간 음악'에서 고른 곡이 흐른다 ──
+  // 곡은 profiles.profile_music ('bgm:<배경음악 id>', supabase/profile-music.sql). 관리자는 '가톨릭그램 음악'의 아무 곡이나,
+  // 교우는 관리자에게 선물받은 노래(music_grants — 예: 보이는 라디오 사연으로 만든 노래)만.
   // 휴대폰은 누른 그 순간에 튼 소리만 허락하므로, 누가 곡을 정해 두었는지는 앱을 열 때 미리 알아 두고 누를 때 바로 튼다
   const fetchProfileMusic = async () => {
     const { data, error } = await supabase.from('profiles').select('id, profile_music, profile_music_title').not('profile_music', 'is', null);
     if (error) { setProfileMusicReady(false); return; }
     setProfileMusicReady(true);
     setProfileMusicMap(Object.fromEntries((data || []).map(r => [r.id as string, { value: r.profile_music as string, title: (r.profile_music_title as string | null) || '' }])));
+    // 선물한 노래는 '가톨릭그램 음악' 목록에서 숨겨 둔 곡일 수 있어 따로 불러 둔다 (그 교우의 공간을 연 사람이 틀 수 있게)
+    const ids = [...new Set((data || []).map(r => parsePostMusic(r.profile_music as string)).flatMap(m => (m?.kind === 'bgm' && UUID_RE.test(m.trackId) ? [m.trackId] : [])))];
+    if (ids.length) {
+      const { data: rows } = await supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').in('id', ids);
+      if (rows?.length) addExtraTracks(rows as BgmTrack[]);
+    }
   };
+  // 내가 선물받은 노래 (supabase/profile-music.sql 의 music_grants, 표가 없으면 빈 목록)
+  const fetchMyMusicGifts = async (userId: string) => {
+    const { data, error } = await supabase.from('music_grants').select('note, letter_id, created_at, track:bgm_tracks(id, title, artist, url, active, sort)').eq('user_id', userId).order('created_at', { ascending: false });
+    if (error) { setMyMusicGifts([]); return; }
+    const gifts = ((data || []) as unknown as { note: string | null; letter_id: string | null; track: BgmTrack | null }[])
+      .filter((g): g is { note: string | null; letter_id: string | null; track: BgmTrack } => !!g.track);
+    setMyMusicGifts(gifts);
+    addExtraTracks(gifts.map(g => g.track));
+  };
+  const addExtraTracks = (rows: BgmTrack[]) => setExtraTracks(prev => [...prev.filter(t => !rows.some(r => r.id === t.id)), ...rows]);
+  // 앱을 열 때·내 공간에 들어올 때 (새로 선물받았을 수 있어서)
+  const inOwnSpace = activeTab === 'profile' && !!user && viewingUserId === user.id;
+  useEffect(() => { if (user) fetchMyMusicGifts(user.id); else setMyMusicGifts([]); }, [user?.id, inOwnSpace]);
   const profileTrack = (userId?: string | null) => {
     const m = userId ? parsePostMusic(profileMusicMap[userId]?.value) : null;
-    return m?.kind === 'bgm' ? bgmTracks.find(t => t.id === m.trackId) || null : null;
+    return m?.kind === 'bgm' ? bgmTracks.find(t => t.id === m.trackId) || extraTracks.find(t => t.id === m.trackId) || null : null;
   };
+  const canPickProfileMusic = !!(user?.email && ADMIN_EMAILS.includes(user.email)) || myMusicGifts.length > 0; // 관리자, 또는 노래를 선물받은 교우
   const playProfileMusic = (userId: string) => {
     const track = profileTrack(userId);
     if (!track) return;
@@ -4765,19 +4789,19 @@ export default function Home() {
               ) : viewingUserId === user?.id && (
                 <button onClick={() => setBioDraft('')} className="mt-1 text-[0.8125rem] text-stone-500"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
               )}
-              {/* 공간 음악: 교우가 이 공간을 누르면 흐르는 곡 (관리자만 정함) */}
+              {/* 공간 음악: 이 공간을 누르면 흐르는 곡 (관리자, 또는 노래를 선물받은 교우가 정함) */}
               {viewingUserId && profileTrack(viewingUserId) && (
                 <div className="mt-2 flex items-center gap-2 flex-wrap">
                   {profileMusicBar(viewingUserId)}
-                  {isAdmin && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
+                  {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
                 </div>
               )}
-              {isAdmin && viewingUserId === user?.id && !profileTrack(user.id) && (
+              {canPickProfileMusic && viewingUserId === user?.id && !profileTrack(user.id) && (
                 <button onClick={() => setShowProfileMusicPicker(true)} className="mt-2 w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-3 py-2.5 text-left flex items-center gap-2.5">
                   <span className="w-9 h-9 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-5 h-5" /></span>
                   <span className="min-w-0">
-                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 공간 음악 넣기 <span className="text-xs font-normal text-violet-700/70">(관리자)</span></span>
-                    <span className="block text-xs text-violet-700/80">{profileMusicReady === false ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : '교우가 내 공간·프로필을 누르면 고른 곡이 흘러요'}</span>
+                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 공간 음악 넣기 {isAdmin && <span className="text-xs font-normal text-violet-700/70">(관리자)</span>}</span>
+                    <span className="block text-xs text-violet-700/80">{profileMusicReady === false && isAdmin ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : isAdmin ? '교우가 내 공간·프로필을 누르면 고른 곡이 흘러요' : '🎁 선물받은 노래를 내 공간에 틀 수 있어요'}</span>
                   </span>
                 </button>
               )}
@@ -6131,8 +6155,11 @@ export default function Home() {
       )}
 
       {/* 관리자: 배경음악 관리 */}
-      {showProfileMusicPicker && isAdmin && user && (
-        <ProfileMusicPicker tracks={bgmTracks.filter(t => t.active !== false)} onPick={saveProfileMusic} onAddMusic={() => setShowBgmAdmin(true)} onClose={() => setShowProfileMusicPicker(false)}
+      {showProfileMusicPicker && canPickProfileMusic && user && (
+        <ProfileMusicPicker onPick={saveProfileMusic} onClose={() => setShowProfileMusicPicker(false)}
+          {...(isAdmin
+            ? { tracks: bgmTracks.filter(t => t.active !== false), onAddMusic: () => setShowBgmAdmin(true) }
+            : { tracks: myMusicGifts.map(g => g.track), gifts: Object.fromEntries(myMusicGifts.map(g => [g.track.id, g.note || '관리자의 선물'])) })}
           current={(() => { const m = parsePostMusic(profileMusicMap[user.id]?.value); return m?.kind === 'bgm' ? m.trackId : null; })()} />
       )}
       {showBgmAdmin && isAdmin && (
