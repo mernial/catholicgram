@@ -144,7 +144,7 @@ export default function GiftBox({ gift, onOpened, onClose, onShowLetters, onUseM
               </button>
               {onUseMusic && (
                 <button type="button" onClick={useMusic} disabled={usedMusic !== null} className={`w-full py-3 rounded-2xl font-bold ${usedMusic === 'done' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-violet-700 text-white disabled:opacity-60'}`}>
-                  {usedMusic === 'done' ? '✓ 내 공간 음악으로 정했어요' : usedMusic === 'busy' ? '정하는 중…' : '🎵 내 공간 음악으로 하기'}
+                  {usedMusic === 'done' ? '✓ 내 공간 배경음악으로 정했어요' : usedMusic === 'busy' ? '정하는 중…' : '🎵 내 공간 배경음악으로 하기'}
                 </button>
               )}
               <p className="text-[0.875rem] text-stone-600 leading-relaxed">교우들이 내 공간을 누르면 이 노래가 흘러요.<br />글을 쓸 때 <b>음악 추가 › 🎁 선물받은 노래</b>에서도 고를 수 있어요</p>

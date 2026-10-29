@@ -215,7 +215,7 @@ export default function BgmAdmin({ onClose, onChanged, vault = false, onGift, re
             <h2 className="font-bold text-stone-900">{vault ? '🔒 보관 음악 (비공개 · 선물용)' : '🎵 게시글 음악 추가·관리 (공개)'}</h2>
             <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">
               {vault
-                ? '여기에 올린 곡은 교우들에게 보이지 않아요. 곡마다 🎁 선물하면 받은 교우만 내 공간·게시글 음악으로 쓰고, 📢 공개하면 모두가 써요.'
+                ? '여기에 올린 곡은 교우들에게 보이지 않아요. 곡마다 🎁 선물하면 받은 교우만 내 공간 배경음악·게시글 음악으로 쓰고, 📢 공개하면 모두가 써요.'
                 : '여기에 올린 곡은 모든 교우가 게시글 음악으로 바로 쓸 수 있어요. 나만 보관하려면 내 공간의 🔒 보관 음악에서 올려 주세요.'}
             </p>
           </div>
