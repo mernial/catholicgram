@@ -271,15 +271,16 @@ function tailMatches(text: string, keys: string[]) {
 }
 
 // 친 글과 비슷한 이모티콘 (맞는 말이 많고 길수록 먼저, 같은 점수면 캐릭터 순서). 두 글자 미만이면 없음
-export function suggestStickers(text: string, limit = 12): Sticker[] {
+// rank: 작을수록 앞 (이모티콘 칸에서 정한 탭 순서 — StickerPanel). 없으면 잘 맞는 것부터
+export function suggestStickers(text: string, limit = 12, rank?: (s: Sticker) => number): Sticker[] {
   if (text.replace(/\s+/g, '').length < 2) return [];
-  const scored: { s: Sticker; score: number; i: number }[] = [];
+  const scored: { s: Sticker; score: number; i: number; r: number }[] = [];
   STICKERS.forEach((s, i) => {
     if (!canUseSticker(s)) return; // 전용 이모티콘은 쓸 수 있는 사람에게만 추천
     const score = tailMatches(text, KEYWORDS[s.label] || []).hits.reduce((sum, h) => sum + h.len, 0);
-    if (score > 0) scored.push({ s, score, i });
+    if (score > 0) scored.push({ s, score, i, r: rank ? rank(s) : 0 });
   });
-  return scored.sort((a, b) => b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
+  return scored.sort((a, b) => a.r - b.r || b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
 }
 
 // 추천을 띄운 마지막 낱말(두 낱말에 걸친 말이면 앞 낱말까지)을 뺀 글.
