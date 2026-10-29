@@ -33,30 +33,27 @@ export default function CelebrateAvatar({ birthday, feast, size, children }: { b
 
 // 작은 프로필 사진(글·댓글·메시지·목록 등)에 같은 리본·비둘기: 그 교우가 오늘(한국 시간) 생일·축일이면 (lib/celebrations), 날이 지나면 저절로 사라짐.
 // 줄 높이가 바뀌지 않게 자리는 비우지 않고 사진 위·아래로 살짝 삐져나오게 겹쳐 놓는다(사진 크기에 맞춰 %로, 아주 작은 사진도 알아보게 3.25rem 이상). 아닐 때는 사진 그대로
+// fit: 스토리 동그라미·탐색 추천 카드처럼 옆 사진과 줄을 맞춰야 하는 곳 — 사진 너비에 딱 맞게, 리본은 위로 조금만(사진의 13%), 비둘기는 사진 아래 절반에 얹어 이름 줄을 가리지 않게
 const S_WIDTH = `max(${WIDTH * 100}%, 3.25rem)`, S_RIBBON_OVERLAP = 0.3, S_DOVE_OVERLAP = 0.32;
-export function CelebrateBand({ id, children, className = '' }: { id?: string | null; children: ReactNode; className?: string }) {
+const FIT_RIBBON_OVERLAP = 0.35, FIT_DOVE_TOP = 0.5;
+export function CelebrateBand({ id, fit, children, className = '' }: { id?: string | null; fit?: boolean; children: ReactNode; className?: string }) {
   const kind = useCelebration(id);
   if (!kind) return <>{children}</>;
   const band = 'absolute left-1/2 max-w-none pointer-events-none select-none drop-shadow-[0_1px_2px_rgba(0,0,0,.2)] motion-reduce:[animation:none]';
+  const width = fit ? '100%' : S_WIDTH;
   return (
     <span className={`relative z-[1] inline-flex shrink-0 ${className}`}>
       {children}
       {kind !== 'feast' && (
         <img src="/celebrate-birthday.webp" alt="오늘 생일이에요" draggable={false}
           className={`${band} [animation:celebrateFloat_3.2s_ease-in-out_infinite]`}
-          style={{ width: S_WIDTH, bottom: `${(1 - S_RIBBON_OVERLAP) * 100}%`, translate: '-50% 0' }} />
+          style={{ width, bottom: `${(1 - (fit ? FIT_RIBBON_OVERLAP : S_RIBBON_OVERLAP)) * 100}%`, translate: '-50% 0' }} />
       )}
       {kind !== 'birthday' && (
         <img src="/celebrate-feast.webp" alt="오늘 축일이에요" draggable={false}
           className={`${band} [animation:celebrateFloat_3.2s_ease-in-out_1.6s_infinite]`}
-          style={{ width: S_WIDTH, top: `${(1 - S_DOVE_OVERLAP) * 100}%`, translate: '-50% 0' }} />
+          style={{ width, top: `${(fit ? FIT_DOVE_TOP : 1 - S_DOVE_OVERLAP) * 100}%`, translate: '-50% 0' }} />
       )}
     </span>
   );
-}
-
-// 큰 꾸미기(자리를 비우는 것)를 교우 id 로: 스토리 동그라미·탐색 추천 교우 카드처럼 둘레가 잘리는(옆으로 미는) 줄에
-export function CelebrateFor({ id, size, children }: { id?: string | null; size: number; children: ReactNode }) {
-  const kind = useCelebration(id);
-  return <CelebrateAvatar size={size} birthday={kind === 'birthday' || kind === 'both'} feast={kind === 'feast' || kind === 'both'}>{children}</CelebrateAvatar>;
 }
