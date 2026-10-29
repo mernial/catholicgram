@@ -552,7 +552,8 @@ export default function Home() {
   const [followRequests, setFollowRequests] = useState<FollowRequest[]>([]);
   const [unreadMessages, setUnreadMessages] = useState<UnreadFrom[]>([]);
   // 앱 사용 중 새 알림을 화면 위에 잠깐 보여주는 배너
-  const [toast, setToast] = useState<{ key: string; icon: string; title: string; body: string; action: () => void } | null>(null);
+  // stay: 누르면 아무 데도 가지 않는 배너(알림 켜짐·종료 안내) — 그 밖의 배너는 누르면 보던 창을 모두 닫고 그 화면으로
+  const [toast, setToast] = useState<{ key: string; icon: string; title: string; body: string; action: () => void; stay?: boolean } | null>(null);
   const [updateReady, setUpdateReady] = useState(false); // 새 버전이 나왔는데 앱을 켜 둔 채라 아직 옛 화면일 때
   const updateDismissedRef = useRef(false);
   const [alertSoundOn, setAlertSoundOn] = useState(true);
@@ -2886,7 +2887,7 @@ export default function Home() {
 
   const acceptPushPrompt = async () => {
     setShowPushPrompt(false);
-    if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {} });
+    if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
   };
 
   useEffect(() => {
@@ -3010,12 +3011,14 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
+    setShowBgmAdmin(false); setShowSponsorAdmin(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
+    setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
   useEffect(() => {
     // 공지 알림은 로그인 없이도 열린다
-    if (deepLink?.notice) { closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
+    if (deepLink?.notice) { closeOverlaysForLink(); closePopup(deepLink.notice); setNoticeAdminMode(false); setNoticeOpenId(deepLink.notice); setShowNotices(true); setDeepLink(null); return; }
     // 공유한 글 링크도 로그인 없이 연다 (공개 글은 누구나 볼 수 있음)
     if (deepLink?.view && !user) { setDeepLink(null); closeOverlaysForLink(); if (currentScreenRef.current.tab !== 'home') goToHome(); openPostView(deepLink.view); return; }
     if (!deepLink || !user) return;
@@ -3532,7 +3535,7 @@ export default function Home() {
       if (Date.now() - exitArmedAtRef.current < 2000) { window.history.back(); return; } // 앱 종료
       exitArmedAtRef.current = Date.now();
       window.history.pushState(currentScreenRef.current, '');
-      setToast({ key: `exit-${Date.now()}`, icon: '👋', title: '한 번 더 뒤로가기를 하면 종료돼요', body: '', action: () => {} });
+      setToast({ key: `exit-${Date.now()}`, icon: '👋', title: '한 번 더 뒤로가기를 하면 종료돼요', body: '', action: () => {}, stay: true });
       return;
     }
     if (st && 'screen' in st) { applyScreen(st); return; }
@@ -5840,7 +5843,7 @@ export default function Home() {
         // 맨 위 단추(＋·♡ 알림)를 가리지 않게 머리말 아래에 띄운다
         <div className="fixed top-[calc(4.5rem+env(safe-area-inset-top))] left-0 right-0 z-[95] flex justify-center px-3 pointer-events-none">
           <button
-            onClick={() => { const a = toast.action; setToast(null); a(); }}
+            onClick={() => { const { action, stay } = toast; setToast(null); if (!stay) closeOverlaysForLink(); action(); }} // 보던 창(테스터 목록 등)은 닫고 그 화면으로
             className="pointer-events-auto w-full max-w-md bg-white/95 backdrop-blur border border-stone-200 shadow-xl rounded-2xl px-4 py-3 flex items-center gap-3 text-left animate-[toastIn_0.25s_ease-out]"
           >
             <span className="text-2xl shrink-0">{toast.icon}</span>
