@@ -52,7 +52,7 @@ export default function MusicGift({ track, onClose, onGifted }: {
   }, [q]);
 
   const give = async (m: Member) => {
-    if (!(await askConfirm({ title: `${m.baptismal_name}님께 노래를 선물할까요?`, message: `'${track.title}'\n받은 교우는 내 공간 음악·게시글 음악으로 쓸 수 있고, 선물 상자와 알림이 가요.`, ok: '선물하기', icon: 'gift' }))) return;
+    if (!(await askConfirm({ title: `${m.baptismal_name}님께 노래를 선물할까요?`, message: `'${track.title}'\n받은 교우는 내 공간 배경음악·게시글 음악으로 쓸 수 있고, 선물 상자와 알림이 가요.`, ok: '선물하기', icon: 'gift' }))) return;
     setBusy(m.id);
     const { data, error } = await supabase.from('music_grants').insert({ user_id: m.id, track_id: track.id, note: note.trim() || null }).select('id').single();
     setBusy(null);

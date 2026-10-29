@@ -2336,7 +2336,7 @@ export default function Home() {
     const { error } = await supabase.from('profiles').update({ profile_music: value, profile_music_title: track ? track.title : null }).eq('id', user.id);
     if (error) {
       const setup = error.code === 'PGRST204' || error.code === '42703' || /profile_music/.test(error.message);
-      await showAlert({ title: '공간 음악을 저장하지 못했어요', message: setup ? '먼저 supabase/profile-music.sql 을 Supabase SQL Editor 에서 한 번 실행해 주세요.' : error.message });
+      await showAlert({ title: '배경음악을 저장하지 못했어요', message: setup ? '먼저 supabase/profile-music.sql 을 Supabase SQL Editor 에서 한 번 실행해 주세요.' : error.code === '42501' ? '선물받은 노래만 배경음악으로 고를 수 있어요.' : error.message });
       return false;
     }
     setProfileMusicReady(true);
@@ -2346,7 +2346,7 @@ export default function Home() {
       return next;
     });
     if (profileMusicNowRef.current?.userId === user.id) stopProfileMusic();
-    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '공간 음악을 정했어요' : '공간 음악을 껐어요', body: track ? `교우가 내 공간·프로필을 누르면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
+    setToast({ key: `pmusic-${Date.now()}`, icon: '🎵', title: track ? '배경음악을 정했어요' : '배경음악을 껐어요', body: track ? `교우가 내 공간·프로필을 누르면 '${track.title}'이(가) 흘러요` : '', action: () => {}, stay: true });
     return true;
   };
   // 공간·프로필 카드의 음악 막대 (누르면 멈춤·다시 듣기)
@@ -2355,7 +2355,7 @@ export default function Home() {
     if (!track) return null;
     const playing = profileMusicNow?.userId === userId && profileMusicNow.playing;
     return (
-      <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '공간 음악 멈추기' : '공간 음악 듣기'}>
+      <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '배경음악 멈추기' : '배경음악 듣기'}>
         <span className="w-8 h-8 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
         <span className="min-w-0 text-left">
           <span className="block text-[0.8125rem] font-bold text-violet-900 truncate">🎵 {profileMusicMap[userId]?.title || track.title}</span>
@@ -4820,7 +4820,7 @@ export default function Home() {
                 <button onClick={() => setShowProfileMusicPicker(true)} className="mt-2 w-full rounded-xl border-2 border-dashed border-violet-200 bg-violet-50/50 px-3 py-2.5 text-left flex items-center gap-2.5">
                   <span className="w-9 h-9 rounded-full bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><Icon name="music" className="w-5 h-5" /></span>
                   <span className="min-w-0">
-                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 공간 음악 넣기 {isAdmin && <span className="text-xs font-normal text-violet-700/70">(관리자)</span>}</span>
+                    <span className="block text-[0.875rem] font-bold text-violet-900">🎵 배경음악 넣기 {isAdmin && <span className="text-xs font-normal text-violet-700/70">(관리자)</span>}</span>
                     <span className="block text-xs text-violet-700/80">{profileMusicReady === false && isAdmin ? '먼저 supabase/profile-music.sql 을 실행해 주세요' : isAdmin ? '교우가 내 공간·프로필을 누르면 고른 곡이 흘러요' : '🎁 선물받은 노래를 내 공간에 틀 수 있어요'}</span>
                   </span>
                 </button>
