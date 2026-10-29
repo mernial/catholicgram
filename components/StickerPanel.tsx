@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { STICKER_PACKS, STICKERS, canUseSticker, isPersonalSticker, onStickerAccess, stripStickerWords, suggestStickers, usablePacks, type Sticker } from '@/lib/stickers';
 import { toast } from '@/lib/chat-actions';
+import { useFlipList } from '@/lib/use-flip-list';
 
 // 이모티콘 보내기 (1:1 메시지·단체 채팅방·사랑방 공통)
 //  - 입력칸 옆 😊 → 입력칸 아래 이모티콘 칸 (★ 즐겨찾기 + 캐릭터별 탭, 탭 순서는 꾹 눌러 끌거나 '순서' 단추로)
@@ -266,7 +267,7 @@ const moveTo = (order: string[], id: string, to: number) => {
 };
 
 // 입력칸 아래 이모티콘 칸: 위에 탭(★ 즐겨찾기 + 캐릭터들, 옆으로 밀어 보기), 아래에 그 탭의 이모티콘 (마지막에 본 탭을 기억)
-//  - 탭 순서 바꾸기: 탭을 꾹 누른 채 옆으로 끌기, 또는 '순서' 단추 → ▲▼
+//  - 탭 순서 바꾸기: 탭을 꾹 누른 채 옆으로 끌기, 또는 '순서' 단추 → 목록에서 줄을 꾹 누른 채 위아래로 끌기
 export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   const favs = useStickerFavorites();
   const packs = useStickerAccess(); // 쓸 수 있는 캐릭터만 (전용 이모티콘은 관리자·선물받은 교우에게만)
@@ -288,7 +289,7 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
     window.addEventListener('storage', load);
     return () => { window.removeEventListener(ORDER_EVENT, load); window.removeEventListener('storage', load); };
   }, [visibleKey]);
-  const [arranging, setArranging] = useState(false); // '순서' 단추로 연 ▲▼ 목록
+  const [arranging, setArranging] = useState(false); // '순서' 단추로 연 순서 목록
   const isFav = packId === FAV_TAB;
   const pack = STICKER_PACKS.find(p => p.id === packId) || STICKER_PACKS[0];
   const shown = isFav ? favs.list : pack.stickers;
@@ -367,6 +368,93 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
   });
   const move = (id: string, by: number) => { const next = moveTo(order, id, order.indexOf(id) + by); setOrder(next); saveOrder(next); };
 
+  // '순서' 목록: 줄을 꾹 누른 채(또는 오른쪽 ≡ 를 잡고 바로) 위아래로 끌어 순서 바꾸기 (운영자 요청 — 예전 ▲▼ 대신).
+  // 끄는 줄은 손가락을 따라오고, 다른 줄은 비켜 주며 스르륵 움직임(useFlipList). 목록 끝에 닿으면 밀어 줌
+  const listRef = useFlipList<HTMLDivElement>(arranging);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [rowDrag, setRowDrag] = useState<{ id: string; y: number } | null>(null);
+  const rowDragRef = useRef(rowDrag);
+  rowDragRef.current = rowDrag;
+  const grab = useRef(0); // 잡은 곳이 줄 맨 위에서 몇 px 아래인지
+  const rowPress = useRef<{ x: number; y: number; timer: ReturnType<typeof setTimeout> } | null>(null);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const stop = (e: TouchEvent) => { if (rowDragRef.current) e.preventDefault(); }; // 끄는 동안 목록이 스크롤되지 않게
+    el.addEventListener('touchmove', stop, { passive: false });
+    return () => el.removeEventListener('touchmove', stop);
+  }, [arranging]);
+  // 끄는 줄은 순서가 바뀌어 자리가 옮겨져도 손가락 자리에
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || !rowDrag) return;
+    const el = list.querySelector<HTMLElement>(`[data-row="${rowDrag.id}"]`);
+    if (!el) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${rowDrag.y - grab.current - (list.getBoundingClientRect().top + el.offsetTop)}px)`;
+  });
+  const startRowDrag = (id: string, y: number) => {
+    const list = listRef.current;
+    const el = list?.querySelector<HTMLElement>(`[data-row="${id}"]`);
+    if (!list || !el) return;
+    grab.current = y - el.getBoundingClientRect().top;
+    let lastY = y;
+    setRowDrag({ id, y });
+    try { navigator.vibrate?.(15); } catch { /* 무시 */ }
+    const reorder = () => {
+      const top = list.getBoundingClientRect().top;
+      const center = lastY - grab.current + el.offsetHeight / 2;
+      const rows = Array.from(list.querySelectorAll<HTMLElement>('[data-row]')).filter(r => r.dataset.row !== id);
+      let to = rows.findIndex(r => center < top + r.offsetTop + r.offsetHeight / 2);
+      if (to < 0) to = rows.length;
+      const cur = orderRef.current;
+      if (cur.indexOf(id) !== to) setOrder(moveTo(cur, id, to));
+      setRowDrag({ id, y: lastY });
+    };
+    let raf = 0;
+    const edge = () => {
+      const sc = scrollRef.current;
+      if (sc) {
+        const r = sc.getBoundingClientRect();
+        // 끝 쪽으로 끌어 갔을 때만 (끝에 가까운 줄을 막 집었을 때 저절로 밀려가지 않게)
+        const by = lastY < r.top + 40 && lastY < y - 12 ? -6 : lastY > r.bottom - 40 && lastY > y + 12 ? 6 : 0;
+        if (by && sc.scrollTop + by >= 0 && sc.scrollTop + by <= sc.scrollHeight - sc.clientHeight) { sc.scrollTop += by; reorder(); }
+      }
+      raf = requestAnimationFrame(edge);
+    };
+    raf = requestAnimationFrame(edge);
+    const onMove = (e: PointerEvent) => { lastY = e.clientY; reorder(); };
+    const onEnd = () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      const cur = list.querySelector<HTMLElement>(`[data-row="${id}"]`);
+      if (cur) { cur.style.transition = 'transform 0.2s ease'; cur.style.transform = ''; } // 제자리로 내려놓기
+      setRowDrag(null);
+      saveOrder(orderRef.current);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
+  };
+  const clearRowPress = () => { if (rowPress.current) { clearTimeout(rowPress.current.timer); rowPress.current = null; } };
+  const rowHandlers = (id: string) => ({
+    onPointerDown: (e: React.PointerEvent) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      clearRowPress();
+      const y = e.clientY;
+      rowPress.current = { x: e.clientX, y, timer: setTimeout(() => { rowPress.current = null; startRowDrag(id, y); }, 350) };
+    },
+    onPointerMove: (e: React.PointerEvent) => {
+      const p = rowPress.current;
+      if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 8) clearRowPress(); // 목록을 밀어 보는 중
+    },
+    onPointerUp: clearRowPress,
+    onPointerCancel: clearRowPress,
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  });
+
   const tabClass = (on: boolean, dragging: boolean) => `shrink-0 w-14 flex flex-col items-center py-1 rounded-xl text-[0.75rem] font-bold transition-[background-color,transform] select-none [-webkit-touch-callout:none] ${on ? 'bg-amber-100 text-stone-900' : 'text-stone-500'} ${dragging ? 'scale-110 bg-white shadow-lg ring-2 ring-amber-300 z-10' : ''}`;
   const tabIcon = (id: string) => id === FAV_TAB
     ? <span className="w-8 h-8 flex items-center justify-center text-[1.625rem] leading-none text-amber-400" aria-hidden="true">★</span>
@@ -398,21 +486,31 @@ export default function StickerPanel({ picker }: { picker: StickerPicker }) {
         <button type="button" onClick={picker.close} className="shrink-0 w-9 rounded-xl text-stone-400 text-2xl leading-none" aria-label="이모티콘 닫기">×</button>
       </div>
       {arranging ? (
-        // 탭 순서 바꾸기: ▲▼ 로 옮기기 (탭을 꾹 눌러 옆으로 끌어도 됨)
-        <div className={`${PANEL_H} overflow-y-auto overscroll-contain px-3 pt-2 pb-2`} role="list" aria-label="탭 순서">
+        // 탭 순서 바꾸기: 줄을 꾹 누른 채 위아래로 끌기 (오른쪽 ≡ 는 잡자마자 끌림, 키보드는 ≡ 에서 ↑↓)
+        <div ref={scrollRef} className={`${PANEL_H} overflow-y-auto overscroll-contain px-3 pt-2 pb-2`}>
           <div className="flex items-center gap-2 pb-2">
-            <p className="flex-1 text-[0.8125rem] text-stone-500 leading-snug">자주 쓰는 탭을 위로 올려 앞에 두세요<br />(탭을 꾹 눌러 옆으로 끌어도 돼요)</p>
+            <p className="flex-1 text-[0.8125rem] text-stone-500 leading-snug"><b className="text-stone-700">꾹 누른 채 위아래로 끌어</b> 순서를 바꾸세요<br />위에 둘수록 탭 줄 앞에 나와요</p>
             <button type="button" onClick={() => setArranging(false)} className="shrink-0 px-4 py-2 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">완료</button>
           </div>
-          {order.map((id, i) => (
-            <div key={id} role="listitem" className="flex items-center gap-3 py-1.5 border-t border-stone-100">
-              <span className="w-6 text-center text-[0.875rem] font-bold text-stone-400">{i + 1}</span>
-              {tabIcon(id)}
-              <span className="flex-1 min-w-0 truncate text-[1rem] font-bold text-stone-800">{tabName(id)}</span>
-              <button type="button" onClick={() => move(id, -1)} disabled={i === 0} className="w-11 h-11 rounded-xl border border-stone-200 text-lg text-stone-700 disabled:opacity-30" aria-label={`${tabName(id)} 앞으로`}>▲</button>
-              <button type="button" onClick={() => move(id, 1)} disabled={i === order.length - 1} className="w-11 h-11 rounded-xl border border-stone-200 text-lg text-stone-700 disabled:opacity-30" aria-label={`${tabName(id)} 뒤로`}>▼</button>
-            </div>
-          ))}
+          <div ref={listRef} className="relative" role="list" aria-label="탭 순서">
+            {order.map((id, i) => {
+              const dragging = rowDrag?.id === id;
+              return (
+                <div key={id} role="listitem" data-row={id} data-flip-key={dragging ? undefined : id} {...rowHandlers(id)}
+                  className={`relative flex items-center gap-3 px-1 py-1.5 border-t border-stone-100 select-none [-webkit-touch-callout:none] ${dragging ? 'z-10 rounded-xl bg-white shadow-lg ring-2 ring-amber-300 border-transparent' : ''}`}>
+                  <span className="w-6 text-center text-[0.875rem] font-bold text-stone-400">{i + 1}</span>
+                  {tabIcon(id)}
+                  <span className="flex-1 min-w-0 truncate text-[1rem] font-bold text-stone-800">{tabName(id)}</span>
+                  <button type="button" style={{ touchAction: 'none' }} aria-label={`${tabName(id)} 순서 옮기기 (위아래 화살표)`}
+                    onPointerDown={e => { if (e.pointerType === 'mouse' && e.button !== 0) return; e.stopPropagation(); e.preventDefault(); clearRowPress(); startRowDrag(id, e.clientY); }}
+                    onKeyDown={e => { if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); move(id, e.key === 'ArrowUp' ? -1 : 1); } }}
+                    className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center cursor-grab ${dragging ? 'text-amber-600' : 'text-stone-400'}`}>
+                    <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14" /></svg>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : (
         <div ref={gridRef} className={`${PANEL_H} overflow-y-auto overscroll-contain grid grid-cols-5 sm:grid-cols-[repeat(auto-fill,minmax(5.25rem,1fr))] gap-0.5 px-2 pt-1 pb-2 content-start`} role="tabpanel" aria-label={isFav ? '즐겨찾기 이모티콘' : `${pack.name} 이모티콘`}>
