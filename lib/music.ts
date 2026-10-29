@@ -3,7 +3,13 @@
 //   'yt:<영상ID>', 'yt:<영상ID>@<시작초>', 'yt:<영상ID>@<시작초>+<구간초>' → 유튜브
 //   'bgm:<트랙ID>', 'bgm:<트랙ID>@<시작초>+<구간초>'  → 앱 배경음악 목록 (bgm_tracks, 저작권 걱정 없는 곡)
 
-export interface BgmTrack { id: string; title: string; artist?: string | null; url: string; active?: boolean; sort?: number; private?: boolean } // private: 관리자 보관 음악 (선물용, supabase/profile-music.sql)
+export interface BgmTrack {
+  id: string; title: string; artist?: string | null; url: string; active?: boolean; sort?: number;
+  private?: boolean;                // 관리자 보관 음악 (선물용, supabase/profile-music.sql)
+  created_at?: string;
+  content_hash?: string | null;     // 중복 찾기 지문 (supabase/bgm-dedupe.sql, lib/audio-dedupe.ts)
+  audio_print?: string | null;
+}
 
 export type PostMusic =
   | { kind: 'youtube'; videoId: string; start: number; clip?: number }
