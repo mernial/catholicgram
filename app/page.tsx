@@ -21,8 +21,8 @@ import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
-import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
-import { MAX_POST_STICKERS, STICKER_PACKS, hasStickerSuggestion, isGiftHandle, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
+import { MAX_POST_STICKERS, STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
 import { appKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
@@ -83,6 +83,7 @@ import { startVisitTracking } from '@/lib/visit';
 import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, cheerWordOfMany, formatFeastDay, isTodayMonthDay, isValidFeastDay, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
 import CelebrateAvatar from '@/components/CelebrateAvatar';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
+import { outsideHref } from '@/lib/open-outside';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -362,6 +363,7 @@ export default function Home() {
   const [feastClearedAt, setFeastClearedAt] = useState<string | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
   const [isKakaoInApp, setIsKakaoInApp] = useState(false);
+  const [canOpenOutside, setCanOpenOutside] = useState(false); // 앱 안의 창(카카오톡 등) → 로그인해 둔 앱·브라우저로 열 수 있음
   const [storageBlocked, setStorageBlocked] = useState(false);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(true); // 확인 전에는 배너를 숨김
@@ -573,6 +575,7 @@ export default function Home() {
     // 기본 브라우저(Safari/Chrome)로 다시 열도록 한다.
     // 단, 공유받은 글(?view=)을 보러 온 경우는 로그인 없이 볼 수 있으니 넘기지 않고, 아이패드 카카오톡은 이 넘기기를 못 해
     // '해당 페이지를 찾을 수 없습니다'가 떠서 넘기지 않는다 (로그인 창의 '⋯ → 다른 브라우저로 열기' 안내는 그대로)
+    setCanOpenOutside(!!outsideHref(window.location.href));
     if (/KAKAOTALK/i.test(navigator.userAgent)) {
       setIsKakaoInApp(true);
       const isIPad = /iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
@@ -1263,7 +1266,7 @@ export default function Home() {
     });
 
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').in('id', Array.from(latest.keys()));
-    const list = (profiles || []).map(p => ({ ...p, lastMessage: latest.get(p.id)?.content, lastAt: latest.get(p.id)?.created_at, isRequest: isRequestThread(p.id, byPartner.get(p.id) || []) }));
+    const list = (profiles || []).map(p => ({ ...p, lastMessage: chatPreview(latest.get(p.id)?.content), lastAt: latest.get(p.id)?.created_at, isRequest: isRequestThread(p.id, byPartner.get(p.id) || []) }));
     list.sort((a, b) => (b.lastAt || '').localeCompare(a.lastAt || ''));
     setChatPartners(list);
   };
@@ -1432,7 +1435,7 @@ export default function Home() {
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const canEditMessage = (m: Message) => m.sender_id === user?.id && !m.deleted_at && !isMediaOnlyText(m.content) && !parseSticker(m.content) && Date.now() - new Date(m.created_at).getTime() < 24 * 3600e3;
   const startReply = (m: Message) => { setMessageSheet(null); setEditingMessage(null); setReplyTo(m); setTimeout(() => messageInputRef.current?.focus(), 50); };
-  const startEditMessage = (m: Message) => { setMessageSheet(null); setReplyTo(null); setEditingMessage(m); setMessageInput(m.content); setTimeout(() => messageInputRef.current?.focus(), 50); };
+  const startEditMessage = (m: Message) => { setMessageSheet(null); setReplyTo(null); setEditingMessage(m); setMessageInput(chatText(m.content)); /* 이모티콘과 함께 보낸 글은 글만 고침 */ setTimeout(() => messageInputRef.current?.focus(), 50); };
   const cancelEditMessage = () => { setEditingMessage(null); setMessageInput(''); };
   // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
@@ -1481,12 +1484,14 @@ export default function Home() {
     // 내 메시지 고치기
     if (editingMessage) {
       const target = editingMessage;
-      const { error } = await supabase.rpc('edit_my_message', { p_id: String(target.id), p_content: newMsg });
+      const keep = chatStickerParts(target.content)?.sticker; // 함께 보낸 이모티콘은 그대로
+      const content = keep ? joinChatSticker(newMsg, keep) : newMsg;
+      const { error } = await supabase.rpc('edit_my_message', { p_id: String(target.id), p_content: content });
       if (error) {
         alert(error.code === 'PGRST202' || error.code === '42883' ? MESSAGE_EXTRAS_HINT : /[가-힣]/.test(error.message) ? error.message.replace(/^.*?: /, '') : `고치지 못했어요.\n(${error.message})`);
         return;
       }
-      setChatMessages(prev => prev.map(m => (m.id === target.id ? { ...m, content: newMsg, edited_at: new Date().toISOString() } : m)));
+      setChatMessages(prev => prev.map(m => (m.id === target.id ? { ...m, content, edited_at: new Date().toISOString() } : m)));
       setEditingMessage(null);
       setMessageInput('');
       return;
@@ -1503,7 +1508,7 @@ export default function Home() {
       if (!error) alert(MESSAGE_EXTRAS_HINT);
     }
     if (error) {
-      setMessageInput(newMsg); // 보내지 못한 내용은 입력창에 되돌려 둔다
+      setMessageInput(chatText(newMsg)); // 보내지 못한 내용은 입력창에 되돌려 둔다
       setReplyTo(reply);
       alert(`메시지를 보내지 못했습니다.\n(${error.message})`);
       return;
@@ -1530,13 +1535,16 @@ export default function Home() {
   };
   const dmSticker = useStickerPicker(sendDmSticker);
   const dmStickerTap = useCloseStickersOnTap(dmSticker); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
-  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  // 보내기: 고른 이모티콘이 있으면 입력칸의 글과 함께 한 메시지로(한 말풍선에 이모티콘 + 글), 글이 없으면 이모티콘만
   const submitDm = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (dmSticker.picked && !editingMessage) {
-      const rest = messageInputRef.current?.value ?? messageInput;
-      await dmSticker.sendPicked();
-      if (rest.trim()) sendMessage(undefined, rest);
+    const picked = dmSticker.picked;
+    if (picked && !editingMessage) {
+      const rest = (messageInputRef.current?.value ?? messageInput).trim();
+      if (!rest) { await dmSticker.sendPicked(); return; }
+      dmSticker.setPicked(null);
+      chatStick.atBottom.current = true;
+      sendMessage(undefined, joinChatSticker(rest, picked));
       return;
     }
     sendMessage(e);
@@ -1623,7 +1631,7 @@ export default function Home() {
     name: m.sender_id === user?.id ? undefined : currentChatUser?.baptismal_name || '상대',
     mine: m.sender_id === user?.id,
     time: m.created_at,
-    text: m.deleted_at ? '삭제된 메시지' : isMediaOnlyText(m.content) ? '' : m.content,
+    text: m.deleted_at ? '삭제된 메시지' : isMediaOnlyText(m.content) ? '' : chatPreview(m.content),
     photos: m.deleted_at ? undefined : m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
     video: !m.deleted_at && isVideoUrl(m.image_url),
   });
@@ -2433,7 +2441,7 @@ export default function Home() {
     data.filter(m => afterLeft(m.sender_id, m.created_at)).forEach(m => {
       const g = grouped.get(m.sender_id);
       if (g) g.count += 1;
-      else grouped.set(m.sender_id, { count: 1, lastMessage: m.content || '삭제된 메시지', lastAt: m.created_at });
+      else grouped.set(m.sender_id, { count: 1, lastMessage: chatPreview(m.content) || '삭제된 메시지', lastAt: m.created_at });
     });
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
       .in('id', Array.from(grouped.keys()));
@@ -4788,7 +4796,7 @@ export default function Home() {
                       <span className="shrink-0 text-xs text-stone-400">{g.member_count}</span>
                     </div>
                     <p className={`text-xs mt-0.5 line-clamp-1 ${g.unread > 0 ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>
-                      {!g.last_message ? '단체 채팅방' : g.last_kind === 'system' ? g.last_message : `${g.last_sender}: ${g.last_message}`}
+                      {!g.last_message ? '단체 채팅방' : g.last_kind === 'system' ? g.last_message : `${g.last_sender}: ${chatPreview(g.last_message)}`}
                     </p>
                   </div>
                   {g.unread > 0
@@ -4904,6 +4912,7 @@ export default function Home() {
                       const grouped = ALL_EMOJIS.map(e => ({ e, n: reactions.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
                       const quoted = msg.reply_to != null ? chatMessages.find(m => String(m.id) === String(msg.reply_to)) : undefined;
                       const sticker = parseSticker(msg.content);
+                      const withSticker = chatStickerParts(msg.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
                       return (
                         <div className={`max-w-[75%] ${reactions.length ? 'mb-4' : ''}`}>
                           <div className="relative">
@@ -4926,7 +4935,7 @@ export default function Home() {
                             )}
                             {/* 사진(묶음이면 바둑판)·동영상: 누르면 크게 보기·재생 (메뉴는 꾹 누르기로) */}
                             <ChatMediaView imageUrl={msg.image_url} images={msg.images} onOpen={(images, index) => setSelectedImage({ images, index })} className="-mx-2 -mt-0.5 mb-1" />
-                            {sticker ? <StickerImage sticker={sticker} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
+                            {sticker ? <StickerImage sticker={sticker} /> : withSticker ? <StickerWithText parts={withSticker} /> : !(msg.image_url && isMediaOnlyText(msg.content)) && msg.content}
                           </div>
                           {/* 감정을 고르면 잠깐 크게 */}
                           {heartPop?.id === String(msg.id) && (
@@ -5020,7 +5029,7 @@ export default function Home() {
             const myEmoji = (messageHearts[String(m.id)] || []).find(r => r.user_id === user?.id)?.emoji;
             const close = () => setMessageSheet(null);
             const mid = String(m.id);
-            const text = isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : m.content;
+            const text = isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : chatText(m.content); // 이모티콘과 함께 보낸 글은 글만 복사
             return (
               <MessageMenu anchor={messageAnchor} alignRight={mine} emojis={dmRequest ? undefined : MESSAGE_EMOJIS} moreEmojis={MORE_EMOJIS} selected={myEmoji ? [myEmoji] : []}
                 onEmoji={e => setMessageReaction(m.id, e)} onClose={close}
@@ -5977,7 +5986,14 @@ export default function Home() {
               <p className="text-xs text-stone-500 mt-1.5">{switchingAccount ? '로그인할 다른 계정을 골라 주세요' : '카카오·구글·네이버 계정으로 간편하게 시작하세요'}</p>
             </div>
 
-            {isKakaoInApp && (
+            {canOpenOutside ? (
+              // 공유받은 글을 카카오톡 안에서 보다가 댓글을 달려고 하면 여기로 온다: 로그인해 둔 앱·브라우저로 이 화면을 연다
+              <div className="text-[0.8125rem] text-amber-900 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
+                <p>지금은 다른 앱 안의 창이라 로그인이 안 되어 있어요.<br />가톨릭그램을 쓰고 계시면 아래 단추로 여세요.</p>
+                <button type="button" onClick={() => { const href = outsideHref(selectedPostDetail ? `/?view=${encodeURIComponent(selectedPostDetail.id)}` : window.location.href); if (href) window.location.href = href; }}
+                  className="mt-2 w-full py-3 rounded-xl bg-stone-900 text-white font-bold text-[0.9375rem]">로그인해 둔 가톨릭그램으로 열기</button>
+              </div>
+            ) : isKakaoInApp && (
               <p className="text-[0.8125rem] text-amber-800 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed text-center">
                 카카오톡 안에서는 로그인이 안 될 수 있어요.<br />
                 오른쪽 아래 <b>⋯</b> 버튼 → <b>다른 브라우저로 열기</b>를 눌러주세요.

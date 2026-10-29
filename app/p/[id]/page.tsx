@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { createClient } from '@supabase/supabase-js';
 import { postPlainText, splitPostStickers } from '@/lib/stickers';
-import OpenPost from './OpenPost';
+import OpenPost, { OpenInAppButton } from './OpenPost';
 
 // 카카오톡 등으로 공유한 게시글 주소 (/p/글id)
 //  - 미리 보기(og)에 그 글의 사진·작성자·글
@@ -111,9 +111,7 @@ export default async function SharedPostPage({ params }: Props) {
         </div>
       )}
 
-      <a href={appHref} className="mt-5 w-full max-w-md py-4 rounded-2xl bg-stone-900 text-white text-center text-[1.0625rem] font-bold">
-        {post ? '가톨릭그램에서 보기 · 댓글 달기' : '가톨릭그램 열기'}
-      </a>
+      <OpenInAppButton href={appHref} hasPost={!!post} />
       <p className="mt-2 text-[0.8125rem] text-stone-400 text-center">공감·기도·댓글은 가톨릭그램에서 할 수 있어요</p>
     </main>
   );

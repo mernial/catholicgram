@@ -163,8 +163,8 @@ export default function TesterSignup({ user, onClose, onStatusChange }: {
                 <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" className="mt-2 block w-full py-3 rounded-xl border border-emerald-700 text-emerald-800 text-sm font-bold text-center">② 플레이 스토어에서 설치</a>
               </>)}
               {step(3, loginWay
-                ? <>새로 설치한 가톨릭그램을 열고 <b>지금처럼 {loginWay}로 로그인</b>해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>
-                : <>새로 설치한 가톨릭그램을 열고 <b>처음 가입할 때 쓴 방법 그대로</b> 로그인해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>)}
+                ? <>새로 설치한 가톨릭그램을 열어요. <b>보통은 이미 로그인되어 있어요</b>(휴대폰 인터넷 창의 로그인이 이어져요). 로그인 화면이 나오면 <b>지금처럼 {loginWay}로 로그인</b>해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>
+                : <>새로 설치한 가톨릭그램을 열어요. <b>보통은 이미 로그인되어 있어요</b>(휴대폰 인터넷 창의 로그인이 이어져요). 로그인 화면이 나오면 <b>처음 가입할 때 쓴 방법 그대로</b> 로그인해요. 플레이 스토어의 구글 계정과는 상관없어요. 알림을 허용할지 물으면 <b>[허용]</b>을 눌러요.</>)}
               {step(4, kind === 'home'
                 ? <>새 앱에 로그인이 되면, <b>지금 보고 계신 이 앱(예전 앱)</b>의 아이콘을 홈 화면에서 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>
                 : <>홈 화면에 <b>예전에 추가한 가톨릭그램 아이콘</b>이 있으면 꾹 눌러 <b>[삭제]</b>해요. 둘 다 두면 알림이 두 번 와요. <span className="text-stone-500">(글·사진·메시지는 그대로예요)</span></>)}

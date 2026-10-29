@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
-import { STICKER_PACKS, postPlainText } from '@/lib/stickers';
+import { STICKER_PACKS, chatPreview, postPlainText } from '@/lib/stickers';
 import { onePerDevice, type PushSub } from '@/lib/push-devices';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
@@ -84,7 +84,7 @@ export async function POST(request: Request) {
     const blockedBy = new Set((blockers || []).map(b => b.blocker_id as string));
     (members || []).filter(m => m.user_id !== user.id && !blockedBy.has(m.user_id)).forEach(m => list.push({
       recipientId: m.user_id,
-      payload: { title: `👥 ${chat?.name || '단체 채팅방'}`, body: truncate(`${sender?.baptismal_name || '교우'}: ${msg.content}`), url: `/?group=${msg.chat_id}`, tag: `group-${msg.chat_id}` },
+      payload: { title: `👥 ${chat?.name || '단체 채팅방'}`, body: truncate(`${sender?.baptismal_name || '교우'}: ${chatPreview(msg.content)}`), url: `/?group=${msg.chat_id}`, tag: `group-${msg.chat_id}` },
     }));
     if (list.length === 0) return Response.json({ sent: 0 });
   } else if (type === 'tester_added') {
@@ -114,7 +114,7 @@ export async function POST(request: Request) {
     const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
     if (!adminProfile || adminProfile.id === user.id) return Response.json({ skipped: 'admin not found' });
     const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
-    list.push({ recipientId: adminProfile.id, payload: { title: '🙋 사랑방에서 관리자를 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content).replace(/@관리자\s*/g, '').trim() || '관리자님!')}`, url: `/?lounge=${msg.id}`, tag: `lounge-call-${msg.id}` } });
+    list.push({ recipientId: adminProfile.id, payload: { title: '🙋 사랑방에서 관리자를 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(chatPreview(String(msg.content)).replace(/@관리자\s*/g, '').trim() || '관리자님!')}`, url: `/?lounge=${msg.id}`, tag: `lounge-call-${msg.id}` } });
   } else if (type === 'lounge_mention') {
     // 사랑방에서 '@아이디'로 부름 → 부른 교우에게만 (누르면 사랑방 그 대화로)
     const { data: msg } = await admin.from('lounge_messages').select('id, user_id, content, created_at').eq('id', id).maybeSingle();
@@ -138,7 +138,7 @@ export async function POST(request: Request) {
     const blocked = new Set([...(b1 || []).map(b => b.blocker_id as string), ...(b2 || []).map(b => b.blocked_id as string)]);
     ids = ids.filter(pid => !blocked.has(pid));
     const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
-    ids.forEach(pid => list.push({ recipientId: pid, payload: { title: '💬 사랑방에서 회원님을 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(String(msg.content))}`, url: `/?lounge=${msg.id}`, tag: `lounge-mention-${msg.id}` } }));
+    ids.forEach(pid => list.push({ recipientId: pid, payload: { title: '💬 사랑방에서 회원님을 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(chatPreview(String(msg.content)))}`, url: `/?lounge=${msg.id}`, tag: `lounge-mention-${msg.id}` } }));
     if (list.length === 0) return Response.json({ skipped: 'nobody' });
   } else if (type === 'test') {
     // 알림 확인용 (관리자만): 나에게만, 10초 뒤 (그사이 앱을 홈 화면으로 내려 두면 휴대폰 알림으로 온다)
@@ -317,7 +317,7 @@ export async function POST(request: Request) {
     recipientId = message.receiver_id;
     payload = {
       title: `✉️ ${sender?.baptismal_name || '교우'}님의 메시지`,
-      body: truncate(message.content || ''),
+      body: truncate(chatPreview(message.content)),
       url: `/?chat=${user.id}`,
       tag: `chat-${user.id}`,
     };

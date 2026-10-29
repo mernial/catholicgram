@@ -12,8 +12,8 @@ import { initial } from '@/lib/fancy-name';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend } from '@/lib/use-enter-send';
-import StickerPanel, { StickerAbove, StickerButton, StickerImage, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
-import { hasStickerSuggestion, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
+import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
@@ -313,7 +313,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     if (keepKeyboard) setTimeout(() => inputRef.current?.focus(), 0);
     if (err) {
       setReplyTo(reply);
-      setInput(cur => (cur.trim() ? cur : raw));
+      setInput(cur => (cur.trim() ? cur : chatText(raw)));
       alert(isSetupError(err) ? SETUP_HINT : /천천히|제한|멈췄/.test(err.message) ? err.message.replace(/^.*?: /, '') : `보내지 못했어요.\n(${err.message})`);
       return;
     }
@@ -353,13 +353,15 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   const stickerPick = useStickerPicker(sendSticker);
   const stickerTap = useCloseStickersOnTap(stickerPick); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
-  // 보내기: 고른 이모티콘이 있으면 그것부터 보내고, 입력칸에 남은 글은 이어서 보낸다
+  // 보내기: 고른 이모티콘이 있으면 입력칸의 글과 함께 한 메시지로(한 말풍선에 이모티콘 + 글), 글이 없으면 이모티콘만
   const submit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (stickerPick.picked) {
-      const rest = inputRef.current?.value ?? input;
-      await stickerPick.sendPicked();
-      if (rest.trim()) send(undefined, rest);
+    const picked = stickerPick.picked;
+    if (picked) {
+      const rest = (inputRef.current?.value ?? input).trim();
+      if (!rest) { await stickerPick.sendPicked(); return; }
+      stickerPick.setPicked(null);
+      send(undefined, joinChatSticker(rest.slice(0, 450), picked));
       return;
     }
     send();
@@ -541,7 +543,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const sk = sysKind(m);
         return {
           id: m.id, system: !!sk, mine: m.user_id === user.id, name: m.user_id === user.id ? undefined : authorName(m.user_id), time: m.created_at,
-          text: sk === 'enter' ? `🙋 관리자 ${authorName(m.user_id)}님이 들어왔어요` : sk ? SYS_TEXT[sk] : isMediaOnlyText(m.content) ? '' : m.content,
+          text: sk === 'enter' ? `🙋 관리자 ${authorName(m.user_id)}님이 들어왔어요` : sk ? SYS_TEXT[sk] : isMediaOnlyText(m.content) ? '' : chatPreview(m.content),
           photos: m.images?.length ? m.images : m.image_url && !isVideoUrl(m.image_url) ? [m.image_url] : undefined,
           video: isVideoUrl(m.image_url),
         };
@@ -712,6 +714,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const counts = ALL_EMOJIS.map(e => ({ e, n: rs.filter(r => r.emoji === e).length })).filter(x => x.n > 0);
           const quoted = m.reply_to ? messages.find(x => x.id === m.reply_to) : undefined;
           const sticker = parseSticker(m.content);
+          const withSticker = chatStickerParts(m.content); // 글과 함께 보낸 이모티콘 → 한 말풍선에
           const picked = !!capturePick?.has(m.id);
           const announceMsg = m.content.startsWith('📢') && m.is_admin;
           return (
@@ -766,7 +769,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                           </button>
                         )}
                         <ChatMediaView imageUrl={m.image_url} images={m.images} onOpen={(imgs, i) => onZoom?.(imgs, i)} className="-mx-1.5 mt-0.5 mb-1" />
-                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
+                        {sticker && !announceMsg ? <StickerImage sticker={sticker} /> : withSticker && !announceMsg ? <StickerWithText parts={withSticker}>{withCall(withSticker.text, mine)}</StickerWithText> : (m.image_url || m.images?.length) && isMediaOnlyText(m.content) ? null : withCall(m.content, mine && !announceMsg)}
                       </div>
                       {heartPop?.id === m.id && (
                         <span className="pointer-events-none absolute inset-0 flex items-center justify-center animate-[heartBurst_0.7s_ease-out_forwards]">
@@ -869,7 +872,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const mine = m.user_id === user.id;
         const close = () => setMenuMsg(null);
         const myEmoji = (reactions[m.id] || []).find(r => r.user_id === user.id)?.emoji;
-        const text = isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : m.content;
+        const text = isMediaOnlyText(m.content) || parseSticker(m.content) ? '' : chatText(m.content);
         const writable = !frozen || isAdmin;
         return (
           <MessageMenu anchor={menuAnchor} alignRight={mine} onClose={close} label="사랑방 메뉴"

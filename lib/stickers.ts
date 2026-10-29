@@ -241,6 +241,20 @@ export function splitPostStickers(content?: string | null): { text: string; stic
 }
 export const joinPostStickers = (text: string, stickers: Sticker[]) =>
   [text.replace(/\s+$/, ''), ...stickers.map(stickerText)].filter(Boolean).join('\n');
+// 채팅(1:1·단체방·사랑방)에서 이모티콘을 고르고 글도 쳐서 보내면 한 메시지로 (카카오톡처럼 한 말풍선에 이모티콘 + 글, 루비로사 건의).
+// 저장은 게시글과 같은 꼴(글 끝에 이모티콘 줄 하나) — 예전 앱에서는 그 줄이 글로 보임. 이모티콘만이면 예전처럼 parseSticker
+export const joinChatSticker = (text: string, s: Sticker) => joinPostStickers(text.trim(), [s]);
+export function chatStickerParts(content?: string | null): { text: string; sticker: Sticker } | null {
+  if (!content || parseSticker(content)) return null;
+  const { text, stickers } = splitPostStickers(content);
+  return stickers.length === 1 && text.trim() ? { text, sticker: stickers[0] } : null;
+}
+// 채팅 미리 보기(대화 목록·알림·답장 줄·복사): 글과 함께 보낸 이모티콘은 글만 (copy) / 글 + '(이모티콘 좋다~)'
+export const chatText = (content?: string | null) => chatStickerParts(content)?.text ?? (content || '');
+export const chatPreview = (content?: string | null) => {
+  const parts = chatStickerParts(content);
+  return parts ? `${parts.text.replace(/\s+/g, ' ')} (이모티콘 ${parts.sticker.label})` : (content || '');
+};
 // 글만 (목록·미리 보기·공유용): 이모티콘 줄은 빼고, 글이 없으면 '이모티콘'
 export const postPlainText = (content?: string | null) => {
   const { text, stickers } = splitPostStickers(content);

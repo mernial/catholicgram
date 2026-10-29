@@ -418,6 +418,10 @@ export function PostStickers({ stickers, size = 'w-28 h-28', onRemove }: { stick
 }
 
 // 말풍선 대신 보이는 이모티콘 그림 (누르기·꾹 누르기는 감싼 말풍선이 받는다)
-export function StickerImage({ sticker }: { sticker: Sticker }) {
-  return <img src={sticker.src} alt={`이모티콘: ${sticker.label}`} draggable={false} className="block w-32 h-32 object-contain pointer-events-none select-none" />;
+export function StickerImage({ sticker, size = 'w-32 h-32' }: { sticker: Sticker; size?: string }) {
+  return <img src={sticker.src} alt={`이모티콘: ${sticker.label}`} draggable={false} className={`block ${size} object-contain pointer-events-none select-none`} />;
+}
+// 글과 함께 보낸 이모티콘 (lib/stickers chatStickerParts): 한 말풍선 안에 이모티콘(위) + 글(아래) — 카카오톡처럼
+export function StickerWithText({ parts, children }: { parts: { text: string; sticker: Sticker }; children?: React.ReactNode }) {
+  return <><StickerImage sticker={parts.sticker} size="w-28 h-28 -mx-1 mb-1" />{children ?? parts.text}</>;
 }
