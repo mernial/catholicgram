@@ -8,6 +8,15 @@ html {
   touch-action: pan-x pan-y;        /* 두 손가락으로 벌려도 앱 화면 전체가 커지지 않게 (사진만 커짐: components/PinchPeek) */
   overscroll-behavior: none;        /* 앱 화면 전체가 끌려 내려가 멈춰 보이는 현상 방지 (아이패드) */
 }
+/* 대화방(1:1·단체방·사랑방): 실제로 보이는 화면에 딱 맞춤 (lib/visual-viewport — 아이패드에서 자판이 올라오거나 화면이 옆으로 밀려도
+   위의 프로필이 가려지거나 한쪽으로 치우치지 않게). 가운데 정렬(mx-auto·max-w)은 그 안에서 그대로 */
+.fit-visual {
+  position: fixed;
+  top: var(--vvtop, 0px);
+  height: var(--vvh, 100dvh);
+  left: var(--vvleft, 0px);
+  right: calc(100% - var(--vvleft, 0px) - var(--vvw, 100%));
+}
 body {
   background-color: rgb(var(--page));   /* 앱 바탕 (화면 색에 따라) */
   color: rgb(var(--stone-900));
