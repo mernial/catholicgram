@@ -180,7 +180,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   const reveal = () => { postEnterNotice(messagesRef.current, true); onReveal?.(); };
 
-  const markSeen = () => { try { localStorage.setItem(loungeSeenKey(user.id), new Date().toISOString()); } catch { /* 무시 */ } };
+  // 본 때 = 지금과 화면에 온 마지막 대화 시각(서버 시계) 중 늦은 것 (+1ms). 휴대폰 시계가 조금 늦으면 방금 본 대화가 '새 대화'로 남아 숫자가 안 사라졌음
+  const markSeen = () => {
+    const last = messagesRef.current[messagesRef.current.length - 1]?.created_at;
+    const at = Math.max(Date.now(), last ? Date.parse(last) + 1 : 0);
+    try { localStorage.setItem(loungeSeenKey(user.id), new Date(at).toISOString()); } catch { /* 무시 */ }
+  };
 
   // 처음 불러오기
   useEffect(() => {

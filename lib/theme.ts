@@ -17,14 +17,32 @@ export function getTheme(): string {
   try { const t = localStorage.getItem(THEME_STORAGE_KEY); return t && THEMES.some(x => x.key === t) ? t : DEFAULT_THEME; } catch { return DEFAULT_THEME; }
 }
 
+// 다른 색을 골라도 어두운 색(차콜)이 남던 문제(운영자) 대비:
+//  - 일부 휴대폰 브라우저는 html 의 data-theme 만 바뀌어서는 안쪽 칸들의 색 규칙(html[data-theme=…] .bg-white 등)을 다시 계산하지 않을 수 있어
+//    모든 칸에 걸리는 규칙(`*{}`)을 잠깐 넣었다 빼서 화면 전체 색을 한 번 다시 계산하게 한다 (칸·스크롤 위치는 그대로)
+//  - 앱이 다른 창·탭에도 열려 있거나 뒤에 있다 돌아오면 저장된 색을 다시 맞춘다 (아래 THEME_BOOT_SCRIPT)
+const RESTYLE = `var s=document.createElement('style');s.textContent='*{--theme-restyle:0}';document.head.appendChild(s);setTimeout(function(){s.remove()},50)`;
+function restyle() {
+  const s = document.createElement('style');
+  s.textContent = '*{--theme-restyle:0}';
+  document.head.appendChild(s);
+  setTimeout(() => s.remove(), 50);
+}
 export function applyTheme(key: string) {
   const theme = THEMES.find(t => t.key === key) || THEMES.find(t => t.key === DEFAULT_THEME)!;
   document.documentElement.dataset.theme = theme.key;
   document.querySelectorAll('meta[name="theme-color"]').forEach(m => m.setAttribute('content', theme.bar));
+  restyle();
   try { localStorage.setItem(THEME_STORAGE_KEY, theme.key); } catch { /* 저장 불가 환경 */ }
 }
 
-// 첫 화면이 그려지기 전에 저장된 색을 적용하는 스크립트 (app/layout.tsx)
+// 첫 화면이 그려지기 전에 저장된 색을 적용하는 스크립트 (app/layout.tsx). 다른 창에서 색을 바꾸거나(storage)
+// 뒤에 있다 돌아오면(pageshow·visibilitychange) 저장된 색과 다를 때 다시 맞춘다
 export const THEME_BOOT_SCRIPT =
-  `try{var t=localStorage.getItem('${THEME_STORAGE_KEY}');var b=${JSON.stringify(Object.fromEntries(THEMES.map(t => [t.key, t.bar])))};` +
-  `if(t&&b[t]){document.documentElement.setAttribute('data-theme',t);var m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute('content',b[t])}}catch(e){}`;
+  `(function(){try{var b=${JSON.stringify(Object.fromEntries(THEMES.map(t => [t.key, t.bar])))},d=document.documentElement,` +
+  `read=function(){try{return localStorage.getItem('${THEME_STORAGE_KEY}')}catch(e){return null}},` +
+  `set=function(t){if(!t||!b[t])return;var m=document.querySelectorAll('meta[name="theme-color"]');for(var i=0;i<m.length;i++)m[i].setAttribute('content',b[t]);` +
+  `if(d.getAttribute('data-theme')!==t){d.setAttribute('data-theme',t);if(document.head){${RESTYLE}}}};` +
+  `set(read());addEventListener('storage',function(e){if(e.key==='${THEME_STORAGE_KEY}')set(e.newValue)});` +
+  `addEventListener('pageshow',function(){set(read())});document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')set(read())})` +
+  `}catch(e){}})();`;
