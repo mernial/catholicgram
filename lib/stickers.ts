@@ -168,6 +168,8 @@ export function canUsePack(p: StickerPack | undefined) {
 }
 const PACK_BY_ID = new Map(STICKER_PACKS.map(p => [p.id, p]));
 export const canUseSticker = (s: Sticker) => canUsePack(PACK_BY_ID.get(s.pack));
+// 개인 이모티콘 (관리자 전용·선물받은 전용 이모티콘): 추천 줄에서 늘 맨 앞 (StickerSuggest)
+export const isPersonalSticker = (s: Sticker) => !!PACK_BY_ID.get(s.pack)?.access;
 export const usablePacks = () => STICKER_PACKS.filter(canUsePack);
 // 선물할 수 있는 이모티콘 (전용 이모티콘)
 export const giftablePacks = () => STICKER_PACKS.filter(p => !!p.access);

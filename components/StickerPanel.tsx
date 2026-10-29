@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
-import { STICKER_PACKS, STICKERS, canUseSticker, onStickerAccess, stripStickerWords, suggestStickers, usablePacks, type Sticker } from '@/lib/stickers';
+import { STICKER_PACKS, STICKERS, canUseSticker, isPersonalSticker, onStickerAccess, stripStickerWords, suggestStickers, usablePacks, type Sticker } from '@/lib/stickers';
 import { toast } from '@/lib/chat-actions';
 
 // 이모티콘 보내기 (1:1 메시지·단체 채팅방·사랑방 공통)
@@ -173,13 +173,14 @@ export function StickerAbove({ picker, text, onTextChange, sendLabel = '보내�
 // 지금 치는 낱말과 비슷한 이모티콘 추천 (× 를 누르면 다른 낱말을 칠 때까지 숨김)
 function StickerSuggest({ text, picked, onPick, collapsed }: { text: string; picked: Sticker | null; onPick: (s: Sticker) => void; collapsed?: boolean }) {
   const [hidden, setHidden] = useState(false);
-  // 추천도 이모티콘 칸에서 정한 탭 순서대로 (앞에 둔 캐릭터의 이모티콘부터, ★ 즐겨찾기 탭이 그보다 앞이면 즐겨찾기한 것부터)
+  // 개인 이모티콘(관리자 전용·선물받은 전용 이모티콘)이 늘 맨 앞, 그다음 공용 이모티콘.
+  // 각 무리 안에서는 이모티콘 칸에서 정한 탭 순서대로 (앞에 둔 캐릭터의 이모티콘부터, ★ 즐겨찾기 탭이 그보다 앞이면 즐겨찾기한 것부터)
   const order = useTabOrder();
   const favs = useStickerFavorites();
   const favKey = favs.list.map(s => s.id).join();
   const list = useMemo(() => {
     const pos = (id: string) => { const i = order.indexOf(id); return i < 0 ? order.length : i; };
-    return suggestStickers(text, 12, s => Math.min(pos(s.pack), favs.has(s) ? pos(FAV_TAB) : Infinity));
+    return suggestStickers(text, 12, s => (isPersonalSticker(s) ? 0 : 1000) + Math.min(pos(s.pack), favs.has(s) ? pos(FAV_TAB) : Infinity));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [text, order.join(), favKey]);
   // × 로 숨겨도 새 낱말에 맞는 추천(목록이 바뀜)은 다시 보여 줌
