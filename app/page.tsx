@@ -5284,7 +5284,7 @@ export default function Home() {
       {/* 설정 (차단 목록, 약관, 탈퇴) */}
       {showSettings && user && (
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
-          feastDay={profile?.feast_day || ''} baptismalName={myRealName || profile?.baptismal_name || ''} onFeastDayChange={updateMyFeastDay}
+          feastDay={profile?.feast_day || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={openProfileEdit}
           onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
           onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
@@ -6478,7 +6478,7 @@ export default function Home() {
 
               <div>
                 <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left"><Icon name="candle" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나의 축일 <span className="font-normal text-stone-400">(선택)</span></label>
-                <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} name={baptismalName} />
+                <FeastDayPicker value={feastDayInput} onChange={setFeastDayInput} />
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 프로필 사진 아래에 &lsquo;오늘 축일이에요&rsquo; 비둘기가 날아와요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
 

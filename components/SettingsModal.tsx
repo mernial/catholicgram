@@ -17,12 +17,11 @@ import { appKindLabel } from '@/lib/app-kind';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, baptismalName, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
   feastDay: string;
-  baptismalName: string;
   onFeastDayChange: (value: string | null) => Promise<boolean>;
   initialView?: 'main' | 'feast';
   onOpenMembers?: () => void; // 관리자에게만 전달
@@ -188,7 +187,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, bapt
         ) : view === 'feast' ? (
           <div className="overflow-y-auto p-4 flex flex-col gap-3">
             <p className="text-sm text-stone-600 leading-relaxed">축일 아침에 축하 인사를 보내드리고, 나를 팔로우하는 교우들에게도 축일 소식을 알려드려요.</p>
-            <FeastDayPicker value={feastInput} onChange={setFeastInput} name={baptismalName} />
+            <FeastDayPicker value={feastInput} onChange={setFeastInput} />
             <button
               onClick={() => saveFeastDay(feastInput || null)}
               disabled={savingFeast || !feastInput || feastInput === feastDay}
