@@ -4,10 +4,15 @@
 --  * 축일(feast_day)처럼 'MM-DD' 형식. 본인만 고칠 수 있는 것은 profiles 의 기존 정책 그대로
 alter table public.profiles add column if not exists birthday text;
 
+-- 앱이 생일 칸을 읽을 수 있게 (profiles-email-private.sql 로 앱은 허락된 칸만 읽음 — 이게 없으면 생일을 저장할 때
+-- '저장하지 못했어요'가 뜨고 생일 리본·앱 안 생일 알림이 안 보임). 로그인한 교우만
+grant select (birthday) on public.profiles to authenticated;
+
 alter table public.profiles drop constraint if exists profiles_birthday_format;
 alter table public.profiles add constraint profiles_birthday_format
   check (birthday is null or birthday ~ '^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
 
 -- 확인: '준비됨'이 나오면 정상
 select case when exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'birthday')
+             and has_column_privilege('authenticated', 'public.profiles', 'birthday', 'select')
        then '✅ 준비됨' else '❌ 다시 실행해 주세요' end as "생일";
