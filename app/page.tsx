@@ -49,6 +49,7 @@ import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/comp
 import BgmAdmin from '@/components/BgmAdmin';
 import Switch from '@/components/Switch';
 import ProfileMusicPicker from '@/components/ProfileMusicPicker';
+import MusicGift from '@/components/MusicGift';
 import PostPhotos from '@/components/PostPhotos';
 import PhotoZoom from '@/components/PhotoZoom';
 import { mediaMenuActions } from '@/lib/save-media';
@@ -484,6 +485,9 @@ export default function Home() {
   const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [showBgmAdmin, setShowBgmAdmin] = useState(false);
+  const [showMusicVault, setShowMusicVault] = useState(false);          // 관리자 '🔒 보관 음악' (비공개·선물용)
+  const [musicGiftTrack, setMusicGiftTrack] = useState<BgmTrack | null>(null); // 보관 음악 한 곡 선물하기 창
+  const [vaultRefresh, setVaultRefresh] = useState(0);
   const [bgmPlaying, setBgmPlaying] = useState(false);
   const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
   // 공간 음악 (관리자의 공간·프로필 카드를 누르면 흐르는 곡): 누가 곡을 정해 두었는지 · 지금 흐르는 곡
@@ -2038,14 +2042,14 @@ export default function Home() {
   // 구간을 고칠 수 있는 음악인지 (배경음악은 목록에 아직 있어야 함)
   const canAdjustMusic = (value: string) => {
     const m = parsePostMusic(value);
-    return m?.kind === 'youtube' || (m?.kind === 'bgm' && bgmTracks.some(t => t.id === m.trackId));
+    return m?.kind === 'youtube' || (m?.kind === 'bgm' && !!findTrack(m.trackId));
   };
   const openMusicSegment = (target: 'composer' | 'edit', music: { value: string; title: string }) => {
     const m = parsePostMusic(music.value);
     if (!m) return;
     if (m.kind === 'youtube') setMusicSegment({ videoId: m.videoId, title: music.title, start: m.start, clip: m.clip });
     else {
-      const track = bgmTracks.find(t => t.id === m.trackId);
+      const track = findTrack(m.trackId);
       if (!track) return;
       setMusicSegment({ trackId: track.id, audioUrl: track.url, title: music.title, start: m.start, clip: m.clip });
     }
@@ -2179,7 +2183,7 @@ export default function Home() {
     setDetailImageIndex(imageIndex);
     const music = parsePostMusic(post.music);
     if (music?.kind === 'bgm') {
-      const track = bgmTracks.find(t => t.id === music.trackId);
+      const track = findTrack(music.trackId);
       if (!track) return;
       if (!bgmAudioRef.current) bgmAudioRef.current = new Audio();
       const audio = bgmAudioRef.current;
@@ -2238,6 +2242,19 @@ export default function Home() {
     return m?.kind === 'bgm' ? bgmTracks.find(t => t.id === m.trackId) || extraTracks.find(t => t.id === m.trackId) || null : null;
   };
   const canPickProfileMusic = !!(user?.email && ADMIN_EMAILS.includes(user.email)) || myMusicGifts.length > 0; // 관리자, 또는 노래를 선물받은 교우
+  // 게시글 음악의 곡 찾기: 공개 목록(bgmTracks)에 없으면 따로 불러 둔 곡(선물받은 교우의 노래 등, extraTracks)
+  const findTrack = (id: string) => bgmTracks.find(t => t.id === id) || extraTracks.find(t => t.id === id);
+  // 보이는 글의 음악이 목록에 없는 곡이면(교우가 선물받은 노래로 올린 글) 미리 불러 둔다 → 글을 누르면 바로 나옴
+  const trackFetchRef = useRef(new Set<string>());
+  useEffect(() => {
+    const ids = [...new Set([...posts, ...storyPosts, ...(selectedPostDetail ? [selectedPostDetail] : [])]
+      .map(p => parsePostMusic(p.music)).flatMap(m => (m?.kind === 'bgm' && UUID_RE.test(m.trackId) ? [m.trackId] : [])))]
+      .filter(id => !findTrack(id) && !trackFetchRef.current.has(id));
+    if (!ids.length) return;
+    ids.forEach(id => trackFetchRef.current.add(id));
+    supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').in('id', ids)
+      .then(({ data }) => { if (data?.length) addExtraTracks(data as BgmTrack[]); });
+  }, [posts, storyPosts, selectedPostDetail, bgmTracks]);
   const playProfileMusic = (userId: string) => {
     const track = profileTrack(userId);
     if (!track) return;
@@ -2779,6 +2796,7 @@ export default function Home() {
   };
   const refreshAlerts = (userId: string, force = false) => {
     fetchStickerGrants(userId);
+    fetchMyMusicGifts(userId);
     fetchGiftLetters(userId, force);
     fetchAnonUnread(userId);
     fetchLetterCount();
@@ -3024,7 +3042,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'sticker_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'sticker_gift' | 'music_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     fetch('/api/push/notify', {
@@ -3308,7 +3326,7 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
-    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
+    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
@@ -3674,8 +3692,9 @@ export default function Home() {
     return [
       ...packs.map(p => ({ key: `sticker:${p.id}`, kind: 'sticker' as const, packId: p.id })),
       ...giftLetters.map(id => ({ key: `letter:${id}`, kind: 'letter' as const, letterId: id })),
+      ...myMusicGifts.map(g => ({ key: `music:${g.track.id}`, kind: 'music' as const, trackId: g.track.id, title: g.track.title, url: g.track.url, note: g.note })),
     ];
-  }, [user, stickerGrants, profile?.handle, giftLetters]);
+  }, [user, stickerGrants, profile?.handle, giftLetters, myMusicGifts]);
   useEffect(() => {
     if (!user) { setOpenedGifts(null); return; }
     try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); }
@@ -3754,7 +3773,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
@@ -3781,12 +3800,13 @@ export default function Home() {
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
+    if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
-    setShowMusicPicker(false); setShowBgmAdmin(false); setShowProfileMusicPicker(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
+    setShowMusicPicker(false); setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
     // 문구 쓰기 단계에서 뒤로 → 사진 고르기 단계로
     if (!showMusicPicker && !showVideoEditor && editingPhotoIdx === null) { if (showComposer && composerStep === 'write') setComposerStep('pick'); else if (showComposer) leaveComposer(); }
@@ -4856,6 +4876,7 @@ export default function Home() {
                         <button onClick={() => setShowAdminTesters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5" />테스터 신청</button>
                         <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
                         <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
+                        <button onClick={() => setShowMusicVault(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="lock" className="w-3.5 h-3.5" />보관 음악 (선물용)</button>
                         <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
                         <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="image" className="w-3.5 h-3.5" />사진 저장소</button>
                         <button onClick={() => setShowLetters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-rose-200 bg-rose-50 text-rose-800 inline-flex items-center gap-1">💌 사연함{letterNewCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] rounded-full flex items-center justify-center">{letterNewCount}</span>}</button>
@@ -5486,7 +5507,8 @@ export default function Home() {
       {/* 관리자: 전용 이모티콘 선물 (components/StickerGift) */}
       {shownGift && (
         <GiftBox gift={shownGift} onOpened={markGiftOpened} onClose={() => closeGift(shownGift)}
-          onShowLetters={() => { closeGift(shownGift); setLettersStart('mine'); setShowLetters(true); }} />
+          onShowLetters={() => { closeGift(shownGift); setLettersStart('mine'); setShowLetters(true); }}
+          onUseMusic={async trackId => { const g = myMusicGifts.find(x => x.track.id === trackId); return g ? saveProfileMusic(g.track) : false; }} />
       )}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
 
@@ -5510,6 +5532,7 @@ export default function Home() {
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
+          onOpenVault={isAdmin ? () => { setShowSettings(false); setShowMusicVault(true); } : undefined}
           onOpenTester={testerStatus !== null ? () => { setShowSettings(false); setShowTesterSignup(true); } : undefined}
           onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined} />
       )}
@@ -6151,7 +6174,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker tracks={bgmTracks.filter(t => t.active !== false)} giftTracks={myMusicGifts.map(g => g.track)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
@@ -6161,6 +6184,13 @@ export default function Home() {
             ? { tracks: bgmTracks.filter(t => t.active !== false), onAddMusic: () => setShowBgmAdmin(true) }
             : { tracks: myMusicGifts.map(g => g.track), gifts: Object.fromEntries(myMusicGifts.map(g => [g.track.id, g.note || '관리자의 선물'])) })}
           current={(() => { const m = parsePostMusic(profileMusicMap[user.id]?.value); return m?.kind === 'bgm' ? m.trackId : null; })()} />
+      )}
+      {/* 관리자: 🔒 보관 음악 (비공개 · 선물용) + 한 곡 선물하기 */}
+      {showMusicVault && isAdmin && (
+        <BgmAdmin vault refreshKey={vaultRefresh} onGift={t => setMusicGiftTrack(t)} onClose={() => setShowMusicVault(false)} onChanged={fetchBgmTracks} />
+      )}
+      {musicGiftTrack && isAdmin && (
+        <MusicGift track={musicGiftTrack} onClose={() => { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); }} onGifted={id => sendPush('music_gift', id)} />
       )}
       {showBgmAdmin && isAdmin && (
         <BgmAdmin onClose={() => setShowBgmAdmin(false)} onChanged={fetchBgmTracks} />
@@ -6553,7 +6583,7 @@ export default function Home() {
                 if (music.kind === 'youtube') {
                   return <YouTubePlayer key={selectedPostDetail.id} videoId={music.videoId} start={music.start} clip={music.clip} title={selectedPostDetail.music_title} />;
                 }
-                const track = bgmTracks.find(t => t.id === music.trackId);
+                const track = findTrack(music.trackId);
                 if (!track) return <p className="px-4 py-2.5 text-xs text-stone-400 bg-stone-50"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />이 음악은 더 이상 제공되지 않아요</p>;
                 return (
                   <button onClick={toggleBgm} className="flex items-center gap-3 px-4 py-2.5 bg-violet-50 border-b border-violet-100 text-left">

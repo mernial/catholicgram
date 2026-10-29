@@ -9,7 +9,8 @@ import { STICKER_PACKS } from '@/lib/stickers';
 // 그림은 운영자가 준 선물 상자(public/gift-box.webp), 소리는 public/sounds/gift-celebrate.mp3 (scripts/gift-sound-synth.py)
 export type Gift =
   | { key: string; kind: 'sticker'; packId: string }
-  | { key: string; kind: 'letter'; letterId: string };
+  | { key: string; kind: 'letter'; letterId: string }
+  | { key: string; kind: 'music'; trackId: string; title: string; url: string; note: string | null }; // 노래 선물 (보관 음악 → music_grants)
 
 const BOX = '/gift-box.webp';
 const SOUND = '/sounds/gift-celebrate.mp3';
@@ -26,16 +27,38 @@ const confettiPieces = () => Array.from({ length: 30 }, (_, i) => {
   };
 });
 
-export default function GiftBox({ gift, onOpened, onClose, onShowLetters }: {
+export default function GiftBox({ gift, onOpened, onClose, onShowLetters, onUseMusic }: {
   gift: Gift;
   onOpened: (key: string) => void;   // 상자를 열었음 (다시 띄우지 않게 기억)
   onClose: () => void;               // 닫기 (열지 않고 닫으면 다음에 앱을 열 때 다시)
   onShowLetters?: () => void;        // 사연 선물: 내 사연 보기
+  onUseMusic?: (trackId: string) => Promise<boolean>; // 노래 선물: 내 공간 음악으로 하기
 }) {
   const [stage, setStage] = useState<'closed' | 'opening' | 'open'>('closed');
   const soundRef = useRef<HTMLAudioElement | null>(null);
   const confetti = useMemo(confettiPieces, []);
-  useEffect(() => { setStage('closed'); }, [gift.key]);
+  // 노래 선물: 들어 보기 · 내 공간 음악으로 정함
+  const songRef = useRef<HTMLAudioElement | null>(null);
+  const [songPlaying, setSongPlaying] = useState(false);
+  const [usedMusic, setUsedMusic] = useState<'busy' | 'done' | null>(null);
+  useEffect(() => { setStage('closed'); setUsedMusic(null); }, [gift.key]);
+  useEffect(() => () => { songRef.current?.pause(); }, []);
+  const toggleSong = () => {
+    if (gift.kind !== 'music') return;
+    if (!songRef.current) {
+      songRef.current = new Audio(gift.url);
+      songRef.current.onplay = () => setSongPlaying(true);
+      songRef.current.onpause = () => setSongPlaying(false);
+      songRef.current.onended = () => setSongPlaying(false);
+    }
+    if (songRef.current.paused) songRef.current.play().catch(() => {}); else songRef.current.pause();
+  };
+  const useMusic = async () => {
+    if (gift.kind !== 'music' || !onUseMusic || usedMusic) return;
+    setUsedMusic('busy');
+    setUsedMusic((await onUseMusic(gift.trackId)) ? 'done' : null);
+  };
+  const close = () => { songRef.current?.pause(); onClose(); };
   // 누르자마자 소리가 나게 미리 받아 둔다
   useEffect(() => {
     const a = new Audio(SOUND);
@@ -60,11 +83,11 @@ export default function GiftBox({ gift, onOpened, onClose, onShowLetters }: {
 
   const pop = popSticker
     ? <img src={popSticker.src} alt={popSticker.label} className="w-full h-full object-contain drop-shadow-[0_6px_14px_rgba(0,0,0,.35)]" draggable={false} />
-    : <span className="w-full h-full flex items-center justify-center text-[6rem] leading-none">💌</span>;
+    : <span className="w-full h-full flex items-center justify-center text-[6rem] leading-none">{gift.kind === 'music' ? '🎶' : '💌'}</span>;
 
   return (
     <div className="fixed inset-0 z-[97] bg-[rgba(18,14,10,.86)] flex flex-col items-center justify-center p-6 [animation:confirmFade_.2s_ease-out]" role="dialog" aria-modal="true" aria-label="관리자의 선물">
-      <button type="button" onClick={onClose} className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 w-11 h-11 text-white/80 text-3xl leading-none" aria-label="닫기">×</button>
+      <button type="button" onClick={close} className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 w-11 h-11 text-white/80 text-3xl leading-none" aria-label="닫기">×</button>
       {stage !== 'open' ? (
         <>
           <p className="text-white text-[1.5rem] font-bold text-center leading-snug [text-shadow:0_2px_12px_rgba(0,0,0,.5)]">
@@ -112,7 +135,22 @@ export default function GiftBox({ gift, onOpened, onClose, onShowLetters }: {
               {onShowLetters && <button type="button" onClick={onShowLetters} className="w-full py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">내 사연 보기</button>}
             </>
           )}
-          <button type="button" onClick={onClose} className="w-full py-3.5 rounded-2xl bg-stone-900 text-white text-[1.0625rem] font-bold">확인</button>
+          {gift.kind === 'music' && (
+            <>
+              <h2 className="text-[1.25rem] font-bold text-stone-900 leading-snug">&lsquo;{gift.title}&rsquo;<br />노래를 선물받았어요 🎶</h2>
+              {gift.note && <p className="text-[0.9375rem] text-amber-700 font-bold leading-snug">🎁 {gift.note}</p>}
+              <button type="button" onClick={toggleSong} className="w-full py-3 rounded-2xl bg-violet-50 border border-violet-200 text-violet-900 font-bold">
+                {songPlaying ? '❚❚ 멈추기' : '▶ 들어 보기'}
+              </button>
+              {onUseMusic && (
+                <button type="button" onClick={useMusic} disabled={usedMusic !== null} className={`w-full py-3 rounded-2xl font-bold ${usedMusic === 'done' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-violet-700 text-white disabled:opacity-60'}`}>
+                  {usedMusic === 'done' ? '✓ 내 공간 음악으로 정했어요' : usedMusic === 'busy' ? '정하는 중…' : '🎵 내 공간 음악으로 하기'}
+                </button>
+              )}
+              <p className="text-[0.875rem] text-stone-600 leading-relaxed">교우들이 내 공간을 누르면 이 노래가 흘러요.<br />글을 쓸 때 <b>음악 추가 › 🎁 선물받은 노래</b>에서도 고를 수 있어요</p>
+            </>
+          )}
+          <button type="button" onClick={close} className="w-full py-3.5 rounded-2xl bg-stone-900 text-white text-[1.0625rem] font-bold">확인</button>
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
--- 공간 음악: 교우의 공간(또는 프로필 카드)을 누르면 흐르는 음악 ('내 공간 → 🎵 공간 음악')
+-- 공간 음악·음악 선물·보관 음악
 -- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전, supabase/music.sql 다음)
+--  * 보관 음악: 관리자가 '🔒 보관 음악'에 올린 곡(bgm_tracks.private) — 교우들의 음악 목록에는 안 보이고, 선물하거나 공개하면 쓰임
 --  * profile_music: 'bgm:<배경음악 id>' (게시글 음악과 같은 꼴), profile_music_title: 곡 제목
 --  * 관리자는 '가톨릭그램 음악'의 아무 곡이나. 교우는 관리자에게 선물받은 노래(music_grants)만
 --    (예: 보이는 라디오 사연에 뽑힌 교우에게 그 사연으로 만든 노래를 선물 → 그 교우가 내 공간 음악으로)
@@ -13,6 +14,20 @@ grant select (profile_music, profile_music_title) on public.profiles to anon, au
 alter table public.profiles drop constraint if exists profiles_profile_music_format;
 alter table public.profiles add constraint profiles_profile_music_format
   check (profile_music is null or (profile_music ~ '^bgm:[A-Za-z0-9_-]{1,80}$' and char_length(coalesce(profile_music_title, '')) <= 80));
+
+-- 보관 음악(비공개): 늘 목록에서 숨김(active = false) → 관리자와 선물받은 교우(그 교우의 공간·글을 연 사람)만
+alter table public.bgm_tracks add column if not exists private boolean not null default false;
+create or replace function public.bgm_private_hidden()
+returns trigger language plpgsql as $$
+begin
+  if new.private then new.active := false; end if;
+  return new;
+end;
+$$;
+drop trigger if exists bgm_private_hidden on public.bgm_tracks;
+create trigger bgm_private_hidden
+before insert or update on public.bgm_tracks
+for each row execute function public.bgm_private_hidden();
 
 create or replace function public.is_app_admin()
 returns boolean language sql stable as $$
@@ -102,4 +117,6 @@ select
   case when exists (select 1 from information_schema.columns where table_name = 'profiles' and column_name = 'profile_music')
             and has_column_privilege('authenticated', 'public.profiles', 'profile_music', 'select')
        then '✅ 준비됨' else '❌ 다시 실행해 주세요' end as "공간 음악",
-  case when to_regclass('public.music_grants') is not null then '✅ 준비됨' else '❌ 다시 실행해 주세요' end as "음악 선물";
+  case when to_regclass('public.music_grants') is not null then '✅ 준비됨' else '❌ 다시 실행해 주세요' end as "음악 선물",
+  case when exists (select 1 from information_schema.columns where table_name = 'bgm_tracks' and column_name = 'private')
+       then '✅ 준비됨' else '❌ 다시 실행해 주세요' end as "보관 음악";
