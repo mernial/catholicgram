@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
-import { CelebrateFor } from '@/components/CelebrateAvatar';
+import { CelebrateBand } from '@/components/CelebrateAvatar';
 import { PHOTO_OPTIONS, uploadMedia } from '@/lib/upload';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
@@ -215,23 +215,23 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       <div className="flex gap-3 overflow-x-auto px-3 py-3 bg-white border-b border-stone-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {/* 내 스토리: 있으면 보기, 없으면 올리기. 작은 ＋ 는 항상 올리기 */}
         <div className="shrink-0 w-[4.5rem] flex flex-col items-center gap-1">
-          <div className="relative">
-            <CelebrateFor id={me?.id} size={4.625}>
+          <div className="relative flex">
+            <CelebrateBand id={me?.id} fit>
               <button onClick={() => (myGroupIndex >= 0 ? open(myGroupIndex) : pick())} className={`block p-[3px] rounded-full ${myGroupIndex >= 0 ? ring(groups[myGroupIndex].unseen) : 'bg-transparent'}`} aria-label="내 스토리">
                 <span className="block p-[2px] bg-white rounded-full">{avatarOf(meAuthor, 'w-16 h-16 text-xl')}</span>
               </button>
-            </CelebrateFor>
-            <button onClick={pick} className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-blue-500 text-white border-2 border-white flex items-center justify-center" aria-label="스토리 올리기"><Icon name="plus" className="w-3.5 h-3.5" /></button>
+            </CelebrateBand>
+            <button onClick={pick} className="absolute z-[2] bottom-0 right-0 w-6 h-6 rounded-full bg-blue-500 text-white border-2 border-white flex items-center justify-center" aria-label="스토리 올리기"><Icon name="plus" className="w-3.5 h-3.5" /></button>
           </div>
           <span className="text-[0.75rem] text-stone-700 truncate max-w-full">내 스토리</span>
         </div>
         {groups.map((g, i) => g.userId === me?.id ? null : (
           <button key={g.userId} onClick={() => open(i)} className="shrink-0 w-[4.5rem] flex flex-col items-center gap-1">
-            <CelebrateFor id={g.userId} size={4.625}>
+            <CelebrateBand id={g.userId} fit>
               <span className={`block p-[3px] rounded-full ${ring(g.unseen)}`}>
                 <span className="block p-[2px] bg-white rounded-full">{avatarOf(authors[g.userId], 'w-16 h-16 text-xl')}</span>
               </span>
-            </CelebrateFor>
+            </CelebrateBand>
             <span className={`text-[0.75rem] truncate max-w-full ${g.unseen ? 'text-stone-900' : 'text-stone-500'}`}>{authors[g.userId]?.baptismal_name || '교우'}</span>
           </button>
         ))}

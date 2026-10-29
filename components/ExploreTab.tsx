@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
-import { CelebrateBand, CelebrateFor } from '@/components/CelebrateAvatar';
+import { CelebrateBand } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
 import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
@@ -52,10 +52,10 @@ const timeAgo = (iso: string) => {
 const safeForFilter = (q: string) => q.replace(/[,()%*\\]/g, ' ').trim();
 
 // uid: 그 교우 (글이면 user_id) — 오늘 생일·축일이면 리본·비둘기
-function Avatar({ p, uid, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal_name?: string; author_name?: string }; uid?: string; size?: string }) {
+function Avatar({ p, uid, fit, size = 'w-10 h-10' }: { p: { avatar_url?: string; baptismal_name?: string; author_name?: string }; uid?: string; fit?: boolean; size?: string }) {
   const name = p.baptismal_name || p.author_name || '교';
   return (
-    <CelebrateBand id={uid}>{p.avatar_url
+    <CelebrateBand id={uid} fit={fit}>{p.avatar_url
       ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
       : <div className={`${size} rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-sm font-bold shrink-0`}>{initial(name)}</div>}</CelebrateBand>
   );
@@ -411,7 +411,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
                   <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x">
                     {recommendedPeople.map(p => (
                       <button key={p.id} onClick={() => onOpenProfile(p.id)} className="snap-start shrink-0 w-36 border border-stone-200 rounded-2xl p-3 flex flex-col items-center gap-1.5 text-center bg-stone-50/50">
-                        <CelebrateFor id={p.id} size={3.5}><Avatar p={p} size="w-14 h-14" /></CelebrateFor>
+                        <Avatar p={p} uid={p.id} fit size="w-14 h-14" />
                         <span className="flex items-center gap-1 max-w-full">
                           <span className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</span>
                           <RoleBadge type={p.badge_type} size="xs" showLabel={false} />
