@@ -4197,20 +4197,11 @@ export default function Home() {
         );
       })()}
       <button onClick={onComment} aria-label={`댓글 ${commentCounts[post.id] || 0}`} className="flex items-center gap-1.5 text-stone-600">
-        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="reply" className="w-[1.375rem] h-[1.375rem]" /></span>
+        {/* 댓글 = 말풍선 (운영자 요청: 예전 메시지 단추의 말풍선을 댓글로, 글쓴이에게 메시지 보내기 단추는 게시글에서 없앰 — 메시지는 프로필 카드·공간에서) */}
+        <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-sky-50 text-sky-800"><Icon name="message" className="w-[1.375rem] h-[1.375rem]" /></span>
         {/* 댓글 수는 언제나 말풍선 옆에 */}
         {commentCounts[post.id] ? <span className="text-[0.9375rem] font-bold text-sky-900">{commentCounts[post.id]}</span> : null}
       </button>
-      {/* 글쓴이에게 바로 메시지 */}
-      {user?.id !== post.user_id && (
-        <button
-          onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })}
-          aria-label={`${post.author_name}님에게 메시지 보내기`}
-          className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-emerald-50 text-emerald-700"
-        >
-          <Icon name="message" className="w-[1.375rem] h-[1.375rem]" />
-        </button>
-      )}
     </>
   );
 
@@ -5094,10 +5085,7 @@ export default function Home() {
                       <div className="absolute right-2 bottom-28 flex flex-col items-center gap-5 z-10">
                         <button onClick={() => handleReaction(post.id, 'pray')} className={side} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{post.pray_count || 0}</button>
                         <button onClick={() => handleReaction(post.id, 'like')} className={side} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{post.like_count || 0}</button>
-                        <button onClick={() => toggleCommentBox(post.id)} className={side} aria-label="댓글"><Icon name="reply" className="w-8 h-8" />{commentCounts[post.id] || 0}</button>
-                        {user?.id !== post.user_id && (
-                          <button onClick={() => openChatRoom({ id: post.user_id, baptismal_name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className={side} aria-label="메시지"><Icon name="message" className="w-8 h-8" /></button>
-                        )}
+                        <button onClick={() => toggleCommentBox(post.id)} className={side} aria-label="댓글"><Icon name="message" className="w-8 h-8" />{commentCounts[post.id] || 0}</button>
                         {user && <button onClick={() => setPostMenuId(post.id)} className={`${side} text-2xl leading-none`} aria-label="더보기 (고치기·지우기)">⋯</button>}
                       </div>
                       {/* 아래: 작성자·글·음악 */}
