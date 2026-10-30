@@ -12,6 +12,13 @@ import { onePerDevice, type PushSub } from '@/lib/push-devices';
 
 export const maxDuration = 30; // 테스트 알림은 10초 기다렸다 보낸다
 
+// 지금 그 대화방을 보고 있는 교우에게는 애플 기기(아이폰·아이패드·맥 사파리) 휴대폰 알림을 보내지 않는다.
+// 애플은 푸시가 오면 알림을 꼭 띄워야 해서(안 띄우면 알림 권한을 거둠) 서비스 워커가 소리 없이 띄우고 바로 닫아도 배너가 잠깐 보였음(운영자: 아이패드).
+// 대화방을 보고 있으면 앱이 몇 초 안에 읽음 표시를 하므로(1:1 은 3초마다 새 메시지 확인, 단체방은 받자마자 1.5초 뒤) 애플 기기에는
+// 메시지가 생긴 뒤 5초까지 기다렸다가 아직 안 읽었을 때만 보낸다. 안드로이드·컴퓨터는 바로 보내고 서비스 워커가 보고 있으면 띄우지 않음
+const VIEW_WAIT_MS = 5000;
+const isApplePush = (endpoint: string) => { try { return /(^|\.)push\.apple\.com$/.test(new URL(endpoint).hostname); } catch { return false; } };
+
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
 type NotifyBody = { type?: 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
@@ -51,6 +58,8 @@ export async function POST(request: Request) {
 
   let recipientId: string | null = null;
   let payload: Payload | null = null;
+  let readersOf: (() => Promise<Set<string>>) | null = null; // 1:1·단체방 메시지: 이미 읽은(= 그 대화방을 보고 있는) 받는 사람
+  let messageAt = 0;
   // 댓글 답글: 글쓴이 외에 답글 받은 사람에게도 따로 보낸다
   // 댓글·글은 여러 사람에게(글쓴이, 답글 받은 사람, @태그된 사람) 보낼 수 있다
   const list: { recipientId: string; payload: Payload }[] = [];
@@ -93,6 +102,11 @@ export async function POST(request: Request) {
       recipientId: m.user_id,
       payload: { title: `👥 ${chat?.name || '단체 채팅방'}`, body: truncate(`${sender?.baptismal_name || '교우'}: ${chatPreview(msg.content)}`), url: `/?group=${msg.chat_id}`, tag: `group-${msg.chat_id}` },
     }));
+    messageAt = new Date(msg.created_at).getTime();
+    readersOf = async () => {
+      const { data } = await admin.from('group_chat_members').select('user_id, last_read_at').eq('chat_id', msg.chat_id);
+      return new Set((data || []).filter(m => m.last_read_at && new Date(m.last_read_at).getTime() >= messageAt).map(m => m.user_id as string));
+    };
     if (list.length === 0) return Response.json({ sent: 0 });
   } else if (type === 'tester_added') {
     // 관리자가 테스터 신청자를 구글 플레이 테스터 목록에 등록함 → 신청한 분께 참여 방법 안내
@@ -343,6 +357,11 @@ export async function POST(request: Request) {
     if (Date.now() - new Date(message.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
     const { data: sender } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).single();
     recipientId = message.receiver_id;
+    messageAt = new Date(message.created_at).getTime();
+    readersOf = async () => {
+      const { data } = await admin.from('messages').select('read_at').eq('id', message.id).maybeSingle();
+      return new Set(data?.read_at ? [message.receiver_id as string] : []);
+    };
     payload = {
       title: `✉️ ${sender?.baptismal_name || '교우'}님의 메시지`,
       body: truncate(chatPreview(message.content)),
@@ -364,12 +383,24 @@ export async function POST(request: Request) {
   if (subscriptions.length === 0) return Response.json({ sent: 0, ...missedOf(new Set()) });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
-  const results = await Promise.allSettled(subscriptions.map(sub =>
+  const send = (subs: typeof subscriptions) => Promise.allSettled(subs.map(sub =>
     webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)))
   ));
+  // 메시지면 애플 기기는 잠깐 기다렸다가 아직 안 읽은 사람에게만 (위 VIEW_WAIT_MS), 나머지는 바로
+  const waitApple = readersOf ? subscriptions.filter(s => isApplePush(s.endpoint)) : [];
+  let sentSubs = subscriptions.filter(s => !waitApple.includes(s));
+  let results = await send(sentSubs);
+  if (waitApple.length > 0 && readersOf) {
+    const wait = Math.max(0, Math.min(VIEW_WAIT_MS, messageAt + VIEW_WAIT_MS - Date.now()));
+    if (wait > 0) await new Promise(r => setTimeout(r, wait));
+    const read = await readersOf().catch(() => new Set<string>());
+    const later = waitApple.filter(s => !read.has(s.user_id));
+    sentSubs = [...sentSubs, ...later];
+    results = [...results, ...(await send(later))];
+  }
 
   // 만료되었거나 해지된 구독은 정리
-  const expired = subscriptions.filter((_, i) => {
+  const expired = sentSubs.filter((_, i) => {
     const r = results[i];
     const status = r.status === 'rejected' ? (r.reason as { statusCode?: number })?.statusCode : undefined;
     return status === 404 || status === 410;
@@ -378,6 +409,6 @@ export async function POST(request: Request) {
 
   return Response.json({
     sent: results.filter(r => r.status === 'fulfilled').length,
-    ...missedOf(new Set(subscriptions.filter((_, i) => results[i].status === 'fulfilled').map(s => s.user_id))),
+    ...missedOf(new Set(sentSubs.filter((_, i) => results[i].status === 'fulfilled').map(s => s.user_id))),
   });
 }

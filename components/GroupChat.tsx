@@ -138,10 +138,20 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   const markRead = () => { if (!adminView) supabase.rpc('mark_group_chat_read', { p_chat: chatId }).then(() => {}, () => {}); };
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 화면에 보일 때만 읽음 표시 (앱이 뒤에 있는데 읽음이 되면, 서버가 '보고 있다'고 여겨 아이폰·아이패드 알림을 보내지 않음 — push/notify VIEW_WAIT_MS)
+  const readLater = useRef(false);
   const markReadSoon = () => {
     if (adminView || readTimer.current) return;
-    readTimer.current = setTimeout(() => { readTimer.current = null; markRead(); }, 1500);
+    readTimer.current = setTimeout(() => {
+      readTimer.current = null;
+      if (document.visibilityState === 'visible') markRead(); else readLater.current = true;
+    }, 1500);
   };
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible' && readLater.current) { readLater.current = false; markRead(); } };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [chatId]);
 
   const scrollToBottom = (smooth = false) => {
     const el = listRef.current;

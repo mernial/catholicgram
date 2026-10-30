@@ -3060,8 +3060,10 @@ export default function Home() {
   const sendPush = async (type: 'sticker_gift' | 'music_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
+    // keepalive: 메시지 알림은 서버가 아이폰·아이패드에 보내기 전 몇 초 기다리므로(읽었는지 보려고) 보낸 뒤 바로 앱을 나가도 끝까지 가게
     fetch('/api/push/notify', {
       method: 'POST',
+      keepalive: true,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
       body: JSON.stringify({ type, id }),
     }).catch(() => {});
