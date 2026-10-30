@@ -24,6 +24,7 @@ import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChat
 import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
+import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -39,7 +40,6 @@ const isMissing = (e: { code?: string; message?: string } | null) => !!e && ['42
 
 const PAGE = 80;
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
-const dayOf = (iso: string) => new Date(iso).toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
 
 export default function GroupChat({ user, chatId, adminView = false, blockedIds, onClose, onOpenProfile, onReport, onSent, onChanged, onZoom }: {
   user: User;
@@ -544,8 +544,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           {!loading && !error && messages.length === 0 && <p className="text-center text-stone-400 text-sm py-10">아직 대화가 없어요. 먼저 인사를 건네 보세요 😊</p>}
           {messages.map((m, i) => {
             const prev = messages[i - 1];
-            const newDay = !prev || dayOf(prev.created_at) !== dayOf(m.created_at);
-            const dayLine = newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>;
+            const newDay = isNewChatDay(messages, i, x => hiddenMsgs.hidden.has(x.id));
+            const dayLine = newDay && <ChatDayDivider iso={m.created_at} />;
             if (m.kind === 'system') return (
               <div key={m.id}>
                 {dayLine}

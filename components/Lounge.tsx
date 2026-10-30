@@ -25,6 +25,7 @@ import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
+import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -780,12 +781,12 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const mine = m.user_id === user.id;
           const a = authors[m.user_id];
           const prev = shown[i - 1];
-          const newDay = !prev || dayOf(prev.created_at) !== dayOf(m.created_at);
+          const newDay = isNewChatDay(shown, i, x => hiddenMsgs.hidden.has(x.id));
           // 관리자 안내(들어옴·얼림·다시 엶·모두 지움): 가운데 작은 글
           const sk = sysKind(m);
           if (sk) return (
             <div key={m.id} id={`lounge-${m.id}`}>
-              {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
+              {newDay && <ChatDayDivider iso={m.created_at} />}
               <p className="text-center my-1">
                 <span className={`inline-flex items-center gap-1.5 text-[0.8125rem] rounded-full px-3.5 py-1 border ${sk === 'freeze' ? 'text-sky-900 bg-sky-100 border-sky-200' : sk === 'enter' ? 'text-amber-900 bg-amber-100/80 border-amber-200' : 'text-stone-700 bg-white/80 border-stone-200'}`}>
                   {sk === 'enter'
@@ -808,7 +809,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           const announceMsg = m.content.startsWith('📢') && m.is_admin;
           return (
             <div key={m.id} id={`lounge-${m.id}`} className={highlightId === m.id ? 'rounded-2xl ring-4 ring-amber-300/70 bg-amber-50/60 transition-all' : ''}>
-              {newDay && <p className="text-center text-[0.75rem] text-stone-500 my-2"><span className="bg-white/70 rounded-full px-3 py-1">{dayOf(m.created_at)}</span></p>}
+              {newDay && <ChatDayDivider iso={m.created_at} />}
               <div className={`relative flex gap-2 ${mine ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-1' : ''} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
                 {/* 대화 골라서 캡처하는 중: 줄을 누르면 고르기 */}
                 {capturePick && (
