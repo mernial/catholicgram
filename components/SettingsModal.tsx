@@ -16,6 +16,7 @@ import { askConfirm } from '@/components/ConfirmDialog';
 import { appKind, appKindLabel, browserName } from '@/lib/app-kind';
 import { ALERT_SOUNDS, ALERT_SOUND_EVENT, alertSoundName, getAlertSoundChoice, previewAlertSound, setAlertSoundChoice } from '@/lib/alert-sound';
 import { readPushLog, formatPushLogTime, type PushLogEntry } from '@/lib/push-log';
+import { CURRENT_VERSION, CURRENT_NOTE, versionLabel, builtAtLabel, fetchLatestVersion, isNewerVersion, type AppVersion } from '@/lib/app-version';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -26,7 +27,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onUnblock: (userId: string) => Promise<void> | void;
   feastDay: string;
   onFeastDayChange: (value: string | null) => Promise<boolean>;
-  initialView?: 'main' | 'feast' | 'sound';
+  initialView?: 'main' | 'feast' | 'sound' | 'version';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
@@ -36,7 +37,15 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onOpenNotices?: () => void;
   onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
 }) {
-  const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound'>(initialView);
+  const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
+  // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인
+  const [latest, setLatest] = useState<{ state: 'checking' | 'done' | 'error'; v: AppVersion | null }>({ state: 'checking', v: null });
+  const checkLatest = async () => {
+    setLatest({ state: 'checking', v: null });
+    const v = await fetchLatestVersion();
+    setLatest({ state: v ? 'done' : 'error', v });
+  };
+  useEffect(() => { if (view === 'version') checkLatest(); }, [view]);
   // 알림 소리: 지금 고른 것('off' = 소리 없음), 휴대폰 알림 소리 바꾸는 법은 기기에 맞게
   const [sound, setSound] = useState('praise');
   const [device, setDevice] = useState<{ ios: boolean; android: boolean; kind: string; browser: string }>({ ios: false, android: false, kind: 'browser', browser: '' });
@@ -135,6 +144,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
           {view === 'blocks' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 차단 목록</button>}
           {view === 'feast' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 나의 축일</button>}
           {view === 'sound' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 알림 소리</button>}
+          {view === 'version' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 버전 정보</button>}
           {view === 'main' && <h2 className="font-bold text-stone-900">설정</h2>}
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
@@ -240,6 +250,10 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
+            <button onClick={() => setView('version')} className={row}>
+              <span className={label}><IconBadge name="sparkle" tone="sky" />버전 정보</span>
+              <span className="text-stone-400 text-xs">{versionLabel(CURRENT_VERSION)} <span className="text-stone-300">›</span></span>
+            </button>
             <a href="/terms" className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
             <a href="/privacy" className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
             <button onClick={() => signOutAndClear().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
@@ -270,8 +284,42 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               </div>
             )}
             <p className="p-4 text-[0.8125rem] text-stone-400">로그인 계정: {user.app_metadata?.naver_id ? '네이버 계정' : user.email || (user.app_metadata?.provider === 'google' ? '구글 계정' : '카카오 계정')}</p>
-            {/* 기기마다 새 버전을 받았는지 비교할 때 보는 번호 */}
-            <p className="px-4 pb-4 -mt-3 text-[0.75rem] text-stone-300">앱 버전 {(process.env.NEXT_PUBLIC_APP_VERSION || 'dev').slice(0, 7)}</p>
+          </div>
+        ) : view === 'version' ? (
+          // 버전 정보: 지금 쓰는 버전·나온 때·새 버전이 있는지 (기기마다 새 버전을 받았는지 비교할 때도)
+          <div className="overflow-y-auto p-4 flex flex-col gap-3">
+            <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
+              <p className="text-[0.875rem] text-stone-500">지금 쓰는 버전</p>
+              <p className="text-[1.75rem] font-extrabold text-stone-900 leading-tight mt-0.5">{versionLabel(CURRENT_VERSION)}</p>
+              {builtAtLabel(CURRENT_VERSION) && <p className="text-[0.9375rem] text-stone-600 mt-1">{builtAtLabel(CURRENT_VERSION)}에 나온 버전</p>}
+              {/* 이번 업데이트 제목은 운영자에게만 (개발용 글이라) */}
+              {onOpenMembers && CURRENT_NOTE && <p className="text-[0.8125rem] text-stone-500 mt-2 leading-snug"><b>이번 업데이트</b> · {CURRENT_NOTE} <span className="text-stone-400">(관리자에게만 보여요)</span></p>}
+              <p className="text-[0.75rem] text-stone-400 mt-2">코드 {CURRENT_VERSION.version.slice(0, 7)}</p>
+            </div>
+            <div className="p-4 rounded-2xl border border-stone-200" role="status" aria-live="polite">
+              {latest.state === 'checking' ? (
+                <p className="text-[0.9375rem] text-stone-500">새 버전이 나왔는지 확인하는 중…</p>
+              ) : latest.state === 'error' ? (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[0.9375rem] text-stone-600">새 버전을 확인하지 못했어요. 인터넷 연결을 확인해 주세요.</p>
+                  <button onClick={checkLatest} className="shrink-0 px-3 py-2 rounded-xl bg-stone-100 text-[0.875rem] font-bold text-stone-700">다시 확인</button>
+                </div>
+              ) : isNewerVersion(latest.v) && latest.v ? (
+                <>
+                  <p className="text-[1rem] font-bold text-amber-800">🔔 새 버전({versionLabel(latest.v)})이 나왔어요</p>
+                  {builtAtLabel(latest.v) && <p className="text-[0.875rem] text-stone-500 mt-0.5">{builtAtLabel(latest.v)}에 나왔어요</p>}
+                  <button onClick={() => window.location.reload()} className="mt-3 w-full py-3 rounded-xl bg-blue-600 text-white text-[1rem] font-bold">지금 새 버전으로 바꾸기</button>
+                  <p className="text-[0.8125rem] text-stone-400 mt-1.5 text-center">화면을 새로 불러와요. 쓰던 글이 있으면 먼저 올려 주세요.</p>
+                </>
+              ) : (
+                <p className="text-[1rem] font-bold text-emerald-700">✅ 최신 버전이에요</p>
+              )}
+            </div>
+            <div className="p-4 rounded-2xl bg-sky-50 border border-sky-100 text-[0.875rem] text-sky-950 leading-relaxed">
+              <p>가톨릭그램의 화면과 기능은 새 버전이 나오면 <b>저절로</b> 바뀌어요. 앱을 오래 켜 두었다면 앱을 닫았다 다시 열거나 위 단추로 바꿀 수 있어요.</p>
+              {appInfo && <p className="mt-2"><b>지금 쓰는 앱</b> · {appInfo.title}</p>}
+              {device.kind === 'play' && <p className="mt-1">Play 스토어 앱 자체의 버전은 <b>Play 스토어 → 가톨릭그램 → 이 앱 정보</b>에서 볼 수 있어요.</p>}
+            </div>
           </div>
         ) : view === 'sound' ? (
           <div className="overflow-y-auto p-4 flex flex-col gap-3">
