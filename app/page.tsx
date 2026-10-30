@@ -4452,12 +4452,13 @@ export default function Home() {
                     )}
                     {previewUrls.length > 0 && !videoPreviewUrl && (
                       <>
-                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-3 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진 자르기·가리기">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" /></svg>
+                        {/* 운영자 아이콘 시안처럼 연한 크림색 동그라미 + 색 있는 아이콘 */}
+                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-3 w-12 h-12 rounded-full bg-[#fbf6ef]/95 shadow-md flex items-center justify-center text-[#7a5230]" aria-label="사진 자르기·가리기">
+                          <Icon name="crop" className="w-6 h-6" />
                         </button>
                         {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
-                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-16 w-11 h-11 rounded-full bg-black/60 flex items-center justify-center text-white" aria-label="사진에 이모티콘 붙이기">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2" /><path d="M9 9.5h.01M15 9.5h.01" strokeWidth="3" /></svg>
+                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-[4.25rem] w-12 h-12 rounded-full bg-[#fbf6ef]/95 shadow-md flex items-center justify-center text-amber-500" aria-label="사진에 이모티콘 붙이기">
+                          <Icon name="sticker" className="w-6 h-6" />
                         </button>
                       </>
                     )}
@@ -4552,9 +4553,9 @@ export default function Home() {
                       <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
                       {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
                       <div className="absolute bottom-3 left-3 flex gap-2">
-                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">✂️ 자르기·가리기</button>
+                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="pl-2.5 pr-3.5 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.875rem] font-bold shadow inline-flex items-center gap-1.5"><Icon name="crop" className="w-5 h-5 text-[#7a5230]" />자르기·가리기</button>
                         {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
-                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="px-3.5 py-2 rounded-full bg-white/90 text-stone-900 text-[0.875rem] font-bold shadow">🙂 이모티콘 붙이기</button>
+                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="pl-2.5 pr-3.5 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.875rem] font-bold shadow inline-flex items-center gap-1.5"><Icon name="sticker" className="w-5 h-5 text-amber-500" />이모티콘 붙이기</button>
                       </div>
                     </div>
                     <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
@@ -6104,16 +6105,16 @@ export default function Home() {
                         {/* 고른 사진에 할 일 */}
                         <div className="px-4 mt-2 flex items-center justify-between gap-2">
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'crop')} disabled={editPhotoLoading} className={tool}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14" /><path d="M18 22V8a2 2 0 0 0-2-2H2" /></svg>자르기
+                            <Icon name="crop" className="w-6 h-6 text-amber-800" />자르기
                           </button>
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'cover')} disabled={editPhotoLoading} className={tool}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><circle cx="11" cy="7.5" r="3.5" /><path d="M4 20c0-3.6 3.1-6 7-6 1.3 0 2.5.3 3.5.8" strokeDasharray="2 2.4" /><circle cx="18.5" cy="17.5" r="2.5" strokeDasharray="1.6 1.6" /></svg>가리기
+                            <Icon name="userFocus" className="w-6 h-6 text-blue-700" />가리기
                           </button>
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'sticker')} disabled={editPhotoLoading} className={tool}>
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M8.5 14.5c.9 1.3 2.1 2 3.5 2s2.6-.7 3.5-2" /><path d="M9 9.5h.01M15 9.5h.01" strokeWidth="3" /></svg>이모티콘
+                            <Icon name="sticker" className="w-6 h-6 text-amber-500" />이모티콘
                           </button>
                           <button type="button" onClick={removeSelected} className={tool}>
-                            <Icon name="trash" className="w-6 h-6" />삭제
+                            <Icon name="trash" className="w-6 h-6 text-red-500" />삭제
                           </button>
                         </div>
                         <p className="px-4 text-[0.8125rem] text-stone-400">{editPhotoLoading ? '사진을 불러오는 중...' : '길게 눌러 순서 변경'}</p>
