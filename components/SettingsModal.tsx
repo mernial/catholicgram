@@ -27,7 +27,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onUnblock: (userId: string) => Promise<void> | void;
   feastDay: string;
   onFeastDayChange: (value: string | null) => Promise<boolean>;
-  initialView?: 'main' | 'feast' | 'sound' | 'version';
+  initialView?: 'main' | 'feast' | 'sound';
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
@@ -38,14 +38,13 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
-  // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인
+  // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인 (여는 단추에서 checkLatest)
   const [latest, setLatest] = useState<{ state: 'checking' | 'done' | 'error'; v: AppVersion | null }>({ state: 'checking', v: null });
   const checkLatest = async () => {
     setLatest({ state: 'checking', v: null });
     const v = await fetchLatestVersion();
     setLatest({ state: v ? 'done' : 'error', v });
   };
-  useEffect(() => { if (view === 'version') checkLatest(); }, [view]);
   // 알림 소리: 지금 고른 것('off' = 소리 없음), 휴대폰 알림 소리 바꾸는 법은 기기에 맞게
   const [sound, setSound] = useState('praise');
   const [device, setDevice] = useState<{ ios: boolean; android: boolean; kind: string; browser: string }>({ ios: false, android: false, kind: 'browser', browser: '' });
@@ -250,7 +249,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
-            <button onClick={() => setView('version')} className={row}>
+            <button onClick={() => { setView('version'); checkLatest(); }} className={row}>
               <span className={label}><IconBadge name="sparkle" tone="sky" />버전 정보</span>
               <span className="text-stone-400 text-xs">{versionLabel(CURRENT_VERSION)} <span className="text-stone-300">›</span></span>
             </button>
