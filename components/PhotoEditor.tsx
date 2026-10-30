@@ -354,7 +354,7 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
               <div className="flex gap-2 px-4 pt-2 pb-2" role="tablist" aria-label="붙일 것">
                 {([['sticker', '내 이모티콘'], ['emoji', '그림 문자 · 모자이크']] as const).map(([k, label]) => (
                   <button key={k} role="tab" aria-selected={tool === k} onClick={() => setTool(k)}
-                    className={`flex-1 py-2 rounded-xl text-[0.875rem] font-bold ${tool === k ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{k === 'sticker' ? '🙂 ' : ''}{label}</button>
+                    className={`flex-1 py-2 rounded-xl text-[0.875rem] font-bold inline-flex items-center justify-center gap-1.5 ${tool === k ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{k === 'sticker' && <Icon name="sticker" className={`w-5 h-5 ${tool === k ? 'text-amber-500' : ''}`} />}{label}</button>
                 ))}
               </div>
               {tool === 'sticker' ? (
