@@ -226,6 +226,8 @@ const ALERT_KEEP_MS = 3 * 24 * 60 * 60 * 1000; // 알림 보관 기간 (3일)
 // 휴대폰은 '바탕화면 아이콘으로 다시 열었는지 · 최근 앱 목록으로 돌아왔는지'를 앱에 알려 주지 않아서
 // 앱을 완전히 닫았다 연 것(새로 켜짐) 또는 오래 떠나 있었던 것을 '아이콘으로 새로 연 것'으로 본다
 const RESUME_HOME_AFTER = 30 * 60 * 1000;
+// 휴대폰 알림 허용을 물었을 때 이보다 빨리 '허용'이 오면 허용 창 없이 바로 허용된 것 (enablePush)
+const AUTO_GRANT_MS = 400;
 
 const storageGet = (key: string) => { try { return localStorage.getItem(key); } catch { return null; } };
 const storageSet = (key: string, value: string) => { try { localStorage.setItem(key, value); } catch { /* 저장 불가 환경 */ } };
@@ -3115,19 +3117,48 @@ export default function Home() {
       if (storageGet(`pushOff:${userId}`) !== '1' && lastPushState(userId) === 'on') {
         const where = `${appKind() === 'play' ? 'Play 앱 · ' : ''}${browserName()}`;
         notePush(userId, 'off', `${LOST_WHY} (${where}) · 이 앱의 알림 받기가 없어지고 휴대폰 허용도 풀림 (${permText})`);
+        // 이 휴대폰은 허용 창 없이 바로 허용해 주는 곳이면(지난번에 그랬음) 화면을 처음 누를 때 조용히 다시 받음
+        if (storageGet(`pushAutoGrant:${userId}`) === '1' && Notification.permission === 'default') armAutoRegrant();
       }
       setPushStatus('off');
     }
   };
 
+  // 허용이 저절로 풀리는 휴대폰: 브라우저는 허용을 화면을 누른 순간에만 물을 수 있어서, 다음 첫 터치·키 입력 때 한 번 조용히 다시 받음.
+  // 그때 허용 창이 떠 버리면(0.4초 넘게 걸림) pushAutoGrant 가 꺼져 다음부터는 하지 않음
+  const autoRegrantArmedRef = useRef(false);
+  const armAutoRegrant = () => {
+    if (autoRegrantArmedRef.current) return;
+    autoRegrantArmedRef.current = true;
+    const events = ['pointerup', 'touchend', 'click', 'keydown'] as const;
+    const run = () => {
+      events.forEach(t => window.removeEventListener(t, run, true));
+      autoRegrantArmedRef.current = false;
+      if (Notification.permission !== 'default') return;
+      enablePush(true, true);
+    };
+    events.forEach(t => window.addEventListener(t, run, true));
+  };
+
   // silent: 이미 알림이 허용된 경우(앱 설치 때 허용 등) 안내 없이 바로 구독
-  const enablePush = async (silent = false) => {
+  // auto: 저절로 풀린 허용을 첫 터치에 다시 받는 때 (armAutoRegrant)
+  const enablePush = async (silent = false, auto = false) => {
     if (!user) return false;
     setPushBusy(true);
     try {
-      const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
+      // 허용을 물을 때 걸린 시간으로 '허용 창이 떴는지'를 앎: 0.4초 안에 허용이 오면 창 없이 바로 허용된 것(사람은 창을 보고 그렇게 빨리 못 누름).
+      // 그런 휴대폰(삼성 인터넷으로 열리는 Play 앱 등 — 앱을 열 때 허용이 저절로 풀리는 곳)은 다음에 풀려도 첫 터치에 조용히 다시 받음 (pushAutoGrant)
+      let permission: NotificationPermission = Notification.permission;
+      let askedMs: number | null = null;
       if (permission !== 'granted') {
-        notePush(user.id, permission === 'denied' ? 'denied' : 'off', permission === 'denied' ? '허용 창에서 차단함' : '허용 창에서 허용하지 않음', true);
+        const t0 = performance.now();
+        permission = await Notification.requestPermission();
+        askedMs = Math.round(performance.now() - t0);
+        storageSet(`pushAutoGrant:${user.id}`, permission === 'granted' && askedMs < AUTO_GRANT_MS ? '1' : '0');
+      }
+      const how = askedMs === null ? '' : askedMs < AUTO_GRANT_MS ? ` · 허용 창 없이 바로 허용됨 (${askedMs}ms)` : ` · 허용 창이 떴음 (${(askedMs / 1000).toFixed(1)}초)`;
+      if (permission !== 'granted') {
+        notePush(user.id, permission === 'denied' ? 'denied' : 'off', (permission === 'denied' ? '허용 창에서 차단함' : '허용 창에서 허용하지 않음') + how, true);
         setPushStatus(permission === 'denied' ? 'denied' : 'off');
         return false;
       }
@@ -3138,7 +3169,7 @@ export default function Home() {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
       if (await savePushSubscription(sub, user.id)) {
-        notePush(user.id, 'on', silent ? '알림 받기가 빠져 있어 저절로 다시 켬 (휴대폰 허용됨)' : '직접 켬', true);
+        notePush(user.id, 'on', (auto ? '저절로 풀린 허용을 첫 터치에 다시 받아 켬' : silent ? '알림 받기가 빠져 있어 저절로 다시 켬 (휴대폰 허용됨)' : '직접 켬') + how, true);
         setPushStatus('on'); if (!silent) storageRemove(`pushOff:${user.id}`); return true;
       }
       notePush(user.id, 'off', '켰지만 서버에 저장하지 못함', true);
@@ -6388,7 +6419,7 @@ export default function Home() {
               <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-0.5 shrink-0" aria-label="알림 닫기">×</button>
               </div>
               {/* Play 테스트 앱에서 알림이 저절로 꺼진 적이 있으면(최근 7일) 해결 방법 (루비로사·율리T) */}
-              {user && appKind() === 'play' && Date.now() - lastPushLossAt(user.id) < 7 * 24 * 3600e3 && (
+              {user && pushStatus !== 'on' && appKind() === 'play' && Date.now() - lastPushLossAt(user.id) < 7 * 24 * 3600e3 && (
                 <button type="button" onClick={showPushFixGuide}
                   className="w-full text-left text-[0.8125rem] px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-1.5">
                   <Icon name="bell" className="w-[1.1em] h-[1.1em] shrink-0" />
