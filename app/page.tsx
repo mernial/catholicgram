@@ -422,6 +422,9 @@ export default function Home() {
   // 켜 두었던 휴대폰 알림이 교우가 끄지 않았는데 꺼졌으면(휴대폰·브라우저가 허용을 거둠 등) 3일 기다리지 않고 바로 다시 켜기 안내 (율리T)
   const pushLostRef = useRef(false);
   const [pushPromptLost, setPushPromptLost] = useState(false);
+  // Play 테스트 앱에서 저절로 꺼짐: 휴대폰 설정에서 그 앱의 알림을 허용하지 않으면 앱을 열 때마다 허용이 '아직 안 물어봄'으로 돌아가
+  // 알림 받기가 지워짐(율리T 기록: 켬 → 몇 분 뒤 꺼짐 반복) → 설정에서 허용하는 법을 보여 주고, 돌아오면 바로 다시 확인
+  const pushRecheckRef = useRef(false);
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
@@ -3141,7 +3144,7 @@ export default function Home() {
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
       if (await savePushSubscription(sub, user.id)) {
-        notePush(user.id, 'on', silent ? '알림 받기가 빠져 있어 저절로 다시 켬 (휴대폰 허용은 그대로)' : '직접 켬', true);
+        notePush(user.id, 'on', silent ? '알림 받기가 빠져 있어 저절로 다시 켬 (휴대폰 허용됨)' : '직접 켬', true);
         setPushStatus('on'); if (!silent) storageRemove(`pushOff:${user.id}`); return true;
       }
       notePush(user.id, 'off', '켰지만 서버에 저장하지 못함', true);
@@ -3179,7 +3182,10 @@ export default function Home() {
     checkPushStatus(user.id);
     let savedAt = Date.now();
     const onVisible = () => {
-      if (document.visibilityState !== 'visible' || Date.now() - savedAt < 10 * 60 * 1000) return;
+      if (document.visibilityState !== 'visible') return;
+      // 휴대폰 설정에서 알림을 허용하고 돌아왔을 수 있으면 10분 기다리지 않고 바로 (허용됐으면 checkPushStatus 가 조용히 다시 켬)
+      if (!pushRecheckRef.current && Date.now() - savedAt < 10 * 60 * 1000) return;
+      pushRecheckRef.current = false;
       savedAt = Date.now();
       checkPushStatus(user.id);
     };
@@ -3203,15 +3209,25 @@ export default function Home() {
       storageSet(key, String(Date.now()));
       pushLostRef.current = false;
       setPushPromptLost(lost);
+      if (lost && appKind() === 'play') pushRecheckRef.current = true;
       setShowPushPrompt(true);
     }, 1200);
     return () => clearTimeout(timer);
   }, [user, needsProfileSetup, pushStatus]);
 
   const acceptPushPrompt = async () => {
+    const playLost = pushPromptLost && appKind() === 'play';
     setShowPushPrompt(false);
-    if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
+    if (await enablePush()) setToast(playLost
+      ? { key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '다시 꺼지지 않게 휴대폰 설정에서 가톨릭그램 알림 허용도 꼭 켜 주세요', action: () => {}, stay: true }
+      : { key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
   };
+  // 안내 창을 띄운 채 휴대폰 설정에서 허용하고 돌아와 저절로 다시 켜지면 창을 닫고 알려 줌
+  useEffect(() => {
+    if (pushStatus !== 'on' || !showPushPrompt || !pushPromptLost) return;
+    setShowPushPrompt(false);
+    setToast({ key: 'push-on', icon: '🔔', title: '알림이 다시 켜졌어요', body: '댓글·메시지 소식을 다시 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
+  }, [pushStatus, showPushPrompt, pushPromptLost]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -6324,7 +6340,23 @@ export default function Home() {
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe text-center" onClick={e => e.stopPropagation()}>
             <IconBadge name="bell" tone="gold" size="lg" />
             <h2 className="font-bold text-lg text-stone-900">{pushPromptLost ? '휴대폰 알림이 꺼져 있어요' : '휴대폰 알림을 켜주세요'}</h2>
-            {pushPromptLost ? (
+            {pushPromptLost && appKind() === 'play' ? (
+              // Play 테스트 앱: 휴대폰 설정에서 이 앱의 알림을 허용해야 다시 꺼지지 않음 (앱 안의 허용만으로는 앱을 다시 열 때 풀림)
+              <div className="flex flex-col gap-2.5 text-left">
+                <p className="text-[0.9375rem] text-stone-600 leading-relaxed text-center">
+                  Play 테스트 앱은 <b className="text-stone-900">휴대폰 설정에서도</b> 알림을 허용해 두어야 다시 꺼지지 않아요. 한 번만 해 주세요.
+                </p>
+                <ol className="flex flex-col gap-1.5 text-[0.9375rem] text-stone-800 bg-stone-50 rounded-2xl p-3.5">
+                  {['홈 화면의 가톨릭그램 아이콘(지금 보고 계신 Play 테스트 앱)을 꾹 누르기', 'ⓘ (애플리케이션 정보) 누르기', "'알림' 누르기 → '알림 허용' 켜기", '가톨릭그램으로 돌아오면 저절로 다시 켜져요'].map((t, i) => (
+                    <li key={i} className="flex gap-2 leading-snug">
+                      <span className="w-6 h-6 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span>{t}</span>
+                    </li>
+                  ))}
+                </ol>
+                <p className="text-[0.8125rem] text-stone-500 leading-snug text-center">같은 가톨릭그램 아이콘이 둘이면 예전 앱은 지워 주세요.</p>
+              </div>
+            ) : pushPromptLost ? (
               <p className="text-sm text-stone-600 leading-relaxed">
                 켜 두셨던 알림이 휴대폰에서 꺼졌어요.<br />아래 단추를 누르면 다시 켜 드릴게요.
               </p>
@@ -6333,9 +6365,11 @@ export default function Home() {
                 내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
               </p>
             )}
-            <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
-              다음 창에서 <u>허용</u>을 눌러주세요 👍
-            </p>
+            {!(pushPromptLost && appKind() === 'play') && (
+              <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
+                다음 창에서 <u>허용</u>을 눌러주세요 👍
+              </p>
+            )}
             <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">{pushPromptLost ? '알림 다시 켜기' : '알림 받기'}</button>
             <button onClick={() => setShowPushPrompt(false)} className="text-sm text-stone-400">나중에</button>
           </div>
