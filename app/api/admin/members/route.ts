@@ -62,7 +62,8 @@ export async function GET(request: Request) {
     fetchAll(admin, 'comments', 'user_id'),
     fetchAll(admin, 'app_sessions', 'user_id, last_seen_at', q => q.not('user_id', 'is', null)),
     fetchAll(admin, 'reports', 'target_user_id', q => q.eq('status', 'open')),
-    fetchAll(admin, 'push_subscriptions', 'user_id'),
+    // 기기 이름·마지막으로 연 때(supabase/push-devices.sql)까지, 그 칸이 없으면 예전처럼 사람만
+    fetchAll(admin, 'push_subscriptions', 'user_id, device, last_seen').then(r => (r.length ? r : fetchAll(admin, 'push_subscriptions', 'user_id'))),
     fetchAll(admin, 'follows', 'following_id', q => q.eq('status', 'accepted')),
     fetchAll(admin, 'profile_private', 'id, real_name'),
   ]);
@@ -83,6 +84,16 @@ export async function GET(request: Request) {
   sessions.forEach(r => { const id = r.user_id as string; const at = r.last_seen_at as string; if (id && at && (!lastSeen.has(id) || at > lastSeen.get(id)!)) lastSeen.set(id, at); });
   const reportCount = countBy(reports, 'target_user_id');
   const pushCount = countBy(pushes, 'user_id');
+  // 알림 받는 기기: '기기 이름(마지막으로 연 날)' — 기기마다 가장 최근 것 하나 (같은 휴대폰에 앱이 둘이면 하나로)
+  const pushDevices = new Map<string, Map<string, string>>();
+  pushes.forEach(r => {
+    const id = r.user_id as string; if (!id) return;
+    const name = ((r.device as string | null) || '').split('|').pop() || '기기 이름 모름';
+    const at = (r.last_seen as string | null) || '';
+    const m = pushDevices.get(id) || new Map<string, string>();
+    if (!m.has(name) || at > m.get(name)!) m.set(name, at);
+    pushDevices.set(id, m);
+  });
   const followerCount = countBy(followers, 'following_id');
 
   const now = Date.now();
@@ -110,6 +121,7 @@ export async function GET(request: Request) {
       followers: followerCount.get(u.id) || 0,
       open_reports: reportCount.get(u.id) || 0,
       push: (pushCount.get(u.id) || 0) > 0,
+      push_devices: [...(pushDevices.get(u.id) || new Map<string, string>()).entries()].map(([name, at]) => ({ name, at: at || null })),
       suspended: !!bannedUntil && new Date(bannedUntil).getTime() > now,
       is_admin: !!u.email && ADMIN_EMAILS.includes(u.email),
     };

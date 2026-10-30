@@ -15,6 +15,7 @@ import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { appKind, appKindLabel, browserName } from '@/lib/app-kind';
 import { ALERT_SOUNDS, ALERT_SOUND_EVENT, alertSoundName, getAlertSoundChoice, previewAlertSound, setAlertSoundChoice } from '@/lib/alert-sound';
+import { readPushLog, formatPushLogTime, type PushLogEntry } from '@/lib/push-log';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -72,6 +73,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   const [samsung, setSamsung] = useState(false);
   // 휴대폰 알림 상태 (설정 맨 아래 '지금 쓰는 앱'에 — 알림이 자꾸 꺼진다는 교우 휴대폰을 살펴볼 때)
   const [pushInfo, setPushInfo] = useState('');
+  const [pushLog, setPushLog] = useState<PushLogEntry[]>([]); // 알림이 켜지고 꺼진 기록 (lib/push-log, 최근 것부터)
 
   useEffect(() => {
     setTextSize(getTextSize()); setTheme(getThemeChoice()); setPhoneDark(prefersDark()); setSamsung(isSamsungBrowser());
@@ -83,6 +85,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
       const pushPerm = reg ? await reg.pushManager.permissionState?.({ userVisibleOnly: true }).catch(() => null) : null;
       const pp = pushPerm === 'prompt' ? 'default' : pushPerm;
       setPushInfo(`휴대폰 알림: ${word(Notification.permission)}${pp && pp !== Notification.permission ? ` (알림 받기 ${word(pp)})` : ''} · 이 앱 알림 받기 ${sub ? '켜짐' : '꺼짐'}`);
+      setPushLog(readPushLog(user.id).slice(-5).reverse());
     })();
     // 설정을 연 채로 휴대폰 다크 모드가 켜지고 꺼져도(다크 모드 예약 등) '지금 어두운/밝은 화면'이 맞게
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
@@ -252,6 +255,17 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                   <p className="text-[0.9375rem] font-bold text-stone-800">{appInfo.title}</p>
                   <p className="text-[0.8125rem] text-stone-500 leading-snug">{appInfo.detail}</p>
                   {pushInfo && <p className="mt-1 text-[0.8125rem] text-stone-500 leading-snug">{pushInfo}</p>}
+                  {/* 알림이 저절로 꺼진다는 교우: 언제·왜 켜지고 꺼졌는지 (이 휴대폰·이 앱 기록, 최근 것부터) */}
+                  {pushLog.length > 0 && (
+                    <div className="mt-1.5">
+                      <p className="text-[0.75rem] font-bold text-stone-500">알림 켜짐·꺼짐 기록</p>
+                      {pushLog.map(e => (
+                        <p key={`${e.at}-${e.why}`} className="text-[0.75rem] text-stone-500 leading-snug">
+                          {formatPushLogTime(e.at)} · <b className={e.state === 'on' ? 'text-emerald-700' : 'text-red-600'}>{e.state === 'on' ? '켜짐' : e.state === 'denied' ? '막힘' : '꺼짐'}</b> — {e.why}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
