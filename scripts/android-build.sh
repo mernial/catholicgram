@@ -20,15 +20,20 @@ command -v node >/dev/null || { echo "Node.js 가 필요해요 → https://nodej
 # Bubblewrap(앱 만드는 도구): 깔려 있으면 그것, 없으면 npx 로 (관리자 권한 없이)
 bw() { if command -v bubblewrap >/dev/null; then bubblewrap "$@"; else npx --yes @bubblewrap/cli "$@"; fi; }
 
-say "② 서명 키 찾기 (iCloud '가톨릭그램 관리자' 폴더)"
+say "② 서명 키 찾기 (iCloud '가톨릭그램 관리자' 폴더 → 바탕화면 → 다운로드)"
 KEYSTORE="${KEYSTORE:-}"
 if [ -z "$KEYSTORE" ]; then
-  KEYSTORE="$(find "$ICLOUD" -maxdepth 4 -name 'signing.keystore' -print 2>/dev/null | head -1 || true)"
+  # 바탕화면에 복사해 둔 것도 찾음 (iCloud 파일이 아직 내려받아지지 않았을 때 등). 이름이 'signing.keystore' 인 파일
+  for where in "$ICLOUD" "$HOME/Desktop" "$HOME/Downloads"; do
+    KEYSTORE="$(find "$where" -maxdepth 4 -name 'signing.keystore' -size +0 -print 2>/dev/null | head -1 || true)"
+    [ -n "$KEYSTORE" ] && break
+  done
 fi
 if [ -z "$KEYSTORE" ] || [ ! -f "$KEYSTORE" ]; then
   echo "signing.keystore 를 찾지 못했어요."
-  echo "iCloud Drive 의 '가톨릭그램 관리자' 폴더가 이 Mac 에 내려받아져 있는지 확인하고,"
+  echo "iCloud Drive 의 '가톨릭그램 관리자' 폴더나 바탕화면에 signing.keystore 가 있는지 확인하고,"
   echo "다른 곳에 있으면:  KEYSTORE=\"키 파일 경로\" bash scripts/android-build.sh"
+  echo "(Finder 에서 파일을 터미널 창으로 끌어다 놓으면 경로가 들어가요)"
   exit 1
 fi
 echo "서명 키: $KEYSTORE"
@@ -80,7 +85,8 @@ if ! bw build --skipPwaValidation; then
   exit 1
 fi
 
-DEST="$ICLOUD/Play 업데이트"
+# 결과물: iCloud '가톨릭그램 관리자/Play 업데이트' (그 폴더가 없으면 바탕화면 '가톨릭그램 Play 업데이트')
+if [ -d "$ICLOUD" ]; then DEST="$ICLOUD/Play 업데이트"; else DEST="$HOME/Desktop/가톨릭그램 Play 업데이트"; fi
 mkdir -p "$DEST"
 cp app-release-bundle.aab "$DEST/catholicgram-$VERSION_NAME-($VERSION_CODE).aab"
 [ -f app-release-signed.apk ] && cp app-release-signed.apk "$DEST/catholicgram-$VERSION_NAME-($VERSION_CODE).apk"
