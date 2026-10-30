@@ -31,6 +31,7 @@ export interface AdminMember {
   followers: number;
   open_reports: number;
   push: boolean;
+  push_devices?: { name: string; at: string | null }[]; // 알림 받는 기기 (기기 이름·그 앱을 마지막으로 연 때)
   suspended: boolean;
   is_admin: boolean;
 }
@@ -257,8 +258,12 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                       <span className={sort === 'seen' ? 'font-bold text-stone-900' : ''}>최근 접속: {relative(m.last_seen_at)}</span>
                       <span>로그인: {PROVIDERS[m.provider || ''] || m.provider || '-'}</span>
                       <span className={sort === 'followers' ? 'font-bold text-stone-900' : ''}>팔로워 {m.followers}</span>
-                      <span>휴대폰 알림: {m.push ? '켜짐' : '꺼짐'}</span>
+                      <span className={m.push ? '' : 'text-red-600'}>휴대폰 알림: {m.push ? `켜짐${m.push_devices && m.push_devices.length > 1 ? ` · ${m.push_devices.length}대` : ''}` : '꺼짐'}</span>
                       <span>축일: {m.feast_day ? formatFeastDay(m.feast_day) : '미등록'}</span>
+                      {/* 알림이 자꾸 꺼진다는 교우: 어느 기기가 알림을 받는지, 그 앱을 마지막으로 연 때 */}
+                      {!!m.push_devices?.length && (
+                        <span className="col-span-2 text-stone-500">알림 기기: {m.push_devices.map(d => `${d.name}${d.at ? ` (${relative(d.at)})` : ''}`).join(' · ')}</span>
+                      )}
                     </div>
                     {!m.is_admin && (
                       <div className="flex gap-2">

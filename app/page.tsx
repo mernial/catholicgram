@@ -20,6 +20,7 @@ import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
+import { notePush, lastPushState, permissionWord } from '@/lib/push-log';
 import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
@@ -418,6 +419,9 @@ export default function Home() {
   // 휴대폰 푸시 알림 상태
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushWant, setPushWant] = useState<boolean | null>(null); // 밀기 단추를 바꾼 뒤 켜기·끄기가 끝나기 전 (단추는 바꾼 쪽에)
+  // 켜 두었던 휴대폰 알림이 교우가 끄지 않았는데 꺼졌으면(휴대폰·브라우저가 허용을 거둠 등) 3일 기다리지 않고 바로 다시 켜기 안내 (율리T)
+  const pushLostRef = useRef(false);
+  const [pushPromptLost, setPushPromptLost] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
@@ -3092,16 +3096,29 @@ export default function Home() {
     // 앱을 다시 열면 이미 허용했는데도 '아직 안 물어봄'으로 알려 줘서 켠 알림이 꺼진 것처럼 보였음(루비로사)
     const pushPerm = reg ? await reg.pushManager.permissionState?.({ userVisibleOnly: true }).catch(() => null) : null;
     const granted = Notification.permission === 'granted' || pushPerm === 'granted';
-    if (!granted && (Notification.permission === 'denied' || pushPerm === 'denied')) { setPushStatus('denied'); return; }
+    // 언제·왜 켜지고 꺼졌는지 이 휴대폰에 적어 둔다 (lib/push-log, 설정 맨 아래 '지금 쓰는 앱'에서 봄)
+    const permText = `휴대폰 허용 ${permissionWord(Notification.permission)}${pushPerm && pushPerm !== 'prompt' && pushPerm !== Notification.permission ? ` · 알림 받기 ${permissionWord(pushPerm)}` : ''}`;
+    if (!granted && (Notification.permission === 'denied' || pushPerm === 'denied')) {
+      notePush(userId, 'denied', `휴대폰에서 알림이 막혀 있음 (${permText})`);
+      setPushStatus('denied');
+      return;
+    }
     if (sub) {
       // 알림 받기가 이 앱에 남아 있으면 켜짐 (허용을 거두면 브라우저가 알림 받기를 지움)
       await savePushSubscription(sub, userId); // 로그인 계정이 바뀌었을 수 있으므로 갱신
+      notePush(userId, 'on', '켜져 있음');
       setPushStatus('on');
     } else if (granted && storageGet(`pushOff:${userId}`) !== '1') {
       // 허용은 되어 있는데 알림 받기가 빠졌으면(브라우저가 정리하는 등) 조용히 다시 켠다
       setPushStatus('off');
       enablePush(true);
     } else {
+      // 직접 끄지 않았는데 꺼졌으면(켜져 있던 기록이 있음) 바로 다시 켜기 안내 — 허용 창은 교우가 눌러야 뜸
+      if (storageGet(`pushOff:${userId}`) !== '1' && lastPushState(userId) === 'on') {
+        notePush(userId, 'off', `직접 끄지 않았는데 꺼짐 · 이 앱의 알림 받기가 없어지고 휴대폰 허용도 풀림 (${permText})`);
+        pushLostRef.current = true;
+        pushPromptCheckedRef.current = false;
+      }
       setPushStatus('off');
     }
   };
@@ -3112,17 +3129,26 @@ export default function Home() {
     setPushBusy(true);
     try {
       const permission = Notification.permission === 'granted' ? 'granted' : await Notification.requestPermission();
-      if (permission !== 'granted') { setPushStatus(permission === 'denied' ? 'denied' : 'off'); return false; }
+      if (permission !== 'granted') {
+        notePush(user.id, permission === 'denied' ? 'denied' : 'off', permission === 'denied' ? '허용 창에서 차단함' : '허용 창에서 허용하지 않음', true);
+        setPushStatus(permission === 'denied' ? 'denied' : 'off');
+        return false;
+      }
       const reg = await navigator.serviceWorker.register('/sw.js');
       await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
       });
-      if (await savePushSubscription(sub, user.id)) { setPushStatus('on'); if (!silent) storageRemove(`pushOff:${user.id}`); return true; }
+      if (await savePushSubscription(sub, user.id)) {
+        notePush(user.id, 'on', silent ? '알림 받기가 빠져 있어 저절로 다시 켬 (휴대폰 허용은 그대로)' : '직접 켬', true);
+        setPushStatus('on'); if (!silent) storageRemove(`pushOff:${user.id}`); return true;
+      }
+      notePush(user.id, 'off', '켰지만 서버에 저장하지 못함', true);
       if (!silent) alert('알림 설정을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.');
       return false;
-    } catch {
+    } catch (e) {
+      notePush(user.id, 'off', `켜지 못함 (${[(e as Error)?.name, (e as Error)?.message].filter(Boolean).join(': ').slice(0, 100) || '알 수 없음'})`, true);
       if (!silent) alert('알림을 켜지 못했습니다. 브라우저 알림 설정을 확인해주세요.');
       return false;
     } finally {
@@ -3140,7 +3166,7 @@ export default function Home() {
         await sub.unsubscribe();
       }
       // 직접 끈 것을 기억 → 앱을 다시 열어도 저절로 다시 켜지 않음 (예전엔 휴대폰 알림 허용이 남아 있으면 다음에 열 때 다시 켜졌음)
-      if (user) storageSet(`pushOff:${user.id}`, '1');
+      if (user) { storageSet(`pushOff:${user.id}`, '1'); notePush(user.id, 'off', '직접 끔 (알림창 단추)', true); }
       setPushStatus('off');
     } finally {
       setPushBusy(false);
@@ -3171,9 +3197,12 @@ export default function Home() {
     if (Notification.permission !== 'default') return;
     const key = `pushPromptAt:${user.id}`;
     const last = Number(storageGet(key) || 0);
-    if (Date.now() - last < 3 * 24 * 3600e3) return; // '나중에'를 누르면 3일 뒤 다시 안내
+    const lost = pushLostRef.current; // 켜 두었는데 저절로 꺼짐 → 기다리지 않고 바로
+    if (!lost && Date.now() - last < 3 * 24 * 3600e3) return; // '나중에'를 누르면 3일 뒤 다시 안내
     const timer = setTimeout(() => {
       storageSet(key, String(Date.now()));
+      pushLostRef.current = false;
+      setPushPromptLost(lost);
       setShowPushPrompt(true);
     }, 1200);
     return () => clearTimeout(timer);
@@ -6294,14 +6323,20 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPushPrompt(false)}>
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe text-center" onClick={e => e.stopPropagation()}>
             <IconBadge name="bell" tone="gold" size="lg" />
-            <h2 className="font-bold text-lg text-stone-900">휴대폰 알림을 켜주세요</h2>
-            <p className="text-sm text-stone-600 leading-relaxed">
-              내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
-            </p>
+            <h2 className="font-bold text-lg text-stone-900">{pushPromptLost ? '휴대폰 알림이 꺼져 있어요' : '휴대폰 알림을 켜주세요'}</h2>
+            {pushPromptLost ? (
+              <p className="text-sm text-stone-600 leading-relaxed">
+                켜 두셨던 알림이 휴대폰에서 꺼졌어요.<br />아래 단추를 누르면 다시 켜 드릴게요.
+              </p>
+            ) : (
+              <p className="text-sm text-stone-600 leading-relaxed">
+                내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
+              </p>
+            )}
             <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
               다음 창에서 <u>허용</u>을 눌러주세요 👍
             </p>
-            <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">알림 받기</button>
+            <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">{pushPromptLost ? '알림 다시 켜기' : '알림 받기'}</button>
             <button onClick={() => setShowPushPrompt(false)} className="text-sm text-stone-400">나중에</button>
           </div>
         </div>
@@ -6337,7 +6372,11 @@ export default function Home() {
                       <Icon name="phone" className="w-[1.1em] h-[1.1em]" />
                       <span>{pushBusy ? '설정 중…' : '휴대폰 알림'}</span>
                       <Switch size="sm" label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
-                        onChange={next => { setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null)); }} />
+                        onChange={async next => {
+                          // 끌 때는 한 번 묻는다: 작은 단추를 잘못 건드려 꺼지면 직접 끈 것으로 기억되어 다음에 열어도 꺼진 채로 남음
+                          if (!next && !(await askConfirm({ title: '휴대폰 알림을 끌까요?', message: '댓글·메시지·생일 소식이 휴대폰에 오지 않아요.\n언제든 다시 켤 수 있어요.', ok: '끄기', cancel: '켜 두기', icon: 'bell' }))) return;
+                          setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null));
+                        }} />
                     </div>
                   );
                 })()}
