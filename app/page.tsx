@@ -362,7 +362,6 @@ export default function Home() {
   const [composerStickers, setComposerStickers] = useState<Sticker[]>([]); // 글쓰기: 붙인 이모티콘 (글 끝에 한 줄씩 저장)
   const [composerStickerOpen, setComposerStickerOpen] = useState(false);
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
-  const [editingPhotoStep, setEditingPhotoStep] = useState<'crop' | 'sticker'>('crop'); // '이모티콘 붙이기'로 열면 바로 내 이모티콘
   // 글 고치기의 사진: 원래 사진은 주소만, 새로 넣거나 편집한 사진은 파일과 미리보기 주소
   const [editPhotos, setEditPhotos] = useState<{ url: string; file?: File }[]>([]);
   const [editPhotoEditor, setEditPhotoEditor] = useState<{ idx: number; file: File; step?: 'crop' | 'cover' | 'sticker' } | null>(null);
@@ -4447,13 +4446,9 @@ export default function Home() {
                     )}
                     {previewUrls.length > 0 && !videoPreviewUrl && (
                       <>
-                        {/* 운영자 아이콘 시안처럼 연한 크림색 동그라미 + 색 있는 아이콘 */}
-                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-3 w-12 h-12 rounded-full bg-[#fbf6ef]/95 shadow-md flex items-center justify-center text-[#7a5230]" aria-label="사진 자르기·가리기">
-                          <Icon name="crop" className="w-6 h-6" />
-                        </button>
-                        {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
-                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="absolute bottom-3 left-[4.25rem] w-12 h-12 rounded-full bg-[#fbf6ef]/95 shadow-md flex items-center justify-center text-amber-500" aria-label="사진에 이모티콘 붙이기">
-                          <Icon name="sticker" className="w-6 h-6" />
+                        {/* 사진 '효과' 하나로 (자르기·이모티콘·그림 문자·모자이크) — 운영자 아이콘 시안처럼 연한 크림색 + 색 있는 아이콘 */}
+                        <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 h-12 pl-3 pr-4 rounded-full bg-[#fbf6ef]/95 shadow-md inline-flex items-center gap-1.5 text-stone-900 text-[0.9375rem] font-bold" aria-label="사진 효과 (자르기·이모티콘·모자이크)">
+                          <Icon name="magicWand" className="w-6 h-6 text-[#7a5230]" />효과
                         </button>
                       </>
                     )}
@@ -4547,11 +4542,8 @@ export default function Home() {
                     <div className="relative bg-stone-100 flex justify-center">
                       <img src={previewUrls[shownIdx]} alt="미리보기" className="w-full max-h-[55dvh] aspect-[4/5] object-contain" />
                       {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
-                      <div className="absolute bottom-3 left-3 flex gap-2">
-                        <button type="button" onClick={() => { setEditingPhotoStep('crop'); setEditingPhotoIdx(shownIdx); }} className="pl-2.5 pr-3.5 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.875rem] font-bold shadow inline-flex items-center gap-1.5"><Icon name="crop" className="w-5 h-5 text-[#7a5230]" />자르기·가리기</button>
-                        {/* 사진에 내 이모티콘 붙이기 (크기·회전·뒤집기) */}
-                        <button type="button" onClick={() => { setEditingPhotoStep('sticker'); setEditingPhotoIdx(shownIdx); }} className="pl-2.5 pr-3.5 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.875rem] font-bold shadow inline-flex items-center gap-1.5"><Icon name="sticker" className="w-5 h-5 text-amber-500" />이모티콘 붙이기</button>
-                      </div>
+                      {/* 사진 '효과' 하나로 (자르기·이모티콘·그림 문자·모자이크) */}
+                      <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 pl-3 pr-4 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.9375rem] font-bold shadow inline-flex items-center gap-1.5" aria-label="사진 효과 (자르기·이모티콘·모자이크)"><Icon name="magicWand" className="w-5 h-5 text-[#7a5230]" />효과</button>
                     </div>
                     <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
                       {previewUrls.map((url, idx) => (
@@ -4650,7 +4642,6 @@ export default function Home() {
             {editingPhotoIdx !== null && selectedFiles[editingPhotoIdx] && (
               <PhotoEditor
                 file={selectedFiles[editingPhotoIdx]}
-                startStep={editingPhotoStep}
                 onCancel={() => setEditingPhotoIdx(null)}
                 onDone={edited => {
                   const idx = editingPhotoIdx;
@@ -6089,14 +6080,9 @@ export default function Home() {
                         <PhotoStrip photos={editPhotos} selected={sel} onSelect={setEditSelIdx} onMove={movePhoto} />
                         {/* 고른 사진에 할 일 */}
                         <div className="px-4 mt-2 flex items-center justify-between gap-2">
+                          {/* 사진 '효과' 하나로 (자르기·이모티콘·그림 문자·모자이크) */}
                           <button type="button" onClick={() => openEditPhotoEditor(sel, 'crop')} disabled={editPhotoLoading} className={tool}>
-                            <Icon name="crop" className="w-6 h-6 text-amber-800" />자르기
-                          </button>
-                          <button type="button" onClick={() => openEditPhotoEditor(sel, 'cover')} disabled={editPhotoLoading} className={tool}>
-                            <Icon name="userFocus" className="w-6 h-6 text-blue-700" />가리기
-                          </button>
-                          <button type="button" onClick={() => openEditPhotoEditor(sel, 'sticker')} disabled={editPhotoLoading} className={tool}>
-                            <Icon name="sticker" className="w-6 h-6 text-amber-500" />이모티콘
+                            <Icon name="magicWand" className="w-6 h-6 text-amber-800" />효과 <span className="text-[0.8125rem] text-stone-400">자르기·이모티콘·모자이크</span>
                           </button>
                           <button type="button" onClick={removeSelected} className={tool}>
                             <Icon name="trash" className="w-6 h-6 text-red-500" />삭제
