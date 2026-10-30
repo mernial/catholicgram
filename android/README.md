@@ -9,15 +9,16 @@ Play 앱(`com.catholicgram.android`)은 웹사이트를 여는 껍데기(TWA)라
 - **폴드를 펴면 전체 화면**(`orientation: any`), **휴대폰 위쪽 줄 알림 그림**(`icon-monochrome-512.png`)
 
 ## 만드는 법 (운영자 Mac)
-1. iCloud Drive 의 `가톨릭그램 관리자` 폴더가 Mac 에 내려받아져 있는지 확인 (`signing.keystore`, `signing-key-info.txt`)
-2. 터미널에서:
+1. Node.js 가 없으면 https://nodejs.org 에서 설치 (macOS Installer .pkg)
+2. `signing.keystore`·`signing-key-info.txt` 가 iCloud Drive 의 `가톨릭그램 관리자` 폴더나 바탕화면·다운로드 폴더(복사본)에 있는지 확인
+3. 터미널에서:
    ```
-   cd ~/catholicgram && git pull && bash scripts/android-build.sh
+   cd ~/catholicgram && git checkout main && git pull && bash scripts/android-build.sh
    ```
-   - 처음 한 번은 Java(JDK 17)·Android SDK 를 설치할지 물음 → 엔터, 약관은 `y`
+   - 처음 한 번은 Java(JDK 17)·Android 도구를 저절로 받음 (`~/.bubblewrap`, 10분쯤). Bubblewrap 의 설치 기능은 쓰지 않음 — Node 26 에서 Java 압축을 풀다 아무 말 없이 꺼졌음
    - 비밀번호는 `signing-key-info.txt` 에서 화면에 보이지 않게 읽음 (없으면 물어봄, 쳐도 안 보임)
-3. 끝나면 `가톨릭그램 관리자/Play 업데이트/catholicgram-1.0.1-(2).aab` 가 생김
-4. Play Console → 가톨릭그램 → 테스트 → 비공개 테스트 → **새 버전 만들기** → 그 `.aab` 올리기 → 검토 보내기
+4. 끝나면 `가톨릭그램 관리자/Play 업데이트/catholicgram-1.0.1-(2).aab` 가 생김 (그 폴더가 없으면 바탕화면 `가톨릭그램 Play 업데이트`)
+5. Play Console → 가톨릭그램 → 테스트 → 비공개 테스트 → **새 버전 만들기** → 그 `.aab` 올리기 → 검토 보내기
 
 다음 업데이트는 `VERSION_CODE=3 VERSION_NAME=1.0.2 bash scripts/android-build.sh` (버전 코드는 늘 이전보다 커야 함).
 
