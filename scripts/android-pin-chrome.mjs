@@ -32,7 +32,10 @@ if (!java.includes(MARK)) {
         String chrome = androidx.browser.customtabs.CustomTabsClient.getPackageName(
                 this, java.util.Collections.singletonList(CHROME_PACKAGE), true);
         if (CHROME_PACKAGE.equals(chrome)) {
-            return new com.google.androidbrowserhelper.trusted.TwaLauncher(this, CHROME_PACKAGE);
+            // 라이브러리(2.7.4) 기본값과 같은 세션·토큰 저장소, 브라우저만 크롬으로
+            return new com.google.androidbrowserhelper.trusted.TwaLauncher(this, CHROME_PACKAGE,
+                    com.google.androidbrowserhelper.trusted.SessionStore.makeSessionId(getTaskId()),
+                    new com.google.androidbrowserhelper.trusted.SharedPreferencesTokenStore(this));
         }
         return super.createTwaLauncher();
     }
