@@ -32,7 +32,7 @@ export function appKind(): AppKind {
 export function appKindLabel(): { title: string; detail: string } {
   const kind = appKind();
   const browser = browserName();
-  if (kind === 'play') return { title: 'Play 스토어에서 받은 앱 (테스트 앱)', detail: '구글 Play 스토어로 설치한 가톨릭그램이에요' };
+  if (kind === 'play') return { title: 'Play 스토어에서 받은 앱 (테스트 앱)', detail: `구글 Play 스토어로 설치한 가톨릭그램이에요 · ${browser}로 열려요` };
   if (kind === 'home') return { title: `홈 화면에 추가한 앱 (${browser})`, detail: `${browser}에서 '홈 화면에 추가'로 만든 가톨릭그램이에요` };
   return { title: `인터넷 창 (${browser})`, detail: '앱이 아니라 인터넷 창에서 보고 있어요' };
 }
