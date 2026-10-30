@@ -5,9 +5,12 @@ import Cropper from 'react-easy-crop';
 import Icon from '@/components/Icon';
 import StickerPanel, { useStickerPicker } from '@/components/StickerPanel';
 import type { Sticker } from '@/lib/stickers';
+import { buildMask, pixelate, type MaskRegion, type Pt } from '@/lib/smart-mask';
 
 // 사진 편집: ① 원하는 부분만 자르기 → ② 꾸미기·가리기: 내 이모티콘(채팅 이모티콘, 선물받은·관리자 전용 포함)·그림 문자·모자이크
 //    (옮기기·크기·회전·좌우 뒤집기). 붙인 것은 사진에 합쳐서 새 사진으로 만든다 (원본의 가린 부분은 올라가지 않음).
+// 모자이크(운영자 요청): 기본은 동그라미(옮기기·크기), 강도 1~5, '손으로 그려서' — 칠하거나 둘레를 그리면 그 근처의 물체를 찾아
+//    그 부분만(lib/smart-mask). 화면에서도 실제 모자이크 모양 그대로 미리 보임(previewRef)
 
 type Area = { x: number; y: number; width: number; height: number };
 interface Cover {
@@ -34,6 +37,23 @@ const MAX_OUT = 2048;
 const newId = () => Math.random().toString(36).slice(2, 9);
 const normAngle = (deg: number) => ((deg + 540) % 360) - 180;
 const clampSize = (s: number) => Math.min(0.9, Math.max(0.05, s));
+const BRUSH = 0.07; // '그려서 모자이크' 붓 굵기 (사진 짧은 쪽 대비)
+const LEVELS = ['아주 약하게', '약하게', '보통', '강하게', '아주 강하게'];
+
+// 모자이크 층: 그린 곳(regions) + 동그라미들(circles) 모양으로 모자이크 사진(pixel)을 오려 ctx 에 얹음 (W×H)
+function drawMosaicLayer(ctx: CanvasRenderingContext2D, pixel: HTMLCanvasElement, W: number, H: number, regions: MaskRegion[], circles: { x: number; y: number; size: number }[]) {
+  if (!regions.length && !circles.length) return;
+  const mask = document.createElement('canvas');
+  mask.width = W; mask.height = H;
+  const m = mask.getContext('2d')!;
+  m.imageSmoothingQuality = 'high';
+  for (const r of regions) m.drawImage(r.mask, r.x * W, r.y * H, r.w * W, r.h * H);
+  m.fillStyle = '#fff';
+  for (const c of circles) { m.beginPath(); m.arc(c.x * W, c.y * H, (c.size * W) / 2, 0, Math.PI * 2); m.fill(); }
+  m.globalCompositeOperation = 'source-in';
+  m.drawImage(pixel, 0, 0);
+  ctx.drawImage(mask, 0, 0);
+}
 
 const loadImage = (src: string) => new Promise<HTMLImageElement>((resolve, reject) => {
   const img = new Image();
@@ -66,7 +86,16 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const [covers, setCovers] = useState<Cover[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [tool, setTool] = useState<'sticker' | 'emoji'>(startStep === 'cover' ? 'emoji' : 'sticker'); // 아래 칸: 내 이모티콘 / 그림 문자·모자이크
+  const [tool, setToolState] = useState<'sticker' | 'emoji' | 'mosaic'>(startStep === 'cover' ? 'mosaic' : 'sticker'); // 아래 칸: 내 이모티콘 / 그림 문자 / 모자이크
+  const setTool = (t: 'sticker' | 'emoji' | 'mosaic') => { setToolState(t); if (t !== 'mosaic') setDrawMode(false); };
+  // 모자이크: 강도(1~5), 손으로 그린 곳(자동 맞춤 결과), 그리기 중
+  const [mosaicLevel, setMosaicLevel] = useState(3);
+  const [regions, setRegions] = useState<MaskRegion[]>([]);
+  const [drawMode, setDrawMode] = useState(false);
+  const [autoFit, setAutoFit] = useState(true);
+  const [stroke, setStroke] = useState<Pt[] | null>(null);
+  const strokeRef = useRef<Pt[] | null>(null);
+  const [masking, setMasking] = useState(false);
   // 이모티콘 칸(채팅과 같은 칸 — 즐겨찾기·탭 순서·전용 이모티콘 그대로): 고르면 바로 사진 가운데에 붙임
   const pickerBase = useStickerPicker(() => {});
   const stickerPicker = { ...pickerBase, open: true, picked: null, pick: (st: Sticker) => addCover({ kind: 'sticker', src: st.src, label: st.label, size: 0.32 }) };
@@ -109,6 +138,7 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(img, part.x, part.y, part.width, part.height, 0, 0, canvas.width, canvas.height);
     setCropped({ url: canvas.toDataURL('image/jpeg', 0.92), canvas });
+    setRegions([]); // 그린 모자이크는 자른 사진 기준이라 다시 자르면 새로
     setStep('cover');
   };
 
@@ -159,6 +189,14 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
     if (pointers.current.size >= 2) startPinch(c.id); else startDrag(c.id, e.clientX, e.clientY);
   };
   const onBoxDown = (e: React.PointerEvent) => {
+    if (drawMode) {
+      // 두 번째 손가락이 닿으면 그리던 것은 취소 (실수로 두 손가락)
+      if (strokeRef.current) { strokeRef.current = null; setStroke(null); return; }
+      capture(e);
+      const p = rel(e.clientX, e.clientY);
+      strokeRef.current = [p]; setStroke([p]);
+      return;
+    }
     capture(e);
     if (pointers.current.size >= 2 && selectedId) startPinch(selectedId);
     else if (pointers.current.size === 1) { setSelectedId(null); gesture.current = null; }
@@ -173,6 +211,16 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const onMove = (e: React.PointerEvent) => {
     if (!pointers.current.has(e.pointerId)) return;
     pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (drawMode) {
+      const pts = strokeRef.current;
+      if (!pts) return;
+      const p = rel(e.clientX, e.clientY);
+      const q = { x: Math.min(1, Math.max(0, p.x)), y: Math.min(1, Math.max(0, p.y)) };
+      const last = pts[pts.length - 1];
+      if (Math.hypot(q.x - last.x, q.y - last.y) < 0.004) return;
+      strokeRef.current = [...pts, q]; setStroke(strokeRef.current);
+      return;
+    }
     const g = gesture.current;
     if (!g) return;
     if (g.mode === 'drag') {
@@ -189,6 +237,21 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   };
   const onUp = (e: React.PointerEvent) => {
     pointers.current.delete(e.pointerId);
+    if (drawMode) {
+      const pts = strokeRef.current;
+      strokeRef.current = null;
+      if (pts && cropped && e.type !== 'pointercancel') {
+        setMasking(true);
+        // 화면에 '맞추는 중'을 먼저 그린 뒤 계산
+        setTimeout(() => {
+          try {
+            const region = buildMask(cropped.canvas, pts, BRUSH, autoFit);
+            if (region) setRegions(prev => [...prev, region]);
+          } finally { setStroke(null); setMasking(false); }
+        }, 30);
+      } else setStroke(null);
+      return;
+    }
     const g = gesture.current;
     if (g?.mode === 'pinch' && pointers.current.size === 1) {
       const [rest] = Array.from(pointers.current.values());
@@ -212,33 +275,13 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
       if (c.kind !== 'sticker' || !c.src || stickerImgs.has(c.src)) continue;
       try { stickerImgs.set(c.src, await loadImage(c.src)); } catch { /* 못 불러온 그림은 빼고 */ }
     }
-    // 모자이크용: 작게 줄였다가 크게 늘린 사진
-    let pixel: HTMLCanvasElement | null = null;
-    if (covers.some(c => c.kind === 'mosaic')) {
-      const block = Math.max(10, Math.round(W / 32)); // 얼굴을 알아볼 수 없을 만큼 굵게
-      const small = document.createElement('canvas');
-      small.width = Math.max(1, Math.round(W / block)); small.height = Math.max(1, Math.round(H / block));
-      small.getContext('2d')!.drawImage(base, 0, 0, small.width, small.height);
-      pixel = document.createElement('canvas');
-      pixel.width = W; pixel.height = H;
-      const pctx = pixel.getContext('2d')!;
-      pctx.imageSmoothingEnabled = false;
-      pctx.drawImage(small, 0, 0, W, H);
-    }
+    // 모자이크(동그라미 + 그린 곳)를 먼저, 그 위에 이모티콘·그림 문자
+    const circles = covers.filter(c => c.kind === 'mosaic');
+    if (circles.length || regions.length) drawMosaicLayer(ctx, pixelate(base, W, H, mosaicLevel), W, H, regions, circles);
     for (const c of covers) {
       const cx = c.x * W, cy = c.y * H, s = c.size * W, rad = c.rotation * Math.PI / 180;
-      if (c.kind === 'mosaic' && pixel) {
-        ctx.save();
-        ctx.translate(cx, cy); ctx.rotate(rad);
-        ctx.beginPath();
-        const r = s * 0.18;
-        ctx.moveTo(-s / 2 + r, -s / 2); ctx.arcTo(s / 2, -s / 2, s / 2, s / 2, r); ctx.arcTo(s / 2, s / 2, -s / 2, s / 2, r);
-        ctx.arcTo(-s / 2, s / 2, -s / 2, -s / 2, r); ctx.arcTo(-s / 2, -s / 2, s / 2, -s / 2, r); ctx.closePath();
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.clip();
-        ctx.drawImage(pixel, 0, 0);
-        ctx.restore();
-      } else if (c.kind === 'sticker' && c.src) {
+      if (c.kind === 'mosaic') continue;
+      if (c.kind === 'sticker' && c.src) {
         const im = stickerImgs.get(c.src);
         if (!im) continue;
         // 칸(s×s) 안에 비율대로
@@ -266,13 +309,36 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
     onDone(new File([blob], (file.name.replace(/\.[^.]+$/, '') || 'photo') + '_edit.jpg', { type: 'image/jpeg' }));
   };
 
+  // 사진 칸 크기 (남은 자리에 사진 비율대로)
+  const ratio = cropped ? cropped.canvas.width / cropped.canvas.height : 1;
+  const boxW = stage ? Math.max(40, Math.min(stage.w - 24, (stage.h - 16) * ratio)) : null;
+  const boxH = boxW ? boxW / ratio : null;
+  // 모자이크 미리 보기: 실제로 만들어질 모자이크를 사진 칸 크기로 그려 사진 위에 얹음
+  const previewRef = useRef<HTMLCanvasElement>(null);
+  const pixelCache = useRef<{ key: string; base: HTMLCanvasElement; canvas: HTMLCanvasElement } | null>(null);
+  const circleKey = covers.filter(c => c.kind === 'mosaic').map(c => `${c.x.toFixed(4)},${c.y.toFixed(4)},${c.size.toFixed(4)}`).join(';');
+  useEffect(() => {
+    const cv = previewRef.current;
+    if (!cv || !cropped || !boxW || !boxH) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const pw = Math.max(1, Math.round(boxW * dpr)), ph = Math.max(1, Math.round(boxH * dpr));
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    const ctx = cv.getContext('2d')!;
+    ctx.clearRect(0, 0, pw, ph);
+    const circles = coversRef.current.filter(c => c.kind === 'mosaic');
+    if (!regions.length && !circles.length) return;
+    const key = `${pw}x${ph}:${mosaicLevel}`;
+    if (pixelCache.current?.key !== key || pixelCache.current.base !== cropped.canvas) {
+      pixelCache.current = { key, base: cropped.canvas, canvas: pixelate(cropped.canvas, pw, ph, mosaicLevel) };
+    }
+    drawMosaicLayer(ctx, pixelCache.current.canvas, pw, ph, regions, circles);
+  }, [cropped, boxW, boxH, mosaicLevel, regions, circleKey]);
+
   const head = (title: string, left: React.ReactNode, right: React.ReactNode) => (
     <div className="shrink-0 flex items-center justify-between px-3 pt-[calc(0.6rem+env(safe-area-inset-top))] pb-2 text-white">
       {left}<p className="font-bold text-[1.0625rem]">{title}</p>{right}
     </div>
   );
-  const ratio = cropped ? cropped.canvas.width / cropped.canvas.height : 1;
-
   return (
     <div data-no-pinch className="fixed inset-0 z-[88] bg-black flex flex-col select-none" role="dialog" aria-label="사진 편집">
       {step === 'crop' ? (
@@ -305,19 +371,28 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
             <div
               ref={boxRef}
               className="relative touch-none overflow-hidden [container-type:inline-size]"
-              style={{ aspectRatio: String(ratio), width: stage ? Math.max(40, Math.min(stage.w - 24, (stage.h - 16) * ratio)) : '100%' }}
+              style={{ aspectRatio: String(ratio), width: boxW ?? '100%', cursor: drawMode ? 'crosshair' : undefined }}
               onPointerDown={onBoxDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
             >
               {cropped && <img src={cropped.url} alt="" className="absolute inset-0 w-full h-full pointer-events-none" draggable={false} />}
+              <canvas ref={previewRef} aria-hidden="true" className="absolute inset-0 w-full h-full pointer-events-none" />
+              {stroke && boxW && boxH && (
+                // 그리는 중인 길 (노란 붓 자국)
+                <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox={`0 0 ${boxW} ${boxH}`} aria-hidden="true">
+                  <polyline points={stroke.map(p => `${p.x * boxW},${p.y * boxH}`).join(' ')} fill="none" stroke="rgba(250,204,21,0.6)"
+                    strokeWidth={BRUSH * Math.min(boxW, boxH)} strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+              {masking && <span className="absolute inset-x-0 top-3 mx-auto w-max px-3 py-1.5 rounded-full bg-black/70 text-white text-[0.8125rem] font-bold pointer-events-none">✨ 맞추는 중…</span>}
               {covers.map(c => (
                 <div
                   key={c.id}
                   onPointerDown={e => onItemDown(e, c)}
-                  className={`absolute flex items-center justify-center ${selectedId === c.id ? 'outline outline-2 outline-dashed outline-white/90 outline-offset-2' : ''}`}
+                  className={`absolute flex items-center justify-center ${drawMode ? 'pointer-events-none' : ''} ${c.kind === 'mosaic' ? 'rounded-full' : ''} ${selectedId === c.id ? 'outline outline-2 outline-dashed outline-white/90 outline-offset-2' : ''}`}
                   style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.size * 100}cqw`, height: `${c.size * 100}cqw`, transform: `translate(-50%, -50%) rotate(${c.rotation}deg)` }}
                 >
                   {c.kind === 'mosaic'
-                    ? <span className="absolute inset-0 rounded-[18%] backdrop-blur-md bg-white/10 border border-white/40" />
+                    ? <span className="absolute inset-0 rounded-full" /> /* 모자이크는 아래 미리 보기 캔버스에 그려짐 */
                     : c.kind === 'sticker'
                       ? <img src={c.src} alt={c.label || '이모티콘'} draggable={false} className="w-full h-full object-contain pointer-events-none" style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
                       : <span style={{ fontSize: `${c.size * 100}cqw`, lineHeight: 1, fontFamily: EMOJI_FONT, transform: c.flip ? 'scaleX(-1)' : undefined }}>{c.emoji}</span>}
@@ -334,11 +409,19 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
                 <span className="w-10 shrink-0">크기</span>
                 <input type="range" min={0.05} max={0.9} step={0.01} value={selected.size} onChange={e => update(selected.id, { size: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" aria-label="크기" />
               </label>
-              <label className="flex items-center gap-3 text-white text-[0.875rem]">
-                <span className="w-10 shrink-0">회전</span>
-                <input type="range" min={-180} max={180} step={1} value={selected.rotation} onChange={e => update(selected.id, { rotation: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" aria-label="회전" />
-                <button onClick={() => update(selected.id, { rotation: 0 })} disabled={!selected.rotation} className="shrink-0 px-2.5 py-1 rounded-lg bg-white/10 text-[0.8125rem] font-bold disabled:opacity-30">바로</button>
-              </label>
+              {selected.kind === 'mosaic' ? (
+                <label className="flex items-center gap-3 text-white text-[0.875rem]">
+                  <span className="w-10 shrink-0">강도</span>
+                  <input type="range" min={1} max={5} step={1} value={mosaicLevel} onChange={e => setMosaicLevel(Number(e.target.value))} className="flex-1 accent-[#fbe7b0]" aria-label="모자이크 강도" />
+                  <span className="w-[4.5rem] shrink-0 text-right text-[0.8125rem] text-white/80">{LEVELS[mosaicLevel - 1]}</span>
+                </label>
+              ) : (
+                <label className="flex items-center gap-3 text-white text-[0.875rem]">
+                  <span className="w-10 shrink-0">회전</span>
+                  <input type="range" min={-180} max={180} step={1} value={selected.rotation} onChange={e => update(selected.id, { rotation: Number(e.target.value) })} className="flex-1 accent-[#fbe7b0]" aria-label="회전" />
+                  <button onClick={() => update(selected.id, { rotation: 0 })} disabled={!selected.rotation} className="shrink-0 px-2.5 py-1 rounded-lg bg-white/10 text-[0.8125rem] font-bold disabled:opacity-30">바로</button>
+                </label>
+              )}
               <div className="flex gap-2">
                 {selected.kind !== 'mosaic' && (
                   <button onClick={() => update(selected.id, { flip: !selected.flip })} className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-[0.875rem] font-bold">⇋ 좌우 뒤집기</button>
@@ -346,26 +429,54 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
                 <button onClick={() => setSelectedId(null)} className="flex-1 py-2.5 rounded-xl bg-white/10 text-white text-[0.875rem] font-bold">＋ 더 붙이기</button>
                 <button onClick={() => { setCovers(prev => prev.filter(c => c.id !== selected.id)); setSelectedId(null); }} className="flex-1 py-2.5 rounded-xl bg-red-500/90 text-white text-[0.875rem] font-bold"><Icon name="trash" className="w-4 h-4 inline-block align-[-0.2em] mr-1" />지우기</button>
               </div>
-              <p className="text-center text-[0.75rem] text-white/60">끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 크기·회전을 바꿔요</p>
+              <p className="text-center text-[0.75rem] text-white/60">{selected.kind === 'mosaic' ? '끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 크기를 바꿔요' : '끌어서 옮기고, 두 손가락이나 ↻ 손잡이로 크기·회전을 바꿔요'}</p>
             </div>
           ) : (
             <div className="shrink-0 bg-black">
-              {/* 아래 칸: 내 이모티콘 / 그림 문자·모자이크 */}
+              {/* 아래 칸: 내 이모티콘 / 그림 문자 / 모자이크 */}
               <div className="flex gap-2 px-4 pt-2 pb-2" role="tablist" aria-label="붙일 것">
-                {([['sticker', '내 이모티콘'], ['emoji', '그림 문자 · 모자이크']] as const).map(([k, label]) => (
+                {([['sticker', '내 이모티콘'], ['emoji', '그림 문자'], ['mosaic', '모자이크']] as const).map(([k, label]) => (
                   <button key={k} role="tab" aria-selected={tool === k} onClick={() => setTool(k)}
                     className={`flex-1 py-2 rounded-xl text-[0.875rem] font-bold inline-flex items-center justify-center gap-1.5 ${tool === k ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{k === 'sticker' && <Icon name="sticker" className={`w-5 h-5 ${tool === k ? 'text-amber-500' : ''}`} />}{label}</button>
                 ))}
               </div>
               {tool === 'sticker' ? (
                 <StickerPanel picker={stickerPicker} closable={false} />
-              ) : (
+              ) : tool === 'emoji' ? (
                 <div className="px-4 pt-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
-                  <button onClick={() => addCover({ kind: 'mosaic', size: 0.3 })} className="w-full py-2.5 rounded-xl bg-white text-stone-900 text-[0.9375rem] font-bold">▦ 모자이크로 가리기</button>
                   <div className="grid grid-cols-9 gap-1">
                     {EMOJIS.map(e => <button key={e} onClick={() => addCover({ kind: 'emoji', emoji: e, size: 0.25 })} className="text-[1.6rem] py-1 rounded-lg active:bg-white/10" style={{ fontFamily: EMOJI_FONT }} aria-label={`${e} 붙이기`}>{e}</button>)}
                   </div>
                   <p className="text-center text-[0.75rem] text-white/60">붙인 것을 끌어서 옮기고, ↻ 손잡이나 아래 막대로 크기·회전을 바꿔요</p>
+                </div>
+              ) : (
+                <div className="px-4 pt-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-2.5">
+                  <label className="flex items-center gap-3 text-white text-[0.875rem]">
+                    <span className="w-10 shrink-0">강도</span>
+                    <input type="range" min={1} max={5} step={1} value={mosaicLevel} onChange={e => setMosaicLevel(Number(e.target.value))} className="flex-1 accent-[#fbe7b0]" aria-label="모자이크 강도" />
+                    <span className="w-[4.5rem] shrink-0 text-right text-[0.8125rem] text-white/80">{LEVELS[mosaicLevel - 1]}</span>
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { setDrawMode(false); addCover({ kind: 'mosaic', size: 0.3 }); }} className="py-2.5 rounded-xl bg-white text-stone-900 text-[0.9375rem] font-bold">⚪ 동그라미 넣기</button>
+                    <button onClick={() => { setDrawMode(d => !d); setSelectedId(null); }} aria-pressed={drawMode}
+                      className={`py-2.5 rounded-xl text-[0.9375rem] font-bold ${drawMode ? 'bg-[#fbe7b0] text-stone-900 ring-2 ring-[#e8b85a]' : 'bg-white/10 text-white'}`}>✍️ {drawMode ? '그리는 중' : '손으로 그리기'}</button>
+                  </div>
+                  {(drawMode || regions.length > 0) && (
+                    <div className="flex items-center gap-2">
+                      {drawMode && (
+                        <button onClick={() => setAutoFit(a => !a)} role="switch" aria-checked={autoFit}
+                          className={`flex-1 py-2 rounded-xl text-[0.8125rem] font-bold ${autoFit ? 'bg-white/15 text-[#fbe7b0]' : 'bg-white/5 text-white/60'}`}>✨ 자동으로 맞추기 {autoFit ? '켜짐' : '꺼짐'}</button>
+                      )}
+                      {regions.length > 0 && (
+                        <button onClick={() => setRegions(prev => prev.slice(0, -1))} className="flex-1 py-2 rounded-xl bg-white/10 text-white text-[0.8125rem] font-bold">↩ 그린 것 되돌리기</button>
+                      )}
+                    </div>
+                  )}
+                  <p className="text-center text-[0.75rem] text-white/60 leading-relaxed">
+                    {drawMode
+                      ? (autoFit ? '가릴 곳을 손가락으로 칠하거나 둘레를 빙 둘러 그리세요. 그 근처의 얼굴·물건을 찾아 그 부분만 가려요' : '손가락으로 칠한 곳(둘러 그리면 그 안쪽)을 그대로 가려요')
+                      : '동그라미는 끌어서 옮기고 ↻ 로 크기를 바꿔요'}
+                  </p>
                 </div>
               )}
             </div>

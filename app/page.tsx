@@ -21,8 +21,8 @@ import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { pushDeviceKey } from '@/lib/push-devices';
-import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker, type StickerPicker } from '@/components/StickerPanel';
-import { MAX_POST_STICKERS, STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
+import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
 import { appKind, type AppKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
@@ -2505,11 +2505,6 @@ export default function Home() {
     setPosts(prev => prev.filter(p => p.id !== postId));
     setSelectedPostDetail(prev => prev?.id === postId ? null : prev);
   };
-  // 게시글 이모티콘 고르기 칸: 누르면 바로 글에 붙음 (한 글에 MAX_POST_STICKERS 개까지)
-  const postStickerPicker = (open: boolean, setOpen: StickerPicker['setOpen'], list: Sticker[], setList: (f: (prev: Sticker[]) => Sticker[]) => void): StickerPicker => ({
-    open, setOpen, picked: null, setPicked: () => {}, sendPicked: async () => {}, close: () => setOpen(false),
-    pick: s => { if (list.length >= MAX_POST_STICKERS) { alert(`이모티콘은 한 글에 ${MAX_POST_STICKERS}개까지 넣을 수 있어요.`); return; } setList(prev => [...prev, s]); },
-  });
   const startEditPost = (post: Post) => {
     setEditingPostId(post.id);
     const parts = splitPostStickers(post.content);
@@ -4605,18 +4600,8 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 붙인 이모티콘 (× 로 빼기) */}
-                {composerStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={composerStickers} size="w-24 h-24" onRemove={i => setComposerStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
-
-                {/* 인스타그램처럼 아래 목록 */}
+                {/* 인스타그램처럼 아래 목록 (글에 이모티콘 넣기는 없앰 — 운영자 요청, 이모티콘은 사진 위 '이모티콘 붙이기'로) */}
                 <div className="border-t border-stone-100">
-                  <button type="button" onClick={() => setComposerStickerOpen(o => !o)} className={row} aria-expanded={composerStickerOpen}>
-                    <Icon name="smiley" className="w-6 h-6 text-stone-800 shrink-0" />
-                    <span className="flex-1 text-[0.9375rem] text-stone-900">이모티콘 넣기</span>
-                    {composerStickers.length > 0 && <span className="text-[0.875rem] text-stone-500">{composerStickers.length}개</span>}
-                    <span className="text-stone-400 text-xl">{composerStickerOpen ? '⌄' : '›'}</span>
-                  </button>
-                  {composerStickerOpen && <StickerPanel picker={postStickerPicker(composerStickerOpen, setComposerStickerOpen, composerStickers, setComposerStickers)} />}
                   <button type="button" onClick={() => setShowMusicPicker(true)} className={row}>
                     <Icon name="music" className="w-6 h-6 text-stone-800 shrink-0" />
                     <span className="flex-1 min-w-0">
@@ -6130,7 +6115,7 @@ export default function Home() {
                   <textarea ref={editTextRef} value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} placeholder="문구를 입력하세요..." aria-label="글 내용"
                     className="block w-full min-h-[7rem] px-4 pt-2 pb-3 text-[1.0625rem] leading-relaxed text-stone-900 bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
                   {user && <div className="px-4"><MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} /></div>}
-                  {/* 붙인 이모티콘 (× 로 빼기) */}
+                  {/* 예전에 글에 넣은 이모티콘 (× 로 빼기만, 새로 넣기는 없앰) */}
                   {editStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={editStickers} size="w-24 h-24" onRemove={i => setEditStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
                   {editEmojiOpen && (
                     <>
@@ -6139,7 +6124,6 @@ export default function Home() {
                           <button key={e} type="button" onClick={() => setEditContent(c => c + e)} className="w-11 h-11 rounded-full text-[1.5rem] active:bg-stone-100">{e}</button>
                         ))}
                       </div>
-                      <StickerPanel picker={postStickerPicker(editEmojiOpen, setEditEmojiOpen, editStickers, setEditStickers)} />
                     </>
                   )}
                   <div className="flex items-center border-t border-stone-100 px-2">
