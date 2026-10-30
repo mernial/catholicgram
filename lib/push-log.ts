@@ -18,6 +18,12 @@ export function readPushLog(userId: string): PushLogEntry[] {
 
 export const lastPushState = (userId: string): PushState | null => readPushLog(userId).at(-1)?.state ?? null;
 
+// 한 번이라도 켠 적이 있으면(이 휴대폰·이 앱) 켜기 안내 창을 다시 띄우지 않음 — 저절로 꺼지는 휴대폰에서 안내가 자꾸 떠서 불편했음(루비로사)
+export const everPushOn = (userId: string) => readPushLog(userId).some(e => e.state === 'on');
+// 직접 끄지 않았는데 꺼진 적이 있음 → 알림창에 '알림이 자꾸 꺼지나요?' 해결 방법
+export const LOST_WHY = '직접 끄지 않았는데 꺼짐';
+export const lastPushLossAt = (userId: string) => readPushLog(userId).filter(e => e.state === 'off' && e.why.startsWith(LOST_WHY)).at(-1)?.at ?? 0;
+
 // 바뀐 때만 적는다 (같은 상태가 이어지면 그대로) — force 면 같은 상태여도 적음 (켜지 못한 이유 등)
 export function notePush(userId: string, state: PushState, why: string, force = false) {
   const list = readPushLog(userId);

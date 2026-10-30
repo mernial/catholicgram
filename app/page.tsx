@@ -20,12 +20,12 @@ import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
-import { notePush, lastPushState, permissionWord } from '@/lib/push-log';
+import { notePush, lastPushState, permissionWord, everPushOn, lastPushLossAt, LOST_WHY } from '@/lib/push-log';
 import { pushDeviceKey } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
-import { appKind, type AppKind } from '@/lib/app-kind';
+import { appKind, browserName, type AppKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast as showToast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -419,12 +419,6 @@ export default function Home() {
   // 휴대폰 푸시 알림 상태
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushWant, setPushWant] = useState<boolean | null>(null); // 밀기 단추를 바꾼 뒤 켜기·끄기가 끝나기 전 (단추는 바꾼 쪽에)
-  // 켜 두었던 휴대폰 알림이 교우가 끄지 않았는데 꺼졌으면(휴대폰·브라우저가 허용을 거둠 등) 3일 기다리지 않고 바로 다시 켜기 안내 (율리T)
-  const pushLostRef = useRef(false);
-  const [pushPromptLost, setPushPromptLost] = useState(false);
-  // Play 테스트 앱에서 저절로 꺼짐: 휴대폰 설정에서 그 앱의 알림을 허용하지 않으면 앱을 열 때마다 허용이 '아직 안 물어봄'으로 돌아가
-  // 알림 받기가 지워짐(율리T 기록: 켬 → 몇 분 뒤 꺼짐 반복) → 설정에서 허용하는 법을 보여 주고, 돌아오면 바로 다시 확인
-  const pushRecheckRef = useRef(false);
   const [pushBusy, setPushBusy] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
@@ -3116,11 +3110,11 @@ export default function Home() {
       setPushStatus('off');
       enablePush(true);
     } else {
-      // 직접 끄지 않았는데 꺼졌으면(켜져 있던 기록이 있음) 바로 다시 켜기 안내 — 허용 창은 교우가 눌러야 뜸
+      // 직접 끄지 않았는데 꺼졌으면(켜져 있던 기록이 있음) 기록만 — 안내 창은 띄우지 않음(루비로사: 꺼졌다는 창이 자꾸 떠서 불편).
+      // 알림창에 '알림이 자꾸 꺼지나요?' 해결 방법이 보임 (hadPushLoss). 어느 앱·브라우저에서 꺼졌는지도 적어 원인을 봄
       if (storageGet(`pushOff:${userId}`) !== '1' && lastPushState(userId) === 'on') {
-        notePush(userId, 'off', `직접 끄지 않았는데 꺼짐 · 이 앱의 알림 받기가 없어지고 휴대폰 허용도 풀림 (${permText})`);
-        pushLostRef.current = true;
-        pushPromptCheckedRef.current = false;
+        const where = `${appKind() === 'play' ? 'Play 앱 · ' : ''}${browserName()}`;
+        notePush(userId, 'off', `${LOST_WHY} (${where}) · 이 앱의 알림 받기가 없어지고 휴대폰 허용도 풀림 (${permText})`);
       }
       setPushStatus('off');
     }
@@ -3182,10 +3176,7 @@ export default function Home() {
     checkPushStatus(user.id);
     let savedAt = Date.now();
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
-      // 휴대폰 설정에서 알림을 허용하고 돌아왔을 수 있으면 10분 기다리지 않고 바로 (허용됐으면 checkPushStatus 가 조용히 다시 켬)
-      if (!pushRecheckRef.current && Date.now() - savedAt < 10 * 60 * 1000) return;
-      pushRecheckRef.current = false;
+      if (document.visibilityState !== 'visible' || Date.now() - savedAt < 10 * 60 * 1000) return;
       savedAt = Date.now();
       checkPushStatus(user.id);
     };
@@ -3201,33 +3192,40 @@ export default function Home() {
     pushPromptCheckedRef.current = true;
     if (Notification.permission === 'granted') { if (storageGet(`pushOff:${user.id}`) !== '1') enablePush(true); return; }
     if (Notification.permission !== 'default') return;
+    // 한 번이라도 켠 적이 있으면 다시 묻지 않음: 휴대폰이 허용을 저절로 풀어 버리는 경우 켜기 안내가 자꾸 떠서 불편했음(루비로사) — 알림창 단추로 켬
+    if (everPushOn(user.id)) return;
     const key = `pushPromptAt:${user.id}`;
     const last = Number(storageGet(key) || 0);
-    const lost = pushLostRef.current; // 켜 두었는데 저절로 꺼짐 → 기다리지 않고 바로
-    if (!lost && Date.now() - last < 3 * 24 * 3600e3) return; // '나중에'를 누르면 3일 뒤 다시 안내
+    if (Date.now() - last < 3 * 24 * 3600e3) return; // '나중에'를 누르면 3일 뒤 다시 안내
     const timer = setTimeout(() => {
       storageSet(key, String(Date.now()));
-      pushLostRef.current = false;
-      setPushPromptLost(lost);
-      if (lost && appKind() === 'play') pushRecheckRef.current = true;
       setShowPushPrompt(true);
     }, 1200);
     return () => clearTimeout(timer);
   }, [user, needsProfileSetup, pushStatus]);
 
-  const acceptPushPrompt = async () => {
-    const playLost = pushPromptLost && appKind() === 'play';
-    setShowPushPrompt(false);
-    if (await enablePush()) setToast(playLost
-      ? { key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '다시 꺼지지 않게 휴대폰 설정에서 가톨릭그램 알림 허용도 꼭 켜 주세요', action: () => {}, stay: true }
-      : { key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
+  // Play 테스트 앱 알림이 저절로 꺼질 때 해결 방법.
+  // 크롬으로 열리는 Play 앱은 크롬이 앱을 열 때마다 사이트 알림 허용을 그 앱의 안드로이드 알림 허용에 맞춤 → 앱 정보에서 알림을 켜면 됨
+  // (한 휴대폰에 크롬으로 만든 예전 홈 화면 앱이 있으면 그 앱을 열 때도 그 앱의 허용으로 바뀌어 서로 뒤집힘 → 예전 앱 지우기).
+  // 삼성 인터넷으로 열리는 Play 앱은 그렇게 넘겨주는 기능(알림 위임)이 없어(구글 android-browser-helper 표) 앱 정보에서 켜도 소용없음
+  // (루비로사: 앱 정보에서 다 켰는데도 꺼짐) → 기본 브라우저를 크롬으로 바꾸면 Play 앱이 크롬으로 열림
+  const showPushFixGuide = () => {
+    const samsung = browserName() === '삼성 인터넷';
+    showAlert(samsung ? {
+      title: '휴대폰 알림이 자꾸 꺼질 때',
+      message: "지금 Play 테스트 앱이 '삼성 인터넷'으로 열리고 있어요. 삼성 인터넷으로 열리면 앱 정보에서 알림을 켜도 알림이 저절로 꺼질 수 있어요.\n\n이렇게 해 주세요\n① 휴대폰 설정 → 애플리케이션 → 기본 앱 선택 → 브라우저 앱 → 'Chrome' 고르기\n② 가톨릭그램(Play 테스트 앱)을 다시 열기 (처음 한 번은 로그인이 필요할 수 있어요)\n③ 알림창 위 '휴대폰 알림'을 켜기\n\nChrome 이 없으면 Play 스토어에서 'Chrome'을 먼저 설치해 주세요.",
+      icon: 'bell',
+    } : {
+      title: '휴대폰 알림이 자꾸 꺼질 때',
+      message: "이렇게 해 주세요\n① 홈 화면의 가톨릭그램 아이콘(Play 테스트 앱)을 꾹 → ⓘ 애플리케이션 정보 → 알림 → '알림 허용' 켜기\n② 가톨릭그램 아이콘이 둘이면 예전 앱은 지우기 (두 앱이 알림 허용을 서로 바꿔요)\n③ 알림창 위 '휴대폰 알림'을 켜기",
+      icon: 'bell',
+    });
   };
-  // 안내 창을 띄운 채 휴대폰 설정에서 허용하고 돌아와 저절로 다시 켜지면 창을 닫고 알려 줌
-  useEffect(() => {
-    if (pushStatus !== 'on' || !showPushPrompt || !pushPromptLost) return;
+
+  const acceptPushPrompt = async () => {
     setShowPushPrompt(false);
-    setToast({ key: 'push-on', icon: '🔔', title: '알림이 다시 켜졌어요', body: '댓글·메시지 소식을 다시 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
-  }, [pushStatus, showPushPrompt, pushPromptLost]);
+    if (await enablePush()) setToast({ key: 'push-on', icon: '🔔', title: '알림이 켜졌어요', body: '댓글·메시지·축일 소식을 휴대폰으로 알려드릴게요', action: () => {}, stay: true });
+  };
 
   useEffect(() => {
     const onVisible = () => {
@@ -6327,38 +6325,14 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/60 z-[75] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setShowPushPrompt(false)}>
           <div className="bg-white w-full sm:w-96 rounded-t-3xl sm:rounded-3xl p-6 flex flex-col gap-4 pb-safe text-center" onClick={e => e.stopPropagation()}>
             <IconBadge name="bell" tone="gold" size="lg" />
-            <h2 className="font-bold text-lg text-stone-900">{pushPromptLost ? '휴대폰 알림이 꺼져 있어요' : '휴대폰 알림을 켜주세요'}</h2>
-            {pushPromptLost && appKind() === 'play' ? (
-              // Play 테스트 앱: 휴대폰 설정에서 이 앱의 알림을 허용해야 다시 꺼지지 않음 (앱 안의 허용만으로는 앱을 다시 열 때 풀림)
-              <div className="flex flex-col gap-2.5 text-left">
-                <p className="text-[0.9375rem] text-stone-600 leading-relaxed text-center">
-                  Play 테스트 앱은 <b className="text-stone-900">휴대폰 설정에서도</b> 알림을 허용해 두어야 다시 꺼지지 않아요. 한 번만 해 주세요.
-                </p>
-                <ol className="flex flex-col gap-1.5 text-[0.9375rem] text-stone-800 bg-stone-50 rounded-2xl p-3.5">
-                  {['홈 화면의 가톨릭그램 아이콘(지금 보고 계신 Play 테스트 앱)을 꾹 누르기', 'ⓘ (애플리케이션 정보) 누르기', "'알림' 누르기 → '알림 허용' 켜기", '가톨릭그램으로 돌아오면 저절로 다시 켜져요'].map((t, i) => (
-                    <li key={i} className="flex gap-2 leading-snug">
-                      <span className="w-6 h-6 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                      <span>{t}</span>
-                    </li>
-                  ))}
-                </ol>
-                <p className="text-[0.8125rem] text-stone-500 leading-snug text-center">같은 가톨릭그램 아이콘이 둘이면 예전 앱은 지워 주세요.</p>
-              </div>
-            ) : pushPromptLost ? (
-              <p className="text-sm text-stone-600 leading-relaxed">
-                켜 두셨던 알림이 휴대폰에서 꺼졌어요.<br />아래 단추를 누르면 다시 켜 드릴게요.
-              </p>
-            ) : (
-              <p className="text-sm text-stone-600 leading-relaxed">
-                내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
-              </p>
-            )}
-            {!(pushPromptLost && appKind() === 'play') && (
-              <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
-                다음 창에서 <u>허용</u>을 눌러주세요 👍
-              </p>
-            )}
-            <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">{pushPromptLost ? '알림 다시 켜기' : '알림 받기'}</button>
+            <h2 className="font-bold text-lg text-stone-900">휴대폰 알림을 켜주세요</h2>
+            <p className="text-sm text-stone-600 leading-relaxed">
+              내 글에 달린 댓글, 새 메시지,<br />교우들의 축일 소식을 바로 알려드려요.
+            </p>
+            <p className="text-sm font-bold text-stone-900 bg-yellow-100 rounded-xl px-3 py-2">
+              다음 창에서 <u>허용</u>을 눌러주세요 👍
+            </p>
+            <button onClick={acceptPushPrompt} disabled={pushBusy} className="w-full bg-stone-900 text-white py-3.5 rounded-xl text-base font-bold">알림 받기</button>
             <button onClick={() => setShowPushPrompt(false)} className="text-sm text-stone-400">나중에</button>
           </div>
         </div>
@@ -6413,6 +6387,15 @@ export default function Home() {
               </div>
               <button onClick={() => setShowNotifications(false)} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-0.5 shrink-0" aria-label="알림 닫기">×</button>
               </div>
+              {/* Play 테스트 앱에서 알림이 저절로 꺼진 적이 있으면(최근 7일) 해결 방법 (루비로사·율리T) */}
+              {user && appKind() === 'play' && Date.now() - lastPushLossAt(user.id) < 7 * 24 * 3600e3 && (
+                <button type="button" onClick={showPushFixGuide}
+                  className="w-full text-left text-[0.8125rem] px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-1.5">
+                  <Icon name="bell" className="w-[1.1em] h-[1.1em] shrink-0" />
+                  <span className="min-w-0">휴대폰 알림이 자꾸 꺼지나요?</span>
+                  <b className="ml-auto shrink-0">해결 방법 ›</b>
+                </button>
+              )}
               {/* 지우기: 확인한(눌러 본) 알림만 / 확인하지 않은 알림까지 모두 */}
               <div className="flex gap-2">
                 <button onClick={clearSeenAlerts} className="flex-1 text-xs py-1.5 rounded-lg border border-stone-200 text-stone-600"><Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />확인한 알림 지우기</button>
