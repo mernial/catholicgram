@@ -96,6 +96,7 @@ import { outsideHref } from '@/lib/open-outside';
 import { watchVisualViewport } from '@/lib/visual-viewport';
 import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
+import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -5362,8 +5363,11 @@ export default function Home() {
                 const mid = String(msg.id);
                 if (dmHidden.hidden.has(mid)) return null; // 내 화면에서만 지운 메시지
                 const picked = !!dmCapture?.has(mid);
+                const newDay = isNewChatDay(chatMessages, i, m => dmHidden.hidden.has(String(m.id)));
                 return (
-                  <div key={msg.id} id={`dm-${msg.id}`} className={`relative flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
+                  <Fragment key={msg.id}>
+                  {newDay && <ChatDayDivider iso={msg.created_at} />}
+                  <div id={`dm-${msg.id}`} className={`relative flex items-end gap-1.5 ${isMe ? 'justify-end' : 'justify-start'} ${picked ? 'bg-amber-200/50 rounded-2xl -mx-2 px-2 py-1' : ''}`}>
                     {/* 대화 골라서 캡처하는 중: 줄을 누르면 고르기 */}
                     {dmCapture && (
                       <button type="button" onClick={() => setDmCapture(prev => { const n = new Set(prev); if (n.has(mid)) n.delete(mid); else n.add(mid); return n; })}
@@ -5457,6 +5461,7 @@ export default function Home() {
                     })()}
                     {!isMe && <span className="text-[0.75rem] leading-tight text-stone-400 shrink-0 flex flex-col">{msg.edited_at && !msg.deleted_at && <span>수정됨</span>}{dmBookmarks.has(mid) && <span aria-label="책갈피">🔖</span>}<span>{time}</span></span>}
                   </div>
+                  </Fragment>
                 );
               })
             )}
