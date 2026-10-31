@@ -23,7 +23,7 @@ import { UpdateNoteBody } from '@/components/UpdateNotes';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -34,6 +34,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
   onOpenTester?: () => void;  // 안드로이드 앱 테스터 신청 (신청 표가 준비된 경우)
+  onSamsungGuide?: (preview: boolean) => void; // 삼성 인터넷 안내 공지 (삼성 인터넷이면 '해결 방법', 관리자는 미리 보기)
   onOpenStats?: () => void;   // 관리자에게만 전달
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
@@ -270,6 +271,13 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                   <p className="text-[0.8125rem] text-stone-500">지금 쓰는 앱</p>
                   <p className="text-[0.9375rem] font-bold text-stone-800">{appInfo.title}</p>
                   <p className="text-[0.8125rem] text-stone-500 leading-snug">{appInfo.detail}</p>
+                  {/* 삼성 인터넷으로 열려 있으면 알림이 꺼지거나 화면이 어두워질 수 있어 → 크롬으로 바꾸는 안내 (components/SamsungGuide) */}
+                  {onSamsungGuide && `${appInfo.title} ${appInfo.detail}`.includes('삼성 인터넷') && (
+                    <button type="button" onClick={() => onSamsungGuide(false)} className="mt-1.5 text-[0.875rem] font-bold text-sky-700 underline underline-offset-2">알림이 꺼지거나 화면이 어두워지면 · 해결 방법 ›</button>
+                  )}
+                  {onSamsungGuide && onOpenMembers && (
+                    <button type="button" onClick={() => onSamsungGuide(true)} className="mt-1.5 block text-[0.8125rem] text-stone-500 underline underline-offset-2">삼성 인터넷 안내 공지 미리 보기 (관리자)</button>
+                  )}
                   {pushInfo && <p className="mt-1 text-[0.8125rem] text-stone-500 leading-snug">{pushInfo}</p>}
                   {/* 알림이 저절로 꺼진다는 교우: 언제·왜 켜지고 꺼졌는지 (이 휴대폰·이 앱 기록, 최근 것부터) */}
                   {pushLog.length > 0 && (
