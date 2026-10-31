@@ -116,7 +116,8 @@ def run(cmd):
 
 
 def make_clip(src, dst, start, meta):
-    base = ['ffmpeg', '-v', 'info', '-y', '-ss', f'{start:.2f}', '-t', f'{CLIP:.2f}', '-i', src]
+    # -vn: mp3 안의 앨범 그림(표지)은 빼고 소리만 (넣으면 m4a 에 그림을 넣으려다 실패했음)
+    base = ['ffmpeg', '-v', 'info', '-y', '-ss', f'{start:.2f}', '-t', f'{CLIP:.2f}', '-i', src, '-vn', '-map', '0:a:0']
     # 1) 소리 크기 재기
     p = run(base + ['-af', 'loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json', '-f', 'null', '-'])
     m = re.search(r'\{\s*"input_i"[^}]*\}', p.stderr)
