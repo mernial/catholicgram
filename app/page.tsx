@@ -99,6 +99,7 @@ import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 import { UpdatePopup } from '@/components/UpdateNotes';
+import { SamsungGuidePopup, isSamsungInternet, samsungGuideKey } from '@/components/SamsungGuide';
 import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
@@ -442,6 +443,10 @@ export default function Home() {
   const [updateNotesHidden, setUpdateNotesHidden] = useState<string[] | null>(null);
   const [updateNotesClosed, setUpdateNotesClosed] = useState<string[]>([]);
   const [updateNotesReady, setUpdateNotesReady] = useState(false);
+  // 삼성 인터넷으로 열린 교우에게 '알림이 꺼지거나 화면이 어두워지면 크롬으로' 안내 (components/SamsungGuide, 운영자 요청)
+  const [samsungGuideHidden, setSamsungGuideHidden] = useState(true);   // 이 휴대폰에서 '다시 보지 않기' 했는지 (읽기 전엔 숨김)
+  const [samsungGuideClosed, setSamsungGuideClosed] = useState(false);  // 이번에 '닫기'
+  const [samsungGuideOpen, setSamsungGuideOpen] = useState<null | 'open' | 'preview'>(null); // 설정·알림창에서 직접 열기, 관리자 미리 보기
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -3287,11 +3292,8 @@ export default function Home() {
   // (루비로사: 앱 정보에서 다 켰는데도 꺼짐) → 기본 브라우저를 크롬으로 바꾸면 Play 앱이 크롬으로 열림
   const showPushFixGuide = () => {
     const samsung = browserName() === '삼성 인터넷';
-    showAlert(samsung ? {
-      title: '휴대폰 알림이 자꾸 꺼질 때',
-      message: "지금 Play 테스트 앱이 '삼성 인터넷'으로 열리고 있어요. 삼성 인터넷으로 열리면 앱 정보에서 알림을 켜도 알림이 저절로 꺼질 수 있어요.\n\n이렇게 해 주세요\n① 휴대폰 설정 → 애플리케이션 → 기본 앱 선택 → 브라우저 앱 → 'Chrome' 고르기\n② 가톨릭그램(Play 테스트 앱)을 다시 열기 (처음 한 번은 로그인이 필요할 수 있어요)\n③ 알림창 위 '휴대폰 알림'을 켜기\n\nChrome 이 없으면 Play 스토어에서 'Chrome'을 먼저 설치해 주세요.",
-      icon: 'bell',
-    } : {
+    if (samsung) { setShowNotifications(false); setSamsungGuideOpen('open'); return; } // 삼성 인터넷 안내 공지 창으로 (크롬으로 바꾸는 법, components/SamsungGuide)
+    showAlert({
       title: '휴대폰 알림이 자꾸 꺼질 때',
       message: "이렇게 해 주세요\n① 홈 화면의 가톨릭그램 아이콘(Play 테스트 앱)을 꾹 → ⓘ 애플리케이션 정보 → 알림 → '알림 허용' 켜기\n② 가톨릭그램 아이콘이 둘이면 예전 앱은 지우기 (두 앱이 알림 허용을 서로 바꿔요)\n③ 알림창 위 '휴대폰 알림'을 켜기",
       icon: 'bell',
@@ -3845,6 +3847,7 @@ export default function Home() {
     setUpdateNotesReady(false);
     if (!user) { setUpdateNotesHidden(null); return; }
     try { setUpdateNotesHidden(JSON.parse(storageGet(hiddenNotesKey(user.id)) || '[]')); } catch { setUpdateNotesHidden([]); }
+    setSamsungGuideHidden(storageGet(samsungGuideKey(user.id)) === '1');
     const t = setTimeout(() => setUpdateNotesReady(true), 2500);
     return () => clearTimeout(t);
   }, [user]);
@@ -3939,7 +3942,12 @@ export default function Home() {
     storageSet(hiddenNotesKey(user.id), JSON.stringify(next));
   };
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showUpdateNotes;
+  // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
+  const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
+    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showUpdateNotes);
+  const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
+  const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showUpdateNotes || showSamsungGuide;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -3965,6 +3973,7 @@ export default function Home() {
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     if (showUpdateNotes) closeUpdateNotes();
+    if (showSamsungGuide) closeSamsungGuide();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -5708,6 +5717,7 @@ export default function Home() {
           feastDay={profile?.feast_day || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={openProfileEdit}
           onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
+          onSamsungGuide={(preview: boolean) => { setShowSettings(false); setSamsungGuideOpen(preview ? 'preview' : 'open'); }}
           onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
           initialView={settingsView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
@@ -6072,6 +6082,7 @@ export default function Home() {
 
       {/* 업데이트 소식 (lib/update-notes): 고친 것·새로 생긴 것·바뀐 것 */}
       {showUpdateNotes && <UpdatePopup notes={updateNotesToShow} onHide={hideUpdateNotes} onClose={closeUpdateNotes} />}
+      {showSamsungGuide && <SamsungGuidePopup kind={appKind()} preview={samsungGuideOpen === 'preview'} onClose={closeSamsungGuide} onHide={samsungGuideOpen ? undefined : hideSamsungGuide} />}
 
       {/* 공지사항 */}
       {showNotices && (
