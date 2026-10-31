@@ -99,6 +99,7 @@ import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChat
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 import { UpdatePopup } from '@/components/UpdateNotes';
 import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
+import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -278,13 +279,13 @@ type Tab = 'home' | 'explore' | 'reels' | 'profile' | 'messages' | 'chat' | 'ano
 interface ScreenState { screen: true; tab: Tab; viewingUserId?: string | null; chatUser?: UserProfile | null; base?: true }
 // 나를 팔로우한 사람 (알림용). iFollow: 내가 맞팔로우 중인지
 interface FollowRequest { id: string; follower: UserProfile; created_at?: string; iFollow?: boolean }
-interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; }
+interface UnreadFrom { partner: UserProfile; count: number; lastMessage: string; lastAt: string; lastSilent?: boolean; }
 // 단체 채팅방 목록 (supabase/group-chats.sql 의 my_group_chats / admin_group_chats)
 interface GroupChatRow { id: string; name: string; member_count: number; last_message: string | null; last_sender: string | null; last_kind: string | null; last_message_at: string; unread: number }
 interface AdminGroupRow { id: string; name: string; created_at: string; last_message_at: string; member_count: number; member_names: string | null; message_count: number; last_message: string | null; last_sender: string | null }
 // anon: 익명 고민글 답글 알림 (mine = 내 고민글에 달린 답글, author = 내가 답글을 단 고민글에 글쓴이가 남긴 답글). id 는 'a:답글id', post_id 는 고민글 id
 interface CommentNotification { id: string; post_id: string; post_content: string; content: string; author_name: string; created_at: string; is_reply?: boolean; mention?: 'post' | 'comment'; anon?: 'mine' | 'author'; post_image?: string | null; }
-interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; images?: string[] | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; }
+interface Message { id: string; sender_id: string; receiver_id: string; content: string; created_at: string; read_at?: string | null; image_url?: string | null; images?: string[] | null; deleted_at?: string | null; reply_to?: string | number | null; edited_at?: string | null; silent?: boolean | null; }
 // 휴대폰 알림창에 남은 그 대화(채팅·단체방)의 알림을 닫는다 (대화방을 열었을 때)
 const closeOsNotifications = (tag: string) => {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
@@ -1582,8 +1583,21 @@ export default function Home() {
   const [anonFocusId, setAnonFocusId] = useState<string | null>(null); // 알림으로 연 고민글
   const [anonFocusReply, setAnonFocusReply] = useState<string | null>(null); // 그 글의 새 답글
 
+  // 조용히 보내기(보내기 단추 꾹 → 🔕): 보내는 순간 켜 두면 아래 보내기 함수들이 읽음 (components/QuietSend)
+  const quietRef = useRef(false);
+  // 메시지 넣기: 조용히 보내기면 silent 표시(받는 교우의 앱 배너·소리도 안 울림, supabase/quiet-send.sql) — 그 칸이 아직 없으면 표시 없이
+  const insertDm = async (row: Record<string, unknown>) => {
+    let res = await supabase.from('messages').insert(row).select('id').single();
+    if (res.error && row.silent && (res.error.code === 'PGRST204' || res.error.code === '42703') && /silent/.test(res.error.message)) {
+      const rest = { ...row };
+      delete rest.silent;
+      res = await supabase.from('messages').insert(rest).select('id').single();
+    }
+    return res;
+  };
   const sendMessage = async (e?: React.FormEvent, typed?: string) => {
     e?.preventDefault();
+    const quiet = quietRef.current;
     const newMsg = (typed ?? messageInput).trim();
     if (!user || !currentChatUser || !newMsg) return;
     // 내 메시지 고치기
@@ -1605,8 +1619,8 @@ export default function Home() {
     setMessageInput('');
     setReplyTo(null);
     dmTyping.stop();
-    const row = { sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg, ...(reply ? { reply_to: reply.id } : {}) };
-    let { data: sent, error } = await supabase.from('messages').insert(row).select('id').single();
+    const row = { sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg, ...(reply ? { reply_to: reply.id } : {}), ...(quiet ? { silent: true } : {}) };
+    let { data: sent, error } = await insertDm(row);
     // 답장 칸이 아직 없으면(SQL 실행 전) 답장 표시 없이라도 보낸다
     if (error && reply && (error.code === '42703' || error.code === 'PGRST204')) {
       ({ data: sent, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: currentChatUser.id, content: newMsg }).select('id').single());
@@ -1619,7 +1633,8 @@ export default function Home() {
       return;
     }
     fetchChatMessages(currentChatUser.id);
-    if (sent) sendPush('message', sent.id);
+    if (quiet) showToast('🔕 조용히 보냈어요 · 상대에게 알림이 울리지 않아요', 2200);
+    else if (sent) sendPush('message', sent.id);
   };
 
   // 이모티콘 보내기: 입력칸 옆 😊 → 아래 이모티콘 칸.
@@ -1627,6 +1642,7 @@ export default function Home() {
   // 따로 보내면 휴대폰 알림이 두 번·시간이 두 번 보였음 (운영자)
   const sendDmSticker = async (s: Sticker) => {
     if (!user || !currentChatUser) return;
+    const quiet = quietRef.current;
     const typed = (messageInputRef.current?.value ?? messageInput).trim();
     if (typed && !editingMessage) {
       chatStick.atBottom.current = true;
@@ -1637,14 +1653,15 @@ export default function Home() {
     const reply = replyTo;
     setReplyTo(null);
     const content = stickerText(s);
-    let { data: sent, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: to, content, ...(reply ? { reply_to: reply.id } : {}) }).select('id').single();
+    let { data: sent, error } = await insertDm({ sender_id: user.id, receiver_id: to, content, ...(reply ? { reply_to: reply.id } : {}), ...(quiet ? { silent: true } : {}) });
     if (error && reply && (error.code === '42703' || error.code === 'PGRST204')) {
       ({ data: sent, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: to, content }).select('id').single());
     }
     if (error) { setReplyTo(reply); alert(`이모티콘을 보내지 못했습니다.\n(${error.message})`); return; }
     chatStick.atBottom.current = true;
     fetchChatMessages(to);
-    if (sent) sendPush('message', sent.id);
+    if (quiet) showToast('🔕 조용히 보냈어요 · 상대에게 알림이 울리지 않아요', 2200);
+    else if (sent) sendPush('message', sent.id);
   };
   const dmSticker = useStickerPicker(sendDmSticker);
   const dmStickerTap = useCloseStickersOnTap(dmSticker); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
@@ -1662,6 +1679,11 @@ export default function Home() {
     }
     sendMessage(e);
   };
+  // 보내기 단추를 꾹 → '🔕 조용히 보내기' (보내는 함수들이 시작할 때 quietRef 를 읽으므로 부른 바로 뒤에 끔)
+  const dmQuiet = useQuietSend(() => {
+    quietRef.current = true;
+    try { submitDm(); } finally { quietRef.current = false; }
+  });
 
   // 메시지로 사진·동영상 보내기 (여러 장이면 묶어서 / 한 장씩 고르기 — components/ChatMedia)
   const dmMedia = useChatMedia({
@@ -2730,15 +2752,15 @@ export default function Home() {
   // 아직 읽지 않은 받은 메시지 (보낸 사람별로 묶음)
   const fetchUnreadMessages = async (userId: string) => {
     fetchGroupChats();
-    const { data } = await supabase.from('messages').select('sender_id, content, created_at')
+    const { data } = await supabase.from('messages').select('*') // silent(조용히 보내기) 칸은 SQL 전이면 없어서 '*'
       .eq('receiver_id', userId).is('read_at', null)
       .order('created_at', { ascending: false }).limit(100);
     if (!data || data.length === 0) { setUnreadMessages([]); return; }
-    const grouped = new Map<string, { count: number; lastMessage: string; lastAt: string }>();
+    const grouped = new Map<string, { count: number; lastMessage: string; lastAt: string; lastSilent: boolean }>();
     data.filter(m => afterLeft(m.sender_id, m.created_at)).forEach(m => {
       const g = grouped.get(m.sender_id);
       if (g) g.count += 1;
-      else grouped.set(m.sender_id, { count: 1, lastMessage: chatPreview(m.content) || '삭제된 메시지', lastAt: m.created_at });
+      else grouped.set(m.sender_id, { count: 1, lastMessage: chatPreview(m.content) || '삭제된 메시지', lastAt: m.created_at, lastSilent: !!m.silent });
     });
     const { data: profiles } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type')
       .in('id', Array.from(grouped.keys()));
@@ -3363,7 +3385,8 @@ export default function Home() {
     });
     unreadMessages.forEach(u => {
       const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
-      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner), at: u.lastAt });
+      // 조용히 보낸 메시지(🔕)는 배너·소리 없이 — 안 읽은 숫자에만
+      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow && !u.lastSilent) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner), at: u.lastAt });
     });
     notifications.forEach(n => {
       if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n), at: n.created_at });
@@ -5421,6 +5444,7 @@ export default function Home() {
                         ) : null}
                         {msg.edited_at && !msg.deleted_at && <span className="text-stone-400">수정됨</span>}
                         {dmBookmarks.has(mid) && <span aria-label="책갈피">🔖</span>}
+                        {msg.silent && <span aria-label="조용히 보낸 메시지" title="조용히 보냄">{QUIET_MARK}</span>}
                         <span className="text-stone-400">{time}</span>
                       </div>
                     )}
@@ -5546,9 +5570,13 @@ export default function Home() {
             <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(!dmSticker.open); leaveInputForPanel(messageInputRef.current); }} />
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
             <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { closePanelOnInputFocus(() => dmSticker.setOpen(false)); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={!messageInput.trim() && !dmSticker.picked} className="shrink-0 bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors">
-              <Icon name="sendRight" className="w-[1.375rem] h-[1.375rem]" />
-            </button>
+            {/* 보내기 (꾹 누르면 '🔕 조용히 보내기') */}
+            <div className="relative shrink-0">
+              {!editingMessage && dmQuiet.menu}
+              <button type="submit" {...(editingMessage ? { onPointerDown: (e: React.PointerEvent) => e.preventDefault(), onMouseDown: (e: React.MouseEvent) => e.preventDefault() } : dmQuiet.buttonProps)} disabled={!messageInput.trim() && !dmSticker.picked} aria-label="보내기 (꾹 누르면 조용히 보내기)" className="bg-blue-500 text-white w-10 h-10 rounded-full flex items-center justify-center disabled:opacity-50 hover:bg-blue-600 transition-colors select-none [-webkit-touch-callout:none]">
+                <Icon name="sendRight" className="w-[1.375rem] h-[1.375rem]" />
+              </button>
+            </div>
           </form>}
           {dmSticker.open && !dmCapture && !dmRequest && !editingMessage && <StickerPanel picker={dmSticker} />}
           {captureAsk && (

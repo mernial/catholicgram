@@ -15,6 +15,7 @@ import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, t
 import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
+import { useQuietSend } from '@/components/QuietSend';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import { initial } from '@/lib/fancy-name';
 import { usePressGestures } from '@/lib/use-press-gestures';
@@ -266,9 +267,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     if (stickerPick.picked && !editing) { submit(); return; }
     send(undefined, typed);
   };
+  // 조용히 보내기(보내기 단추 꾹 → 🔕): 보내는 함수가 시작할 때 읽고, 보낸 뒤 휴대폰 알림을 보내지 않음
+  const quietRef = useRef(false);
+  const quietDone = () => toast('🔕 조용히 보냈어요 · 알림이 울리지 않아요', 2200);
   const send = async (e?: React.FormEvent, typed?: string) => {
     e?.preventDefault();
     if (sending || adminView) return;
+    const quiet = quietRef.current;
     const ta = inputRef.current;
     const raw = typed ?? ta?.value ?? input;
     const text = raw.trim();
@@ -315,12 +320,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     }
     atBottomRef.current = true;
     addMessages([data as GroupMessage]);
-    onSent?.((data as GroupMessage).id);
+    if (quiet) quietDone(); else onSent?.((data as GroupMessage).id);
   };
 
   // 이모티콘 보내기. 입력칸에 쓰던 글이 있으면(미리 보기를 누르거나 같은 이모티콘을 한 번 더 눌러도) 글과 함께 한 메시지로 (알림·시간 한 번)
   const sendSticker = async (s: Sticker) => {
     if (sending || adminView) return;
+    const quiet = quietRef.current;
     const typed = (inputRef.current?.value ?? input).trim();
     if (typed && !editing) { await send(undefined, joinChatSticker(typed.slice(0, 950), s)); return; }
     setSending(true);
@@ -337,7 +343,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     }
     atBottomRef.current = true;
     addMessages([data as GroupMessage]);
-    onSent?.((data as GroupMessage).id);
+    if (quiet) quietDone(); else onSent?.((data as GroupMessage).id);
   };
   const stickerPick = useStickerPicker(sendSticker);
   const stickerTap = useCloseStickersOnTap(stickerPick); // 이모티콘 칸이 떠 있을 때 대화 칸을 톡 누르면 닫힘
@@ -354,6 +360,10 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     }
     send();
   };
+  const quietSend = useQuietSend(() => {
+    quietRef.current = true;
+    try { submit(); } finally { quietRef.current = false; }
+  });
 
   const remove = async (m: GroupMessage) => {
     setMenuMsg(null);
@@ -681,7 +691,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             aria-label="단체 채팅방에 보낼 말"
             onFocus={() => closePanelOnInputFocus(() => stickerPick.setOpen(false))}
           />
-          <button type="submit" onPointerDown={e => e.preventDefault()} onMouseDown={e => e.preventDefault()} disabled={(!input.trim() && !stickerPick.picked) || sending} className="shrink-0 h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
+          {/* 보내기 (꾹 누르면 '🔕 조용히 보내기') */}
+          <div className="relative shrink-0">
+            {!editing && quietSend.menu}
+            <button type="submit" {...(editing ? { onPointerDown: (e: React.PointerEvent) => e.preventDefault(), onMouseDown: (e: React.MouseEvent) => e.preventDefault() } : quietSend.buttonProps)} disabled={(!input.trim() && !stickerPick.picked) || sending} className="h-11 px-4 rounded-2xl bg-blue-600 disabled:bg-stone-300 text-white font-bold text-[0.9375rem] select-none [-webkit-touch-callout:none]">{sending ? '...' : editing ? '고치기' : '보내기'}</button>
+          </div>
         </form>
         {stickerPick.open && !editing && <StickerPanel picker={stickerPick} />}
         </>
