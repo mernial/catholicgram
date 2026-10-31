@@ -3,10 +3,10 @@
 // 앱 아이콘(꽉 찬 네모)을 주면 흰 네모가 된다 → 투명 바탕에 흰 ☧ 그림 (public/badge.svg 로 만듦)
 const BADGE = '/badge-96.png';
 const isApple = () => /iPhone|iPad|iPod|Macintosh/.test(self.navigator.userAgent) && !/Chrome|CriOS|Android/.test(self.navigator.userAgent);
-// 앱 화면에 '이 알림의 대화방을 지금 보고 있나요?' 묻기 (0.5초 안에 답이 없으면 아니라고 봄)
+// 앱 화면에 '이 알림의 대화방을 지금 보고 있나요?' 묻기 (1.5초 안에 답이 없으면 아니라고 봄 — 앱이 화면을 그리느라 바쁘면 늦게 답함)
 const askViewing = (client, url) => new Promise(resolve => {
   const channel = new MessageChannel();
-  const timer = setTimeout(() => resolve(false), 500);
+  const timer = setTimeout(() => resolve(false), 1500);
   channel.port1.onmessage = (e) => { clearTimeout(timer); resolve(e.data === true); };
   try { client.postMessage({ type: 'viewing?', url }, [channel.port2]); } catch { clearTimeout(timer); resolve(false); }
 });

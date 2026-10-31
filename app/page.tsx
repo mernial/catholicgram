@@ -98,6 +98,7 @@ import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
 import { UpdatePopup } from '@/components/UpdateNotes';
+import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -1395,10 +1396,16 @@ export default function Home() {
     const q = new URL(url, window.location.origin).searchParams;
     const chatWith = q.get('chat'), group = q.get('group');
     const cur = currentScreenRef.current;
-    if (chatWith) return cur.tab === 'chat' && cur.chatUser?.id === chatWith;
-    if (group) return !!openGroup && !openGroup.adminView && openGroup.id === group;
+    if (chatWith) return cur.tab === 'chat' && cur.chatUser?.id === chatWith && !showLounge && !openGroup;
+    if (group) return !!openGroup && !openGroup.adminView && openGroup.id === group && !showLounge;
+    if (q.get('lounge')) return showLounge; // 사랑방에서 대화 중에 사랑방 부르기(@아이디·@관리자) 알림·배너도 띄우지 않음
     return false;
   };
+  // 지금 화면에 보이는 대화방을 서버에 알림 → 그 방의 휴대폰 알림은 어느 기기로도 오지 않음 (lib/chat-presence, SQL 필요)
+  // 사랑방·단체방은 대화 목록 위에 뜨는 창이라 그것이 먼저
+  useChatPresence(user?.id, showLounge ? presenceRoom.lounge
+    : openGroup && !openGroup.adminView ? presenceRoom.group(openGroup.id)
+    : activeTab === 'chat' && currentChatUser ? presenceRoom.dm(currentChatUser.id) : null);
   const openGroupChat = (id: string, adminView = false) => {
     closeOsNotifications(`group-${id}`);
     if (!user) { setShowAuthModal(true); return; }
