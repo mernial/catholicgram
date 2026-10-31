@@ -68,7 +68,7 @@ export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
-                  {gifts?.[t.id] ? <p className="text-xs text-amber-700 truncate">🎁 {gifts[t.id]}</p> : t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
+                  {gifts?.[t.id] ? <p className="text-xs text-amber-700 truncate">🎁 {gifts[t.id]}</p> : t.credit ? <p className="text-[0.75rem] leading-snug text-stone-500">{t.credit}</p> : t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
                 </div>
                 {chosen
                   ? <span className="text-xs px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold shrink-0">✓ 지금 곡</span>

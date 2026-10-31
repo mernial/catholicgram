@@ -1,0 +1,43 @@
+// 자동으로 만든 파일 — scripts/bgm-cc/to-ts.py (손으로 고치지 말고 scripts/bgm-cc/tracks.json 을 고쳐 다시 만들기)
+// 게시글 배경음악: CC0(Free Music Archive)·CC BY 4.0(Kevin MacLeod, incompetech.com) 곡을 30초로 자른 것 (public/bgm/cc, docs/music-licenses.md)
+// credit = 앱에 꼭 보여야 하는 출처 표시 (CC BY 는 곡 이름·작곡가·라이선스·편집함 필수)
+import type { BgmTrack } from '@/lib/music';
+
+export const CC_BGM: BgmTrack[] = [
+  { id: "cc-lullabies-for-the-end-of-the-world-1", title: "Lullabies For The End Of The World #1", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-1.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-lullabies-for-the-end-of-the-world-2", title: "Lullabies For The End Of The World #2", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-2.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-lullabies-for-the-end-of-the-world-4", title: "Lullabies For The End Of The World #4", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-4.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-hope-on-repeat", title: "Hope On Repeat", artist: "HoliznaCC0", url: "/bgm/cc/cc-hope-on-repeat.m4a", mood: "hopeful", feel: "희망", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-spring-in-sight", title: "Spring In Sight", artist: "HoliznaCC0", url: "/bgm/cc/cc-spring-in-sight.m4a", mood: "hopeful", feel: "희망·아침", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-feeling-human-again", title: "Feeling Human Again", artist: "HoliznaCC0", url: "/bgm/cc/cc-feeling-human-again.m4a", mood: "tender", feel: "위로", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-tranquil-mindscape", title: "Tranquil Mindscape", artist: "HoliznaCC0", url: "/bgm/cc/cc-tranquil-mindscape.m4a", mood: "calm", feel: "밝은 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-calm-currents", title: "Calm Currents", artist: "HoliznaCC0", url: "/bgm/cc/cc-calm-currents.m4a", mood: "calm", feel: "잔잔함", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-tokyo-sunset", title: "Tokyo Sunset", artist: "HoliznaCC0", url: "/bgm/cc/cc-tokyo-sunset.m4a", mood: "calm", feel: "저녁·평화", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-peaceful-drift", title: "Peaceful Drift", artist: "HoliznaCC0", url: "/bgm/cc/cc-peaceful-drift.m4a", mood: "calm", feel: "평화", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-color-of-a-soul", title: "Color Of A Soul", artist: "HoliznaCC0", url: "/bgm/cc/cc-color-of-a-soul.m4a", mood: "tender", feel: "그리움", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-yet-again", title: "Yet Again", artist: "HoliznaCC0", url: "/bgm/cc/cc-yet-again.m4a", mood: "calm", feel: "평화", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-walking-away", title: "Walking Away", artist: "HoliznaCC0", url: "/bgm/cc/cc-walking-away.m4a", mood: "hopeful", feel: "걸음·다짐", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-ocean-breeze", title: "Ocean Breeze", artist: "HoliznaCC0", url: "/bgm/cc/cc-ocean-breeze.m4a", mood: "joyful", feel: "밝음(우쿨렐레)", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-into-the-mist", title: "Into The Mist", artist: "HoliznaCC0", url: "/bgm/cc/cc-into-the-mist.m4a", mood: "calm", feel: "잔잔함", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-infinite-echoes", title: "Infinite Echoes", artist: "HoliznaCC0", url: "/bgm/cc/cc-infinite-echoes.m4a", mood: "calm", feel: "꿈결", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-the-wind", title: "The Wind", artist: "Komiku", url: "/bgm/cc/cc-the-wind.m4a", mood: "calm", feel: "자연·바람", credit: "음악: Komiku (Free Music Archive, CC0)" },
+  { id: "cc-end-of-the-trip", title: "End of the trip", artist: "Komiku", url: "/bgm/cc/cc-end-of-the-trip.m4a", mood: "tender", feel: "마무리·감사", credit: "음악: Komiku (Free Music Archive, CC0)" },
+  { id: "cc-unraveling-chords", title: "Unraveling Chords", artist: "Monplaisir", url: "/bgm/cc/cc-unraveling-chords.m4a", mood: "calm", feel: "깊은 묵상", credit: "음악: Monplaisir (Free Music Archive, CC0)" },
+  { id: "cc-remember-the-time-we-use-to-play", title: "Remember the time we use to play", artist: "Komiku", url: "/bgm/cc/cc-remember-the-time-we-use-to-play.m4a", mood: "tender", feel: "추억·따뜻함", credit: "음악: Komiku (Free Music Archive, CC0)" },
+  { id: "cc-meditation-impromptu-01", title: "Meditation Impromptu 01", artist: "Kevin MacLeod", url: "/bgm/cc/cc-meditation-impromptu-01.m4a", mood: "calm", feel: "고요한 묵상", credit: "\"Meditation Impromptu 01\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-dreamer", title: "Dreamer", artist: "Kevin MacLeod", url: "/bgm/cc/cc-dreamer.m4a", mood: "calm", feel: "고요한 묵상", credit: "\"Dreamer\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-fresh-air", title: "Fresh Air", artist: "Kevin MacLeod", url: "/bgm/cc/cc-fresh-air.m4a", mood: "calm", feel: "잔잔함", credit: "\"Fresh Air\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-reawakening", title: "Reawakening", artist: "Kevin MacLeod", url: "/bgm/cc/cc-reawakening.m4a", mood: "hopeful", feel: "희망", credit: "\"Reawakening\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-eternal-hope", title: "Eternal Hope", artist: "Kevin MacLeod", url: "/bgm/cc/cc-eternal-hope.m4a", mood: "hopeful", feel: "희망·장엄(합창)", credit: "\"Eternal Hope\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-promises-to-keep", title: "Promises to Keep", artist: "Kevin MacLeod", url: "/bgm/cc/cc-promises-to-keep.m4a", mood: "tender", feel: "위로", credit: "\"Promises to Keep\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-morning", title: "Morning", artist: "Kevin MacLeod", url: "/bgm/cc/cc-morning.m4a", mood: "hopeful", feel: "아침", credit: "\"Morning\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-evening", title: "Evening", artist: "Kevin MacLeod", url: "/bgm/cc/cc-evening.m4a", mood: "calm", feel: "저녁", credit: "\"Evening\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-clear-air", title: "Clear Air", artist: "Kevin MacLeod", url: "/bgm/cc/cc-clear-air.m4a", mood: "calm", feel: "밝은 평화", credit: "\"Clear Air\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-carefree", title: "Carefree", artist: "Kevin MacLeod", url: "/bgm/cc/cc-carefree.m4a", mood: "joyful", feel: "기쁨(우쿨렐레)", credit: "\"Carefree\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-ascending-the-vale", title: "Ascending the Vale", artist: "Kevin MacLeod", url: "/bgm/cc/cc-ascending-the-vale.m4a", mood: "solemn", feel: "신비·기도(합창)", credit: "\"Ascending the Vale\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-frozen-star", title: "Frozen Star", artist: "Kevin MacLeod", url: "/bgm/cc/cc-frozen-star.m4a", mood: "solemn", feel: "신비·희망(합창)", credit: "\"Frozen Star\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-midsummer-sky", title: "Midsummer Sky", artist: "Kevin MacLeod", url: "/bgm/cc/cc-midsummer-sky.m4a", mood: "hopeful", feel: "맑은 희망", credit: "\"Midsummer Sky\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-heartwarming", title: "Heartwarming", artist: "Kevin MacLeod", url: "/bgm/cc/cc-heartwarming.m4a", mood: "joyful", feel: "밝은 따뜻함", credit: "\"Heartwarming\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-amazing-grace-2011", title: "Amazing Grace 2011", artist: "Kevin MacLeod", url: "/bgm/cc/cc-amazing-grace-2011.m4a", mood: "solemn", feel: "성가(파이프오르간)", credit: "\"Amazing Grace 2011\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-silent-night", title: "Silent Night", artist: "Kevin MacLeod", url: "/bgm/cc/cc-silent-night.m4a", mood: "solemn", feel: "성탄", credit: "\"Silent Night\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집", season: "christmas" },
+];

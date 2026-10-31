@@ -1,0 +1,35 @@
+# 가톨릭그램 게시글 배경음악(CC0·CC BY 4.0) 30초 곡 만들기 — scripts/bgm-cc/make.py
+# 클라우드 작업 세션은 곡 사이트(freemusicarchive.org·incompetech.com)가 막혀 있어 GitHub 에서 받아 자르고, 결과(public/bgm/cc·docs/music-licenses.md)를 같은 가지에 올린다.
+# 곡 목록(scripts/bgm-cc/tracks.json)이나 스크립트를 바꿔 claude/* 가지에 올리면 저절로 돈다 (손으로도 실행 가능)
+name: bgm-cc
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/bgm-cc/tracks.json', 'scripts/bgm-cc/make.py', '.github/workflows/bgm-cc.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: bgm-cc-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  make:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
+      - name: 곡 받기·라이선스 확인·30초 자르기
+        run: python3 scripts/bgm-cc/make.py
+      - name: 결과 올리기
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/bgm/cc docs/music-licenses.md scripts/bgm-cc/result.json
+          if git diff --cached --quiet; then echo "바뀐 것 없음"; exit 0; fi
+          git commit -m "배경음악 CC0·CC BY 30초 곡 만들기 (GitHub Actions bgm-cc)"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

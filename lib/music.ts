@@ -9,7 +9,41 @@ export interface BgmTrack {
   created_at?: string;
   content_hash?: string | null;     // 중복 찾기 지문 (supabase/bgm-dedupe.sql, lib/audio-dedupe.ts)
   audio_print?: string | null;
+  // CC0·CC BY 곡 (lib/music-cc.ts): 분위기·출처 표시(CC BY 는 꼭 보여야 함)·철
+  mood?: MusicMood;
+  feel?: string;                    // 곡을 고른 세션이 붙인 분위기 말 (예: '고요한 묵상')
+  credit?: string;
+  season?: 'christmas';
 }
+
+// 음악 고르기의 분위기 나누기 (CC0·CC BY 곡에 붙어 있음, 운영자가 올린 곡은 '전체'에만)
+export type MusicMood = 'calm' | 'hopeful' | 'tender' | 'joyful' | 'solemn';
+export const MUSIC_MOODS: { key: MusicMood; label: string }[] = [
+  { key: 'calm', label: '고요' },
+  { key: 'hopeful', label: '희망' },
+  { key: 'tender', label: '위로' },
+  { key: 'joyful', label: '기쁨' },
+  { key: 'solemn', label: '장엄·성가' },
+];
+
+// 대림·성탄 시기(대림 첫 주일 ~ 1월 13일쯤, 한국 시간)에는 성탄 곡을 목록 맨 위에, 아닐 때는 맨 아래에
+export function isChristmasSeason(now = new Date()) {
+  const k = new Date(now.getTime() + 9 * 3600e3);
+  const y = k.getUTCFullYear(), m = k.getUTCMonth() + 1, d = k.getUTCDate();
+  if (m === 1) return d <= 13;
+  if (m !== 11 && m !== 12) return false;
+  // 대림 첫 주일 = 성탄 전 넷째 주일 (11월 27일 ~ 12월 3일 사이의 일요일)
+  const xmasDow = new Date(Date.UTC(y, 11, 25)).getUTCDay();
+  const advent = new Date(Date.UTC(y, 11, 25 - (xmasDow === 0 ? 7 : xmasDow) - 21));
+  const today = Date.UTC(y, m - 1, d);
+  return today >= advent.getTime();
+}
+export const bySeason = (tracks: BgmTrack[], now = new Date()) => {
+  const inSeason = isChristmasSeason(now);
+  const xmas = tracks.filter(t => t.season === 'christmas');
+  const rest = tracks.filter(t => t.season !== 'christmas');
+  return inSeason ? [...xmas, ...rest] : [...rest, ...xmas];
+};
 
 export type PostMusic =
   | { kind: 'youtube'; videoId: string; start: number; clip?: number }
