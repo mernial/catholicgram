@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-10-31-3',
+    date: '2026-10-31',
+    changed: [
+      { text: '1:1 대화의 \'읽음\' 표시는 상대가 아직 답하지 않은 내 마지막 메시지에만 보여요. 상대가 답을 보내면 사라져요. (아직 안 읽은 메시지의 숫자 1은 그대로)' },
+    ],
+  },
+  {
     id: '2026-10-31-2',
     date: '2026-10-31',
     fixed: [
