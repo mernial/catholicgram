@@ -1,5 +1,5 @@
 import webpush from 'web-push';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
@@ -34,6 +34,17 @@ const giftPayload = (key: string): Payload => ({
 
 const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
 
+// 지금 그 대화방을 화면에 띄우고 있는 교우 (앱이 8초마다 적음, 20초 지나면 안 봄). 표가 없으면(SQL 전) 아무도 없음
+const PRESENCE_TTL_MS = 20_000;
+async function viewingNow(admin: SupabaseClient, who: { userId: string; room: string }[]) {
+  const rooms = Array.from(new Set(who.map(w => w.room)));
+  const { data, error } = await admin.from('chat_presence').select('user_id, room')
+    .in('user_id', who.map(w => w.userId)).in('room', rooms).gt('seen_at', new Date(Date.now() - PRESENCE_TTL_MS).toISOString());
+  if (error || !data) return new Set<string>();
+  const wanted = new Set(who.map(w => `${w.userId}|${w.room}`));
+  return new Set(data.filter(r => wanted.has(`${r.user_id}|${r.room}`)).map(r => r.user_id as string));
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -61,6 +72,8 @@ export async function POST(request: Request) {
   let payload: Payload | null = null;
   let readersOf: (() => Promise<Set<string>>) | null = null; // 1:1·단체방 메시지: 이미 읽은(= 그 대화방을 보고 있는) 받는 사람
   let messageAt = 0;
+  // 대화방 알림: 받는 교우가 지금 그 방을 보고 있으면(supabase/chat-presence.sql, 20초 안) 어느 기기로도 보내지 않는다
+  let presenceRoom: ((recipientId: string) => string) | null = null;
   // 댓글 답글: 글쓴이 외에 답글 받은 사람에게도 따로 보낸다
   // 댓글·글은 여러 사람에게(글쓴이, 답글 받은 사람, @태그된 사람) 보낼 수 있다
   const list: { recipientId: string; payload: Payload }[] = [];
@@ -104,6 +117,7 @@ export async function POST(request: Request) {
       payload: { title: `👥 ${chat?.name || '단체 채팅방'}`, body: truncate(`${sender?.baptismal_name || '교우'}: ${chatPreview(msg.content)}`), url: `/?group=${msg.chat_id}`, tag: `group-${msg.chat_id}` },
     }));
     messageAt = new Date(msg.created_at).getTime();
+    presenceRoom = () => `group:${msg.chat_id}`;
     readersOf = async () => {
       const { data } = await admin.from('group_chat_members').select('user_id, last_read_at').eq('chat_id', msg.chat_id);
       return new Set((data || []).filter(m => m.last_read_at && new Date(m.last_read_at).getTime() >= messageAt).map(m => m.user_id as string));
@@ -157,6 +171,7 @@ export async function POST(request: Request) {
     const { data: adminProfile } = await admin.from('profiles').select('id').in('email', ADMIN_EMAILS).limit(1).maybeSingle();
     if (!adminProfile || adminProfile.id === user.id) return Response.json({ skipped: 'admin not found' });
     const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
+    presenceRoom = () => 'lounge';
     list.push({ recipientId: adminProfile.id, payload: { title: '🙋 사랑방에서 관리자를 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(chatPreview(String(msg.content)).replace(/@관리자\s*/g, '').trim() || '관리자님!')}`, url: `/?lounge=${msg.id}`, tag: `lounge-call-${msg.id}` } });
   } else if (type === 'lounge_mention') {
     // 사랑방에서 '@아이디'로 부름 → 부른 교우에게만 (누르면 사랑방 그 대화로)
@@ -181,6 +196,7 @@ export async function POST(request: Request) {
     const blocked = new Set([...(b1 || []).map(b => b.blocker_id as string), ...(b2 || []).map(b => b.blocked_id as string)]);
     ids = ids.filter(pid => !blocked.has(pid));
     const { data: caller } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).maybeSingle();
+    presenceRoom = () => 'lounge';
     ids.forEach(pid => list.push({ recipientId: pid, payload: { title: '💬 사랑방에서 회원님을 불렀어요', body: `${caller?.baptismal_name || '교우'}님: ${truncate(chatPreview(String(msg.content)))}`, url: `/?lounge=${msg.id}`, tag: `lounge-mention-${msg.id}` } }));
     if (list.length === 0) return Response.json({ skipped: 'nobody' });
   } else if (type === 'test') {
@@ -357,6 +373,7 @@ export async function POST(request: Request) {
     const { data: sender } = await admin.from('profiles').select('baptismal_name').eq('id', user.id).single();
     recipientId = message.receiver_id;
     messageAt = new Date(message.created_at).getTime();
+    presenceRoom = () => `dm:${user.id}`; // 받는 교우가 보낸 교우와의 대화방을 보고 있는지
     readersOf = async () => {
       const { data } = await admin.from('messages').select('read_at').eq('id', message.id).maybeSingle();
       return new Set(data?.read_at ? [message.receiver_id as string] : []);
@@ -369,7 +386,13 @@ export async function POST(request: Request) {
     };
   }
 
-  const targets = list.length > 0 ? list : [{ recipientId: recipientId!, payload: payload! }];
+  let targets = list.length > 0 ? list : [{ recipientId: recipientId!, payload: payload! }];
+  if (presenceRoom) {
+    const roomOf = presenceRoom;
+    const viewing = await viewingNow(admin, targets.map(t => ({ userId: t.recipientId, room: roomOf(t.recipientId) })));
+    targets = targets.filter(t => !viewing.has(t.recipientId));
+    if (targets.length === 0) return Response.json({ sent: 0, skipped: 'viewing' });
+  }
   // 알림마다 주소에 고유 표시(n)를 붙인다 → 앱이 같은 알림 주소로 두 번 열리지 않게 (휴대폰이 예전 주소로 앱을 다시 띄우는 경우)
   const nonce = Date.now().toString(36);
   targets.forEach(t => { t.payload = { ...t.payload, url: `${t.payload.url}${t.payload.url.includes('?') ? '&' : '?'}n=${nonce}` }; });

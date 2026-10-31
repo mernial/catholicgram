@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { isAppleDevice, mediaResultText, prepareMedia, saveMedia, shareMedia } from '@/lib/save-media';
 import { toast } from '@/lib/chat-actions';
@@ -12,6 +12,8 @@ import { toast } from '@/lib/chat-actions';
 //  - 컴퓨터: 마우스 휠로 확대, 끌어서 이동, Esc 닫기, ← → 넘기기
 // 브라우저의 화면 전체 확대를 쓰지 않고 사진만 직접 키운다 (화면이 커진 채 남거나 한 손가락 이동이 막히지 않게)
 // saveable: 대화(1:1·단체방·사랑방)의 사진이면 아래에 '저장'·'공유' 단추 (지금 보는 한 장, lib/save-media), 묶음 사진이면 'N장 모두 저장'도
+//   → 그때는 꾹 누를 때 뜨던 휴대폰 인터넷 메뉴('삼성 브라우저에서 열기'·이미지 다운로드 등)를 띄우지 않는다 (교우가 무슨 기능인지 물어봄)
+// 사진은 위(몇 번째·닫기)·아래(단추·안내) 줄 사이에만 보인다 — 밝은 사진 위에 단추가 겹쳐 '이 사진 저장'이 안 보였음(테스터)
 type Pt = { x: number; y: number };
 type View = { s: number; x: number; y: number }; // 배율, 가운데에서 옮긴 거리
 const ONE: View = { s: 1, x: 0, y: 0 };
@@ -38,6 +40,18 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
   const [busy, setBusy] = useState<'save' | 'all' | 'share' | null>(null);
   const apple = isAppleDevice();
   const saveMany = !!saveable && images.length > 1;
+  // 아래 단추·안내 줄의 높이만큼 사진 자리를 비움 (좁은 화면에서 단추가 두 줄이 되어도)
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barH, setBarH] = useState(0);
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const measure = () => setBarH(Math.ceil(el.getBoundingClientRect().height));
+    measure();
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
   useEffect(() => { if (saveable && images[index]) prepareMedia([images[index]]); }, [saveable, images, index]); // 아이폰 공유 창이 바로 열리게 미리
   useEffect(() => { if (saveMany && images.length <= 10) prepareMedia(images); }, [saveMany, images]); // 묶음은 'N장 모두 저장'을 위해 모두 미리
   const act = async (kind: 'save' | 'all' | 'share') => {
@@ -198,11 +212,13 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
   const many = images.length > 1;
   const ease = animate ? 'transform 0.25s ease-out' : 'none';
   return (
-    <div data-no-pinch className="fixed inset-0 z-[96] bg-black animate-fade-in select-none overflow-hidden" role="dialog" aria-label="사진 크게 보기">
+    <div data-no-pinch className="fixed inset-0 z-[96] bg-black animate-fade-in select-none overflow-hidden" role="dialog" aria-label="사진 크게 보기"
+      onContextMenu={saveable ? e => e.preventDefault() : undefined}>
       <div
         ref={stage}
-        className="absolute inset-0 overflow-hidden"
-        style={{ touchAction: 'none' }} // 손가락 움직임은 모두 여기서 직접 처리 (화면 전체가 확대·이동되지 않게)
+        className="absolute inset-x-0 overflow-hidden"
+        // 손가락 움직임은 모두 여기서 직접 처리 (화면 전체가 확대·이동되지 않게). 위·아래 줄과 겹치지 않는 자리
+        style={{ touchAction: 'none', top: 'calc(4rem + env(safe-area-inset-top))', bottom: `calc(${barH + 24}px + env(safe-area-inset-bottom))` }}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -214,7 +230,7 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
               <img
                 src={src}
                 alt={many ? `사진 ${i + 1}/${images.length}` : '사진'}
-                className="max-w-full max-h-full object-contain"
+                className={`max-w-full max-h-full object-contain ${saveable ? '[-webkit-touch-callout:none]' : ''}`}
                 draggable={false}
                 style={i === index ? { transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})`, transition: ease } : undefined}
               />
@@ -234,10 +250,10 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
         </>
       )}
       <button onClick={onClose} className="absolute top-[calc(0.75rem+env(safe-area-inset-top))] right-3 w-11 h-11 rounded-full bg-black/55 text-white text-3xl leading-none flex items-center justify-center" aria-label="닫기">×</button>
-      <div className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-0 right-0 flex flex-col items-center gap-2.5 pointer-events-none">
+      <div ref={barRef} className="absolute bottom-[calc(1rem+env(safe-area-inset-bottom))] left-0 right-0 flex flex-col items-center gap-2.5 pointer-events-none">
         {saveable && (
           <div className="flex flex-wrap justify-center gap-2.5 px-3 pointer-events-auto">
-            <button onClick={() => act('save')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60`}>
+            <button onClick={() => act('save')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-black/75 ring-1 ring-white/50 text-white text-[1rem] font-bold flex items-center gap-2 active:bg-black/90 disabled:opacity-60`}>
               <Icon name="download" className="w-5 h-5" />{busy === 'save' ? '저장하는 중…' : saveMany ? '이 사진 저장' : '저장'}
             </button>
             {saveMany && (
@@ -245,7 +261,7 @@ export default function PhotoZoom({ images, start = 0, saveable, onClose }: { im
                 <Icon name="download" className="w-5 h-5" />{busy === 'all' ? '저장하는 중…' : `${images.length}장 모두`}
               </button>
             )}
-            <button onClick={() => act('share')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-white/20 backdrop-blur text-white text-[1rem] font-bold flex items-center gap-2 active:bg-white/30 disabled:opacity-60`}>
+            <button onClick={() => act('share')} disabled={!!busy} className={`h-12 ${saveMany ? 'px-4' : 'px-6'} rounded-full bg-black/75 ring-1 ring-white/50 text-white text-[1rem] font-bold flex items-center gap-2 active:bg-black/90 disabled:opacity-60`}>
               <Icon name="share" className="w-5 h-5" />{busy === 'share' ? '여는 중…' : '공유'}
             </button>
           </div>
