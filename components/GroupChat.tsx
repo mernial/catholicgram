@@ -457,6 +457,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     },
     onSent: id => onSent?.(String(id)),
   });
+  // 사진 단추를 꾹 → '🔕 조용히 사진 보내기' (따로 숨긴 고르기 칸 — 고른 사진·동영상은 알림 없이)
+  const quietFileRef = useRef<HTMLInputElement>(null);
+  const photoQuiet = useQuietSend(() => quietFileRef.current?.click(), { label: '조용히 사진 보내기', align: 'left', disabled: media.sending });
 
   // 카톡식 메뉴: 복사 · 선택 복사 · 책갈피 · 캡처 · 내 화면에서만 지우기 (이 휴대폰에만 저장)
   const [selectCopy, setSelectCopy] = useState<string | null>(null);
@@ -670,11 +673,15 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       {canWrite && !capturePick && (
         <>
         <form onSubmit={submit} className={`shrink-0 bg-white ${replyTo || editing ? '' : 'border-t border-stone-200'} px-3 pt-2.5 ${stickerPick.open ? 'pb-2.5' : 'pb-[calc(0.625rem+env(safe-area-inset-bottom))]'} flex items-end gap-2`}>
-          {/* 사진·동영상 보내기 (여러 개 한꺼번에) */}
-          <label className={`w-11 h-11 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
-            {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
-            <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
-          </label>
+          {/* 사진·동영상 보내기 (여러 개 한꺼번에, 꾹 누르면 '🔕 조용히 사진 보내기') */}
+          <div className="relative shrink-0">
+            {!editing && photoQuiet.menu}
+            <label {...(editing ? {} : photoQuiet.buttonProps)} className={`w-11 h-11 rounded-full flex items-center justify-center cursor-pointer select-none [-webkit-touch-callout:none] ${media.sending ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요, 꾹 누르면 조용히 보내기)">
+              {media.sending ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
+              <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPick} />
+            </label>
+            <input ref={quietFileRef} type="file" accept="image/*,video/*" multiple className="hidden" disabled={media.sending || !!editing} onChange={media.onPickQuiet} aria-hidden tabIndex={-1} />
+          </div>
           <StickerButton open={stickerPick.open} disabled={!!editing} className="w-11 h-11" onClick={() => { stickerPick.setOpen(!stickerPick.open); leaveInputForPanel(inputRef.current); }} />
           <textarea
             ref={setInputEl}

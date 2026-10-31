@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { uploadMedia, uploadPhoto, isVideoUrl, isMediaOnlyText, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, photoBundleText } from '@/lib/upload';
 import { chatStickerParts, parseSticker } from '@/lib/stickers';
 import { MAX_VIDEO_MB, SHRINK_OVER_MB, shrinkVideo } from '@/lib/video';
+import { toast } from '@/lib/chat-actions';
 
 // 대화방(1:1 메시지·단체 채팅방·사랑방) 공통: 사진·동영상 보내기와 보여 주기
 //  - 사진을 여러 장 고르면 '묶어서 한 번에'(한 메시지에 바둑판) 또는 '한 장씩 따로' 중 고른다
@@ -14,7 +15,8 @@ export const MEDIA_SETUP_HINT = '사진 묶음·단체방·사랑방 사진 보�
 export const isMissingColumn = (e: { code?: string; message?: string } | null) => !!e && (e.code === '42703' || e.code === 'PGRST204' || /column .* does not exist|schema cache/i.test(e.message || ''));
 
 export interface MediaRow { content: string; image_url: string; images?: string[] }
-export type InsertMedia = (row: MediaRow) => Promise<{ id: string | number | null; error: { code?: string; message: string } | null }>;
+// quiet: 조용히 보내기(사진 단추 꾹 → 🔕) — 1:1 은 silent 표시를 넣고, 휴대폰 알림(onSent)은 부르지 않는다
+export type InsertMedia = (row: MediaRow, quiet: boolean) => Promise<{ id: string | number | null; error: { code?: string; message: string } | null }>;
 
 const isVideoFile = (f: File) => f.type.startsWith('video/') || /\.(mov|mp4|m4v|webm)$/i.test(f.name);
 const isPhotoFile = (f: File) => f.type.startsWith('image/') || /\.(heic|heif|jpe?g|png|webp|gif)$/i.test(f.name);
@@ -40,10 +42,10 @@ export function useChatMedia({ userId, getText, clearText, insert, onSent }: {
   insert: InsertMedia;              // 메시지 한 줄 넣기 (화면 갱신도 여기서)
   onSent?: (firstId: string | number) => void; // 휴대폰 알림 (한 번)
 }) {
-  const [pending, setPending] = useState<File[] | null>(null);
+  const [pending, setPending] = useState<{ files: File[]; quiet: boolean } | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
 
-  const run = async (files: File[], bundle: boolean) => {
+  const run = async (files: File[], bundle: boolean, quiet: boolean) => {
     if (!userId) return;
     setPending(null);
     const photos = files.filter(f => !isVideoFile(f));
@@ -56,7 +58,7 @@ export function useChatMedia({ userId, getText, clearText, insert, onSent }: {
     const total = (bundle && photos.length > 1 ? 1 : photos.length) + videos.length;
     let done = 0;
     const put = async (row: MediaRow): Promise<'ok' | 'missing'> => {
-      const { id, error } = await insert({ ...row, content: text || row.content });
+      const { id, error } = await insert({ ...row, content: text || row.content }, quiet);
       if (error) {
         if (isMissingColumn(error)) { if (!hinted) { hinted = true; alert(MEDIA_SETUP_HINT); } return 'missing'; }
         throw new Error(error.message);
@@ -101,20 +103,26 @@ export function useChatMedia({ userId, getText, clearText, insert, onSent }: {
       done++;
     }
     setProgress(null);
-    if (firstId !== null) onSent?.(firstId);
+    if (firstId !== null) {
+      if (quiet) toast('🔕 조용히 보냈어요 · 상대에게 알림이 울리지 않아요', 2200);
+      else onSent?.(firstId);
+    }
     if (failed.length) alert(`보내지 못한 것이 있어요.\n${failed.slice(0, 6).map(f => `· ${f}`).join('\n')}\n잠시 후 다시 보내 주세요.`);
   };
 
   // 사진첩에서 고른 뒤: 사진이 두 장 넘으면 묶을지 물어보고, 아니면 바로 보낸다
-  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 조용히 보내기는 따로 숨긴 고르기 칸(onPickQuiet)으로 — 고르다 취소해도 다음 사진이 조용히 가지 않게
+  const pick = (e: React.ChangeEvent<HTMLInputElement>, quiet: boolean) => {
     const files = Array.from(e.target.files || []).filter(f => isPhotoFile(f) || isVideoFile(f));
     e.target.value = '';
     if (files.length === 0 || progress) return;
-    if (files.filter(f => !isVideoFile(f)).length >= 2) setPending(files);
-    else run(files, false);
+    if (files.filter(f => !isVideoFile(f)).length >= 2) setPending({ files, quiet });
+    else run(files, false, quiet);
   };
+  const onPick = (e: React.ChangeEvent<HTMLInputElement>) => pick(e, false);
+  const onPickQuiet = (e: React.ChangeEvent<HTMLInputElement>) => pick(e, true);
 
-  const choice = pending && <BundleChoice files={pending} onBundle={() => run(pending, true)} onEach={() => run(pending, false)} onClose={() => setPending(null)} />;
+  const choice = pending && <BundleChoice files={pending.files} quiet={pending.quiet} onBundle={() => run(pending.files, true, pending.quiet)} onEach={() => run(pending.files, false, pending.quiet)} onClose={() => setPending(null)} />;
   const bar = progress && (
     <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-t border-stone-200" role="status" aria-live="polite">
       <p className="text-[0.8125rem] font-bold text-stone-700">
@@ -125,11 +133,11 @@ export function useChatMedia({ userId, getText, clearText, insert, onSent }: {
       </div>
     </div>
   );
-  return { onPick, sending: !!progress, choice, bar };
+  return { onPick, onPickQuiet, sending: !!progress, choice, bar };
 }
 
 // 사진을 여러 장 골랐을 때: 묶어서 / 한 장씩
-function BundleChoice({ files, onBundle, onEach, onClose }: { files: File[]; onBundle: () => void; onEach: () => void; onClose: () => void }) {
+function BundleChoice({ files, quiet, onBundle, onEach, onClose }: { files: File[]; quiet?: boolean; onBundle: () => void; onEach: () => void; onClose: () => void }) {
   const photos = files.filter(f => !isVideoFile(f));
   const videos = files.length - photos.length;
   const previews = useMemo(() => photos.slice(0, 8).map(f => URL.createObjectURL(f)), [files]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -138,6 +146,7 @@ function BundleChoice({ files, onBundle, onEach, onClose }: { files: File[]; onB
     <div className="fixed inset-0 z-[96] bg-black/45 flex items-end sm:items-center justify-center" onClick={onClose}>
       <div className="w-full sm:w-96 bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-3" onClick={e => e.stopPropagation()} role="dialog" aria-label="사진 보내는 방법">
         <h3 className="font-bold text-[1.125rem] text-stone-900">사진 {photos.length}장을 어떻게 보낼까요?</h3>
+        {quiet && <p className="-mt-1 text-[0.875rem] font-bold text-stone-600">🔕 조용히 보내요 · 상대 휴대폰에 알림이 울리지 않아요</p>}
         <div className="grid grid-cols-4 gap-1">
           {previews.map((u, i) => (
             <span key={u} className="relative aspect-square rounded-lg overflow-hidden bg-stone-100">
