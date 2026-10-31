@@ -493,6 +493,7 @@ export default function Home() {
   const [isAndroid, setIsAndroid] = useState(false);
   const [testerPromptDismissed, setTesterPromptDismissed] = useState(true);
   const [settingsView, setSettingsView] = useState<'main' | 'feast' | 'sound'>('main');
+  const settingsBackRef = useRef<(() => boolean) | null>(null); // 설정 안의 화면에서 뒤로가기 → 설정 목록 (components/SettingsModal 이 채움)
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
   const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number; chat?: boolean } | null>(null); // chat: 대화의 사진이면 저장·공유 단추
@@ -1696,16 +1697,19 @@ export default function Home() {
     userId: user?.id,
     getText: () => messageInput,
     clearText: () => setMessageInput(''),
-    insert: async row => {
+    insert: async (row, quiet) => {
       const to = currentChatUser?.id;
       if (!user || !to) return { id: null, error: { message: '대화 상대가 없어요' } };
-      const { data, error } = await supabase.from('messages').insert({ sender_id: user.id, receiver_id: to, ...row }).select('id').single();
+      const { data, error } = await insertDm({ sender_id: user.id, receiver_id: to, ...row, ...(quiet ? { silent: true } : {}) });
       if (!error) fetchChatMessages(to); // 보내는 대로 하나씩 보이게
       return { id: data?.id ?? null, error };
     },
     onSent: id => sendPush('message', String(id)),
   });
   const sendingPhoto = dmMedia.sending;
+  // 사진 단추를 꾹 → '🔕 조용히 사진 보내기' → 따로 숨긴 고르기 칸을 연다 (고른 사진·동영상은 알림 없이)
+  const dmQuietFileRef = useRef<HTMLInputElement>(null);
+  const dmPhotoQuiet = useQuietSend(() => dmQuietFileRef.current?.click(), { label: '조용히 사진 보내기', align: 'left', disabled: sendingPhoto });
   // 입력칸 엔터: 휴대폰·태블릿은 줄바꿈(보내기 단추로 전송), 컴퓨터는 보내기 · 글에 맞춰 늘어남 (lib/use-enter-send)
   const dmLastSend = useRef({ text: '', at: 0 });
   const dmEnter = useEnterSend(typed => {
@@ -3962,7 +3966,8 @@ export default function Home() {
       if (st && st.modal) { skipNextPopRef.current = true; window.history.back(); }
     }
   }, [anyModalOpen]);
-  const closeAllModals = () => {
+  // 뒤로가기로 창을 닫는다. 창 안의 한 단계만 물러났으면(설정 → 버전 정보 → 설정 목록) true — 창은 그대로라 뒤로가기 기록 한 칸을 다시 쌓는다
+  const closeAllModals = (): boolean | void => {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
@@ -3970,6 +3975,8 @@ export default function Home() {
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
+    // 설정 안의 화면(버전 정보·알림 소리·나의 축일·차단 목록)이면 설정 목록으로만 (루비로사 건의: 설정이 통째로 닫혀 내 공간으로 갔음)
+    if (showSettings && settingsBackRef.current?.()) return true;
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     if (showUpdateNotes) closeUpdateNotes();
@@ -4013,7 +4020,9 @@ export default function Home() {
     if (rewindRef.current && st && 'guard' in st) rewindRef.current = false;
     if (st && 'screen' in st && st.base && !anyModalOpen) { rewindRef.current = true; applyScreen(st); return; }
     if (anyModalOpen) {
-      closeAllModals();
+      const stepBack = closeAllModals();
+      // 창 안에서 한 단계만 물러났으면 창은 열려 있으므로 그 칸을 다시 쌓는다 (다음 뒤로가기에 창이 닫히게)
+      if (stepBack && modalHistoryRef.current) { window.history.pushState({ ...currentScreenRef.current, modal: true }, ''); return; }
       // 창을 열 때 쌓아 둔 칸이 빠진 것이면 그대로 끝 (기록을 다시 쌓지 않아야 브라우저가 앞 칸을 건너뛰지 않는다)
       if (modalHistoryRef.current) { modalHistoryRef.current = false; if (staleModalEntry) window.history.back(); return; }
       window.history.pushState(currentScreenRef.current, ''); // 화면은 그대로 유지
@@ -5572,11 +5581,15 @@ export default function Home() {
             </div>
           )}
           {!dmCapture && !dmRequest && <form onSubmit={submitDm} className={`shrink-0 p-3 ${dmSticker.open ? '' : 'pb-[calc(0.75rem+env(safe-area-inset-bottom))]'} bg-white flex items-end gap-2 ${replyTo || editingMessage ? '' : 'border-t border-stone-200'}`}>
-            {/* 사진 보내기 */}
-            <label className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center cursor-pointer ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요)">
-              {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
-              <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
-            </label>
+            {/* 사진 보내기 (꾹 누르면 '🔕 조용히 사진 보내기') */}
+            <div className="relative shrink-0">
+              {!editingMessage && dmPhotoQuiet.menu}
+              <label {...(editingMessage ? {} : dmPhotoQuiet.buttonProps)} className={`w-10 h-10 rounded-full flex items-center justify-center cursor-pointer select-none [-webkit-touch-callout:none] ${sendingPhoto ? 'bg-stone-200 text-stone-400' : 'bg-stone-100 text-stone-700 hover:bg-stone-200'}`} aria-label="사진·동영상 보내기 (여러 개 한꺼번에 고를 수 있어요, 꾹 누르면 조용히 보내기)">
+                {sendingPhoto ? <span className="w-4 h-4 rounded-full border-2 border-stone-400 border-t-transparent animate-spin" /> : <Icon name="camera" className="w-5 h-5" />}
+                <input type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPick} />
+              </label>
+              <input ref={dmQuietFileRef} type="file" accept="image/*,video/*" multiple className="hidden" disabled={sendingPhoto} onChange={dmMedia.onPickQuiet} aria-hidden tabIndex={-1} />
+            </div>
             <StickerButton open={dmSticker.open} disabled={!!editingMessage} onClick={() => { dmSticker.setOpen(!dmSticker.open); leaveInputForPanel(messageInputRef.current); }} />
             {/* 엔터는 줄바꿈 (휴대폰), 보내기 단추로 전송 */}
             <textarea ref={setDmInputEl} rows={1} autoCorrect="on" autoCapitalize="sentences" spellCheck enterKeyHint={dmEnter.enterKeyHint} aria-label="메시지 입력" value={messageInput} onChange={(e) => { setMessageInput(e.target.value); dmTyping.notify(e.target.value); }} onKeyDown={dmEnter.onKeyDown} onFocus={() => { closePanelOnInputFocus(() => dmSticker.setOpen(false)); [150, 450].forEach(ms => setTimeout(() => messagesEndRef.current?.scrollIntoView({ block: 'end' }), ms)); }} placeholder={editingMessage ? '고칠 내용을 적어 주세요' : '메시지 입력...'} className="flex-1 min-w-0 max-h-32 resize-none bg-stone-100 border-none rounded-[1.25rem] px-4 py-2.5 text-sm leading-5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
@@ -5719,7 +5732,7 @@ export default function Home() {
           onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
           onSamsungGuide={(preview: boolean) => { setShowSettings(false); setSamsungGuideOpen(preview ? 'preview' : 'open'); }}
           onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
-          initialView={settingsView}
+          initialView={settingsView} backRef={settingsBackRef}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
           onOpenVault={isAdmin ? () => { setShowSettings(false); setShowMusicVault(true); } : undefined}

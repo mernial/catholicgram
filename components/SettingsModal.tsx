@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { deleteMyAccount, signOutAndClear } from '@/lib/account';
@@ -23,13 +23,14 @@ import { UpdateNoteBody } from '@/components/UpdateNotes';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', backRef, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
   feastDay: string;
   onFeastDayChange: (value: string | null) => Promise<boolean>;
   initialView?: 'main' | 'feast' | 'sound';
+  backRef?: React.MutableRefObject<(() => boolean) | null>; // 휴대폰 뒤로가기: 설정 안의 화면이면 설정 목록으로 (물러났으면 true)
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
@@ -41,6 +42,25 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
+  // 설정 목록에서 들어간 화면(버전 정보 등)에서 뒤로가기·← 를 누르면 보던 목록 자리 그대로 (루비로사 건의 2026-11-01:
+  // 버전 정보에서 휴대폰 뒤로가기를 누르면 설정이 통째로 닫혀 내 공간이 나왔음).
+  // 알림창 '소리 ›'처럼 처음부터 그 화면으로 열었으면(설정 목록을 거치지 않음) 뒤로가기는 설정을 닫는다
+  const mainListRef = useRef<HTMLDivElement>(null);
+  const mainScrollTop = useRef(0);
+  const leftInitial = useRef(false);
+  useEffect(() => { if (view !== initialView) leftInitial.current = true; }, [view, initialView]);
+  useLayoutEffect(() => {
+    if (view === 'main' && mainListRef.current) mainListRef.current.scrollTop = mainScrollTop.current;
+  }, [view]);
+  useEffect(() => {
+    if (!backRef) return;
+    backRef.current = () => {
+      if (view === 'main' || (view === initialView && !leftInitial.current)) return false;
+      setView('main');
+      return true;
+    };
+    return () => { backRef.current = null; };
+  }, [backRef, view, initialView]);
   // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인 (여는 단추에서 checkLatest)
   const [latest, setLatest] = useState<{ state: 'checking' | 'done' | 'error'; v: AppVersion | null }>({ state: 'checking', v: null });
   const [allNotes, setAllNotes] = useState(false); // 지난 업데이트 소식: 처음엔 최근 5개만
@@ -153,7 +173,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
         </div>
 
         {view === 'main' ? (
-          <div className="overflow-y-auto">
+          <div ref={mainListRef} onScroll={e => { mainScrollTop.current = e.currentTarget.scrollTop; }} className="overflow-y-auto">
             <div className="p-4 border-b border-stone-100">
               <p className="text-sm mb-2.5 flex items-center gap-3"><IconBadge name="text" />글씨 크기</p>
               <div className="grid grid-cols-3 gap-1.5">
