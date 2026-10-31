@@ -2,19 +2,24 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { deleteMedia, mediaEnabled, newMediaKey, putMedia } from '@/lib/media-server';
 import { postMentionTargets, sendPushTargets } from '@/lib/push-send';
+import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 외부 자동 게시: 운영자의 '인스타 자동 업로더'가 텔레그램 승인 뒤 같은 묵상 카드 글을 가톨릭그램에도 올린다.
-// POST /api/autopost   헤더 Authorization: Bearer <AUTOPOST_SECRET>
+// POST /api/autopost   헤더 Authorization: Bearer <비밀값>
+// 비밀값: 코드에는 지문(SHA-256)만 둔다(AUTOPOST_SECRET_SHA256 — 지문으로는 비밀값을 알 수 없음, 비밀값은 운영자가 업로더에만 넣음).
+//   Vercel 환경 변수 AUTOPOST_SECRET(32자 이상)을 넣으면 그 값도 받음. 비밀값을 바꾸려면 새 값의 지문으로 바꿔 배포
 // 본문 { content, image_urls: [https://mernial.github.io/… (최대 10장, jpeg·png, 장당 10MB)], visibility?: public|followers|private,
 //        client_key?: '2026-11-02' (같은 열쇠로 이미 올린 글이 있으면 새로 만들지 않고 그 글), dry_run?: true (확인만, 글은 안 만듦) }
 // → { ok: true, id, url }   (같은 열쇠의 글이 이미 있으면 duplicate: true)
-// 글쓴이 = 환경 변수 AUTOPOST_USER_ID 의 교우. 사진은 서버가 받아 가톨릭그램 저장소(R2)에 다시 올린다.
+// 글쓴이 = 환경 변수 AUTOPOST_USER_ID 의 교우, 없으면 관리자 계정(ADMIN_EMAILS 첫 번째). 사진은 서버가 받아 가톨릭그램 저장소(R2)에 다시 올린다.
 // 앱에서 글을 올릴 때처럼 @태그된 교우에게 휴대폰 알림 (평소 글쓰기에는 팔로워 알림이 없음 — 피드에 보임)
 // client_key 를 쓰려면 supabase/autopost.sql 실행 필요
 
 export const maxDuration = 60;
 
 const SITE = 'https://catholicgram-dey7.vercel.app';
+// 업로더 비밀값의 지문 (openssl rand -hex 32 로 만든 64자 → sha256). 비밀값 자체는 저장소에 없음
+const AUTOPOST_SECRET_SHA256 = '9d98077a0116247f30f7d95e22550554765fe7e1937c93712f09c985d22c49a1';
 const ALLOWED_PREFIX = 'https://mernial.github.io/';
 const MAX_IMAGES = 10; // 앱의 MAX_PHOTOS 와 같음
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -27,9 +32,15 @@ class Fail extends Error {
 }
 const fail = (status: number, error: string) => Response.json({ ok: false, error }, { status });
 
-// 비밀값 비교: 길이와 상관없이 같은 시간 (둘 다 SHA-256 으로 바꿔 같은 길이로 비교)
+// 비밀값 비교: 길이와 상관없이 같은 시간 (SHA-256 지문끼리 같은 길이로 비교)
 const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest();
-const sameSecret = (given: string, secret: string) => timingSafeEqual(sha256(given), sha256(secret));
+function secretOk(given: string) {
+  const g = sha256(given);
+  const env = process.env.AUTOPOST_SECRET || '';
+  const byCode = timingSafeEqual(g, Buffer.from(AUTOPOST_SECRET_SHA256, 'hex'));
+  const byEnv = env.length >= 32 && timingSafeEqual(g, sha256(env));
+  return byCode || byEnv;
+}
 
 // https://mernial.github.io/ 로 시작하는 주소만 (사용자 이름·포트·다른 호스트가 끼면 거절)
 function allowedUrl(raw: string) {
@@ -99,17 +110,15 @@ const isMissingColumn = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === 'PGRST204' || e.code === '42703' || /autopost_key/.test(e.message || ''));
 
 export async function POST(request: Request) {
-  const secret = process.env.AUTOPOST_SECRET || '';
-  const userId = (process.env.AUTOPOST_USER_ID || '').trim();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  // 설정 전이거나 비밀값이 너무 짧으면 아무도 못 씀
-  if (secret.length < 32 || !supabaseUrl || !serviceRoleKey) return fail(503, '자동 게시가 설정되지 않았어요. (Vercel 환경 변수 AUTOPOST_SECRET — 32자 이상)');
+  if (!supabaseUrl || !serviceRoleKey) return fail(503, '서버 설정이 완료되지 않았습니다.');
 
   const given = /^Bearer\s+(.+)$/i.exec(request.headers.get('authorization') || '')?.[1]?.trim() || '';
-  if (!given || !sameSecret(given, secret)) return fail(401, 'unauthorized');
+  if (!given || !secretOk(given)) return fail(401, 'unauthorized');
 
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) return fail(503, '글쓴이가 설정되지 않았어요. (Vercel 환경 변수 AUTOPOST_USER_ID)');
+  const envUser = (process.env.AUTOPOST_USER_ID || '').trim();
+  if (envUser && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(envUser)) return fail(503, 'Vercel 환경 변수 AUTOPOST_USER_ID 가 교우 id 모양이 아니에요.');
 
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body !== 'object') return fail(400, 'JSON 본문이 필요해요.');
@@ -129,8 +138,19 @@ export async function POST(request: Request) {
   const dryRun = body.dry_run === true;
 
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data: author } = await admin.from('profiles').select('id, baptismal_name').eq('id', userId).maybeSingle();
-  if (!author) return fail(503, 'AUTOPOST_USER_ID 의 교우를 찾지 못했어요.');
+  // 글쓴이: AUTOPOST_USER_ID, 없으면 관리자 계정 (ADMIN_EMAILS 순서대로 처음 찾은 것)
+  let author: { id: string; baptismal_name: string | null } | null = null;
+  if (envUser) {
+    const { data } = await admin.from('profiles').select('id, baptismal_name').eq('id', envUser).maybeSingle();
+    author = data;
+    if (!author) return fail(503, 'AUTOPOST_USER_ID 의 교우를 찾지 못했어요.');
+  } else {
+    const { data } = await admin.from('profiles').select('id, baptismal_name, email').in('email', ADMIN_EMAILS);
+    const found = (data || []).sort((a, b) => ADMIN_EMAILS.indexOf(a.email) - ADMIN_EMAILS.indexOf(b.email))[0];
+    if (!found) return fail(503, '관리자 계정을 찾지 못했어요. (Vercel 환경 변수 AUTOPOST_USER_ID 로 글쓴이를 정해 주세요)');
+    author = { id: found.id, baptismal_name: found.baptismal_name };
+  }
+  const userId = author.id;
 
   const existing = async () => {
     const { data, error } = await admin.from('posts').select('id').eq('user_id', userId).eq('autopost_key', clientKey).limit(1).maybeSingle();
