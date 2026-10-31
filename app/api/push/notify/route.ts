@@ -5,6 +5,7 @@ import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
 import { STICKER_PACKS, chatPreview, postPlainText } from '@/lib/stickers';
 import { onePerDevice, type PushSub } from '@/lib/push-devices';
+import { postMentionTargets } from '@/lib/push-send';
 
 // 새 댓글/메시지가 생겼을 때 받는 사람의 휴대폰으로 푸시 알림을 보낸다.
 // 클라이언트는 방금 자신이 작성한 댓글/메시지의 id만 보내고,
@@ -234,9 +235,7 @@ export async function POST(request: Request) {
     const { data: post } = await admin.from('posts').select('id, user_id, author_name, content, created_at').eq('id', id).single();
     if (!post || post.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(post.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
-    for (const pid of await mentionedIds(post.content, new Set([user.id]))) {
-      list.push({ recipientId: pid, payload: { title: '🏷️ 글에서 회원님을 언급했어요', body: `${post.author_name}님: ${truncate(postPlainText(post.content))}`, url: `/?view=${post.id}`, tag: `mention-${post.id}` } });
-    }
+    list.push(...await postMentionTargets(admin, post)); // 외부 자동 게시(/api/autopost)와 같은 알림
     if (list.length === 0) return Response.json({ skipped: 'no mentions' });
   } else if (type === 'story') {
     // 새 스토리 → 나를 팔로우하는 교우들에게
