@@ -97,6 +97,8 @@ import { watchVisualViewport } from '@/lib/visual-viewport';
 import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
+import { UpdatePopup } from '@/components/UpdateNotes';
+import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -433,6 +435,10 @@ export default function Home() {
   const [hiddenNotices, setHiddenNotices] = useState<string[]>([]);
   const [noticeAdminMode, setNoticeAdminMode] = useState(false); // 관리자 공간에서 연 공지 (쓰기·관리 가능)
   const [popupClosed, setPopupClosed] = useState<string[]>([]); // 이번에 '닫기'만 누른 팝업 공지 (다음에 들어오면 다시 뜸)
+  // 업데이트 소식(lib/update-notes): '다시 보지 않기'한 소식(이 휴대폰에 기억)·이번에 '닫기'한 소식, 앱을 연 뒤 잠깐 기다렸다 띄움(알림으로 연 화면이 먼저)
+  const [updateNotesHidden, setUpdateNotesHidden] = useState<string[] | null>(null);
+  const [updateNotesClosed, setUpdateNotesClosed] = useState<string[]>([]);
+  const [updateNotesReady, setUpdateNotesReady] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -3798,6 +3804,13 @@ export default function Home() {
     try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); }
     try { setSnoozedGifts(JSON.parse(sessionStorage.getItem('giftsSnoozed') || '[]')); } catch { /* 무시 */ }
   }, [user]);
+  useEffect(() => {
+    setUpdateNotesReady(false);
+    if (!user) { setUpdateNotesHidden(null); return; }
+    try { setUpdateNotesHidden(JSON.parse(storageGet(hiddenNotesKey(user.id)) || '[]')); } catch { setUpdateNotesHidden([]); }
+    const t = setTimeout(() => setUpdateNotesReady(true), 2500);
+    return () => clearTimeout(t);
+  }, [user]);
   // 테스터가 Play 스토어 테스트 앱으로 들어오면 신청 줄에 '앱을 연 때'를 적는다 → 관리자 테스터 화면에 '📱 앱 설치 확인'
   // (supabase/tester-installs.sql 실행 전이거나 신청하지 않은 교우면 아무 일 없음, 한 번 켤 때 한 번만)
   useEffect(() => {
@@ -3877,7 +3890,19 @@ export default function Home() {
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup && !shownGift;
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift;
+  // 업데이트 소식: 홈에서, 다른 창·선물·팝업 공지가 없을 때 (가장 최근 소식부터 한 창에)
+  const updateNotesToShow = user && updateNotesHidden && updateNotesReady
+    ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
+    : [];
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice;
+  const hideUpdateNotes = () => {
+    if (!user) return;
+    const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
+    setUpdateNotesHidden(next);
+    storageSet(hiddenNotesKey(user.id), JSON.stringify(next));
+  };
+  const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showUpdateNotes;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -3902,6 +3927,7 @@ export default function Home() {
     if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
+    if (showUpdateNotes) closeUpdateNotes();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -6003,6 +6029,9 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      {/* 업데이트 소식 (lib/update-notes): 고친 것·새로 생긴 것·바뀐 것 */}
+      {showUpdateNotes && <UpdatePopup notes={updateNotesToShow} onHide={hideUpdateNotes} onClose={closeUpdateNotes} />}
 
       {/* 공지사항 */}
       {showNotices && (

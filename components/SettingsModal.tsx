@@ -17,6 +17,8 @@ import { appKind, appKindLabel, browserName } from '@/lib/app-kind';
 import { ALERT_SOUNDS, ALERT_SOUND_EVENT, alertSoundName, getAlertSoundChoice, previewAlertSound, setAlertSoundChoice } from '@/lib/alert-sound';
 import { readPushLog, formatPushLogTime, type PushLogEntry } from '@/lib/push-log';
 import { CURRENT_VERSION, CURRENT_NOTE, versionLabel, builtAtLabel, fetchLatestVersion, isNewerVersion, type AppVersion } from '@/lib/app-version';
+import { visibleNotes, noteDateLabel } from '@/lib/update-notes';
+import { UpdateNoteBody } from '@/components/UpdateNotes';
 
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
@@ -40,6 +42,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
   // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인 (여는 단추에서 checkLatest)
   const [latest, setLatest] = useState<{ state: 'checking' | 'done' | 'error'; v: AppVersion | null }>({ state: 'checking', v: null });
+  const [allNotes, setAllNotes] = useState(false); // 지난 업데이트 소식: 처음엔 최근 5개만
   const checkLatest = async () => {
     setLatest({ state: 'checking', v: null });
     const v = await fetchLatestVersion();
@@ -319,6 +322,26 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               {appInfo && <p className="mt-2"><b>지금 쓰는 앱</b> · {appInfo.title}</p>}
               {device.kind === 'play' && <p className="mt-1">Play 스토어 앱 자체의 버전은 <b>Play 스토어 → 가톨릭그램 → 이 앱 정보</b>에서 볼 수 있어요.</p>}
             </div>
+            {/* 업데이트 소식 (lib/update-notes): 앱을 열 때 뜨는 창에서 '다시 보지 않기'를 눌러도 여기서 다시 볼 수 있음 */}
+            {(() => {
+              const notes = visibleNotes(!!onOpenMembers);
+              if (!notes.length) return null;
+              const shown = allNotes ? notes : notes.slice(0, 5);
+              return (
+                <div className="flex flex-col gap-2.5">
+                  <p className="text-[1rem] font-bold text-stone-900 mt-1 flex items-center gap-2"><IconBadge name="sparkle" tone="violet" size="sm" />업데이트 소식</p>
+                  {shown.map(n => (
+                    <div key={n.id} className="p-4 rounded-2xl border border-stone-200">
+                      <p className="text-[0.875rem] font-bold text-stone-500 mb-2">{noteDateLabel(n)}</p>
+                      <UpdateNoteBody note={n} />
+                    </div>
+                  ))}
+                  {notes.length > shown.length && (
+                    <button onClick={() => setAllNotes(true)} className="py-3 rounded-xl bg-stone-100 text-[0.9375rem] font-bold text-stone-700">지난 소식 더 보기 ({notes.length - shown.length}개)</button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         ) : view === 'sound' ? (
           <div className="overflow-y-auto p-4 flex flex-col gap-3">
