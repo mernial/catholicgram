@@ -128,8 +128,8 @@ def make_clip(src, dst, start, meta):
               f":measured_thresh={stats['input_thresh']}:offset={stats['target_offset']}")
     else:
         ln = 'loudnorm=I=-16:TP=-1.5:LRA=11'
-    # 소리 크기를 맞춘 뒤 튀는 소리가 0dB 를 넘지 않게 -1dB 에서 눌러 줌 (lofi 곡의 잡음 한두 개가 넘었음)
-    af = f'{ln},alimiter=limit=0.891:attack=5:release=50:level=false,afade=t=in:st=0:d={FADE_IN},afade=t=out:st={CLIP - FADE_OUT}:d={FADE_OUT}'
+    # 소리 크기를 맞춘 뒤 튀는 소리를 -3dB 에서 눌러 줌 (-1dB 로는 AAC 로 바꾼 뒤 피아노 곡 몇 곳이 0dB 에 닿았음)
+    af = f'{ln},alimiter=limit=0.708:attack=5:release=50:level=false,afade=t=in:st=0:d={FADE_IN},afade=t=out:st={CLIP - FADE_OUT}:d={FADE_OUT}'
     # 2) 30초 m4a (꼬리표는 곡 이름·만든 사람·출처 표시만)
     run(base + ['-af', af, '-ar', '44100', '-ac', '2', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
                 '-map_metadata', '-1', '-metadata', f"title={meta['title']}", '-metadata', f"artist={meta['artist']}",
