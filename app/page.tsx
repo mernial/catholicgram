@@ -1737,6 +1737,12 @@ export default function Home() {
   const dmRoom = currentChatUser ? `dm:${currentChatUser.id}` : null;
   const dmBookmarks = useBookmarks(user?.id, dmRoom);
   const dmHidden = useHiddenMessages(user?.id, dmRoom);
+  // '읽음'은 상대가 읽은 내 마지막 메시지에 — 그 뒤에 상대가 답을 보냈으면 읽은 게 당연하니 숨김 (테스터 건의, 카카오톡·인스타그램처럼)
+  const dmReadIndex = (() => {
+    const last = chatMessages.reduce((l, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : l), -1);
+    if (last < 0) return -1;
+    return chatMessages.some((m, idx) => idx > last && m.sender_id !== user?.id && !dmHidden.hidden.has(String(m.id))) ? -1 : last;
+  })();
   // 대화 내용 찾기 (머리줄 🔍, components/ChatSearch): 1:1 은 대화방의 대화를 모두 불러와 있어 화면에서 찾음
   const dmSearch = useChatSearch({
     items: chatMessages,
@@ -5390,8 +5396,6 @@ export default function Home() {
             ) : (
               chatMessages.map((msg, i) => {
                 const isMe = msg.sender_id === user?.id;
-                // 내가 보낸 메시지 중 상대가 읽은 마지막 메시지에만 '읽음' 표시
-                const lastReadMineIndex = chatMessages.reduce((last, m, idx) => (m.sender_id === user?.id && m.read_at ? idx : last), -1);
                 const time = new Date(msg.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
                 const mid = String(msg.id);
                 if (dmHidden.hidden.has(mid)) return null; // 내 화면에서만 지운 메시지
@@ -5412,7 +5416,7 @@ export default function Home() {
                       <div className="flex flex-col items-end text-[0.75rem] leading-tight shrink-0">
                         {!msg.read_at ? (
                           <span className="text-amber-500 font-bold" title="아직 읽지 않음">1</span>
-                        ) : i === lastReadMineIndex ? (
+                        ) : i === dmReadIndex ? (
                           <span className="text-stone-400">읽음</span>
                         ) : null}
                         {msg.edited_at && !msg.deleted_at && <span className="text-stone-400">수정됨</span>}
