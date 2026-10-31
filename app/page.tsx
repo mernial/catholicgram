@@ -494,6 +494,7 @@ export default function Home() {
   const [testerPromptDismissed, setTesterPromptDismissed] = useState(true);
   const [settingsView, setSettingsView] = useState<'main' | 'feast' | 'sound'>('main');
   const settingsBackRef = useRef<(() => boolean) | null>(null); // 설정 안의 화면에서 뒤로가기 → 설정 목록 (components/SettingsModal 이 채움)
+  const settingsSubRef = useRef(false); // 설정 안의 화면을 열며 뒤로가기 기록 한 칸을 더 쌓았는지
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
   const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number; chat?: boolean } | null>(null); // chat: 대화의 사진이면 저장·공유 단추
@@ -3962,12 +3963,27 @@ export default function Home() {
     } else if (modalHistoryRef.current) {
       // 단추로 닫힘 → 쌓아 둔 칸을 바로 걷어낸다 (그사이 다른 화면으로 옮겼으면 그 칸은 나중에 뒤로가기 때 건너뛴다)
       modalHistoryRef.current = false;
-      const st = window.history.state as { modal?: true } | null;
-      if (st && st.modal) { skipNextPopRef.current = true; window.history.back(); }
+      settingsSubRef.current = false;
+      const st = window.history.state as { modal?: true; sub?: true } | null;
+      // 설정 안의 화면(버전 정보 등)에서 × 로 닫았으면 그 화면 칸까지 두 칸
+      if (st && st.modal) { skipNextPopRef.current = true; window.history.go(st.sub ? -2 : -1); }
     }
   }, [anyModalOpen]);
-  // 뒤로가기로 창을 닫는다. 창 안의 한 단계만 물러났으면(설정 → 버전 정보 → 설정 목록) true — 창은 그대로라 뒤로가기 기록 한 칸을 다시 쌓는다
-  const closeAllModals = (): boolean | void => {
+  // 설정 안의 화면(버전 정보 등)을 누르는 순간(사용자가 누른 때) 뒤로가기 기록 한 칸을 더 쌓는다 → 휴대폰 뒤로가기는 설정 목록으로.
+  // 뒤로가기 처리 중에 기록을 쌓으면 안드로이드 크롬이 그 아래 칸을 '건너뛸 칸'으로 보아 다음 뒤로가기에 앱이 꺼졌음 (루비로사: '설정에서 빽키 누르면 튕겨져 나가요')
+  const settingsSubView = (open: boolean) => {
+    if (open) {
+      if (!modalHistoryRef.current || settingsSubRef.current) return;
+      window.history.pushState({ ...currentScreenRef.current, modal: true, sub: true }, '');
+      settingsSubRef.current = true;
+    } else if (settingsSubRef.current) {
+      // 화면의 ← 로 목록에 돌아옴 → 쌓아 둔 칸을 걷어낸다
+      settingsSubRef.current = false;
+      const st = window.history.state as { sub?: true } | null;
+      if (st && st.sub) { skipNextPopRef.current = true; window.history.back(); }
+    }
+  };
+  const closeAllModals = () => {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
@@ -3975,8 +3991,6 @@ export default function Home() {
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
-    // 설정 안의 화면(버전 정보·알림 소리·나의 축일·차단 목록)이면 설정 목록으로만 (루비로사 건의: 설정이 통째로 닫혀 내 공간으로 갔음)
-    if (showSettings && settingsBackRef.current?.()) return true;
     if (shownGift) { closeGift(shownGift); return; }
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     if (showUpdateNotes) closeUpdateNotes();
@@ -4020,9 +4034,12 @@ export default function Home() {
     if (rewindRef.current && st && 'guard' in st) rewindRef.current = false;
     if (st && 'screen' in st && st.base && !anyModalOpen) { rewindRef.current = true; applyScreen(st); return; }
     if (anyModalOpen) {
-      const stepBack = closeAllModals();
-      // 창 안에서 한 단계만 물러났으면 창은 열려 있으므로 그 칸을 다시 쌓는다 (다음 뒤로가기에 창이 닫히게)
-      if (stepBack && modalHistoryRef.current) { window.history.pushState({ ...currentScreenRef.current, modal: true }, ''); return; }
+      // 설정 안의 화면(버전 정보·알림 소리·나의 축일·차단 목록)을 열 때 쌓은 칸이 빠짐 → 설정 목록으로만 (루비로사 건의)
+      if (settingsSubRef.current) {
+        settingsSubRef.current = false;
+        if (showSettings && settingsBackRef.current?.()) return;
+      }
+      closeAllModals();
       // 창을 열 때 쌓아 둔 칸이 빠진 것이면 그대로 끝 (기록을 다시 쌓지 않아야 브라우저가 앞 칸을 건너뛰지 않는다)
       if (modalHistoryRef.current) { modalHistoryRef.current = false; if (staleModalEntry) window.history.back(); return; }
       window.history.pushState(currentScreenRef.current, ''); // 화면은 그대로 유지
@@ -5732,7 +5749,7 @@ export default function Home() {
           onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
           onSamsungGuide={(preview: boolean) => { setShowSettings(false); setSamsungGuideOpen(preview ? 'preview' : 'open'); }}
           onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
-          initialView={settingsView} backRef={settingsBackRef}
+          initialView={settingsView} backRef={settingsBackRef} onSubView={settingsSubView}
           onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
           onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
           onOpenVault={isAdmin ? () => { setShowSettings(false); setShowMusicVault(true); } : undefined}

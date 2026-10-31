@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-01-5',
+    date: '2026-11-01',
+    fixed: [
+      { text: '설정에서 버전 정보 등을 보고 돌아온 뒤 휴대폰 뒤로가기를 한 번 더 누르면 앱이 꺼지던 문제를 고쳤어요. 이제 설정만 닫혀요.' },
+    ],
+  },
+  {
     id: '2026-11-01-4',
     date: '2026-11-01',
     added: [

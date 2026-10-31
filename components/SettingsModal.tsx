@@ -23,7 +23,7 @@ import { UpdateNoteBody } from '@/components/UpdateNotes';
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', backRef, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', backRef, onSubView, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -31,6 +31,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onFeastDayChange: (value: string | null) => Promise<boolean>;
   initialView?: 'main' | 'feast' | 'sound';
   backRef?: React.MutableRefObject<(() => boolean) | null>; // 휴대폰 뒤로가기: 설정 안의 화면이면 설정 목록으로 (물러났으면 true)
+  onSubView?: (open: boolean) => void; // 목록에서 안의 화면을 누름(true) / ← 로 목록에 돌아옴(false) — page 가 뒤로가기 기록을 쌓고 걷음
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
   onOpenVault?: () => void;   // 관리자: 🔒 보관 음악 (비공개·선물용)
@@ -44,23 +45,24 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
   // 설정 목록에서 들어간 화면(버전 정보 등)에서 뒤로가기·← 를 누르면 보던 목록 자리 그대로 (루비로사 건의 2026-11-01:
   // 버전 정보에서 휴대폰 뒤로가기를 누르면 설정이 통째로 닫혀 내 공간이 나왔음).
-  // 알림창 '소리 ›'처럼 처음부터 그 화면으로 열었으면(설정 목록을 거치지 않음) 뒤로가기는 설정을 닫는다
+  // 알림창 '소리 ›'처럼 처음부터 그 화면으로 열었으면(설정 목록을 거치지 않음 — 기록 칸이 없음) 뒤로가기는 설정을 닫는다
   const mainListRef = useRef<HTMLDivElement>(null);
   const mainScrollTop = useRef(0);
-  const leftInitial = useRef(false);
-  useEffect(() => { if (view !== initialView) leftInitial.current = true; }, [view, initialView]);
+  type View = 'main' | 'blocks' | 'feast' | 'sound' | 'version';
+  const openView = (v: View) => { onSubView?.(true); setView(v); };
+  const backToMain = () => { onSubView?.(false); setView('main'); };
   useLayoutEffect(() => {
     if (view === 'main' && mainListRef.current) mainListRef.current.scrollTop = mainScrollTop.current;
   }, [view]);
   useEffect(() => {
     if (!backRef) return;
     backRef.current = () => {
-      if (view === 'main' || (view === initialView && !leftInitial.current)) return false;
+      if (view === 'main') return false;
       setView('main');
       return true;
     };
     return () => { backRef.current = null; };
-  }, [backRef, view, initialView]);
+  }, [backRef, view]);
   // 버전 정보: 화면을 열 때마다 새 버전이 나왔는지 확인 (여는 단추에서 checkLatest)
   const [latest, setLatest] = useState<{ state: 'checking' | 'done' | 'error'; v: AppVersion | null }>({ state: 'checking', v: null });
   const [allNotes, setAllNotes] = useState(false); // 지난 업데이트 소식: 처음엔 최근 5개만
@@ -95,7 +97,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
     const ok = await onFeastDayChange(value);
     setSavingFeast(false);
     if (!ok) { alert('축일을 저장하지 못했습니다. 잠시 후 다시 시도해주세요.'); return; }
-    setView('main');
+    backToMain();
   };
   const [blocked, setBlocked] = useState<BlockedProfile[]>([]);
   const [deleting, setDeleting] = useState(false);
@@ -164,10 +166,10 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
     <BottomSheet bare label="설정" onClose={onClose} z="z-[85]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-          {view === 'blocks' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 차단 목록</button>}
-          {view === 'feast' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 나의 축일</button>}
-          {view === 'sound' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 알림 소리</button>}
-          {view === 'version' && <button onClick={() => setView('main')} className="text-sm font-bold text-stone-900">← 버전 정보</button>}
+          {view === 'blocks' && <button onClick={backToMain} className="text-sm font-bold text-stone-900">← 차단 목록</button>}
+          {view === 'feast' && <button onClick={backToMain} className="text-sm font-bold text-stone-900">← 나의 축일</button>}
+          {view === 'sound' && <button onClick={backToMain} className="text-sm font-bold text-stone-900">← 알림 소리</button>}
+          {view === 'version' && <button onClick={backToMain} className="text-sm font-bold text-stone-900">← 버전 정보</button>}
           {view === 'main' && <h2 className="font-bold text-stone-900">설정</h2>}
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1">×</button>
         </div>
@@ -240,7 +242,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 </p>
               )}
             </div>
-            <button onClick={() => setView('sound')} className={row}>
+            <button onClick={() => openView('sound')} className={row}>
               <span className={label}><IconBadge name={sound === 'off' ? 'mute' : 'speaker'} tone="violet" />알림 소리</span>
               <span className="text-stone-400 text-xs">{alertSoundName(sound)} <span className="text-stone-300">›</span></span>
             </button>
@@ -253,7 +255,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             {onOpenTester && (
               <button onClick={onOpenTester} className={row}><span className={label}><IconBadge name="phone" tone="green" />안드로이드 앱 테스터 신청</span><span className="text-stone-300">›</span></button>
             )}
-            <button onClick={() => { setFeastInput(feastDay); setView('feast'); }} className={row}>
+            <button onClick={() => { setFeastInput(feastDay); openView('feast'); }} className={row}>
               <span className={label}><IconBadge name="calendar" tone="gold" />나의 축일</span>
               <span className="text-stone-400 text-xs">{feastDay ? formatFeastDay(feastDay) : '등록하기'} <span className="text-stone-300">›</span></span>
             </button>
@@ -272,8 +274,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             {onShareApp && (
               <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
             )}
-            <button onClick={() => setView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
-            <button onClick={() => { setView('version'); checkLatest(); }} className={row}>
+            <button onClick={() => openView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
+            <button onClick={() => { openView('version'); checkLatest(); }} className={row}>
               <span className={label}><IconBadge name="sparkle" tone="sky" />버전 정보</span>
               <span className="text-stone-400 text-xs">{versionLabel(CURRENT_VERSION)} <span className="text-stone-300">›</span></span>
             </button>
