@@ -66,6 +66,7 @@ import { useDoubleTap } from '@/lib/double-tap';
 import VideoEditor, { OverlayLayer, hasOverlays, type VideoOverlays } from '@/components/VideoOverlays';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 import { type BgmTrack, BUILTIN_BGM, RETIRED_BGM, parsePostMusic, encodeBgm, uniqueTitles } from '@/lib/music';
+import { CC_BGM } from '@/lib/music-cc';
 import { PHOTO_OPTIONS, uploadMedia, uploadPhoto, PHOTO_ONLY_TEXT, VIDEO_ONLY_TEXT, isMediaOnlyText, isVideoUrl } from '@/lib/upload';
 import SponsorBanner from '@/components/SponsorBanner';
 import SponsorAdmin from '@/components/SponsorAdmin';
@@ -495,7 +496,7 @@ export default function Home() {
   const [detailImageIndex, setDetailImageIndex] = useState(0);
   const [postMenuId, setPostMenuId] = useState<string | null>(null);
   // 배경음악: 목록, 글쓰기에서 고른 음악, 게시물 보기에서 재생 중 여부
-  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([...BUILTIN_BGM, ...RETIRED_BGM]); // 예전 곡(active: false)은 예전 게시물 재생용, 고르기 목록에는 없음
+  const [bgmTracks, setBgmTracks] = useState<BgmTrack[]>([...BUILTIN_BGM, ...CC_BGM, ...RETIRED_BGM]); // 예전 곡(active: false)은 예전 게시물 재생용, 고르기 목록에는 없음
   const [composerMusic, setComposerMusic] = useState<SelectedMusic | null>(null);
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [showBgmAdmin, setShowBgmAdmin] = useState(false);
@@ -2228,7 +2229,7 @@ export default function Home() {
   const fetchBgmTracks = async () => {
     const { data } = await supabase.from('bgm_tracks').select('id, title, artist, url, active, sort').eq('active', true).order('sort').order('created_at');
     // 관리자가 올린 곡 + 앱에 기본으로 들어 있는 곡
-    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM, ...RETIRED_BGM]);
+    setBgmTracks([...((data || []) as BgmTrack[]), ...BUILTIN_BGM, ...CC_BGM, ...RETIRED_BGM]); // CC0·CC BY 곡(lib/music-cc)은 운영자 곡 뒤에
   };
 
   // 사진을 눌러 게시물을 열면 음악이 바로 재생된다.
@@ -6793,6 +6794,8 @@ export default function Home() {
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-bold text-stone-800 truncate">{selectedPostDetail.music_title || track.title}</span>
                       <span className="block text-xs text-stone-500">{bgmPlaying ? '재생 중' : '눌러서 듣기'}{music.clip ? ` · ${Math.floor(music.start / 60)}:${String(music.start % 60).padStart(2, '0')}부터 ${music.clip}초` : ''}</span>
+                      {/* CC0·CC BY 곡의 출처 표시 (CC BY 는 곡 이름·작곡가·라이선스를 꼭 보여야 함, lib/music-cc) */}
+                      {track.credit && <span className="block text-[0.6875rem] leading-snug text-stone-400">{track.credit}</span>}
                     </span>
                   </button>
                 );

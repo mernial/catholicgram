@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import MusicSegmentPicker from '@/components/MusicSegmentPicker';
-import { type BgmTrack, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
+import { type BgmTrack, type MusicMood, MUSIC_MOODS, bySeason, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
 import { ADMIN_EMAILS } from '@/lib/admin';
@@ -38,6 +38,7 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
 }) {
   // 즐겨찾기가 있으면 그것부터, 없으면 가톨릭그램 음악(관리자가 넣은 곡·앱 기본 곡)부터
   const favs = useMusicFavorites();
+  const [mood, setMood] = useState<MusicMood | 'all'>('all'); // '가톨릭그램 음악'의 분위기 나누기 (CC0·CC BY 곡)
   const [tab, setTab] = useState<'fav' | 'bgm' | 'youtube'>(() =>
     readMusicFavorites().length > 0 ? 'fav' : tracks.length + giftTracks.length > 0 ? 'bgm' : 'youtube');
 
@@ -86,8 +87,12 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
         <Icon name={previewId === t.id ? 'pause' : 'play'} fill className="w-4 h-4" />
       </button>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold text-stone-800 truncate">{t.title}</p>
-        {gift ? <p className="text-xs text-amber-700 truncate">🎁 선물받은 노래</p> : t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
+        <p className="text-sm font-bold text-stone-800 truncate">{t.season === 'christmas' && <span aria-label="성탄 곡">🎄 </span>}{t.title}</p>
+        {gift ? <p className="text-xs text-amber-700 truncate">🎁 선물받은 노래</p>
+          : t.credit ? (
+            // CC0·CC BY 곡: 분위기 말 + 출처 표시 (CC BY 는 곡 이름·작곡가·라이선스를 꼭 보여야 해서 줄여 자르지 않음)
+            <p className="text-[0.75rem] leading-snug text-stone-500">{t.feel && <span className="font-bold text-stone-600">{t.feel} · </span>}{t.credit}</p>
+          ) : t.artist && <p className="text-xs text-stone-500 truncate">{t.artist}</p>}
       </div>
       {starBtn({ kind: 'bgm', id: t.id, title: t.title })}
       <button onClick={() => { audioRef.current?.pause(); setPreviewId(null); setSegmentFor({ trackId: t.id, audioUrl: t.url, title: t.title, start: 0 }); }} className="text-xs px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold shrink-0">선택</button>
@@ -261,9 +266,18 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
                 <p className="px-4 pt-3 pb-1.5 text-xs font-bold text-stone-500">가톨릭그램 음악</p>
               </>
             )}
+            {/* 분위기 나누기: 전체 · 고요 · 희망 · 위로 · 기쁨 · 장엄·성가 (운영자가 올린 곡은 '전체'에) */}
+            {tracks.some(t => t.mood) && (
+              <div className="px-3 py-2.5 flex gap-1.5 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="분위기로 고르기">
+                {[{ key: 'all' as const, label: '전체' }, ...MUSIC_MOODS].map(m => (
+                  <button key={m.key} type="button" onClick={() => setMood(m.key)} aria-pressed={mood === m.key}
+                    className={`shrink-0 px-3.5 py-1.5 rounded-full text-[0.8125rem] font-bold ${mood === m.key ? 'bg-stone-900 text-white' : 'bg-stone-100 text-stone-600'}`}>{m.label}</button>
+                ))}
+              </div>
+            )}
             {tracks.length === 0 ? (
               <div className="p-10 text-center text-sm text-stone-400 leading-relaxed">아직 등록된 배경음악이 없어요.<br />(관리자: 설정 › 게시글 음악 추가·관리)<br />유튜브 뮤직에서 찾아 넣을 수도 있어요.</div>
-            ) : tracks.map(t => trackRow(t))}
+            ) : bySeason(mood === 'all' ? tracks : tracks.filter(t => t.mood === mood)).map(t => trackRow(t))}
           </div>
         ) : (
           <div className="overflow-y-auto flex flex-col">
