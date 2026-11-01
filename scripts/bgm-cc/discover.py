@@ -76,7 +76,7 @@ def first(pattern, text, flags=re.I | re.S):
 def fma_track_infos(page):
     """FMA 페이지의 곡 줄마다 붙은 data-track-info (제목·곡 페이지·파일 주소)"""
     out = []
-    for raw in re.findall(r'data-track-info="([^"]+)"', page):
+    for _q, raw in re.findall(r'data-track-info=([\'"])(.*?)\1', page, re.S):
         try:
             info = json.loads(html.unescape(raw))
         except Exception:  # noqa: BLE001
@@ -129,16 +129,23 @@ def fma_artist(src):
     if src.get('albums'):
         album_urls = [f'{FMA}/music/{handle}/{a}/' for a in src['albums']]
     else:
-        for a in re.findall(r'href="(?:https://freemusicarchive\.org)?/music/' + re.escape(handle) + r'/([^/"#?]+)/?"', page, re.I):
+        for a in re.findall(r'href=["\'](?:https://freemusicarchive\.org)?/music/' + re.escape(handle) + r'/([^/"\'#?]+)/?["\']', page, re.I):
             u = f'{FMA}/music/{handle}/{a}/'
+            if a.lower() in ('bio', 'contact', 'tip', 'albums', 'tracks', 'stats') or u in album_urls:
+                continue
             if u not in album_urls:
                 album_urls.append(u)
         album_urls = album_urls[:MAX_ALBUMS]
     infos = [] if src.get('albums') else fma_track_infos(page)
+    album_lic = {}
     for au in album_urls:
         ap = fetch(au)
         if ap:
-            infos += fma_track_infos(ap)
+            got = fma_track_infos(ap)
+            for g in got:
+                album_lic[(g.get('url') or '').replace('\\/', '/')] = cc_links(ap)
+            infos += got
+    print(f'  albums {len(album_urls)} · tracks {len(infos)}')
     seen, out = set(), []
     for i in infos:
         url = (i.get('url') or '').replace('\\/', '/')
@@ -152,6 +159,7 @@ def fma_artist(src):
         out.append({
             'source': 'fma', 'artist': i.get('artistName') or handle, 'title': i.get('title') or '', 'album': i.get('albumTitle') or '',
             'page': url, 'file': file_url, 'file_head': head(file_url) if file_url else {}, **d,
+            'licenses_album': album_lic.get(url, []),
         })
         print(f"  · {out[-1]['artist']} — {out[-1]['title']} {d.get('licenses_near_label') or d.get('licenses_page')} {d.get('genres')}")
     return out
@@ -165,8 +173,10 @@ def oga_item(url):
     m = re.search(r'field-name-field-art-licenses(.{0,2500})', page, re.S)
     lic_area = m.group(1) if m else ''
     files = []
-    for f in re.findall(r'href="((?:https://opengameart\.org)?/sites/default/files/[^"]+)"', page):
+    for f in re.findall(r'(?:href|data-mp3-url|data-ogg-url)=["\']((?:https?://opengameart\.org)?/sites/default/files/[^"\']+)["\']', page):
         f = urllib.parse.urljoin(OGA, html.unescape(f))
+        if '/audio_preview/' in f or '/styles/' in f:
+            continue
         if f.lower().endswith(AUDIO_EXT) and f not in files:
             files.append(f)
     tags = []
