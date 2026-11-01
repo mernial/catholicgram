@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import Cropper from 'react-easy-crop';
+import FreeCrop, { fitAspect } from '@/components/FreeCrop';
 import Icon from '@/components/Icon';
 import StickerPanel, { useStickerPicker } from '@/components/StickerPanel';
 import type { Sticker } from '@/lib/stickers';
@@ -26,11 +26,13 @@ interface Cover {
   rotation: number;       // 도(°)
 }
 
+// 자르기 비율: '자유'(기본 — 네 가장자리·모서리를 끌어 직접 맞춤, 루비로사 건의) · 원본 · 1:1 · 4:5 · 16:9
 const ASPECTS: { key: string; label: string; value: number | null }[] = [
+  { key: 'free', label: '자유', value: null },
   { key: 'orig', label: '원본', value: null },
-  { key: '1', label: '정사각형', value: 1 },
-  { key: '45', label: '세로 4:5', value: 4 / 5 },
-  { key: '169', label: '가로 16:9', value: 16 / 9 },
+  { key: '1', label: '1:1', value: 1 },
+  { key: '45', label: '4:5', value: 4 / 5 },
+  { key: '169', label: '16:9', value: 16 / 9 },
 ];
 const EMOJIS = ['😊', '🙂', '😇', '🥰', '😎', '🙏', '❤️', '🌸', '🌼', '⭐', '✨', '🕊️', '✝️', '☁️', '🐱', '🐶', '⚫', '⬛'];
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
@@ -83,12 +85,18 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   useEffect(() => { loadImage(srcUrl).then(img => setNatural({ w: img.naturalWidth, h: img.naturalHeight })).catch(() => {}); }, [srcUrl]);
 
-  // 자르기 (Cropper 는 원본 사진 위에서, area = 지금 고른 부분, cropArea = 실제로 잘라 둔 부분)
-  const [aspectKey, setAspectKey] = useState('orig');
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  // 자르기 (원본 사진 위에서, area = 지금 고른 부분, cropArea = 실제로 잘라 둔 부분)
+  const [aspectKey, setAspectKey] = useState('free');
   const [area, setArea] = useState<Area | null>(null);
-  const aspect = ASPECTS.find(a => a.key === aspectKey)?.value ?? (natural ? natural.w / natural.h : 1);
+  const aspect = aspectKey === 'free' ? null : ASPECTS.find(a => a.key === aspectKey)?.value ?? (natural ? natural.w / natural.h : 1);
+  // 비율을 고르면 지금 고른 부분의 가운데에 그 비율로 가장 크게 (자유는 그대로)
+  const chooseAspect = (key: string) => {
+    setAspectKey(key);
+    if (!natural || key === 'free') return;
+    const a = key === 'orig' ? natural.w / natural.h : ASPECTS.find(x => x.key === key)?.value ?? 1;
+    const cur = area ?? { x: 0, y: 0, width: natural.w, height: natural.h };
+    setArea(fitAspect(natural.w, natural.h, a, cur.x + cur.width / 2, cur.y + cur.height / 2));
+  };
   const [cropArea, setCropArea] = useState<Area | null>(null);
   // 꾸미기·가리기 (잘라 둔 사진 위)
   const [cropped, setCropped] = useState<{ url: string; canvas: HTMLCanvasElement } | null>(null);
@@ -384,7 +392,7 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
       </div>
       {tool === 'crop' ? (
         <div className="relative flex-1 min-h-0">
-          <Cropper image={srcUrl} crop={crop} zoom={zoom} aspect={aspect} onCropChange={setCrop} onZoomChange={setZoom} onCropComplete={(_, px) => setArea(px)} objectFit="contain" showGrid />
+          {natural && <FreeCrop src={srcUrl} natural={natural} aspect={aspect} value={area} onChange={setArea} />}
         </div>
       ) : (
           <div ref={stageRef} className="flex-1 min-h-0 flex items-center justify-center px-3 py-2">
@@ -470,16 +478,15 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
               </div>
               ) : tool === 'crop' ? (
                 <div className="px-4 pt-1 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
-                  <div className="grid grid-cols-4 gap-2">
+                  <div className="grid grid-cols-5 gap-1.5" role="group" aria-label="자르기 비율">
                     {ASPECTS.map(a => (
-                      <button key={a.key} onClick={() => { setAspectKey(a.key); setCrop({ x: 0, y: 0 }); setZoom(1); }} className={`py-2.5 rounded-xl text-[0.875rem] font-bold ${aspectKey === a.key ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{a.label}</button>
+                      <button key={a.key} onClick={() => chooseAspect(a.key)} aria-pressed={aspectKey === a.key} className={`py-2.5 rounded-xl text-[0.875rem] font-bold ${aspectKey === a.key ? 'bg-white text-stone-900' : 'bg-white/10 text-white'}`}>{a.label}</button>
                     ))}
                   </div>
-                  <label className="flex items-center gap-3 text-white text-[0.875rem]">
-                    <span className="shrink-0">확대</span>
-                    <input type="range" min={1} max={4} step={0.01} value={zoom} onChange={e => setZoom(Number(e.target.value))} className="flex-1 accent-[#fbe7b0]" aria-label="확대" />
-                  </label>
-                  <p className="text-center text-[0.75rem] text-white/60">손가락으로 사진을 옮기고, 두 손가락으로 키울 수 있어요</p>
+                  <div className="flex items-center gap-2">
+                    <p className="flex-1 text-[0.75rem] text-white/60 leading-snug">{aspect ? '네 모서리를 끌어 크기를, 가운데를 끌어 자리를 맞춰요' : '네 가장자리·모서리를 끌어 크기를, 가운데를 끌어 자리를 맞춰요'}</p>
+                    <button onClick={() => { setAspectKey('free'); setArea(natural ? { x: 0, y: 0, width: natural.w, height: natural.h } : null); }} className="shrink-0 px-3 py-2 rounded-xl bg-white/10 text-white text-[0.8125rem] font-bold">↺ 처음대로</button>
+                  </div>
                 </div>
               ) : tool === 'sticker' ? (
                 <StickerPanel picker={stickerPicker} closable={false} />

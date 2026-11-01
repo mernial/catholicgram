@@ -89,6 +89,7 @@ import PhotoStrip from '@/components/PhotoStrip';
 import MyComments from '@/components/MyComments';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
+import Collage, { COLLAGE_MAX } from '@/components/Collage';
 import { startVisitTracking } from '@/lib/visit';
 import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, cheerWordOfMany, formatFeastDay, isTodayMonthDay, isValidFeastDay, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
 import CelebrateAvatar, { CelebrateBand } from '@/components/CelebrateAvatar';
@@ -375,6 +376,7 @@ export default function Home() {
   const [composerStickers, setComposerStickers] = useState<Sticker[]>([]); // 글쓰기: 붙인 이모티콘 (글 끝에 한 줄씩 저장)
   const [composerStickerOpen, setComposerStickerOpen] = useState(false);
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
+  const [showCollage, setShowCollage] = useState(false); // 글쓰기: 고른 사진 여러 장을 콜라주 한 장으로 (루비로사 건의)
   // 글 고치기의 사진: 원래 사진은 주소만, 새로 넣거나 편집한 사진은 파일과 미리보기 주소
   const [editPhotos, setEditPhotos] = useState<{ url: string; file?: File }[]>([]);
   const [editPhotoEditor, setEditPhotoEditor] = useState<{ idx: number; file: File; step?: 'crop' | 'cover' | 'sticker' } | null>(null);
@@ -1224,7 +1226,7 @@ export default function Home() {
   const discardComposer = () => {
     composerOpenRef.current = false;
     setShowComposer(false);
-    setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
+    setContent(''); setSelectedFiles([]); setPreviewUrls([]); setShowCollage(false); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
     tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
     setComposerStep('pick'); setComposerMulti(false); setComposerPhotoIdx(0);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -2143,7 +2145,7 @@ export default function Home() {
     if (!error) {
       // 글에서 @태그한 사람에게 휴대폰 알림
       if (created?.[0]?.id && extractMentions(content).length > 0) sendPush('post', created[0].id);
-      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
+      setContent(''); setSelectedFiles([]); setPreviewUrls([]); setShowCollage(false); setComposerMusic(null); clearVideo(); setComposerStickers([]); setComposerStickerOpen(false);
       tray.forEach(t => URL.revokeObjectURL(t.url)); setTray([]);
       if (fileInputRef.current) fileInputRef.current.value = '';
       setShowComposer(false);
@@ -3732,6 +3734,7 @@ export default function Home() {
   type SheetComment = Comment & { _rootId?: string };
   const [commentMenu, setCommentMenu] = useState<{ c: SheetComment; anchor: MenuAnchor | null } | null>(null);
   useBackLayer(!!commentMenu, () => setCommentMenu(null)); // 댓글 꾹 누르기 메뉴: 뒤로가기는 메뉴만
+  useBackLayer(showCollage, () => setShowCollage(false)); // 글쓰기의 콜라주 만들기: 뒤로가기는 콜라주만 (쓰던 글은 그대로)
   // 음악 목록에서 연 올리기·보관 음악 창, 보관 음악에서 연 선물하기 창: 뒤로가기는 맨 위 창만 (목록·보관 음악은 그대로)
   useBackLayer(showMusicLibrary && showBgmAdmin, () => { setShowBgmAdmin(false); setMusicLibRefresh(k => k + 1); });
   useBackLayer(showMusicLibrary && showMusicVault, () => { setShowMusicVault(false); setMusicLibRefresh(k => k + 1); });
@@ -4736,6 +4739,12 @@ export default function Home() {
                         <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 h-12 pl-3 pr-4 rounded-full bg-[#fbf6ef]/95 shadow-md inline-flex items-center gap-1.5 text-stone-900 text-[0.9375rem] font-bold" aria-label="사진 효과 (자르기·이모티콘·모자이크)">
                           <Icon name="magicWand" className="w-6 h-6 text-[#7a5230]" />효과
                         </button>
+                        {/* 고른 사진이 2장 넘으면 콜라주 (여러 사진을 한 장으로, 비율 고르기) */}
+                        {previewUrls.length > 1 && (
+                          <button type="button" onClick={() => setShowCollage(true)} className="absolute bottom-3 right-3 h-12 pl-3 pr-4 rounded-full bg-[#fbf6ef]/95 shadow-md inline-flex items-center gap-1.5 text-stone-900 text-[0.9375rem] font-bold" aria-label="콜라주 만들기 (고른 사진을 한 장으로)">
+                            <Icon name="collage" className="w-6 h-6 text-sky-700" />콜라주
+                          </button>
+                        )}
                       </>
                     )}
                     {videoPreviewUrl && <button type="button" onClick={clearVideo} className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white text-xl leading-none" aria-label="영상 빼기">×</button>}
@@ -4833,6 +4842,9 @@ export default function Home() {
                       {previewUrls.length > 1 && <span className="absolute top-3 right-3 text-[0.8125rem] font-bold text-white bg-black/50 rounded-full px-2.5 py-0.5">{shownIdx + 1}/{previewUrls.length}</span>}
                       {/* 사진 '효과' 하나로 (자르기·이모티콘·그림 문자·모자이크) */}
                       <button type="button" onClick={() => setEditingPhotoIdx(shownIdx)} className="absolute bottom-3 left-3 pl-3 pr-4 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.9375rem] font-bold shadow inline-flex items-center gap-1.5" aria-label="사진 효과 (자르기·이모티콘·모자이크)"><Icon name="magicWand" className="w-5 h-5 text-[#7a5230]" />효과</button>
+                      {previewUrls.length > 1 && (
+                        <button type="button" onClick={() => setShowCollage(true)} className="absolute bottom-3 right-3 pl-3 pr-4 py-2 rounded-full bg-[#fbf6ef]/95 text-stone-900 text-[0.9375rem] font-bold shadow inline-flex items-center gap-1.5" aria-label="콜라주 만들기 (고른 사진을 한 장으로)"><Icon name="collage" className="w-5 h-5 text-sky-700" />콜라주</button>
+                      )}
                     </div>
                     <div className="flex gap-2 px-3 py-2.5 overflow-x-auto border-b border-stone-100">
                       {previewUrls.map((url, idx) => (
@@ -4926,6 +4938,22 @@ export default function Home() {
                 <button type="submit" disabled={!canShare} className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-stone-300 text-white text-[1rem] font-bold">{loading ? (videoStatus || '올리는 중...') : videoStatus ? `${videoStatus.replace('영상 용량을 줄이는 중...', '영상 준비 중')} · 끝나면 공유` : '공유'}</button>
               </div>
             </form>
+            )}
+            {/* 콜라주: 고른 사진(앞의 9장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
+            {showCollage && selectedFiles.length > 1 && (
+              <Collage
+                files={selectedFiles}
+                onCancel={() => setShowCollage(false)}
+                onDone={made => {
+                  const url = URL.createObjectURL(made);
+                  const used = Math.min(COLLAGE_MAX, selectedFiles.length);
+                  setSelectedFiles(prev => [made, ...prev.slice(used)]);
+                  setPreviewUrls(prev => [url, ...prev.slice(used)]);
+                  setComposerPhotoIdx(0);
+                  setShowCollage(false);
+                  setToast({ key: `collage-${Date.now()}`, icon: <Icon name="collage" className="w-7 h-7 text-sky-700" />, title: `사진 ${used}장을 콜라주 한 장으로 모았어요`, body: '원래 사진은 사진 칸에서 다시 고를 수 있어요', action: () => {}, stay: true });
+                }}
+              />
             )}
             {/* 사진 자르기·가리기 */}
             {editingPhotoIdx !== null && selectedFiles[editingPhotoIdx] && (
