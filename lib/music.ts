@@ -49,37 +49,8 @@ export type PostMusic =
   | { kind: 'youtube'; videoId: string; start: number; clip?: number }
   | { kind: 'bgm'; trackId: string; start: number; clip?: number };
 
+// 유튜브 음악은 2026-11-01 부터 새로 넣을 수 없음 — 예전 글의 'yt:' 음악을 읽어 재생하는 데만 씀
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
-
-const parseStart = (t: string | null) => {
-  if (!t) return 0;
-  if (/^\d+$/.test(t)) return Number(t);
-  const m = t.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/);
-  return m ? Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0) : 0;
-};
-
-// 유튜브 주소에서 영상 ID와 시작 시간을 꺼낸다 (youtu.be, watch?v=, shorts, live, music.youtube.com 등)
-export const parseYouTubeUrl = (input: string): { videoId: string; start: number } | null => {
-  const text = input.trim();
-  if (YT_ID.test(text)) return { videoId: text, start: 0 };
-  let url: URL;
-  try { url = new URL(text.startsWith('http') ? text : `https://${text}`); } catch { return null; }
-  const host = url.hostname.replace(/^(www|m|music)\./, '');
-  let id: string | null = null;
-  if (host === 'youtu.be') id = url.pathname.slice(1).split('/')[0];
-  else if (host === 'youtube.com' || host === 'youtube-nocookie.com') {
-    if (url.pathname === '/watch') id = url.searchParams.get('v');
-    else {
-      const m = url.pathname.match(/^\/(?:shorts|live|embed|v)\/([^/?]+)/);
-      if (m) id = m[1];
-    }
-  }
-  if (!id || !YT_ID.test(id)) return null;
-  return { videoId: id, start: parseStart(url.searchParams.get('t') || url.searchParams.get('start')) };
-};
-
-export const encodeYouTube = (videoId: string, start = 0, clip?: number) =>
-  `yt:${videoId}${start > 0 || clip ? `@${start}` : ''}${clip ? `+${clip}` : ''}`;
 
 // 게시물 음악 고르기의 '가톨릭그램 음악' (public/bgm). 운영자가 직접 만든 곡 (2026-10-29 운영자 요청으로 예전 곡을 모두 빼고 이 곡들로). 새 곡은 관리자가 '게시글 음악 추가·관리'(BgmAdmin)에서 파일로 올림 → bgm_tracks.
 // 파일은 운영자가 준 mp3 그대로(다시 압축하지 않음), 이름 등 꼬리표만 지움.
@@ -157,19 +128,4 @@ export const parsePostMusic = (value?: string | null): PostMusic | null => {
     return { kind: 'bgm', trackId, start: Number(start) || 0, clip: Number(clip) || undefined };
   }
   return null;
-};
-
-export const youTubeEmbedUrl = (videoId: string, start = 0, autoplay = true) =>
-  `https://www.youtube-nocookie.com/embed/${videoId}?playsinline=1&rel=0&loop=1&playlist=${videoId}${autoplay ? '&autoplay=1' : ''}${start ? `&start=${start}` : ''}`;
-
-// 유튜브 영상 제목 (실패하면 null)
-export const fetchYouTubeTitle = async (videoId: string): Promise<string | null> => {
-  try {
-    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}`);
-    if (!res.ok) return null;
-    const json = await res.json();
-    return typeof json.title === 'string' ? json.title : null;
-  } catch {
-    return null;
-  }
 };

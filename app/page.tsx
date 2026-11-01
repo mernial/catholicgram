@@ -2153,25 +2153,22 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 고른 음악(유튜브·배경음악)의 구간 표시·다시 고치기 (글쓰기·글 고치기·영상 꾸미기)
+  // 고른 음악(가톨릭그램 음악, 예전 글은 유튜브도)의 구간 표시·다시 고치기 (글쓰기·글 고치기·영상 꾸미기)
   const musicRangeLabel = (value: string) => {
     const m = parsePostMusic(value);
     return m && m.clip ? `${Math.floor(m.start / 60)}:${String(m.start % 60).padStart(2, '0')}부터 ${m.clip}초` : null;
   };
-  // 구간을 고칠 수 있는 음악인지 (배경음악은 목록에 아직 있어야 함)
+  // 구간을 고칠 수 있는 음악인지 (가톨릭그램 음악이고 목록에 아직 있어야 함 — 유튜브 음악은 2026-11-01 부터 넣을 수 없음, 예전 글은 재생만)
   const canAdjustMusic = (value: string) => {
     const m = parsePostMusic(value);
-    return m?.kind === 'youtube' || (m?.kind === 'bgm' && !!findTrack(m.trackId));
+    return m?.kind === 'bgm' && !!findTrack(m.trackId);
   };
   const openMusicSegment = (target: 'composer' | 'edit', music: { value: string; title: string }) => {
     const m = parsePostMusic(music.value);
-    if (!m) return;
-    if (m.kind === 'youtube') setMusicSegment({ videoId: m.videoId, title: music.title, start: m.start, clip: m.clip });
-    else {
-      const track = findTrack(m.trackId);
-      if (!track) return;
-      setMusicSegment({ trackId: track.id, audioUrl: track.url, title: music.title, start: m.start, clip: m.clip });
-    }
+    if (m?.kind !== 'bgm') return;
+    const track = findTrack(m.trackId);
+    if (!track) return;
+    setMusicSegment({ trackId: track.id, audioUrl: track.url, title: music.title, start: m.start, clip: m.clip });
     setMusicPickerFor(target);
     setShowMusicPicker(true);
   };
