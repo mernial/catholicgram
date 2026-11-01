@@ -5,7 +5,7 @@ name: bgm-cc-discover
 on:
   push:
     branches: ['claude/**']
-    paths: ['scripts/bgm-cc/sources.json', 'scripts/bgm-cc/discover.py', '.github/workflows/bgm-cc-discover.yml']
+    paths: ['scripts/bgm-cc/sources.json', 'scripts/bgm-cc/discover.py', 'scripts/bgm-cc/probe.py', '.github/workflows/bgm-cc-discover.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -20,6 +20,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.ref_name }}
+      - name: 페이지 모양 보기
+        if: hashFiles('scripts/bgm-cc/probe.py') != ''
+        run: python3 scripts/bgm-cc/probe.py
       - name: 후보 곡 모으기
         run: python3 scripts/bgm-cc/discover.py
       - name: 결과 올리기
