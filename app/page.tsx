@@ -106,6 +106,8 @@ import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { setBackLayerHost, hasBackLayer, popBackLayer, useBackLayer } from '@/lib/back-layers';
+import { useSelectScope } from '@/lib/select-scope';
+import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -3735,6 +3737,29 @@ export default function Home() {
   const [commentMenu, setCommentMenu] = useState<{ c: SheetComment; anchor: MenuAnchor | null } | null>(null);
   useBackLayer(!!commentMenu, () => setCommentMenu(null)); // 댓글 꾹 누르기 메뉴: 뒤로가기는 메뉴만
   useBackLayer(showCollage, () => setShowCollage(false)); // 글쓰기의 콜라주 만들기: 뒤로가기는 콜라주만 (쓰던 글은 그대로)
+  // 게시글의 글만 복사·사진으로 (루비로사 건의: 묵상글만 캡처·저장) + '모두 선택'은 그 글 안으로 (lib/select-scope)
+  useSelectScope();
+  const [postCard, setPostCard] = useState<{ blob: Blob; title: string } | null>(null);
+  useBackLayer(!!postCard, () => setPostCard(null));
+  const postTextOf = (p: Post) => postPlainText(p.content).trim();
+  const copyPostText = async (p: Post) => {
+    const text = postTextOf(p);
+    if (!text) { showToast('복사할 글이 없어요'); return; }
+    if (await copyText(text)) showToast('글을 복사했어요 · 붙여 넣을 곳에서 꾹 눌러 붙여 넣으세요', 2600);
+    else alert('이 휴대폰에서는 바로 복사가 안 돼요.\n글을 꾹 눌러 \'모두 선택\' → \'복사\'를 눌러 주세요.');
+  };
+  const capturePostText = async (p: Post) => {
+    const text = postTextOf(p);
+    if (!text) { showToast('사진으로 만들 글이 없어요'); return; }
+    showToast('글을 사진으로 만드는 중…', 1200);
+    try {
+      const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+      const blob = await renderPostTextCard({ author: p.author_name || '교우', handle: p.handle, date, text });
+      setPostCard({ blob, title: `${p.author_name || '교우'}님의 글 · 가톨릭그램` });
+    } catch {
+      alert('사진으로 만들지 못했어요. 다시 시도해 주세요.');
+    }
+  };
   // 음악 목록에서 연 올리기·보관 음악 창, 보관 음악에서 연 선물하기 창: 뒤로가기는 맨 위 창만 (목록·보관 음악은 그대로)
   useBackLayer(showMusicLibrary && showBgmAdmin, () => { setShowBgmAdmin(false); setMusicLibRefresh(k => k + 1); });
   useBackLayer(showMusicLibrary && showMusicVault, () => { setShowMusicVault(false); setMusicLibRefresh(k => k + 1); });
@@ -7027,6 +7052,12 @@ export default function Home() {
                   renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
                 />
                 <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
+                {postTextOf(selectedPostDetail) && (
+                  <div className="flex gap-1.5">
+                    <button onClick={() => copyPostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="copy" className="w-4 h-4" />글 복사</button>
+                    <button onClick={() => capturePostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
+                  </div>
+                )}
                 {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
                 {user?.id === selectedPostDetail.user_id && (
                   <div className="mt-3 pt-3 border-t border-stone-100 flex flex-col gap-2">
@@ -7194,6 +7225,12 @@ export default function Home() {
                 <button onClick={async () => { close(); if (await copyText(postLink(post))) showToast('링크를 복사했어요'); else window.prompt('이 주소를 복사하세요', postLink(post)); }} className={tile}><span className={tileBox}><Icon name="link" className="w-7 h-7" /></span>링크 복사</button>
               </div>
               <div className="mt-4 pt-1 border-t border-stone-100">
+                {postTextOf(post) && (
+                  <>
+                    <button onClick={() => { close(); copyPostText(post); }} className={`${row} text-stone-900`}><Icon name="copy" className="w-6 h-6 shrink-0" />글 복사</button>
+                    <button onClick={() => { close(); capturePostText(post); }} className={`${row} text-stone-900`}><Icon name="image" className="w-6 h-6 shrink-0" />글만 사진으로 저장·공유</button>
+                  </>
+                )}
                 {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
                 {!mine && <button onClick={() => { close(); goToProfile(post.user_id); }} className={`${row} text-stone-900`}><Icon name="user" className="w-6 h-6 shrink-0" />{post.author_name}님 공간 가기</button>}
                 {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: postPlainText(post.content) }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
@@ -7203,6 +7240,9 @@ export default function Home() {
           </div>
         );
       })()}
+
+      {/* 게시글의 글만 사진으로 → 공유하기·복사하기·사진으로 저장 */}
+      {postCard && <CapturePreview blob={postCard.blob} title={postCard.title} onClose={() => setPostCard(null)} />}
 
       {/* 맨 위로: 하단 가운데 + 버튼 바로 위 */}
       {showToTop && !typingField && !fabOpen && activeTab !== 'chat' && activeTab !== 'reels' && (

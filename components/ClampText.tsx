@@ -1,6 +1,7 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { registerExpander } from '@/lib/select-scope';
 
 // 글을 정해진 줄 수만 보여 주고, 넘치면 마지막 줄의 글 바로 뒤에 '… 더 보기'를 붙인다.
 // 글이나 '더 보기'를 누르면 전체를 펼치고, onCollapse가 있으면 끝에 '간략히 보기'로 다시 접는다.
@@ -57,15 +58,20 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
   }, [expanded, text, lines, prefixText]);
 
   const folded = !expanded && cut !== null;
+  // 글만 고르기('모두 선택'을 이 글 안으로, lib/select-scope): 접혀 있으면 펼친 뒤 전체를 고르게 펼치기를 맡겨 둠
+  const selectKey = useId();
+  useEffect(() => (folded ? registerExpander(selectKey, onExpand) : undefined), [folded, selectKey, onExpand]);
 
   // 아이폰 사파리는 글 사이 단추의 click 이 오지 않는 경우가 있어 손가락을 뗄 때 바로 처리한다
   // (조금이라도 밀었으면 화면 넘김으로 보고 무시, 처리했으면 뒤따르는 click 은 막음)
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const tap = (fn: () => void, ignoreInner = false) => ({
-    onTouchStart: (e: React.TouchEvent) => { const t = e.touches[0]; touchStart.current = { x: t.clientX, y: t.clientY }; },
+    onTouchStart: (e: React.TouchEvent) => { const t = e.touches[0]; touchStart.current = { x: t.clientX, y: t.clientY, t: Date.now() }; },
     onTouchEnd: (e: React.TouchEvent) => {
       const s = touchStart.current; touchStart.current = null;
       if (!s) return;
+      // 꾹 누름(글 고르기)은 펼치지 않음 — 휴대폰의 글 고르기·복사 메뉴가 그대로 남게
+      if (Date.now() - s.t > 450) return;
       // 글 안의 닉네임·#태그·@이름 단추는 그것대로 동작하게 둔다
       if (ignoreInner && (e.target as Element).closest?.('button, a')) return;
       const t = e.changedTouches[0];
@@ -76,6 +82,7 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
     },
     onClick: (e: React.MouseEvent) => {
       if (ignoreInner && (e.target as Element).closest?.('button, a')) return;
+      if (document.getSelection()?.isCollapsed === false) return; // 글을 끌어 고른 것은 펼치기가 아님
       e.stopPropagation();
       fn();
     },
@@ -97,12 +104,12 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
       {prefix}
       {folded ? (
         <>
-          {renderText(text.slice(0, cut).trimEnd())}{' '}
+          <span data-select-scope="" data-folded="1" data-select-key={selectKey}>{renderText(text.slice(0, cut).trimEnd())}</span>{' '}
           <button type="button" {...tap(onExpand)} className="font-semibold text-stone-500 whitespace-nowrap py-1">… 더 보기</button>
         </>
       ) : (
         <>
-          {renderText(text)}
+          <span data-select-scope="" data-select-key={selectKey}>{renderText(text)}</span>
           {expanded && long && onCollapse && (
             <>
               {' '}

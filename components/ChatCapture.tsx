@@ -263,7 +263,7 @@ export function CapturePreview({ blob, title, onClose }: { blob: Blob; title: st
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto px-4 flex justify-center" onClick={e => e.stopPropagation()}>
         {/* 그림을 꾹 눌러 저장할 수도 있다 */}
-        <img src={url} alt="캡처한 대화" className="self-start max-w-full rounded-xl shadow-2xl" />
+        <img src={url} alt="캡처한 그림" className="self-start max-w-full rounded-xl shadow-2xl" />
       </div>
       <div className="shrink-0 bg-white rounded-t-3xl px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-2" onClick={e => e.stopPropagation()}>
         <div className="grid grid-cols-2 gap-2">
