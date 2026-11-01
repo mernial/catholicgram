@@ -283,6 +283,8 @@ def write_doc(results, dropped, today):
     lines += ['', '## 넣지 않은 곳과 이유 (곡 고른 세션의 메모)', '',
               '- Pixabay·유튜브 오디오 보관함: 앱 안 음악 목록으로 다시 나눠 주는 것을 금지',
               '- Scott Buckley (CC BY): 앱(소프트웨어) 사용은 따로 유료 라이선스',
+              '- 요즘 스타일 추가 선별(2026-11-01): `discover.py`가 모은 후보 662곡 중 곡 페이지에 **CC0 또는 CC BY 4.0 하나만** 보이는 곡에서 골랐습니다. 비영리(NC)·변경 금지(ND)·같은 조건(SA)이 붙은 곡(Xylo-Ziko·Audiobinger·Yung Kartz·Lowtone Music·Serge Quadrado·Ryan Andersen 등)은 넣지 않았습니다',
+              '- 노래(가사)가 있는 곡, AI(Suno)로 만든 리믹스, 짧은 반복(loop) 곡, 가톨릭 앱에 어울리지 않는 제목의 곡도 넣지 않았습니다',
               '- 앞으로 곡을 더할 때도 이 표에 원본 주소·라이선스·확인한 날짜를 남깁니다', '']
     os.makedirs(os.path.join(ROOT, 'docs'), exist_ok=True)
     open(os.path.join(ROOT, 'docs', 'music-licenses.md'), 'w', encoding='utf-8').write('\n'.join(lines))
