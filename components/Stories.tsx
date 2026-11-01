@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import imageCompression from 'browser-image-compression';
 import { supabase } from '@/lib/supabase';
@@ -58,6 +59,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
   // 올리기
   const [draft, setDraft] = useState<{ file: File; url: string } | null>(null);
+  useBackLayer(!!draft, () => { if (draft) URL.revokeObjectURL(draft.url); setDraft(null); }); // 새 스토리 미리보기: 뒤로가기는 취소
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);

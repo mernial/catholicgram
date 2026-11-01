@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
@@ -15,6 +16,7 @@ export default function DeletedMessages({ onClose }: { onClose: () => void }) {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState('');
   const [zoom, setZoom] = useState<string | null>(null);
+  useBackLayer(!!zoom, () => setZoom(null)); // 사진에서 뒤로가기 → 지운 메시지 목록으로
 
   useEffect(() => {
     (async () => {

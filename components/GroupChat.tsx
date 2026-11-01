@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -502,6 +503,14 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const [captureAsk, setCaptureAsk] = useState<string | null>(null);
   const [capturePick, setCapturePick] = useState<Set<string> | null>(null);
   const [captured, setCaptured] = useState<Blob | null>(null);
+  // 단체방 안의 작은 창은 휴대폰 뒤로가기로 그것만 닫는다 (단체방은 그대로, lib/back-layers)
+  useBackLayer(!!menuMsg, () => setMenuMsg(null));
+  useBackLayer(showMembers, () => setShowMembers(false));
+  useBackLayer(selectCopy !== null, () => setSelectCopy(null));
+  useBackLayer(showBookmarks, () => setShowBookmarks(false));
+  useBackLayer(!!captureAsk, () => setCaptureAsk(null));
+  useBackLayer(!!capturePick, () => setCapturePick(null));
+  useBackLayer(!!captured, () => setCaptured(null));
   const [capturing, setCapturing] = useState(false);
   const makeCapture = async (ids: string[]) => {
     const pick = messages.filter(m => ids.includes(m.id) && !hiddenMsgs.hidden.has(m.id));

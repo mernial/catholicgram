@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useEffect, useRef, useState } from 'react';
 import Icon, { type IconName } from '@/components/Icon';
 
@@ -67,6 +68,7 @@ export default function ConfirmHost() {
     return () => { show = null; };
   }, []);
   const close = (ok: boolean) => { req?.resolve(ok); setReq(null); };
+  useBackLayer(!!req, () => close(false)); // 확인 창에서 휴대폰 뒤로가기 = 취소 (뒤의 창은 그대로)
   useEffect(() => {
     if (!req) return;
     okRef.current?.focus({ preventScroll: true });
