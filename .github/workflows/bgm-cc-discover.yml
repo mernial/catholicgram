@@ -1,0 +1,33 @@
+# 가톨릭그램 게시글 배경음악 후보 찾기 — scripts/bgm-cc/discover.py
+# 클라우드 작업 세션은 곡 사이트(freemusicarchive.org·opengameart.org)가 막혀 있어 GitHub 에서 후보 목록(곡·라이선스·장르·파일 주소)만 모아
+# scripts/bgm-cc/candidates.json 으로 같은 가지에 올린다. 고르는 것은 사람이 tracks.json 에 (그러면 bgm-cc 가 30초 곡을 만듦)
+name: bgm-cc-discover
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/bgm-cc/sources.json', 'scripts/bgm-cc/discover.py', '.github/workflows/bgm-cc-discover.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: bgm-cc-discover-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: 후보 곡 모으기
+        run: python3 scripts/bgm-cc/discover.py
+      - name: 결과 올리기
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/bgm-cc/candidates.json
+          if git diff --cached --quiet; then echo "바뀐 것 없음"; exit 0; fi
+          git commit -m "배경음악 후보 목록 (GitHub Actions bgm-cc-discover)"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"

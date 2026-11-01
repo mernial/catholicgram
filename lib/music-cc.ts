@@ -1,9 +1,37 @@
 // 자동으로 만든 파일 — scripts/bgm-cc/to-ts.py (손으로 고치지 말고 scripts/bgm-cc/tracks.json 을 고쳐 다시 만들기)
-// 게시글 배경음악: CC0(Free Music Archive)·CC BY 4.0(Kevin MacLeod, incompetech.com) 곡을 30초로 자른 것 (public/bgm/cc, docs/music-licenses.md)
+// 게시글 배경음악: CC0(Free Music Archive·OpenGameArt)·CC BY 4.0(Kevin MacLeod, Free Music Archive) 곡을 30초로 자른 것 (public/bgm/cc, docs/music-licenses.md)
 // credit = 앱에 꼭 보여야 하는 출처 표시 (CC BY 는 곡 이름·작곡가·라이선스·편집함 필수)
 import type { BgmTrack } from '@/lib/music';
 
 export const CC_BGM: BgmTrack[] = [
+  { id: "cc-in-the-light-of-fall", title: "In The Light Of Fall", artist: "Pamela Yuen", url: "/bgm/cc/cc-in-the-light-of-fall.m4a", mood: "calm", feel: "가을빛 피아노", credit: "\"In The Light Of Fall\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-forward", title: "Forward", artist: "Pamela Yuen", url: "/bgm/cc/cc-forward.m4a", mood: "hopeful", feel: "앞으로·피아노", credit: "\"Forward\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-restoration", title: "Restoration", artist: "Pamela Yuen", url: "/bgm/cc/cc-restoration.m4a", mood: "tender", feel: "회복·위로", credit: "\"Restoration\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-in-good-hands", title: "In Good Hands", artist: "Pamela Yuen", url: "/bgm/cc/cc-in-good-hands.m4a", mood: "tender", feel: "포근한 로파이", credit: "\"In Good Hands\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-a-kind-of-delight", title: "A Kind Of Delight", artist: "Pamela Yuen", url: "/bgm/cc/cc-a-kind-of-delight.m4a", mood: "joyful", feel: "산뜻한 로파이", credit: "\"A Kind Of Delight\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-watching-rain-together", title: "Watching Rain Together", artist: "Pamela Yuen", url: "/bgm/cc/cc-watching-rain-together.m4a", mood: "calm", feel: "빗소리 로파이", credit: "\"Watching Rain Together\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-second-sky", title: "Second Sky", artist: "Pamela Yuen", url: "/bgm/cc/cc-second-sky.m4a", mood: "hopeful", feel: "어쿠스틱 로파이", credit: "\"Second Sky\" — Pamela Yuen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-with-grace-in-our-hearts", title: "With Grace in our Hearts", artist: "Brylie Christopher", url: "/bgm/cc/cc-with-grace-in-our-hearts.m4a", mood: "calm", feel: "은총·잔잔함", credit: "\"With Grace in our Hearts\" — Brylie Christopher (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-gentle-presence", title: "Gentle Presence", artist: "Brylie Christopher", url: "/bgm/cc/cc-gentle-presence.m4a", mood: "calm", feel: "고요한 머무름", credit: "\"Gentle Presence\" — Brylie Christopher (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-dawn", title: "Dawn", artist: "Brylie Christopher", url: "/bgm/cc/cc-dawn.m4a", mood: "hopeful", feel: "새벽", credit: "\"Dawn\" — Brylie Christopher (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-compassion-keys-version", title: "Compassion (keys version)", artist: "Lee Rosevere", url: "/bgm/cc/cc-compassion-keys-version.m4a", mood: "tender", feel: "연민·건반", credit: "\"Compassion (keys version)\" — Lee Rosevere (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-you-re-enough-version-a", title: "You're Enough (version a)", artist: "Lee Rosevere", url: "/bgm/cc/cc-you-re-enough-version-a.m4a", mood: "tender", feel: "괜찮아요", credit: "\"You're Enough (version a)\" — Lee Rosevere (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-we-ll-figure-it-out-together", title: "We'll Figure it Out Together", artist: "Lee Rosevere", url: "/bgm/cc/cc-we-ll-figure-it-out-together.m4a", mood: "hopeful", feel: "함께", credit: "\"We'll Figure it Out Together\" — Lee Rosevere (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-thoughtful", title: "Thoughtful", artist: "Lee Rosevere", url: "/bgm/cc/cc-thoughtful.m4a", mood: "calm", feel: "생각에 잠김", credit: "\"Thoughtful\" — Lee Rosevere (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-warmer", title: "Warmer", artist: "Andy G. Cohen", url: "/bgm/cc/cc-warmer.m4a", mood: "tender", feel: "따뜻한 기타", credit: "\"Warmer\" — Andy G. Cohen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-monkeybars", title: "Monkeybars", artist: "Andy G. Cohen", url: "/bgm/cc/cc-monkeybars.m4a", mood: "joyful", feel: "경쾌한 기타", credit: "\"Monkeybars\" — Andy G. Cohen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-bumbler", title: "Bumbler", artist: "Andy G. Cohen", url: "/bgm/cc/cc-bumbler.m4a", mood: "joyful", feel: "산책·기타", credit: "\"Bumbler\" — Andy G. Cohen (Free Music Archive) · CC BY 4.0 · 30초로 편집" },
+  { id: "cc-spring-at-last", title: "Spring At Last", artist: "HoliznaCC0", url: "/bgm/cc/cc-spring-at-last.m4a", mood: "hopeful", feel: "봄·로파이", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-fire-place", title: "Fire Place", artist: "HoliznaCC0", url: "/bgm/cc/cc-fire-place.m4a", mood: "calm", feel: "난롯가·로파이", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-childhood", title: "Childhood", artist: "HoliznaCC0", url: "/bgm/cc/cc-childhood.m4a", mood: "tender", feel: "어린 시절", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
+  { id: "cc-hope-and-love", title: "Hope and Love", artist: "Loyalty Freak Music", url: "/bgm/cc/cc-hope-and-love.m4a", mood: "hopeful", feel: "희망·사랑", credit: "음악: Loyalty Freak Music (Free Music Archive, CC0)" },
+  { id: "cc-traveling-in-your-mind", title: "Traveling in your mind", artist: "Loyalty Freak Music", url: "/bgm/cc/cc-traveling-in-your-mind.m4a", mood: "calm", feel: "재즈 로파이", credit: "음악: Loyalty Freak Music (Free Music Archive, CC0)" },
+  { id: "cc-friend-to-friend", title: "Friend to friend", artist: "Loyalty Freak Music", url: "/bgm/cc/cc-friend-to-friend.m4a", mood: "joyful", feel: "친구", credit: "음악: Loyalty Freak Music (Free Music Archive, CC0)" },
+  { id: "cc-first-light-particles", title: "First Light Particles", artist: "Yoiyami", url: "/bgm/cc/cc-first-light-particles.m4a", mood: "hopeful", feel: "첫 빛·피아노", credit: "음악: Yoiyami (OpenGameArt, CC0)" },
+  { id: "cc-yoiyami-core-theme", title: "Yoiyami Core Theme", artist: "Yoiyami", url: "/bgm/cc/cc-yoiyami-core-theme.m4a", mood: "calm", feel: "깊은 밤 피아노", credit: "음악: Yoiyami (OpenGameArt, CC0)" },
+  { id: "cc-starfield-romance", title: "Starfield Romance", artist: "Yoiyami", url: "/bgm/cc/cc-starfield-romance.m4a", mood: "solemn", feel: "별빛·신비", credit: "음악: Yoiyami (OpenGameArt, CC0)" },
+  { id: "cc-sunset-plains", title: "Sunset Plains", artist: "Yoiyami", url: "/bgm/cc/cc-sunset-plains.m4a", mood: "calm", feel: "노을·기타", credit: "음악: Yoiyami (OpenGameArt, CC0)" },
+  { id: "cc-morning-sky", title: "Morning Sky", artist: "Centurion_of_war", url: "/bgm/cc/cc-morning-sky.m4a", mood: "hopeful", feel: "아침 하늘", credit: "음악: Centurion_of_war (OpenGameArt, CC0)" },
   { id: "cc-lullabies-for-the-end-of-the-world-1", title: "Lullabies For The End Of The World #1", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-1.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
   { id: "cc-lullabies-for-the-end-of-the-world-2", title: "Lullabies For The End Of The World #2", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-2.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },
   { id: "cc-lullabies-for-the-end-of-the-world-4", title: "Lullabies For The End Of The World #4", artist: "HoliznaCC0", url: "/bgm/cc/cc-lullabies-for-the-end-of-the-world-4.m4a", mood: "calm", feel: "고요한 묵상", credit: "음악: HoliznaCC0 (Free Music Archive, CC0)" },

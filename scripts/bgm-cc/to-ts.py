@@ -7,7 +7,7 @@ res = json.load(open(os.path.join(HERE, 'result.json'), encoding='utf-8'))
 q = lambda s: json.dumps(s, ensure_ascii=False)
 lines = [
     "// 자동으로 만든 파일 — scripts/bgm-cc/to-ts.py (손으로 고치지 말고 scripts/bgm-cc/tracks.json 을 고쳐 다시 만들기)",
-    "// 게시글 배경음악: CC0(Free Music Archive)·CC BY 4.0(Kevin MacLeod, incompetech.com) 곡을 30초로 자른 것 (public/bgm/cc, docs/music-licenses.md)",
+    "// 게시글 배경음악: CC0(Free Music Archive·OpenGameArt)·CC BY 4.0(Kevin MacLeod, Free Music Archive) 곡을 30초로 자른 것 (public/bgm/cc, docs/music-licenses.md)",
     "// credit = 앱에 꼭 보여야 하는 출처 표시 (CC BY 는 곡 이름·작곡가·라이선스·편집함 필수)",
     "import type { BgmTrack } from '@/lib/music';",
     "",
