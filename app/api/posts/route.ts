@@ -40,6 +40,10 @@ export async function POST(request: Request) {
     if ('music' in c) {
       changes.music = typeof c.music === 'string' && c.music ? c.music.slice(0, 300) : null;
       changes.music_title = changes.music && typeof c.music_title === 'string' ? c.music_title.slice(0, 200) : null;
+      // 유튜브 음악은 새로 넣을 수 없음 (운영자 요청 2026-11-01) — 예전 글에 원래 있던 유튜브 음악은 그대로 둘 수 있음
+      if (typeof changes.music === 'string' && changes.music.startsWith('yt:') && changes.music !== post.music) {
+        return Response.json({ error: '유튜브 음악은 이제 넣을 수 없어요. 가톨릭그램 음악에서 골라 주세요.' }, { status: 400 });
+      }
     }
     // 사진 바꾸기 (빼기·추가·편집): 최대 10장(화면의 MAX_PHOTOS), 주소만 받음
     let removedImages: string[] = [];

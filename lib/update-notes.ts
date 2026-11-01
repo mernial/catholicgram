@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-01-9',
+    date: '2026-11-01',
+    changed: [
+      { text: '게시글 음악은 이제 가톨릭그램 음악에서만 골라요. 유튜브 음악을 찾아 넣는 기능은 없앴어요. (예전에 유튜브 음악을 넣은 글은 그대로 들을 수 있어요)' },
+    ],
+  },
+  {
     id: '2026-11-01-8',
     date: '2026-11-01',
     added: [
