@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import MusicSegmentPicker from '@/components/MusicSegmentPicker';
-import { type BgmTrack, type MusicMood, MUSIC_MOODS, bySeason, encodeBgm, encodeYouTube, fetchYouTubeTitle, parseYouTubeUrl, youTubeEmbedUrl } from '@/lib/music';
+import { type BgmTrack, type MusicMood, MUSIC_MOODS, bySeason, encodeBgm, encodeYouTube, youTubeEmbedUrl } from '@/lib/music';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
 import { ADMIN_EMAILS } from '@/lib/admin';
@@ -26,7 +26,8 @@ export interface SelectedMusic { value: string; title: string }
 // 구간 고르기 대상: 유튜브 곡(videoId) 또는 앱 배경음악(trackId + audioUrl)
 export interface MusicSegmentTarget { videoId?: string; trackId?: string; audioUrl?: string; title: string; start: number; clip?: number }
 
-// 글쓰기: 배경음악 고르기 (★ 즐겨찾기 / 앱 배경음악 목록 / 노래 검색 · 유튜브 뮤직 링크)
+// 글쓰기: 배경음악 고르기 (★ 즐겨찾기 / 앱 배경음악 목록 / 유튜브 뮤직 노래 검색)
+// 유튜브 뮤직 링크 붙여넣기는 없앰 (운영자 요청 2026-11-01) — 예전에 링크로 넣은 글·즐겨찾기는 그대로 나옴
 // 즐겨찾기: 곡마다 ☆ 를 누르면 넣고 빼기 (이 휴대폰에만, lib/music-favorites). 즐겨찾기가 있으면 그 탭부터 열림
 export default function MusicPicker({ tracks, giftTracks = [], initialSegment, onSelect, onClose, onAddMusic }: {
   tracks: BgmTrack[];
@@ -50,17 +51,10 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
   const [adminFix, setAdminFix] = useState('');
   const [searchUnavailable, setSearchUnavailable] = useState(false);
   const [previewVideo, setPreviewVideo] = useState<string | null>(null);
-  const [showLinkInput, setShowLinkInput] = useState(false);
   // 유튜브 곡을 고른 뒤 구간 고르기
   const [segmentFor, setSegmentFor] = useState<MusicSegmentTarget | null>(initialSegment || null);
   const [previewId, setPreviewId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  const [link, setLink] = useState('');
-  const [ytTitle, setYtTitle] = useState('');
-  const [checking, setChecking] = useState(false);
-  const [linkError, setLinkError] = useState('');
-  const [found, setFound] = useState<{ videoId: string; start: number } | null>(null);
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
@@ -155,49 +149,18 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
     setSearching(false);
     if (res?.ok) { setResults(json.results || []); return; }
     setResults(null);
-    // 검색이 안 되면 유튜브 뮤직 링크로 넣는 칸을 바로 펼친다
-    setShowLinkInput(true);
     const error: string = json.error || '';
     if (session?.user.email && ADMIN_EMAILS.includes(session.user.email)) {
       setAdminFix(ADMIN_FIX[error] || `구글 응답: ${json.reason || error || (res ? res.status : '연결 안 됨')}`);
     }
     if (error === 'not_configured') { setSearchUnavailable(true); return; }
     setSearchError(
-      error === 'quota' ? '오늘 노래 검색 한도를 다 썼어요. 한국 시간 오후 4~5시에 다시 채워져요. 그동안은 아래 유튜브 뮤직 링크로 넣어 주세요.'
+      error === 'quota' ? '오늘 노래 검색 한도를 다 썼어요. 한국 시간 오후 4~5시에 다시 채워져요. 그동안은 가톨릭그램 음악에서 골라 주세요.'
         : error === 'unauthorized' ? '로그인이 풀렸어요. 다시 로그인한 뒤 검색해 주세요.'
-        : error && error !== 'search_failed' ? '지금은 노래 검색이 안 돼요. 아래 유튜브 뮤직 링크로 넣어 주세요.'
-        : '검색하지 못했어요. 잠시 후 다시 해 보시거나 아래 유튜브 뮤직 링크로 넣어 주세요.');
+        : error && error !== 'search_failed' ? '지금은 노래 검색이 안 돼요. 가톨릭그램 음악에서 골라 주세요.'
+        : '검색하지 못했어요. 잠시 후 다시 해 보시거나 가톨릭그램 음악에서 골라 주세요.');
   };
 
-  const checkLink = async (text = link) => {
-    setLinkError('');
-    const parsed = parseYouTubeUrl(text);
-    if (!parsed) {
-      setFound(null);
-      setLinkError(/[?&]list=/.test(text)
-        ? '노래 하나의 링크를 넣어 주세요. 앨범·재생목록 링크는 안 돼요. (노래 옆 ⋮ → 공유 → 링크 복사)'
-        : '유튜브 뮤직(또는 유튜브) 주소가 아니에요. 노래 옆 ⋮ → 공유 → 링크 복사 후 붙여넣어 주세요.');
-      return;
-    }
-    setFound(parsed);
-    setChecking(true);
-    setYtTitle((await fetchYouTubeTitle(parsed.videoId)) || '');
-    setChecking(false);
-  };
-
-  // 유튜브 뮤직에서 복사해 온 링크를 한 번에 붙여넣기 (안 되면 입력칸을 꾹 눌러 붙여넣기)
-  const linkInputRef = useRef<HTMLInputElement>(null);
-  const pasteLink = async () => {
-    const text = await navigator.clipboard?.readText?.().catch(() => '') || '';
-    if (!text.trim()) {
-      setLinkError('입력칸을 꾹 눌러 [붙여넣기]를 눌러 주세요.');
-      linkInputRef.current?.focus();
-      return;
-    }
-    setLink(text.trim());
-    checkLink(text.trim());
-  };
-  const musicSearchUrl = `https://music.youtube.com/${query.trim() ? `search?q=${encodeURIComponent(query.trim())}` : ''}`;
 
   const tabBtn = (key: 'fav' | 'bgm' | 'youtube', label: React.ReactNode) => (
     <button onClick={() => setTab(key)} aria-pressed={tab === key} className={`flex-auto px-1.5 py-2.5 text-[0.8125rem] min-[400px]:text-sm font-bold whitespace-nowrap border-b-2 ${tab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>{label}</button>
@@ -314,70 +277,7 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
               </div>
             )}
 
-            <div className="p-4 flex flex-col gap-3 border-t border-stone-100">
-              {!showLinkInput ? (
-                <button onClick={() => setShowLinkInput(true)} className="w-full py-3 rounded-xl border border-stone-200 bg-stone-50 text-sm font-bold text-stone-700 flex items-center justify-center gap-1.5">
-                  <Icon name="music" className="w-4 h-4 text-red-600" />유튜브 뮤직 앱에서 고른 노래 넣기
-                </button>
-              ) : (
-                <>
-                  <p className="text-sm font-bold text-stone-800">유튜브 뮤직에서 고른 노래 넣기</p>
-                  <ol className="text-sm text-stone-600 leading-relaxed list-decimal pl-5 flex flex-col gap-0.5">
-                    <li>아래 <b>유튜브 뮤직 열기</b>를 눌러 노래를 찾아요</li>
-                    <li>노래 옆 <b>⋮ → 공유 → 링크 복사</b></li>
-                    <li>여기로 돌아와 <b>붙여넣기</b>를 눌러요</li>
-                  </ol>
-                  <div className="flex gap-2">
-                    <a href={musicSearchUrl} target="_blank" rel="noopener noreferrer"
-                      className="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-sm font-bold text-center">유튜브 뮤직 열기 ↗</a>
-                    <button onClick={pasteLink} className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-sm font-bold">📋 붙여넣기</button>
-                  </div>
-                  <div className="flex gap-2">
-                    <input
-                      ref={linkInputRef}
-                      value={link}
-                      onChange={e => { setLink(e.target.value); setFound(null); setLinkError(''); }}
-                      placeholder="https://music.youtube.com/watch?v=..."
-                      inputMode="url"
-                      autoComplete="off"
-                      className="flex-1 min-w-0 px-3.5 py-2.5 text-sm bg-stone-50 border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
-                    />
-                    <button onClick={() => checkLink()} disabled={!link.trim() || checking} className="px-4 rounded-xl bg-stone-200 text-stone-800 text-sm font-bold disabled:opacity-40 shrink-0">확인</button>
-                  </div>
-                  {linkError && <p className="text-xs text-red-600">{linkError}</p>}
-                  {found && (
-                    <div className="flex flex-col gap-2.5 bg-stone-50 border border-stone-200 rounded-2xl p-3">
-                      <img loading="lazy" src={`https://img.youtube.com/vi/${found.videoId}/hqdefault.jpg`} alt="" className="w-full aspect-video object-cover rounded-xl bg-stone-200" />
-                      <label className="text-xs font-bold text-stone-500">곡 제목</label>
-                      <input
-                        value={checking ? '제목 불러오는 중...' : ytTitle}
-                        onChange={e => setYtTitle(e.target.value)}
-                        placeholder="예: 주님의 기도 (성가)"
-                        disabled={checking}
-                        className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400"
-                      />
-                      {!checking && (() => {
-                        const f: MusicFavorite = { kind: 'yt', videoId: found.videoId, title: ytTitle.trim() || '유튜브 뮤직 노래' };
-                        const on = favs.has(f);
-                        return (
-                          <button type="button" onClick={() => favs.toggle(f)} aria-pressed={on}
-                            className={`w-full py-2.5 rounded-xl border text-sm font-bold ${on ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-stone-200 bg-white text-stone-700'}`}>
-                            <span className="text-amber-400">{on ? '★' : '☆'}</span> {on ? '즐겨찾기에 있어요' : '즐겨찾기에 넣기'}
-                          </button>
-                        );
-                      })()}
-                      <button
-                        onClick={() => setSegmentFor({ videoId: found.videoId, title: ytTitle.trim() || '유튜브 뮤직 노래', start: found.start })}
-                        disabled={checking}
-                        className="w-full py-3 rounded-xl bg-stone-900 text-white text-sm font-bold disabled:opacity-40"
-                      >
-                        다음: 30초 구간 고르기
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
+            {searchUnavailable && !searchError && <p className="p-6 text-center text-sm text-stone-500 leading-relaxed">지금은 노래 검색을 쓸 수 없어요.<br />가톨릭그램 음악에서 골라 주세요.</p>}
           </div>
         )}
         </>)}

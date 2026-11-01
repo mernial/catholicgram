@@ -2,7 +2,7 @@
 -- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전, supabase/music.sql 다음)
 --  * 보관 음악: 관리자가 '🔒 보관 음악'에 올린 곡(bgm_tracks.private) — 교우들의 음악 목록에는 안 보이고, 선물하거나 공개하면 쓰임
 --  * profile_music: 'bgm:<배경음악 id>' (게시글 음악과 같은 꼴), profile_music_title: 곡 제목
---  * 관리자는 '가톨릭그램 음악'의 아무 곡이나. 교우는 관리자에게 선물받은 노래(music_grants)만
+--  * 관리자는 아무 곡이나. 교우는 '가톨릭그램 음악'(앱에 든 곡·관리자가 공개로 올린 곡)과 선물받은 노래(music_grants)에서 (2026-11-01 부터)
 --    (예: 보이는 라디오 사연에 뽑힌 교우에게 그 사연으로 만든 노래를 선물 → 그 교우가 내 공간 음악으로)
 --  * 읽는 것은 누구나 (공간을 연 사람의 휴대폰이 그 곡을 틀어야 하므로)
 alter table public.profiles add column if not exists profile_music text;
@@ -75,7 +75,9 @@ drop policy if exists "bgm read" on public.bgm_tracks;
 create policy "bgm read" on public.bgm_tracks for select
 using (active or public.is_app_admin() or public.is_gifted_track(id));
 
--- 공간 음악을 넣거나 바꾸는 것: 관리자는 아무 곡, 교우는 선물받은 노래만 (끄기는 누구나). 대시보드에서 직접 고치는 것은 허용
+-- 공간 음악(배경음악)을 넣거나 바꾸는 것 (운영자 요청 2026-11-01: 모든 교우가 '가톨릭그램 음악'에서 고르게):
+--  관리자는 아무 곡, 교우는 ① 앱에 들어 있는 곡(builtin-·cc-) ② 관리자가 공개로 올린 곡(목록에 보이는 곡)
+--  ③ 선물받은 노래 — 보관 음악(비공개)은 선물받은 교우만. 끄기는 누구나. 대시보드에서 직접 고치는 것은 허용
 create or replace function public.protect_profile_music()
 returns trigger
 language plpgsql
@@ -96,11 +98,18 @@ begin
     return new;
   end if;
   if new.profile_music is distinct from old.profile_music or new.profile_music_title is distinct from old.profile_music_title then
-    if not exists (
-      select 1 from public.music_grants g
-      where g.user_id = auth.uid() and new.profile_music = 'bgm:' || g.track_id::text
+    if not (
+      new.profile_music ~ '^bgm:(builtin|cc)-[a-z0-9-]{1,70}$'
+      or exists (
+        select 1 from public.bgm_tracks t
+        where new.profile_music = 'bgm:' || t.id::text and t.active and not t.private
+      )
+      or exists (
+        select 1 from public.music_grants g
+        where g.user_id = auth.uid() and new.profile_music = 'bgm:' || g.track_id::text
+      )
     ) then
-      raise exception '선물받은 노래만 공간 음악으로 고를 수 있어요' using errcode = '42501';
+      raise exception '가톨릭그램 음악에서만 배경음악을 고를 수 있어요' using errcode = '42501';
     end if;
   end if;
   return new;

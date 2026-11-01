@@ -1,13 +1,14 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import type { BgmTrack } from '@/lib/music';
+import { type BgmTrack, type MusicMood, MUSIC_MOODS } from '@/lib/music';
 import BottomSheet from '@/components/BottomSheet';
 import Icon from '@/components/Icon';
 
-// '내 공간 → 🎵 공간 음악': 교우가 내 공간·프로필을 누르면 흐를 곡 고르기
-//  - 관리자: '가톨릭그램 음악'(앱에 들어 있는 곡 + 관리자가 올린 곡)에서 — 유튜브 곡은 휴대폰이 저절로 트는 것을 자주 막아서
-//  - 교우: 관리자에게 선물받은 노래에서만 (gifts: 곡 id → 선물하며 남긴 말)
+// '내 공간 → 🎵 배경음악': 교우가 내 공간에 들어오면 흐를 곡 고르기
+//  - 누구나 '가톨릭그램 음악'(앱에 들어 있는 곡 + 관리자가 공개로 올린 곡)에서 (운영자 요청 2026-11-01 — 예전엔 교우는 선물받은 노래만)
+//    유튜브 곡은 휴대폰이 저절로 트는 것을 자주 막아서 빼 둠
+//  - 선물받은 노래(gifts: 곡 id → 선물하며 남긴 말)는 맨 위에 🎁 와 함께
 export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic, gifts, onClose }: {
   tracks: BgmTrack[];
   current: string | null;                 // 지금 정해 둔 곡 id
@@ -17,6 +18,9 @@ export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic
   onClose: () => void;
 }) {
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const [mood, setMood] = useState<MusicMood | null>(null); // 분위기로 고르기 (무료 음악에 붙은 분위기)
+  const moods = MUSIC_MOODS.filter(m => tracks.some(t => t.mood === m.key));
+  const shown = mood ? tracks.filter(t => t.mood === mood || !!gifts?.[t.id]) : tracks;
   const [saving, setSaving] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -45,10 +49,18 @@ export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic
         <div className="p-4 border-b border-stone-100 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="font-bold text-stone-900 flex items-center gap-1.5"><Icon name="music" className="w-5 h-5 text-violet-700" />내 공간 배경음악</h2>
-            <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">{gifts ? '🎁 선물받은 노래 중에서 골라요. ' : ''}교우가 내 공간에 들어오면 이 곡이 흘러요. 듣는 분은 ❚❚ 로 멈출 수 있어요.</p>
+            <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">가톨릭그램 음악 중에서 골라요{gifts && Object.keys(gifts).length ? ' (🎁 선물받은 노래는 맨 위)' : ''}. 교우가 내 공간에 들어오면 이 곡이 흘러요. 듣는 분은 ❚❚ 로 멈출 수 있어요.</p>
           </div>
           <button onClick={onClose} className="text-stone-400 hover:text-stone-700 font-bold text-lg px-1 shrink-0" aria-label="닫기">×</button>
         </div>
+        {moods.length > 0 && (
+          <div className="shrink-0 px-3 py-2 flex gap-1.5 overflow-x-auto border-b border-stone-100" role="group" aria-label="분위기로 고르기">
+            {[{ key: null, label: '전체' } as { key: MusicMood | null; label: string }, ...moods].map(m => (
+              <button key={m.label} type="button" onClick={() => setMood(m.key)} aria-pressed={mood === m.key}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-bold border ${mood === m.key ? 'bg-violet-700 border-violet-700 text-white' : 'bg-white border-stone-200 text-stone-600'}`}>{m.label}</button>
+            ))}
+          </div>
+        )}
         <div className="overflow-y-auto divide-y divide-stone-100">
           {onAddMusic && (
             <button type="button" onClick={() => { stopPreview(); onAddMusic(); }} className="w-full p-3.5 flex items-center gap-3 text-left bg-violet-50/60 active:bg-violet-100">
@@ -59,7 +71,7 @@ export default function ProfileMusicPicker({ tracks, current, onPick, onAddMusic
               </span>
             </button>
           )}
-          {tracks.map(t => {
+          {shown.map(t => {
             const chosen = current === t.id;
             return (
               <div key={t.id} className={`p-3.5 flex items-center gap-3 ${chosen ? 'bg-emerald-50/70' : ''}`}>
