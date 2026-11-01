@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -63,6 +64,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const [filter, setFilter] = useState<'new' | 'read' | 'aired' | 'gift' | 'all'>('new');
   const [reading, setReading] = useState<Letter | null>(null); // 방송용 크게 읽기
   const [zoom, setZoom] = useState<string | null>(null);
+  useBackLayer(!!reading, () => setReading(null)); // 크게 읽기·사진에서 뒤로가기 → 사연함으로
+  useBackLayer(!!zoom, () => setZoom(null));
   const [giftFor, setGiftFor] = useState<Letter | null>(null); // 관리자: 보낸 분께 선물하기 (이모티콘 · 사연 선물 대상)
   const [replyFor, setReplyFor] = useState<string | null>(null); // 관리자: 답장 쓰는 사연
   const [replyText, setReplyText] = useState('');

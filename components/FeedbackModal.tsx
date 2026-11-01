@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -88,6 +89,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   const [sending, setSending] = useState(false);
   const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null); // 첨부할 사진 (한 장)
   const [zoom, setZoom] = useState<string | null>(null); // 첨부 사진 크게 보기
+  useBackLayer(!!zoom, () => setZoom(null)); // 사진에서 휴대폰 뒤로가기 → 건의함으로 (건의함은 그대로)
   const [items, setItems] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(false);
   const [setupNeeded, setSetupNeeded] = useState(false);

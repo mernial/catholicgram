@@ -103,6 +103,7 @@ import { SamsungGuidePopup, isSamsungInternet, samsungGuideKey } from '@/compone
 import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
+import { setBackLayerHost, hasBackLayer, popBackLayer, useBackLayer } from '@/lib/back-layers';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -596,8 +597,23 @@ export default function Home() {
   // → 뒤로가기 뒤 다음 누름 전에는 기록을 쌓지 않는다: 바꿔 쓰기(replaceState)·앞으로 가기(forward)만
   const backSinceTapRef = useRef(false);
   const pushSafe = () => historyReadyRef.current && !backSinceTapRef.current;
+  // 창 안의 작은 창(사진 크게 보기·메뉴 등, lib/back-layers): 열 때 칸 하나, 단추로 닫으면 그 칸을 걷음
+  setBackLayerHost({
+    push: () => {
+      if (!pushSafe()) return false;
+      window.history.pushState({ ...currentScreenRef.current, modal: true, layer: true }, '');
+      layerEntriesRef.current += 1;
+      return true;
+    },
+    // 같은 때 바깥 창도 닫히면(× 로 건의함을 닫는 등) 아래 창 효과가 칸을 함께 걷으므로 한 박자 뒤에 남았을 때만
+    release: () => setTimeout(() => {
+      const hs = window.history.state as { layer?: true } | null;
+      if (layerEntriesRef.current > 0 && hs?.layer) { layerEntriesRef.current -= 1; skipNextPopRef.current = true; window.history.back(); }
+    }, 0),
+  });
   const forwardFixRef = useRef<{ at: number; replace?: ScreenState } | null>(null); // 방금 forward() 한 것(그 popstate 는 무시, 필요하면 그 칸을 바꿔 씀)
   const rearmRef = useRef(false); // 종료 안내 뒤 맨 앞 칸에 머무는 중 → 다음에 누를 때 지금 화면 칸을 다시 쌓음
+  const layerEntriesRef = useRef(0); // 창 안의 작은 창(lib/back-layers)을 위해 쌓아 둔 칸 수
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
@@ -1816,6 +1832,11 @@ export default function Home() {
   const [captureAsk, setCaptureAsk] = useState<string | null>(null);        // 캡처를 누른 메시지
   const [dmCapture, setDmCapture] = useState<Set<string> | null>(null);     // 대화 골라서 캡처하는 중
   const [captured, setCaptured] = useState<{ blob: Blob; title: string } | null>(null);
+  // 대화방 안의 작은 창도 뒤로가기는 그것만 닫기 (lib/back-layers)
+  useBackLayer(selectCopy !== null, () => setSelectCopy(null));
+  useBackLayer(!!captureAsk, () => setCaptureAsk(null));
+  useBackLayer(!!dmCapture, () => setDmCapture(null));
+  useBackLayer(!!captured, () => setCaptured(null));
   const [capturing, setCapturing] = useState(false);
   const dmCaptureItem = (m: Message): CaptureItem => ({
     id: String(m.id),
@@ -3708,6 +3729,7 @@ export default function Home() {
   // 댓글도 메시지와 같은 손동작: 꾹 누르기 = 그 자리 메뉴(위에 감정, 아래에 답글·수정·삭제·신고), 두 번 누르기 = 공감(❤️), 옆으로 밀기 = 답글
   type SheetComment = Comment & { _rootId?: string };
   const [commentMenu, setCommentMenu] = useState<{ c: SheetComment; anchor: MenuAnchor | null } | null>(null);
+  useBackLayer(!!commentMenu, () => setCommentMenu(null)); // 댓글 꾹 누르기 메뉴: 뒤로가기는 메뉴만
   const [commentPop, setCommentPop] = useState<{ id: string; emoji: string } | null>(null);
   useEffect(() => { setCommentMenu(null); }, [commentSheetId]);
   const commentGestures = usePressGestures<SheetComment>({
@@ -4007,11 +4029,14 @@ export default function Home() {
     } else if (modalHistoryRef.current) {
       // 단추로 닫힘 → 쌓아 둔 칸을 바로 걷어낸다 (그사이 다른 화면으로 옮겼으면 그 칸은 나중에 뒤로가기 때 건너뛴다)
       modalHistoryRef.current = false;
+      const st = window.history.state as { modal?: true; sub?: true } | null;
+      // 설정 안의 화면(버전 정보 등)·설정에서 연 창에서 × 로 닫았으면 그 칸까지, 안의 작은 창(사진 등) 칸도 함께
+      const subs = settingsSubRef.current || settingsChildRef.current || st?.sub ? 1 : 0;
+      const layers = layerEntriesRef.current;
       settingsSubRef.current = false;
       settingsChildRef.current = false;
-      const st = window.history.state as { modal?: true; sub?: true } | null;
-      // 설정 안의 화면(버전 정보 등)에서 × 로 닫았으면 그 화면 칸까지 두 칸
-      if (st && st.modal) { skipNextPopRef.current = true; window.history.go(st.sub ? -2 : -1); }
+      layerEntriesRef.current = 0;
+      if (st && st.modal) { skipNextPopRef.current = true; window.history.go(-(1 + subs + layers)); }
     }
   }, [anyModalOpen]);
   // 설정 안의 화면(버전 정보 등)을 누르는 순간(사용자가 누른 때) 뒤로가기 기록 한 칸을 더 쌓는다 → 휴대폰 뒤로가기는 설정 목록으로.
@@ -4095,6 +4120,13 @@ export default function Home() {
     if (skipNextPopRef.current) { skipNextPopRef.current = false; return; }
     backSinceTapRef.current = true;
     const stepForward = (replace?: ScreenState) => { forwardFixRef.current = { at: Date.now(), replace }; window.history.forward(); };
+    // 창 안의 작은 창(사진 크게 보기·메뉴·확인 창 등)이 떠 있으면 그것만 닫는다 (운영자 요청: 건의함 사진 → 뒤로가기 → 건의함)
+    if (hasBackLayer()) {
+      const { hadEntry } = popBackLayer();
+      if (hadEntry) layerEntriesRef.current = Math.max(0, layerEntriesRef.current - 1);
+      else stepForward(); // 그 창의 칸이 없었으면 방금 빠진 칸은 아래 창·화면의 것 → 앞으로 한 칸 돌아감
+      return;
+    }
     // 메인 화면으로 돌아온 자리에서 더 뒤로: 그 아래 예전 화면들은 건너뛰고 맨 앞(종료 확인)까지
     if (rewindRef.current && !anyModalOpen && st && !('guard' in st)) { window.history.back(); return; }
     if (rewindRef.current && st && 'guard' in st) rewindRef.current = false;
@@ -4724,6 +4756,9 @@ export default function Home() {
                     <label htmlFor="video-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="video" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
                     </label>
+                  </div>
+                  {/* 고른 사진은 단추 줄 아래 새 줄부터 (루비로사 건의 2026-11-01: 영상 단추 옆에 이어 붙어 보기 어려웠음) */}
+                  <div className="grid grid-cols-4 gap-[2px] mt-[2px]">
                     {/* 사진첩에서 고른 사진 미리보기 (최근 것이 앞에) */}
                     {tray.map(item => {
                       const pos = selectedFiles.indexOf(item.file);

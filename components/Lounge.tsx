@@ -1,5 +1,6 @@
 'use client';
 
+import { useBackLayer } from '@/lib/back-layers';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -130,6 +131,15 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const [badgeEdit, setBadgeEdit] = useState<string | null>(null);   // 관리자: 뱃지를 고치는 교우
   const [badgeText, setBadgeText] = useState('');
   const [showBadgeList, setShowBadgeList] = useState(false);         // 관리자: 뱃지 단 교우 모아 보기
+  // 사랑방 안의 작은 창은 휴대폰 뒤로가기로 그것만 닫는다 (사랑방은 그대로, lib/back-layers)
+  useBackLayer(!!menuMsg, () => setMenuMsg(null));
+  useBackLayer(selectCopy !== null, () => setSelectCopy(null));
+  useBackLayer(showBookmarks, () => setShowBookmarks(false));
+  useBackLayer(!!captureAsk, () => setCaptureAsk(null));
+  useBackLayer(!!capturePick, () => setCapturePick(null));
+  useBackLayer(!!captured, () => setCaptured(null));
+  useBackLayer(!!badgeEdit, () => setBadgeEdit(null));
+  useBackLayer(showBadgeList, () => setShowBadgeList(false));
   const [showWho, setShowWho] = useState(false);                     // 관리자: 지금 들어와 있는 교우
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
