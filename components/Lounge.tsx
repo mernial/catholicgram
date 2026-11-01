@@ -560,7 +560,8 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const canWriteRef = useRef(true);
   const gestures = usePressGestures<LoungeMessage>({
     keyOf: m => m.id,
-    onTap: (m, el) => { if (m.user_id === user.id) openMenu(m, el); },
+    // 한 번 누르기: 답장 말풍선이면 원래 대화로 (메뉴는 꾹 누를 때만 — 루비로사 건의)
+    onTap: m => { if (m.reply_to && document.getElementById(`lounge-${m.reply_to}`)) jumpTo(m.reply_to); },
     onDoubleTap: m => { if (canWriteRef.current) react(m, '❤️'); }, // 몰래 보는 관리자도 감정 표시는 할 수 있게 (들어왔다는 안내는 그대로 없음)
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: m => { if (canWriteRef.current) startReply(m); },

@@ -20,16 +20,20 @@ import { CURRENT_VERSION, CURRENT_NOTE, versionLabel, builtAtLabel, fetchLatestV
 import { visibleNotes, noteDateLabel } from '@/lib/update-notes';
 import { UpdateNoteBody } from '@/components/UpdateNotes';
 
+// 설정 목록의 스크롤 자리 (공지사항·약관 등 설정에서 연 창을 뒤로가기로 닫고 설정이 다시 열릴 때 그 자리로)
+let savedListScroll = 0;
+
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', backRef, onSubView, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', restoreScroll = false, backRef, onSubView, onOpenLegal, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
   feastDay: string;
   onFeastDayChange: (value: string | null) => Promise<boolean>;
   initialView?: 'main' | 'feast' | 'sound';
+  restoreScroll?: boolean; // 설정에서 연 창을 뒤로가기로 닫고 다시 열린 설정: 목록을 보던 자리로
   backRef?: React.MutableRefObject<(() => boolean) | null>; // 휴대폰 뒤로가기: 설정 안의 화면이면 설정 목록으로 (물러났으면 true)
   onSubView?: (open: boolean) => void; // 목록에서 안의 화면을 누름(true) / ← 로 목록에 돌아옴(false) — page 가 뒤로가기 기록을 쌓고 걷음
   onOpenMembers?: () => void; // 관리자에게만 전달
@@ -41,13 +45,15 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
   onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
+  onOpenLegal?: (doc: 'terms' | 'privacy') => void; // 이용약관·개인정보처리방침을 앱 안의 창으로 (없으면 예전처럼 페이지로)
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
   // 설정 목록에서 들어간 화면(버전 정보 등)에서 뒤로가기·← 를 누르면 보던 목록 자리 그대로 (루비로사 건의 2026-11-01:
   // 버전 정보에서 휴대폰 뒤로가기를 누르면 설정이 통째로 닫혀 내 공간이 나왔음).
   // 알림창 '소리 ›'처럼 처음부터 그 화면으로 열었으면(설정 목록을 거치지 않음 — 기록 칸이 없음) 뒤로가기는 설정을 닫는다
+  // 화면마다 key 가 달라 버전 정보 등은 늘 맨 위부터 (루비로사: 목록에서 내려간 자리 그대로 버전 정보가 중간부터 보였음)
   const mainListRef = useRef<HTMLDivElement>(null);
-  const mainScrollTop = useRef(0);
+  const mainScrollTop = useRef(restoreScroll ? savedListScroll : 0);
   type View = 'main' | 'blocks' | 'feast' | 'sound' | 'version';
   const openView = (v: View) => { onSubView?.(true); setView(v); };
   const backToMain = () => { onSubView?.(false); setView('main'); };
@@ -175,7 +181,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
         </div>
 
         {view === 'main' ? (
-          <div ref={mainListRef} onScroll={e => { mainScrollTop.current = e.currentTarget.scrollTop; }} className="overflow-y-auto">
+          <div key="main" ref={mainListRef} onScroll={e => { mainScrollTop.current = e.currentTarget.scrollTop; savedListScroll = e.currentTarget.scrollTop; }} className="overflow-y-auto">
             <div className="p-4 border-b border-stone-100">
               <p className="text-sm mb-2.5 flex items-center gap-3"><IconBadge name="text" />글씨 크기</p>
               <div className="grid grid-cols-3 gap-1.5">
@@ -279,8 +285,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <span className={label}><IconBadge name="sparkle" tone="sky" />버전 정보</span>
               <span className="text-stone-400 text-xs">{versionLabel(CURRENT_VERSION)} <span className="text-stone-300">›</span></span>
             </button>
-            <a href="/terms" className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
-            <a href="/privacy" className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
+            <a href="/terms" onClick={e => { if (onOpenLegal) { e.preventDefault(); onOpenLegal('terms'); } }} className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
+            <a href="/privacy" onClick={e => { if (onOpenLegal) { e.preventDefault(); onOpenLegal('privacy'); } }} className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
             <button onClick={() => signOutAndClear().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>
@@ -319,7 +325,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
           </div>
         ) : view === 'version' ? (
           // 버전 정보: 지금 쓰는 버전·나온 때·새 버전이 있는지 (기기마다 새 버전을 받았는지 비교할 때도)
-          <div className="overflow-y-auto p-4 flex flex-col gap-3">
+          <div key="version" className="overflow-y-auto p-4 flex flex-col gap-3">
             <div className="p-4 rounded-2xl bg-stone-50 border border-stone-200">
               <p className="text-[0.875rem] text-stone-500">지금 쓰는 버전</p>
               <p className="text-[1.75rem] font-extrabold text-stone-900 leading-tight mt-0.5">{versionLabel(CURRENT_VERSION)}</p>
@@ -374,7 +380,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             })()}
           </div>
         ) : view === 'sound' ? (
-          <div className="overflow-y-auto p-4 flex flex-col gap-3">
+          <div key="sound" className="overflow-y-auto p-4 flex flex-col gap-3">
             <p className="text-[0.9375rem] text-stone-600 leading-relaxed">앱을 <b>열어 둔 동안</b> 새 알림(댓글·메시지 등)이 오면 울리는 소리예요. 누르면 들어 볼 수 있어요.</p>
             <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="알림 소리">
               {[...ALERT_SOUNDS, { key: 'off', name: '소리 없음', desc: '알림이 와도 소리를 내지 않아요', emoji: '🔇' }].map(o => {
@@ -441,7 +447,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             </div>
           </div>
         ) : view === 'feast' ? (
-          <div className="overflow-y-auto p-4 flex flex-col gap-3">
+          <div key="feast" className="overflow-y-auto p-4 flex flex-col gap-3">
             <p className="text-sm text-stone-600 leading-relaxed">축일 아침에 축하 인사를 보내드리고, 나를 팔로우하는 교우들에게도 축일 소식을 알려드려요.</p>
             <FeastDayPicker value={feastInput} onChange={setFeastInput} />
             <button
@@ -456,7 +462,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             )}
           </div>
         ) : (
-          <div className="overflow-y-auto divide-y divide-stone-100">
+          <div key="blocks" className="overflow-y-auto divide-y divide-stone-100">
             {blocked.length === 0 ? (
               <div className="p-10 text-center text-stone-400 text-sm">차단한 사용자가 없습니다.</div>
             ) : blocked.map(p => (

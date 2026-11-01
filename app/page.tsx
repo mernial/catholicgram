@@ -21,7 +21,7 @@ import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { notePush, lastPushState, permissionWord, everPushOn, lastPushLossAt, LOST_WHY } from '@/lib/push-log';
-import { pushDeviceKey } from '@/lib/push-devices';
+import { pushDeviceKey, notePlayHere, playHereRecently, PLAY_MARK } from '@/lib/push-devices';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
@@ -102,6 +102,7 @@ import { UpdatePopup } from '@/components/UpdateNotes';
 import { SamsungGuidePopup, isSamsungInternet, samsungGuideKey } from '@/components/SamsungGuide';
 import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
+import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -495,6 +496,8 @@ export default function Home() {
   const [settingsView, setSettingsView] = useState<'main' | 'feast' | 'sound'>('main');
   const settingsBackRef = useRef<(() => boolean) | null>(null); // 설정 안의 화면에서 뒤로가기 → 설정 목록 (components/SettingsModal 이 채움)
   const settingsSubRef = useRef(false); // 설정 안의 화면을 열며 뒤로가기 기록 한 칸을 더 쌓았는지
+  const [settingsRestore, setSettingsRestore] = useState(false); // 설정에서 연 창을 뒤로가기로 닫고 설정을 다시 열 때 → 목록 자리 그대로
+  useEffect(() => { if (!showSettings) setSettingsRestore(false); }, [showSettings]);
   
   // 사진만 크게 보기 (글 사진은 여러 장을 넘겨 볼 수 있게 묶음으로)
   const [selectedImage, setSelectedImage] = useState<{ images: string[]; index: number; chat?: boolean } | null>(null); // chat: 대화의 사진이면 저장·공유 단추
@@ -549,6 +552,7 @@ export default function Home() {
   const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
   const [showMyComments, setShowMyComments] = useState(false); // 내 공간 → 내 댓글 모아 보기
   const [showShareApp, setShowShareApp] = useState(false);     // 가톨릭그램 알리기 (내 공간·설정)
+  const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null); // 설정 → 이용약관·개인정보처리방침 (앱 안의 창)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
   // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
@@ -586,6 +590,14 @@ export default function Home() {
   const pushToastAtRef = useRef(0); // 푸시 내용을 배너로 띄운 시각 (같은 알림을 배너로 또 띄우지 않게)
   const systemPushAtRef = useRef(0); // 휴대폰 알림 배너가 뜬 시각 (서비스 워커가 알려 줌 — 그 소식을 앱 배너로 또 띄우지 않게)
   const modalHistoryRef = useRef(false); // 지금 열린 창을 위해 뒤로가기 기록 한 칸을 쌓았는지
+  // 안드로이드 크롬의 '기록 조작 막기': 휴대폰 뒤로가기를 누른 뒤 사람이 화면을 누르기 전에 기록을 쌓으면(pushState)
+  // 이 앱의 모든 기록 칸을 '건너뛸 칸'으로 표시해, 다음 뒤로가기에 돌아갈 곳이 없어 앱이 꺼진다 (루비로사: '빽키를 2~3번 누르면 튕겨나가요').
+  // (크롬 소스 NavigationControllerImpl::SetShouldSkipOnBackForwardUIIfNeeded — 같은 문서의 칸 전부, 사람이 누르면 풀림)
+  // → 뒤로가기 뒤 다음 누름 전에는 기록을 쌓지 않는다: 바꿔 쓰기(replaceState)·앞으로 가기(forward)만
+  const backSinceTapRef = useRef(false);
+  const pushSafe = () => historyReadyRef.current && !backSinceTapRef.current;
+  const forwardFixRef = useRef<{ at: number; replace?: ScreenState } | null>(null); // 방금 forward() 한 것(그 popstate 는 무시, 필요하면 그 칸을 바꿔 씀)
+  const rearmRef = useRef(false); // 종료 안내 뒤 맨 앞 칸에 머무는 중 → 다음에 누를 때 지금 화면 칸을 다시 쌓음
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
@@ -778,6 +790,18 @@ export default function Home() {
     };
     const activationEvents = ['click', 'keydown', 'touchend'] as const;
     activationEvents.forEach(ev => window.addEventListener(ev, setupHistory, { capture: true, once: true }));
+    // 사람이 누르면 다시 기록을 쌓아도 됨. 종료 안내 뒤 맨 앞 칸에 머물러 있었으면 지금 화면 칸을 다시 쌓아 둔다
+    const onTap = (e: Event) => {
+      if (!e.isTrusted || (e instanceof KeyboardEvent && (e.key === 'Escape' || e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta'))) return;
+      backSinceTapRef.current = false;
+      if (rearmRef.current && historyReadyRef.current) {
+        rearmRef.current = false;
+        const hs = window.history.state as { guard?: true } | null;
+        if (hs && hs.guard) window.history.pushState(currentScreenRef.current, '');
+      }
+    };
+    window.addEventListener('click', onTap, true);
+    window.addEventListener('keydown', onTap, true);
     // Next.js 라우터가 첫 이동 기록에 자기 표시를 남긴 뒤에 다뤄야
     // 뒤로가기 때 Next.js 가 페이지를 새로고침하지 않는다 → 한 박자 뒤에 실행
     const historyTimer = setTimeout(() => {
@@ -1005,7 +1029,9 @@ export default function Home() {
     const cur = currentScreenRef.current;
     const same = cur.tab === st.tab && (cur.viewingUserId ?? null) === (st.viewingUserId ?? null) && (cur.chatUser?.id ?? null) === (st.chatUser?.id ?? null);
     // 아직 기록을 깔기 전(첫 터치 전)이면 지금 칸만 바꿔 둔다 → 첫 터치 때 그 위에 기록을 깐다
-    if (same || !historyReadyRef.current) window.history.replaceState(st, '');
+    const onGuard = !!(window.history.state as { guard?: true } | null)?.guard;
+    if (!same && onGuard && historyReadyRef.current && !pushSafe()) { rearmRef.current = true; applyScreen(st); return; } // 맨 앞 칸은 남기고, 다음에 누를 때 화면 칸을 쌓음
+    if (same || !pushSafe()) window.history.replaceState(st, ''); // 뒤로가기 뒤 아직 누르지 않았으면 쌓지 않고 바꿔 씀
     else { window.history.pushState(st, ''); rewindRef.current = false; }
     applyScreen(st);
   };
@@ -1538,7 +1564,8 @@ export default function Home() {
   const dmRequestRef = useRef(false); // 메시지 요청을 아직 수락하지 않음 → 하트·답장 안 됨 (읽은 것이 드러나지 않게)
   const dmGestures = usePressGestures<Message>({
     keyOf: m => String(m.id),
-    onTap: (m, el) => { if (m.sender_id === user?.id) openMessageMenu(m, el); },
+    // 한 번 누르기: 답장 말풍선이면 원래 메시지로 (루비로사 건의 — 예전엔 내 메시지를 누르면 고치기 메뉴가 떠서, 메뉴는 이제 꾹 누를 때만)
+    onTap: m => { if (m.reply_to && document.getElementById(`dm-${m.reply_to}`)) jumpToMessage(m.reply_to); },
     onDoubleTap: m => { if (!dmRequestRef.current) toggleMessageHeart(m.id); },
     onLongPress: (m, el) => openMessageMenu(m, el),
     onSwipe: m => { if (!dmRequestRef.current) startReply(m); },
@@ -2878,14 +2905,15 @@ export default function Home() {
   // 알림은 3일만 보관: 그보다 오래된 댓글·답글·언급·팔로우 알림은 목록과 숫자에서 뺀다 (안 읽은 메시지는 그대로)
   const isAlertExpired = (at?: string) => !!at && Date.now() - new Date(at).getTime() > ALERT_KEEP_MS;
   const unreadCommentCount = !user ? 0 : notifications.filter(n =>
-    !isAlertExpired(n.created_at) && !hiddenAlerts.has(`c:${n.id}`) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
+    // 휴대폰 알림을 눌러 이미 본 것(확인함)은 숫자에서 뺀다 (루비로사: 댓글 알림을 눌러 확인했는데 종 옆 숫자가 그대로)
+    !isAlertExpired(n.created_at) && !hiddenAlerts.has(`c:${n.id}`) && !readAlerts.has(`c:${n.id}`) && (!notificationsLastSeen || new Date(n.created_at) > new Date(notificationsLastSeen))
     && (!notificationsClearedAt || new Date(n.created_at) > new Date(notificationsClearedAt))
   ).length;
   const unreadMessageCount = !user ? 0 : unreadMessages.reduce((sum, u) => sum + u.count, 0);
   // 메시지 단추 숫자: 1:1 안 읽은 메시지 + 단체 채팅방 안 읽은 메시지 (알림(하트) 숫자에는 1:1만)
   const messageBadgeCount = unreadMessageCount + (!user ? 0 : groupChats.reduce((sum, g) => sum + (g.unread || 0), 0));
   const newFollowerCount = !user ? 0 : followRequests.filter(r =>
-    r.created_at && !isAlertExpired(r.created_at) && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
+    r.created_at && !isAlertExpired(r.created_at) && !readAlerts.has(`f:${r.id}`) && !readAlerts.has(`fu:${r.follower.id}`) && (!notificationsLastSeen || new Date(r.created_at) > new Date(notificationsLastSeen))
     && (!notificationsClearedAt || new Date(r.created_at) > new Date(notificationsClearedAt))
   ).length;
   // 지운 알림인지
@@ -3127,8 +3155,10 @@ export default function Home() {
     const json = sub.toJSON();
     if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
     const base = { user_id: userId, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth };
+    notePlayHere(appKind() === 'play');
+    const device = await pushDeviceKey();
     let { error } = await supabase.from('push_subscriptions').upsert(
-      { ...base, device: (await pushDeviceKey()) || null, last_seen: new Date().toISOString() },
+      { ...base, device: device ? device + (playHereRecently() ? PLAY_MARK : '') : null, last_seen: new Date().toISOString() },
       { onConflict: 'endpoint' }
     );
     // supabase/push-devices.sql 실행 전이면 칸이 없으니 예전처럼
@@ -3447,7 +3477,19 @@ export default function Home() {
   }, [toast]);
 
   // 휴대폰 알림을 눌러 들어온 곳: 앱 알림 목록(♡)에서 그 알림을 지우고, 같은 곳을 가리키는 휴대폰 알림도 닫는다
+  // 알림으로 연 글: 그 글의 댓글 창을 열어 다른 댓글 알림도 다 보이므로 그 글의 댓글 알림을 모두 '확인함'으로 (목록을 아직 안 불러왔으면 불러온 뒤에)
+  const alertPostsRef = useRef<Map<string, number>>(new Map());
+  useEffect(() => {
+    if (alertPostsRef.current.size === 0) return;
+    const keys = notifications.filter(n => !n.anon && alertPostsRef.current.has(n.post_id) && +new Date(n.created_at) <= alertPostsRef.current.get(n.post_id)!).map(n => `c:${n.id}`).filter(k => !readAlerts.has(k));
+    if (keys.length) markAlertRead(...keys);
+  }, [notifications]); // eslint-disable-line react-hooks/exhaustive-deps
   const dismissAlertsFor = (link: NonNullable<typeof deepLink>) => {
+    if (link.post) {
+      alertPostsRef.current.set(link.post, Date.now() + 60_000);
+      const keys = notifications.filter(n => !n.anon && n.post_id === link.post).map(n => `c:${n.id}`);
+      if (keys.length) markAlertRead(...keys);
+    }
     // 앱 알림 목록(♡)에서는 지우지 않고 '확인함'으로만 표시한다 (지우기 전까지 남고, 3일이 지나면 저절로 사라짐)
     markAlertRead(...[
       link.comment && `c:${link.comment}`, link.view && `c:mp:${link.view}`,
@@ -3929,7 +3971,8 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments);
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
+    || showShareApp || showFancyName || showDmBookmarks || !!legalDoc);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
@@ -3956,7 +3999,8 @@ export default function Home() {
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
-      if (historyReadyRef.current && !modalHistoryRef.current) {
+      // 저절로 뜬 창(업데이트 소식 등)이 뒤로가기 바로 뒤에 뜨면 칸을 쌓지 않는다 — 그때 뒤로가기는 아래 forward() 로 처리
+      if (pushSafe() && !modalHistoryRef.current) {
         modalHistoryRef.current = true;
         window.history.pushState({ ...currentScreenRef.current, modal: true }, '');
       }
@@ -3964,6 +4008,7 @@ export default function Home() {
       // 단추로 닫힘 → 쌓아 둔 칸을 바로 걷어낸다 (그사이 다른 화면으로 옮겼으면 그 칸은 나중에 뒤로가기 때 건너뛴다)
       modalHistoryRef.current = false;
       settingsSubRef.current = false;
+      settingsChildRef.current = false;
       const st = window.history.state as { modal?: true; sub?: true } | null;
       // 설정 안의 화면(버전 정보 등)에서 × 로 닫았으면 그 화면 칸까지 두 칸
       if (st && st.modal) { skipNextPopRef.current = true; window.history.go(st.sub ? -2 : -1); }
@@ -3973,7 +4018,7 @@ export default function Home() {
   // 뒤로가기 처리 중에 기록을 쌓으면 안드로이드 크롬이 그 아래 칸을 '건너뛸 칸'으로 보아 다음 뒤로가기에 앱이 꺼졌음 (루비로사: '설정에서 빽키 누르면 튕겨져 나가요')
   const settingsSubView = (open: boolean) => {
     if (open) {
-      if (!modalHistoryRef.current || settingsSubRef.current) return;
+      if (!modalHistoryRef.current || settingsSubRef.current || !pushSafe()) return;
       window.history.pushState({ ...currentScreenRef.current, modal: true, sub: true }, '');
       settingsSubRef.current = true;
     } else if (settingsSubRef.current) {
@@ -3983,11 +4028,24 @@ export default function Home() {
       if (st && st.sub) { skipNextPopRef.current = true; window.history.back(); }
     }
   };
+  // 설정 목록에서 연 다른 창(공지사항·프로필 편집·테스터 신청·알리기·약관 등): 누르는 순간 기록 한 칸을 더 쌓아
+  // 휴대폰 뒤로가기는 그 창만 닫고 설정 목록으로 돌아오게 (루비로사 건의: 내 공간 첫 화면으로 갔음). × 로 닫으면 설정까지 닫힘
+  const settingsChildRef = useRef(false);
+  const openFromSettings = (open: () => void) => {
+    if (modalHistoryRef.current && !settingsSubRef.current && !settingsChildRef.current && pushSafe()) {
+      window.history.pushState({ ...currentScreenRef.current, modal: true, sub: true }, '');
+      settingsChildRef.current = true;
+    }
+    setShowSettings(false);
+    open();
+  };
   const closeAllModals = () => {
     // 사진 크게 보기·프로필 카드는 보던 창(글·댓글·사랑방 등) 위에 뜨므로 그것만 닫는다
     if (selectedImage) { setSelectedImage(null); return; }
     if (avatarPreview) { setAvatarPreview(null); return; } // 프로필 카드에서 크게 본 사진이면 사진만 닫고 카드는 그대로
     if (stickerGiftFor || memberMusicGift) { setStickerGiftFor(null); setMemberMusicGift(null); return; } // 프로필 카드에서 연 선물 창만 닫고 카드는 그대로
+    if (showFancyName) { setShowFancyName(false); return; } // 프로필 편집에서 연 이름 꾸미기만
+    if (showDmBookmarks) { setShowDmBookmarks(false); return; } // 대화방의 책갈피 목록만
     if (actionModalUser) { setActionModalUser(null); return; }
     if (showBgmAdmin && (showMusicPicker || showProfileMusicPicker)) { setShowBgmAdmin(false); return; } // 음악 고르기에서 연 음악 올리기만 닫고 음악 고르기는 그대로
     if (musicGiftTrack) { setMusicGiftTrack(null); setVaultRefresh(k => k + 1); return; } // 보관 음악에서 연 선물하기 창만
@@ -3996,7 +4054,7 @@ export default function Home() {
     if (showUpdateNotes) closeUpdateNotes();
     if (showSamsungGuide) closeSamsungGuide();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
-    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null);
+    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
@@ -4028,7 +4086,15 @@ export default function Home() {
   backHandlerRef.current = (e: PopStateEvent) => {
     const st = e.state as (ScreenState & { modal?: true }) | { guard: true } | null;
     const staleModalEntry = !!st && 'modal' in st;
+    // 앱이 forward() 로 한 칸 앞으로 돌아온 것: 무시 (윗 화면으로 바꿔 쓸 게 있으면 그 칸을 바꿔 씀 — 쌓지 않음)
+    const fix = forwardFixRef.current;
+    if (fix) {
+      forwardFixRef.current = null;
+      if (Date.now() - fix.at < 2000) { if (fix.replace) window.history.replaceState(fix.replace, ''); return; }
+    }
     if (skipNextPopRef.current) { skipNextPopRef.current = false; return; }
+    backSinceTapRef.current = true;
+    const stepForward = (replace?: ScreenState) => { forwardFixRef.current = { at: Date.now(), replace }; window.history.forward(); };
     // 메인 화면으로 돌아온 자리에서 더 뒤로: 그 아래 예전 화면들은 건너뛰고 맨 앞(종료 확인)까지
     if (rewindRef.current && !anyModalOpen && st && !('guard' in st)) { window.history.back(); return; }
     if (rewindRef.current && st && 'guard' in st) rewindRef.current = false;
@@ -4039,10 +4105,22 @@ export default function Home() {
         settingsSubRef.current = false;
         if (showSettings && settingsBackRef.current?.()) return;
       }
+      if (settingsChildRef.current) {
+        settingsChildRef.current = false;
+        if (!showSettings && !selectedImage && !avatarPreview && !actionModalUser && !showFancyName) {
+          closeAllModals();
+          setSettingsView('main');
+          setSettingsRestore(true);
+          setShowSettings(true);
+          return;
+        }
+      }
       closeAllModals();
       // 창을 열 때 쌓아 둔 칸이 빠진 것이면 그대로 끝 (기록을 다시 쌓지 않아야 브라우저가 앞 칸을 건너뛰지 않는다)
       if (modalHistoryRef.current) { modalHistoryRef.current = false; if (staleModalEntry) window.history.back(); return; }
-      window.history.pushState(currentScreenRef.current, ''); // 화면은 그대로 유지
+      // 창을 위한 칸 없이 떠 있던 창(뒤로가기 바로 뒤 저절로 뜬 업데이트 소식 등): 화면 칸 하나가 빠졌으므로 앞으로 한 칸 돌아간다
+      // (예전엔 여기서 칸을 다시 쌓아(pushState) 크롬이 앱의 모든 칸을 건너뛰어 다음 뒤로가기에 앱이 꺼졌음)
+      stepForward();
       return;
     }
     // 단추로 닫은 창의 빈 칸이면 한 칸 더 뒤로
@@ -4054,13 +4132,16 @@ export default function Home() {
         const parent: ScreenState = cur.tab === 'chat' ? { screen: true, tab: 'messages' }
           : cur.tab === 'messages' && user ? { screen: true, tab: 'profile', viewingUserId: user.id }
           : { screen: true, tab: 'home' };
-        window.history.pushState(parent, '');
+        // 위 칸으로 앞으로 가서 그 칸을 윗 화면으로 바꿔 쓴다 (쌓지 않음)
+        stepForward(parent);
         applyScreen(parent);
         return;
       }
       if (Date.now() - exitArmedAtRef.current < 2000) { window.history.back(); return; } // 앱 종료
       exitArmedAtRef.current = Date.now();
-      window.history.pushState(currentScreenRef.current, '');
+      // 맨 앞 칸에 그대로 머문다 → 2초 안에 한 번 더 누르면 돌아갈 곳이 없어 휴대폰이 앱을 닫는다.
+      // 그 전에 화면을 누르면(onTap) 지금 화면 칸을 다시 쌓아 둔다
+      rearmRef.current = true;
       setToast({ key: `exit-${Date.now()}`, icon: '👋', title: '한 번 더 뒤로가기를 하면 종료돼요', body: '', action: () => {}, stay: true });
       return;
     }
@@ -5243,6 +5324,7 @@ export default function Home() {
       })()}
 
       {showShareApp && <ShareApp onClose={() => setShowShareApp(false)} />}
+      {legalDoc && <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
       {showMyComments && user && (
         <BottomSheet label="내 댓글" title="내 댓글" subtitle="내가 단 댓글을 모아 봤어요 · 나만 볼 수 있어요" onClose={() => setShowMyComments(false)} tone="bg-white">
@@ -5745,16 +5827,17 @@ export default function Home() {
       {showSettings && user && (
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} onFeastDayChange={updateMyFeastDay}
-          onEditProfile={openProfileEdit}
-          onShareApp={() => { setShowSettings(false); setShowShareApp(true); }}
-          onSamsungGuide={(preview: boolean) => { setShowSettings(false); setSamsungGuideOpen(preview ? 'preview' : 'open'); }}
-          onOpenNotices={() => { setShowSettings(false); setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); }}
-          initialView={settingsView} backRef={settingsBackRef} onSubView={settingsSubView}
-          onOpenMembers={isAdmin ? () => { setShowSettings(false); setShowAdminMembers(true); } : undefined}
-          onOpenBgm={isAdmin ? () => { setShowSettings(false); setShowBgmAdmin(true); } : undefined}
-          onOpenVault={isAdmin ? () => { setShowSettings(false); setShowMusicVault(true); } : undefined}
-          onOpenTester={testerStatus !== null ? () => { setShowSettings(false); setShowTesterSignup(true); } : undefined}
-          onOpenStats={isAdmin ? () => { setShowSettings(false); setShowAdminStats(true); } : undefined} />
+          onEditProfile={() => openFromSettings(openProfileEdit)}
+          onShareApp={() => openFromSettings(() => setShowShareApp(true))}
+          onOpenLegal={(doc: LegalDoc) => openFromSettings(() => setLegalDoc(doc))}
+          onSamsungGuide={(preview: boolean) => openFromSettings(() => setSamsungGuideOpen(preview ? 'preview' : 'open'))}
+          onOpenNotices={() => openFromSettings(() => { setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); })}
+          initialView={settingsView} restoreScroll={settingsRestore} backRef={settingsBackRef} onSubView={settingsSubView}
+          onOpenMembers={isAdmin ? () => openFromSettings(() => setShowAdminMembers(true)) : undefined}
+          onOpenBgm={isAdmin ? () => openFromSettings(() => setShowBgmAdmin(true)) : undefined}
+          onOpenVault={isAdmin ? () => openFromSettings(() => setShowMusicVault(true)) : undefined}
+          onOpenTester={testerStatus !== null ? () => openFromSettings(() => setShowTesterSignup(true)) : undefined}
+          onOpenStats={isAdmin ? () => openFromSettings(() => setShowAdminStats(true)) : undefined} />
       )}
 
       {/* 오늘의 기도지향 모아 보기 */}
