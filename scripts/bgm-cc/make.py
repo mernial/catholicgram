@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""가톨릭그램 게시글 배경음악(CC0·CC BY 4.0) 30초 곡 만들기 (운영자 요청 2026-11-01, 곡 목록은 인스타 자동 업로더 세션이 고름).
+"""가톨릭그램 게시글 배경음악(CC0·CC BY 4.0) 30초 곡 만들기 (운영자 요청 2026-11-01, 첫 36곡은 인스타 자동 업로더 세션이,
+요즘 스타일 추가 곡은 작업 세션이 scripts/bgm-cc/candidates.json(discover.py)을 보고 고름).
+이미 만든 곡(result.json 에 있고 파일도 있음)은 다시 받지 않고 그대로 둠 — 다시 만들려면 FORCE=1.
+곡 출처(source): fma = Free Music Archive, oga = OpenGameArt, incompetech = Kevin MacLeod.
 
 GitHub Actions(.github/workflows/bgm-cc.yml)에서 돈다 — 클라우드 작업 세션은 곡 사이트(freemusicarchive.org·incompetech.com)가 막혀 있어서.
 곡마다:
@@ -46,13 +49,16 @@ def fetch(url, binary=False, referer=None):
 def page_license(html, want):
     """곡 페이지 글에서 라이선스 찾기 → 'ok' | 'other' | 'unknown'"""
     h = html.lower()
+    # 제한이 붙은 라이선스(비영리·변경 금지·같은 조건)가 페이지에 함께 보이면 어느 쪽인지 확실하지 않으므로 뺌
+    if re.search(r'creativecommons\.org/licenses/by-(nc|nd|sa)', h):
+        return 'other'
     if want == 'CC0':
         if 'publicdomain/zero' in h or re.search(r'\bcc0\b', h):
             return 'ok'
     else:  # CC BY 4.0
         if ('creativecommons.org/licenses/by/4.0' in h) or re.search(r'attribution\s*4\.0', h) or re.search(r'\bcc\s*by\s*4\.0\b', h):
             return 'ok'
-    if re.search(r'creativecommons\.org/licenses/by-(nc|nd|sa)', h) or 'all rights reserved' in h:
+    if 'all rights reserved' in h:
         return 'other'
     return 'unknown'
 
@@ -137,10 +143,27 @@ def make_clip(src, dst, start, meta):
     return stats
 
 
+SOURCE_NAME = {'fma': 'Free Music Archive', 'oga': 'OpenGameArt', 'incompetech': 'incompetech.com'}
+
+
+def source_of(t):
+    if t.get('source'):
+        return t['source']
+    host = re.sub(r'^https?://(www\.)?', '', t['page']).split('/')[0]
+    return {'freemusicarchive.org': 'fma', 'opengameart.org': 'oga', 'incompetech.com': 'incompetech'}.get(host, 'fma')
+
+
 def credit(t):
+    src = SOURCE_NAME[source_of(t)]
     if t['license'] == 'CC0':
-        return f"음악: {t['artist']} (Free Music Archive, CC0)"
-    return f"\"{t['title']}\" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집"
+        return f"음악: {t['artist']} ({src}, CC0)"
+    return f"\"{t['title']}\" — {t['artist']} ({src}) · CC BY 4.0 · 30초로 편집"
+
+
+def is_audio(data):
+    """mp3(ID3·프레임)·ogg·wav·flac — 곡 파일인지 앞부분으로 확인"""
+    return (data[:3] == b'ID3' or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
+            or data[:4] in (b'OggS', b'RIFF', b'fLaC'))
 
 
 def mmss(s):
@@ -152,10 +175,23 @@ def main():
     os.makedirs(TMP, exist_ok=True)
     tracks = json.load(open(os.path.join(HERE, 'tracks.json'), encoding='utf-8'))
     today = datetime.datetime.now(KST).strftime('%Y-%m-%d')
+    # 이미 만든 곡은 그대로 (같은 원본·같은 라이선스면 다시 받지 않음)
+    prev = {}
+    try:
+        prev = {r['id']: r for r in json.load(open(os.path.join(HERE, 'result.json'), encoding='utf-8'))['tracks']}
+    except Exception:  # noqa: BLE001
+        pass
+    force = os.environ.get('FORCE') == '1'
     pages = {}
     results, dropped = [], []
     for t in tracks:
         tid = t['id']
+        old = prev.get(tid)
+        if (not force and old and old.get('file') == t['file'] and old.get('license') == t['license']
+                and os.path.exists(os.path.join(OUT, tid + '.m4a'))):
+            results.append({**old, **{k: t[k] for k in ('title', 'artist', 'mood', 'feel') if k in t},
+                            **({'season': t['season']} if t.get('season') else {}), 'credit': credit(t)})
+            continue
         print(f'\n== {tid}', flush=True)
         # 1) 라이선스 다시 확인
         verdict, how = 'unknown', ''
@@ -163,7 +199,7 @@ def main():
             if t['page'] not in pages:
                 pages[t['page']] = fetch(t['page'])
             verdict = page_license(pages[t['page']], t['license'])
-            how = '곡 페이지' if t['license'] == 'CC0' else '작곡가 라이선스 안내 페이지'
+            how = '작곡가 라이선스 안내 페이지' if source_of(t) == 'incompetech' else '곡 페이지'
         except Exception as e:  # noqa: BLE001
             print('  page fetch failed:', e)
         if verdict == 'other':
@@ -171,12 +207,12 @@ def main():
             print('  -> 뺌 (다른 라이선스)')
             continue
         # 2) 받기
-        src = os.path.join(TMP, tid + '.mp3')
+        ext = os.path.splitext(t['file'].split('?')[0])[1].lower() or '.mp3'
+        src = os.path.join(TMP, tid + ext)
         try:
             data = fetch(t['file'], binary=True, referer=t['page'])
-            is_mp3 = data[:3] == b'ID3' or (len(data) > 1 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0)
-            if len(data) < 50_000 or not is_mp3:
-                raise RuntimeError(f'mp3 가 아님 ({len(data)} bytes, {data[:4]!r})')
+            if len(data) < 50_000 or not is_audio(data):
+                raise RuntimeError(f'곡 파일이 아님 ({len(data)} bytes, {data[:4]!r})')
             open(src, 'wb').write(data)
         except Exception as e:  # noqa: BLE001
             dropped.append({**t, 'reason': f'파일을 받지 못함: {e}'})
@@ -193,6 +229,10 @@ def main():
                 continue
         # 3) 30초 고르기
         dur = duration(src)
+        if dur < CLIP + 2:
+            dropped.append({**t, 'reason': f'곡이 너무 짧음 ({dur:.0f}초)'})
+            print('  -> 뺌 (짧음)', dur)
+            continue
         start = pick_start(loudness_windows(src), dur)
         meta = {'title': t['title'], 'artist': t['artist'], 'credit': credit(t)}
         dst = os.path.join(OUT, tid + '.m4a')
@@ -219,13 +259,14 @@ def write_doc(results, dropped, today):
     lines = [
         '# 가톨릭그램 게시글 배경음악 라이선스',
         '',
-        f'만든 날: {today} (GitHub Actions `bgm-cc` 가 `scripts/bgm-cc/make.py` 로 만듦) · 곡 목록: 인스타 자동 업로더 세션이 고름(2026-11-01)',
+        f'만든 날: {today} (GitHub Actions `bgm-cc` 가 `scripts/bgm-cc/make.py` 로 만듦) · 곡 목록: 첫 36곡은 인스타 자동 업로더 세션이, '
+        '요즘 스타일 추가 곡은 작업 세션이 `scripts/bgm-cc/candidates.json`(discover.py 가 모은 후보·라이선스)을 보고 고름(2026-11-01)',
         '',
         '- 모든 곡은 원곡에서 **30초를 잘라** 앞 1초 커지고 뒤 2초 작아지게, 소리 크기 -16 LUFS, AAC 128kbps 로 바꿨습니다(편집함).',
-        '- **CC0** (Free Music Archive): 조건 없이 사용 가능. 앱에는 `음악: 만든 사람 (Free Music Archive, CC0)` 표시',
-        '- **CC BY 4.0** (Kevin MacLeod, incompetech.com): 곡 이름·작곡가·라이선스 표시 필수 → 앱 음악 고르기·게시글 음악 줄에 '
-        '`"곡 이름" — Kevin MacLeod (incompetech.com) · CC BY 4.0 · 30초로 편집` 표시. 라이선스 원문 https://creativecommons.org/licenses/by/4.0/ · '
-        '작곡가 안내 https://incompetech.com/music/royalty-free/licenses/',
+        '- **CC0** (Free Music Archive·OpenGameArt): 조건 없이 사용 가능. 앱에는 `음악: 만든 사람 (Free Music Archive 또는 OpenGameArt, CC0)` 표시',
+        '- **CC BY 4.0** (Kevin MacLeod·incompetech.com, Free Music Archive 의 CC BY 4.0 곡): 곡 이름·작곡가·라이선스 표시 필수 → 앱 음악 고르기·게시글 음악 줄에 '
+        '`"곡 이름" — 만든 사람 (출처) · CC BY 4.0 · 30초로 편집` 표시. 라이선스 원문 https://creativecommons.org/licenses/by/4.0/ · '
+        'Kevin MacLeod 안내 https://incompetech.com/music/royalty-free/licenses/',
         '- 받기 전에 곡 페이지(CC BY 는 작곡가 라이선스 안내 페이지)에서 라이선스를 다시 확인했고, 페이지를 읽지 못하면 곡 파일 안의 라이선스 표시로 확인했습니다. '
         '원본 파일은 저장소에 올리지 않았습니다.',
         '',
