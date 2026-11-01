@@ -412,7 +412,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   // 관리자 보기에서는 하트·답장 없이 메뉴(프로필)만
   const gestures = usePressGestures<GroupMessage>({
     keyOf: m => m.id,
-    onTap: (m, el) => { if (m.user_id === user.id || adminView) openMenu(m, el); },
+    // 한 번 누르기: 답장 말풍선이면 원래 메시지로 (메뉴는 꾹 누를 때만 — 루비로사 건의), 관리자 보기는 예전처럼 메뉴(프로필)
+    onTap: (m, el) => { if (adminView) openMenu(m, el); else if (m.reply_to && document.getElementById(`gm-${m.reply_to}`)) jumpTo(m.reply_to); },
     onDoubleTap: adminView ? undefined : m => { if (canWriteRef.current) react(m, '❤️'); },
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: adminView ? undefined : m => { if (canWriteRef.current) startReply(m); },

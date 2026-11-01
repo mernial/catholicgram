@@ -88,7 +88,11 @@ export async function GET(request: Request) {
   const pushDevices = new Map<string, Map<string, string>>();
   pushes.forEach(r => {
     const id = r.user_id as string; if (!id) return;
-    const name = ((r.device as string | null) || '').split('|').pop() || '기기 이름 모름';
+    // 'Android|SM-S918N|play' → 'SM-S918N (Play 앱)' — 같은 휴대폰의 Play 앱과 다른 앱(삼성 인터넷 등)을 나눠 보여 줌
+    const parts = ((r.device as string | null) || '').split('|');
+    const play = parts[parts.length - 1] === 'play';
+    const model = play ? parts[parts.length - 2] : parts[parts.length - 1];
+    const name = model ? `${model}${play ? ' (Play 앱)' : ''}` : '기기 이름 모름';
     const at = (r.last_seen as string | null) || '';
     const m = pushDevices.get(id) || new Map<string, string>();
     if (!m.has(name) || at > m.get(name)!) m.set(name, at);
