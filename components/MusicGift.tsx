@@ -6,6 +6,7 @@ import type { BgmTrack } from '@/lib/music';
 import BottomSheet from '@/components/BottomSheet';
 import Icon from '@/components/Icon';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
+import { clipText } from '@/lib/clip-text';
 
 // 관리자: 보관 음악 한 곡을 교우에게 선물하기·거두기 ('🔒 보관 음악' → 곡의 '🎁 선물')
 //  - 선물은 music_grants 표 (supabase/profile-music.sql). 받은 교우는 그 노래를 내 공간 음악·게시글 음악으로 쓸 수 있다
@@ -90,7 +91,7 @@ export default function MusicGift({ track, onClose, onGifted }: {
           <div className="p-4 flex flex-col gap-2.5 bg-stone-50 border-b border-stone-100">
             <label className="flex flex-col gap-1">
               <span className="text-xs font-bold text-stone-600">선물하며 남길 말 (선택 · 받는 분 화면에 보여요)</span>
-              <input value={note} onChange={e => setNote(e.target.value.slice(0, 100))} placeholder="예: 보이는 라디오 사연 선물 🎵" className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
+              <input value={note} onChange={e => setNote(clipText(e.target.value, 100))} placeholder="예: 보이는 라디오 사연 선물 🎵" className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
             </label>
             <label className="flex flex-col gap-1">
               <span className="text-xs font-bold text-stone-600">받을 교우</span>

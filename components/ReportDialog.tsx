@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
+import { clipText } from '@/lib/clip-text';
 
 // 부적절한 콘텐츠/사용자 신고 (supabase/report-block.sql 의 reports 테이블)
 
@@ -76,7 +77,7 @@ export default function ReportDialog({ target, onClose, onBlock, onSent }: {
             </button>
           ))}
         </div>
-        <textarea value={detail} onChange={e => setDetail(e.target.value)} rows={2} maxLength={500} placeholder="자세한 내용 (선택)" className="w-full text-sm p-3 border border-stone-200 rounded-xl resize-none focus:outline-none" />
+        <textarea value={detail} onChange={e => setDetail(clipText(e.target.value, 500))} rows={2} placeholder="자세한 내용 (선택)" className="w-full text-sm p-3 border border-stone-200 rounded-xl resize-none focus:outline-none" />
         {canBlock && (
           <label className="flex items-center gap-2 text-sm text-stone-700">
             <input type="checkbox" checked={alsoBlock} onChange={e => setAlsoBlock(e.target.checked)} className="w-4 h-4" />

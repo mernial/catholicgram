@@ -7,6 +7,7 @@ import { CelebrateBand } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
+import { clipText } from '@/lib/clip-text';
 
 // 새 채팅: @아이디나 이름으로 교우를 찾아 1:1 메시지를 보내거나, 여러 명을 골라 단체 채팅방을 만든다.
 // 단체 채팅방 안에서 '교우 초대하기'에도 쓴다 (supabase/group-chats.sql)
@@ -153,7 +154,7 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
         {kind === 'group' && (
           <div className="shrink-0 border-t border-stone-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-2 bg-white">
             {mode === 'start' && (
-              <input value={roomName} onChange={e => setRoomName(e.target.value.slice(0, 40))} placeholder={picked.length ? `방 이름 (안 적으면 '${defaultName}')` : '방 이름 (예: 성경 공부 모임)'}
+              <input value={roomName} onChange={e => setRoomName(clipText(e.target.value, 40))} placeholder={picked.length ? `방 이름 (안 적으면 '${defaultName}')` : '방 이름 (예: 성경 공부 모임)'}
                 aria-label="방 이름" className="w-full px-4 py-2.5 rounded-xl border border-stone-300 bg-stone-50 text-[0.9375rem] focus:outline-none focus:border-stone-500" />
             )}
             <button onClick={mode === 'invite' ? invite : create} disabled={picked.length === 0 || saving}

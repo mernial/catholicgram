@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
+import { clipText } from '@/lib/clip-text';
 
 // 댓글 수정 / 삭제 (서버에서 본인 확인)
 // POST { action: 'edit', id, content } → 본인 댓글만
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
 
   if (action === 'edit') {
     if (!isOwner) return Response.json({ error: '내 댓글만 수정할 수 있어요.' }, { status: 403 });
-    const text = (content || '').trim().slice(0, 2000);
+    const text = clipText((content || '').trim(), 2000);
     if (!text) return Response.json({ error: '내용을 입력해주세요.' }, { status: 400 });
     const editedAt = new Date().toISOString();
     let { error } = await admin.from('comments').update({ content: text, edited_at: editedAt }).eq('id', id);

@@ -7,6 +7,7 @@ import type { ReportTarget } from '@/components/ReportDialog';
 import Icon, { IconBadge, type IconName } from '@/components/Icon';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { afterTyping } from '@/lib/typing-guard';
+import { clipText } from '@/lib/clip-text';
 
 // 익명 고민상담 게시판
 // 글/답글은 user_id 가 없는 보기(anon_posts_feed, anon_replies_feed)로만 읽는다.
@@ -282,8 +283,7 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
             <textarea
               ref={composeRef}
               value={content}
-              onChange={(e) => setContent(e.target.value)}
-              maxLength={2000}
+              onChange={(e) => setContent(clipText(e.target.value, 2000))}
               rows={3}
               placeholder="마음속 고민을 익명으로 나눠보세요..."
               className="w-full p-3.5 text-sm text-stone-900 bg-stone-50 border border-stone-200 rounded-2xl resize-none max-h-[45dvh] overflow-y-auto overscroll-contain focus:outline-none focus:ring-2 focus:ring-violet-300"
@@ -379,9 +379,8 @@ export default function AnonBoard({ user, isAdmin, onRequireLogin, onReport, pro
                       <textarea
                         rows={1}
                         value={replyInputs[post.id] || ''}
-                        onChange={(e) => setReplyInputs(prev => ({ ...prev, [post.id]: e.target.value.replace(/\n/g, ' ') }))}
+                        onChange={(e) => setReplyInputs(prev => ({ ...prev, [post.id]: clipText(e.target.value.replace(/\n/g, ' '), 1000) }))}
                         onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (!e.nativeEvent.isComposing) handleReply(post.id); } }}
-                        maxLength={1000}
                         enterKeyHint="send"
                         placeholder="따뜻한 답글을 익명으로 남겨주세요..."
                         className="flex-1 min-w-0 resize-none [field-sizing:content] max-h-24 text-xs leading-4 text-stone-900 border border-stone-200 rounded-xl px-3 py-2 bg-white focus:outline-none"

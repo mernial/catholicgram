@@ -9,6 +9,7 @@ import { PHOTO_OPTIONS, uploadMedia } from '@/lib/upload';
 import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { clipText } from '@/lib/clip-text';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
 // 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
@@ -175,7 +176,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
       const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
       const url = await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
-      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: caption.trim().slice(0, 100), images: [url], is_story: true }).select('id');
+      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: clipText(caption.trim(), 100), images: [url], is_story: true }).select('id');
       if (error) {
         alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
         return;

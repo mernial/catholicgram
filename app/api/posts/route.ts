@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { deleteMedia, filesSafeToDelete, mediaKeyFromUrl } from '@/lib/media-server';
+import { clipText } from '@/lib/clip-text';
 
 // 게시글 고치기 / 지우기 (서버에서 본인 확인 — 데이터베이스 권한 설정과 상관없이 동작)
 // POST { action: 'update', id, changes: { content?, video_overlays?, visibility?, music?, images? } } → 본인 글만
@@ -35,7 +36,7 @@ export async function POST(request: Request) {
     if (!isOwner) return Response.json({ error: '내 글만 고칠 수 있어요.' }, { status: 403 });
     const c = body.changes || {};
     const changes: Record<string, unknown> = {};
-    if (typeof c.content === 'string') changes.content = c.content.trim().slice(0, 5000);
+    if (typeof c.content === 'string') changes.content = clipText(c.content.trim(), 5000);
     if ('video_overlays' in c) changes.video_overlays = c.video_overlays ?? null;
     if ('music' in c) {
       changes.music = typeof c.music === 'string' && c.music ? c.music.slice(0, 300) : null;

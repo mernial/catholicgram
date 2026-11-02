@@ -8,6 +8,7 @@ import Icon from '@/components/Icon';
 import { uploadPhoto, PHOTO_ONLY_TEXT } from '@/lib/upload';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { clipText } from '@/lib/clip-text';
 
 // 운영자 건의함 (supabase/feedback.sql)
 // 일반 교우: 건의 보내기 + 내가 보낸 건의의 상태/답변 보기
@@ -24,8 +25,13 @@ interface Feedback {
   admin_reply: string | null;
   replied_at: string | null;
   created_at: string;
-  image_url?: string | null; // 첨부 사진
+  image_url?: string | null; // 첨부 사진 (첫 장 — 예전 앱도 읽음)
+  images?: string[] | null;  // 첨부 사진 모두 (2장 넘을 때, supabase/feedback-photos.sql)
 }
+
+// 건의 사진 여러 장 (루비로사 건의 2026-11-02: 한 장밖에 안 골라져요)
+const MAX_FEEDBACK_PHOTOS = 10;
+const photosOf = (f: Feedback): string[] => (f.images?.length ? f.images : f.image_url ? [f.image_url] : []);
 
 const CATEGORIES: { key: Feedback['category']; label: string }[] = [
   { key: 'suggestion', label: '건의' },
@@ -87,8 +93,15 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   const [category, setCategory] = useState<Feedback['category']>('suggestion');
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
-  const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null); // 첨부할 사진 (한 장)
-  const [zoom, setZoom] = useState<string | null>(null); // 첨부 사진 크게 보기
+  const [photos, setPhotos] = useState<{ file: File; url: string }[]>([]); // 첨부할 사진 (10장까지)
+  const addPhotos = (files: File[]) => {
+    const room = MAX_FEEDBACK_PHOTOS - photos.length;
+    if (files.length > room) alert(`사진은 ${MAX_FEEDBACK_PHOTOS}장까지 올릴 수 있어요. 앞의 ${Math.max(0, room)}장만 넣었어요.`);
+    const add = files.slice(0, Math.max(0, room)).map(file => ({ file, url: URL.createObjectURL(file) }));
+    if (add.length) setPhotos(prev => [...prev, ...add]);
+  };
+  const removePhoto = (i: number) => setPhotos(prev => { URL.revokeObjectURL(prev[i].url); return prev.filter((_, k) => k !== i); });
+  const [zoom, setZoom] = useState<{ urls: string[]; i: number } | null>(null); // 첨부 사진 크게 보기 (여러 장이면 ‹ › 로 넘김)
   useBackLayer(!!zoom, () => setZoom(null)); // 사진에서 휴대폰 뒤로가기 → 건의함으로 (건의함은 그대로)
   const [items, setItems] = useState<Feedback[]>([]);
   const [loading, setLoading] = useState(false);
@@ -165,27 +178,36 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = content.trim();
-    if (!text && !photo) return;
+    if (!text && !photos.length) return;
     setSending(true);
-    let imageUrl: string | null = null;
-    if (photo) {
-      try { imageUrl = await uploadPhoto(photo.file, 'feedback'); }
+    // 2장 넘으면 사진 모두 칸(images)이 있는지 먼저 봄 — 없으면(SQL 전) 첫 장만 올림 (나머지 파일을 헛되이 올리지 않게)
+    let pick = photos;
+    let onlyFirst = false;
+    if (photos.length > 1) {
+      const { error: probe } = await supabase.from('feedback').select('images').limit(1);
+      if (probe && (probe.code === '42703' || probe.code === 'PGRST204' || /images/.test(probe.message))) { pick = photos.slice(0, 1); onlyFirst = true; }
+    }
+    const urls: string[] = [];
+    for (const p of pick) {
+      try { urls.push(await uploadPhoto(p.file, 'feedback')); }
       catch { setSending(false); alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.'); return; }
     }
-    const row = { category, content: text || PHOTO_ONLY_TEXT, ...(imageUrl ? { image_url: imageUrl } : {}) };
+    const row = { category, content: text || PHOTO_ONLY_TEXT, ...(urls.length ? { image_url: urls[0] } : {}), ...(urls.length > 1 ? { images: urls } : {}) };
     const { data, error } = await supabase.from('feedback').insert(row).select('id').single();
     setSending(false);
     if (error) {
-      if (imageUrl && (error.code === '42703' || error.code === 'PGRST204')) alert('사진 첨부를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)\n사진을 빼고 다시 보내 주세요.');
+      if (urls.length && (error.code === '42703' || error.code === 'PGRST204')) alert('사진 첨부를 준비 중이에요. (관리자: supabase/photo-attachments.sql 실행 필요)\n사진을 빼고 다시 보내 주세요.');
       else if (/does not exist|schema cache/i.test(error.message)) setSetupNeeded(true);
       else alert(`보내지 못했습니다.\n(${error.message})`);
       return;
     }
     if (data) sendPush('feedback', data.id);
     setContent('');
-    if (photo) URL.revokeObjectURL(photo.url);
-    setPhoto(null);
-    alert('건의사항이 운영자에게 전달되었습니다. 감사합니다 🙏');
+    photos.forEach(p => URL.revokeObjectURL(p.url));
+    setPhotos([]);
+    alert(onlyFirst
+      ? '건의사항이 운영자에게 전달되었습니다. 감사합니다 🙏\n(사진은 지금 첫 장만 보내졌어요 — 여러 장 보내기를 준비 중이에요. 관리자: supabase/feedback-photos.sql 실행 필요)'
+      : '건의사항이 운영자에게 전달되었습니다. 감사합니다 🙏');
     setView('mine');
   };
 
@@ -238,7 +260,14 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
     <BottomSheet bare label="건의함" onClose={onClose} z="z-[85]" tone="bg-white">
       {zoom && (
         <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
-          <img loading="lazy" src={zoom} alt="첨부 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          <img src={zoom.urls[zoom.i]} alt={`첨부 사진 ${zoom.i + 1}`} className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          {zoom.urls.length > 1 && (
+            <>
+              <span className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm font-bold">{zoom.i + 1} / {zoom.urls.length}</span>
+              {zoom.i > 0 && <button type="button" onClick={e => { e.stopPropagation(); setZoom({ ...zoom, i: zoom.i - 1 }); }} className="absolute left-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 text-white text-3xl leading-none flex items-center justify-center" aria-label="앞 사진">‹</button>}
+              {zoom.i < zoom.urls.length - 1 && <button type="button" onClick={e => { e.stopPropagation(); setZoom({ ...zoom, i: zoom.i + 1 }); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-12 h-12 rounded-full bg-black/60 text-white text-3xl leading-none flex items-center justify-center" aria-label="다음 사진">›</button>}
+            </>
+          )}
         </div>
       )}
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
@@ -308,7 +337,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                         <button key={t} onClick={() => setReportReplyDrafts(prev => ({ ...prev, [r.id]: t }))} className="text-[0.75rem] text-left px-2 py-1 rounded-lg bg-white border border-stone-200 text-stone-600">{t.replace('신고해 주셔서 감사합니다. ', '').slice(0, 22)}…</button>
                       ))}
                     </div>
-                    <textarea value={reportReplyDrafts[r.id] || ''} onChange={e => setReportReplyDrafts(prev => ({ ...prev, [r.id]: e.target.value }))} rows={2} maxLength={500} placeholder="처리 결과를 적어주세요" className="w-full p-2.5 text-sm bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
+                    <textarea value={reportReplyDrafts[r.id] || ''} onChange={e => setReportReplyDrafts(prev => ({ ...prev, [r.id]: clipText(e.target.value, 500) }))} rows={2} placeholder="처리 결과를 적어주세요" className="w-full p-2.5 text-sm bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-300" />
                     <button onClick={() => sendReportReply(r)} disabled={!(reportReplyDrafts[r.id] || '').trim()} className="self-end text-xs px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold disabled:opacity-40"><Icon name="sendRight" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />답변 보내기</button>
                   </div>
                 )}
@@ -329,25 +358,29 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
             </div>
             <textarea
               value={content}
-              onChange={e => setContent(e.target.value)}
+              onChange={e => setContent(clipText(e.target.value, 2000))}
               rows={6}
-              maxLength={2000}
               placeholder={category === 'bug' ? '어떤 화면에서 무엇을 했을 때 문제가 생겼는지 적어주세요. (휴대폰 종류도 알려주시면 좋아요)' : '자유롭게 적어주세요...'}
               className="w-full shrink-0 p-3.5 text-sm bg-stone-50/70 border border-stone-200 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             />
-            {/* 사진 첨부 (화면 캡처 등 한 장) */}
-            {photo ? (
-              <div className="relative self-start">
-                <img loading="lazy" src={photo.url} alt="첨부 사진" className="h-28 rounded-xl border border-stone-200 object-cover" />
-                <button type="button" onClick={() => { URL.revokeObjectURL(photo.url); setPhoto(null); }} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-stone-900 text-white text-base leading-none flex items-center justify-center" aria-label="사진 빼기">×</button>
+            {/* 사진 첨부 (화면 캡처 등, 한 번에 여러 장 · 10장까지) */}
+            {photos.length > 0 && (
+              <div className="flex flex-wrap gap-2.5 pt-2">
+                {photos.map((p, i) => (
+                  <div key={p.url} className="relative">
+                    <img src={p.url} alt={`첨부 사진 ${i + 1}`} className="h-24 w-24 rounded-xl border border-stone-200 object-cover" />
+                    <button type="button" onClick={() => removePhoto(i)} className="absolute -top-2 -right-2 w-7 h-7 rounded-full bg-stone-900 text-white text-base leading-none flex items-center justify-center" aria-label={`사진 ${i + 1} 빼기`}>×</button>
+                  </div>
+                ))}
               </div>
-            ) : (
+            )}
+            {photos.length < MAX_FEEDBACK_PHOTOS && (
               <label className="self-start inline-flex items-center gap-1.5 text-sm font-semibold text-stone-700 bg-stone-100 px-3.5 py-2 rounded-xl cursor-pointer">
-                <Icon name="camera" className="w-[1.125rem] h-[1.125rem]" />사진 첨부 <span className="text-xs font-normal text-stone-400">(화면 캡처 등)</span>
-                <input type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) setPhoto({ file: f, url: URL.createObjectURL(f) }); }} />
+                <Icon name="camera" className="w-[1.125rem] h-[1.125rem]" />{photos.length ? '사진 더 넣기' : '사진 첨부'} <span className="text-xs font-normal text-stone-400">{photos.length ? `(${photos.length}/${MAX_FEEDBACK_PHOTOS}장)` : '(여러 장 · 화면 캡처 등)'}</span>
+                <input type="file" accept="image/*" multiple className="hidden" onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ''; if (fs.length) addPhotos(fs); }} />
               </label>
             )}
-            <button type="submit" disabled={sending || (!content.trim() && !photo)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-40">
+            <button type="submit" disabled={sending || (!content.trim() && !photos.length)} className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold disabled:opacity-40">
               {sending ? '보내는 중...' : '운영자에게 보내기'}
             </button>
           </form>
@@ -367,7 +400,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                     <b className="text-sm text-stone-900 truncate">{item.author_name || '교우'}</b>
                     {item.author_handle && <span className="text-xs text-stone-400 truncate">@{item.author_handle}</span>}
                   </span>
-                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.image_url && <Icon name="image" className="w-3.5 h-3.5 inline-block align-[-0.15em] mr-1 text-stone-400" />}{item.content}</span>
+                  <span className="block text-sm text-stone-600 truncate mt-0.5">{item.image_url && <Icon name="image" className="w-3.5 h-3.5 inline-block align-[-0.15em] mr-1 text-stone-400" />}{photosOf(item).length > 1 && <span className="text-xs text-stone-400 mr-1">{photosOf(item).length}장</span>}{item.content}</span>
                 </span>
                 <span className="text-stone-300 shrink-0">›</span>
               </button>
@@ -385,10 +418,19 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                   <span className={`text-[0.75rem] px-2 py-0.5 rounded-full border font-bold shrink-0 ${STATUS[item.status].className}`}>{STATUS[item.status].label}</span>
                 </div>
                 {!(item.image_url && item.content === PHOTO_ONLY_TEXT) && <p className="text-[0.9375rem] text-stone-800 whitespace-pre-wrap leading-relaxed">{item.content}</p>}
-                {item.image_url && (
-                  <button type="button" onClick={() => setZoom(item.image_url!)} className="self-start" aria-label="첨부 사진 크게 보기">
-                    <img loading="lazy" src={item.image_url} alt="첨부 사진" className="max-h-48 max-w-full rounded-xl border border-stone-200 object-cover" />
+                {photosOf(item).length === 1 && (
+                  <button type="button" onClick={() => setZoom({ urls: photosOf(item), i: 0 })} className="self-start" aria-label="첨부 사진 크게 보기">
+                    <img loading="lazy" src={photosOf(item)[0]} alt="첨부 사진" className="max-h-48 max-w-full rounded-xl border border-stone-200 object-cover" />
                   </button>
+                )}
+                {photosOf(item).length > 1 && (
+                  <div className="grid grid-cols-3 gap-1.5 max-w-sm">
+                    {photosOf(item).map((u, i) => (
+                      <button key={u + i} type="button" onClick={() => setZoom({ urls: photosOf(item), i })} className="aspect-square" aria-label={`첨부 사진 ${i + 1} 크게 보기`}>
+                        <img loading="lazy" src={u} alt={`첨부 사진 ${i + 1}`} className="w-full h-full rounded-lg border border-stone-200 object-cover" />
+                      </button>
+                    ))}
+                  </div>
                 )}
 
                 {view === 'mine' && item.admin_reply && (
