@@ -1,8 +1,6 @@
 # 앱에 넣은 바깥 링크가 실제로 열리는지 (클라우드 작업 세션은 이 사이트들이 막혀 있어 GitHub Actions 에서 확인)
 # 한 줄에 주소 하나, '#' 줄은 설명. 고쳐서 claude/** 가지에 올리면 .github/workflows/link-check.yml 이 돌고 결과는 작업 기록에
-# components/CatholicLinks.tsx (가톨릭 바로가기) — 2026-11-02 모두 200, 휴대폰 화면(viewport) 있음
+# components/CatholicApps.tsx (내 공간 '가톨릭 앱') — 휴대폰 화면(viewport) 있는지
 https://maria.catholic.or.kr/mobile/missa/missa_view.asp?today=on
-https://play.google.com/store/apps/details?id=pk.catholic.missa
-https://apps.apple.com/kr/app/id346753847
-https://bible.cbck.or.kr/Knb
+https://maria.catholic.or.kr/mobile/bible/
 https://www.cpbc.co.kr/

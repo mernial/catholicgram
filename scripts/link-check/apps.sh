@@ -28,7 +28,7 @@ while read -r key pkg <&3; do
   echo "    개발자: $(grep -oE 'store/apps/dev(eloper)?\?id=[^"&]+' "$page" | head -1)"
   icon=$(grep -oE '<meta property="og:image" content="[^"]*"' "$page" | head -1 | sed 's/.*content="//; s/"$//')
   echo "    아이콘: $icon"
-  if [ -n "$icon" ]; then
+  if [ -n "$icon" ] && [ ! -f "public/apps/$key.png" ]; then  # 이미 있으면 그대로 (손으로 PNG 로 바꾼 것을 덮어쓰지 않게)
     base="${icon%%=*}"
     curl -sL -m 30 "${base}=s192" -o "public/apps/$key.png" </dev/null && echo "    → public/apps/$key.png $(file -b "public/apps/$key.png" | cut -c1-60)"
   fi

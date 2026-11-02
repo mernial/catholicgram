@@ -3,5 +3,4 @@
 # 웹 주소로 그 앱이 바로 열리는지(App Links·Universal Links 파일)를 작업 기록에 적는다
 missa pk.catholic.missa
 bible kr.or.catholic.bible
-goodnews pk.goodnews
 pbc com.pbc.ax.mobilePBC
