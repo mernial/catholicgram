@@ -40,7 +40,7 @@ function platform(): Platform {
 }
 
 export default function CatholicLinks({ onClose }: { onClose: () => void }) {
-  const os = useMemo(platform, []);
+  const os = useMemo(() => platform(), []);
   return (
     <BottomSheet label="가톨릭 바로가기" title="✝️ 가톨릭 바로가기" subtitle="누르면 그 화면이 열려요 · 다 보시면 뒤로 가기로 가톨릭그램에 돌아와요" onClose={onClose}>
       <div className="p-4 flex flex-col gap-3">
