@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
 # 가톨릭그램 Play 앱(com.catholicgram.android) 업데이트를 운영자 Mac 에서 만든다 (Bubblewrap).
 # 들어가는 것: 크롬으로 열기(삼성 인터넷이 기본이어도 — 알림이 저절로 꺼지던 문제), 처음 열 때 알림 허용 묻기(알림 위임),
-#              폴드를 펴면 전체 화면(orientation any), 휴대폰 위쪽 줄 알림 그림(monochrome), 버전 올리기.
+#              폴드를 펴면 전체 화면(orientation any), 휴대폰 위쪽 줄 알림 그림(monochrome), 버전 올리기,
+#              (1.0.2) 휴대폰 알림 기본 소리 '찬미예수님'.
 # 쓰는 법 (터미널):  cd ~/catholicgram && git pull && bash scripts/android-build.sh
-#   버전을 바꾸려면:  VERSION_CODE=3 VERSION_NAME=1.0.2 bash scripts/android-build.sh
+#   버전을 바꾸려면:  VERSION_CODE=4 VERSION_NAME=1.0.3 bash scripts/android-build.sh
 # 서명 키(signing.keystore)·비밀번호는 iCloud '가톨릭그램 관리자' 폴더에서 읽기만 하고, 화면에 보이거나 저장소에 들어가지 않는다.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${OUT:-$HOME/catholicgram-android}"   # 만든 Android 프로젝트·결과물 (저장소 밖)
 ICLOUD="$HOME/Library/Mobile Documents/com~apple~CloudDocs/가톨릭그램 관리자"
-VERSION_CODE="${VERSION_CODE:-2}"
-VERSION_NAME="${VERSION_NAME:-1.0.1}"
+VERSION_CODE="${VERSION_CODE:-3}"
+VERSION_NAME="${VERSION_NAME:-1.0.2}"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
@@ -131,7 +132,7 @@ if [ ! -d "$OUT/app/src/main/java" ]; then
   exit 1
 fi
 
-say "⑤ 크롬으로 열기 넣기"
+say "⑤ 크롬으로 열기 · 알림 기본 소리(찬미예수님) 넣기"
 node "$REPO/scripts/android-pin-chrome.mjs" "$OUT"
 
 say "⑥ 앱 만들기 (처음에는 10분쯤 걸려요)"
