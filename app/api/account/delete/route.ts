@@ -31,6 +31,8 @@ export async function POST(request: Request) {
     const attachments = [
       ...await attachedOf('messages', 'sender_id'), ...await attachedOf('letters', 'user_id'),
       ...await attachedOf('feedback', 'user_id'), ...await attachedOf('deleted_messages', 'sender_id'),
+      // 건의 사진 여러 장 (supabase/feedback-photos.sql — 칸이 없으면 빈 목록)
+      ...((await admin.from('feedback').select('images').eq('user_id', uid).not('images', 'is', null)).data || []).flatMap(r => (r.images as string[] | null) || []),
     ];
     // 글·프로필의 사진 주소는 아무 주소나 넣을 수 있으므로, 내 파일이고 다른 교우가 쓰지 않는 것만 지운다
     const safe = await filesSafeToDelete(admin,

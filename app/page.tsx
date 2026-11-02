@@ -109,6 +109,7 @@ import { setBackLayerHost, hasBackLayer, popBackLayer, useBackLayer } from '@/li
 import { useSelectScope } from '@/lib/select-scope';
 import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
+import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
 // localStorage 접근 자체가 오류를 내서 화면 전체가 멈출 수 있으므로 안전하게 감싼다.
@@ -1180,7 +1181,7 @@ export default function Home() {
   }, [viewingUserId]);
   const saveBio = async () => {
     if (!user || bioDraft === null) return;
-    const bio = bioDraft.trim().slice(0, 80);
+    const bio = clipText(bioDraft.trim(), 80);
     const { error } = await supabase.from('profiles').update({ bio: bio || null }).eq('id', user.id);
     if (error) { alert(/bio|column/i.test(error.message) ? '소개 기능 준비 중이에요. (supabase/profile-bio.sql 실행 필요)' : '소개를 저장하지 못했어요.'); return; }
     setViewingBio(bio); setBioDraft(null);
@@ -2259,8 +2260,8 @@ export default function Home() {
   const saveIntention = async () => {
     if (!user) { setShowAuthModal(true); return; }
     if (!requireProfile()) return;
-    const title = intentionTitleInput.trim().slice(0, 30);
-    const content = intentionInput.trim().slice(0, 100);
+    const title = clipText(intentionTitleInput.trim(), 30);
+    const content = clipText(intentionInput.trim(), 100);
     if (!title || !content) return;
     setIntentionSaving(true);
     const row = { user_id: user.id, author_name: profile?.baptismal_name || '교우', prayer_date: todayKst() };
@@ -4645,7 +4646,7 @@ export default function Home() {
                     <span key={copy} className="pr-8">
                       {visibleIntentions.map(i => (
                         <span key={`${copy}-${i.id}`} onClick={() => setOpenIntentionId(i.id)} className="mr-8 text-[0.875rem]">
-                          <span className="text-white/50 mr-2">✝</span>{i.title || i.content}
+                          <span className="text-white/50 mr-2">✝</span>{showHeart(i.title || i.content)}
                         </span>
                       ))}
                     </span>
@@ -5158,9 +5159,9 @@ export default function Home() {
               {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
               {bioDraft !== null ? (
                 <div className="mt-2 flex flex-col gap-1.5">
-                  <textarea autoFocus value={bioDraft} onChange={e => setBioDraft(e.target.value.slice(0, 80))} rows={2} placeholder="예: 수원교구 ○○성당 / 매일 묵주기도 함께해요 🙏" className="w-full p-2.5 text-sm bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                  <textarea autoFocus value={bioDraft} onChange={e => setBioDraft(clipText(e.target.value, 80))} rows={2} placeholder="예: 수원교구 ○○성당 / 매일 묵주기도 함께해요 🙏" className="w-full p-2.5 text-sm bg-white border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
                   <div className="flex items-center justify-between text-xs">
-                    <span className="text-stone-400">{bioDraft.length}/80</span>
+                    <span className="text-stone-400">{charCount(bioDraft)}/80</span>
                     <span className="flex gap-1.5">
                       <button onClick={() => setBioDraft(null)} className="px-3 py-1.5 rounded-lg border border-stone-300 text-stone-600">취소</button>
                       <button onClick={saveBio} className="px-3 py-1.5 rounded-lg bg-stone-900 text-white font-bold">저장</button>
@@ -5955,8 +5956,8 @@ export default function Home() {
               {myIntention && !intentionEditing ? (
                 <div className="flex flex-col gap-2">
                   <div className="text-sm bg-white/10 rounded-xl p-3 leading-relaxed">
-                    {myIntention.title && <p className="font-bold text-[#fbe7b0] mb-1">{myIntention.title}</p>}
-                    <p>{myIntention.content}</p>
+                    {myIntention.title && <p className="font-bold text-[#fbe7b0] mb-1">{showHeart(myIntention.title)}</p>}
+                    <p>{showHeart(myIntention.content)}</p>
                   </div>
                   <div className="flex gap-2 justify-end">
                     <button onClick={() => { setIntentionTitleInput(myIntention.title || ''); setIntentionInput(myIntention.content); setIntentionEditing(true); }} className="text-xs px-3 py-1.5 rounded-lg border border-white/30">고치기</button>
@@ -5972,24 +5973,22 @@ export default function Home() {
                   <div className="relative">
                     <input
                       value={intentionTitleInput}
-                      onChange={e => setIntentionTitleInput(e.target.value.slice(0, 30))}
-                      maxLength={30}
+                      onChange={e => setIntentionTitleInput(clipText(e.target.value, 30))}
                       placeholder="예: 어머니의 쾌유를 위하여"
                       className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{intentionTitleInput.length}/30</span>
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{charCount(intentionTitleInput)}/30</span>
                   </div>
                   <label className="text-xs font-bold text-[#fbe7b0] mt-1">기도 내용 <span className="font-normal text-white/60">(100자 · 누르면 보여요)</span></label>
                   <textarea
                     value={intentionInput}
-                    onChange={e => setIntentionInput(e.target.value.slice(0, 100))}
+                    onChange={e => setIntentionInput(clipText(e.target.value, 100))}
                     rows={3}
-                    maxLength={100}
                     placeholder="예: 다음 주 수술을 앞둔 어머니께서 두려움 없이 잘 회복하시도록 함께 기도해주세요."
                     className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                   />
                   <div className="flex items-center justify-between">
-                    <span className="text-xs text-white/60">{intentionInput.length}/100</span>
+                    <span className="text-xs text-white/60">{charCount(intentionInput)}/100</span>
                     <span className="flex gap-2">
                     {myIntention && <button onClick={() => setIntentionEditing(false)} className="text-sm px-3 py-2 rounded-xl border border-white/30">취소</button>}
                     <button onClick={saveIntention} disabled={!intentionTitleInput.trim() || !intentionInput.trim() || intentionSaving} className="text-sm px-4 py-2 rounded-xl bg-[#e8b85a] text-[#101a3f] font-bold disabled:opacity-40">
@@ -6012,7 +6011,7 @@ export default function Home() {
                   <button onClick={() => setOpenIntentionId(open ? null : i.id)} aria-expanded={open} className="w-full px-4 py-3.5 flex items-center gap-3 text-left">
                     <span className="w-9 h-9 rounded-full bg-amber-50 text-amber-700 flex items-center justify-center shrink-0"><Icon name="pray" fill={open} className="w-5 h-5" /></span>
                     <span className="flex-1 min-w-0">
-                      <span className="block text-[0.9375rem] font-bold text-[#1f2f66] truncate">{i.title || i.content}</span>
+                      <span className="block text-[0.9375rem] font-bold text-[#1f2f66] truncate">{showHeart(i.title || i.content)}</span>
                       <span className="block text-xs text-stone-500 mt-0.5">
                         {myIntention?.id === i.id ? '내 기도지향 · ' : isAdmin && i.author_name ? <><b className="text-amber-800">👤 {i.author_name}</b> <span className="text-amber-700/70">(관리자만 보여요)</span> · </> : ''}
                         {new Date(i.created_at).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' })}
@@ -6027,7 +6026,7 @@ export default function Home() {
                   </button>
                   {open && (
                     <div className="px-4 pb-4 flex flex-col gap-2">
-                      <p className="text-[1rem] text-stone-800 leading-relaxed whitespace-pre-wrap bg-white border border-amber-100 rounded-xl px-3.5 py-3">{i.content}</p>
+                      <p className="text-[1rem] text-stone-800 leading-relaxed whitespace-pre-wrap bg-white border border-amber-100 rounded-xl px-3.5 py-3">{showHeart(i.content)}</p>
                       {/* 읽고 나서 "함께 기도합니다" (한 번 더 누르면 취소) */}
                       {(() => {
                         const pr = intentionPrayers[i.id] || { count: 0, mine: false };

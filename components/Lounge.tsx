@@ -27,6 +27,7 @@ import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
+import { clipText } from '@/lib/clip-text';
 
 // 모두의 사랑방 (supabase/lounge.sql)
 // 모든 교우가 세례명으로 함께하는 실시간 대화방. 대화는 매일 자정(한국 시간)에 새로 시작한다.
@@ -493,7 +494,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   };
   const saveBadge = async () => {
     if (!badgeEdit) return;
-    const label = badgeText.trim().slice(0, 20);
+    const label = clipText(badgeText.trim(), 20);
     if (!label) return;
     const { error: err } = await supabase.from('lounge_badges').upsert({ user_id: badgeEdit, label });
     if (err) { alert(isSetupError(err) ? BADGE_SETUP : err.message); return; }
@@ -948,7 +949,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
           <textarea
             ref={setInputEl}
             value={input}
-            onChange={e => { setInput(e.target.value.slice(0, 500)); typing.notify(e.target.value); }}
+            onChange={e => { setInput(clipText(e.target.value, 500)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
             enterKeyHint={enter.enterKeyHint}
@@ -1020,7 +1021,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
             <div className="w-full sm:w-96 bg-white rounded-t-3xl sm:rounded-3xl p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} role="dialog" aria-label={`${name}님 뱃지`}>
               <h3 className="font-bold text-[1.125rem] text-stone-900">🏅 {name}님 뱃지</h3>
               <p className="mt-1 text-[0.875rem] text-stone-500">{cur ? <>지금 뱃지: <b className="text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-2 py-0.5">{cur}</b></> : '아직 뱃지가 없어요.'}</p>
-              <input value={badgeText} onChange={e => setBadgeText(e.target.value.slice(0, 20))} placeholder="뱃지에 쓸 말 (20자까지)" aria-label="뱃지에 쓸 말"
+              <input value={badgeText} onChange={e => setBadgeText(clipText(e.target.value, 20))} placeholder="뱃지에 쓸 말 (20자까지)" aria-label="뱃지에 쓸 말"
                 className="mt-3 w-full px-4 py-3 rounded-xl border border-stone-300 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-500" />
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {presets.map(p => <button key={p} onClick={() => setBadgeText(p)} className={`px-2.5 py-1 rounded-full border text-[0.8125rem] ${badgeText === p ? 'bg-amber-200 border-amber-300 text-amber-900 font-bold' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>{p}</button>)}

@@ -25,6 +25,7 @@ const MEDIA_COLUMNS: { table: string; cols: string[]; arrayCol?: string }[] = [
   { table: 'group_chat_messages', cols: ['image_url'], arrayCol: 'images' },
   { table: 'lounge_messages', cols: ['image_url'], arrayCol: 'images' },
   { table: 'feedback', cols: ['image_url'] },
+  { table: 'feedback', cols: [], arrayCol: 'images' }, // 건의 사진 여러 장 (supabase/feedback-photos.sql)
   { table: 'letters', cols: ['image_url'] },
   { table: 'sponsor_banners', cols: ['image_url'] },
   { table: 'bgm_tracks', cols: ['url'] },

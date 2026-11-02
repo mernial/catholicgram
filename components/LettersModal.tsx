@@ -9,6 +9,7 @@ import { uploadPhoto } from '@/lib/upload';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import StickerGift from '@/components/StickerGift';
+import { charCount, clipText } from '@/lib/clip-text';
 
 // 사연 보내기 (supabase/letters.sql)
 // 교우: 사연 쓰기 + 내가 보낸 사연과 상태 보기 — 사연은 관리자에게만 전달됨
@@ -163,7 +164,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   // 답장 쓰는 칸 (목록·크게 읽기 공통)
   const replyBox = (l: Letter, big = false) => replyFor === l.id && (
     <div className={`flex flex-col gap-2 ${big ? 'mt-6' : ''}`}>
-      <textarea value={replyText} onChange={e => setReplyText(e.target.value.slice(0, 3000))} rows={big ? 5 : 4} autoFocus
+      <textarea value={replyText} onChange={e => setReplyText(clipText(e.target.value, 3000))} rows={big ? 5 : 4} autoFocus
         placeholder={`${l.author_name || '교우'}님께 보낼 답장을 적어 주세요`}
         className={`w-full px-3.5 py-3 rounded-2xl border border-stone-300 bg-white leading-relaxed focus:outline-none focus:border-stone-500 resize-none ${big ? 'text-[1.125rem]' : 'text-[0.9375rem]'}`} />
       <div className="flex gap-2 justify-end">
@@ -281,12 +282,12 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
             <div className="p-4 flex flex-col gap-4">
               <textarea
                 value={content}
-                onChange={e => setContent(e.target.value.slice(0, 5000))}
+                onChange={e => setContent(clipText(e.target.value, 5000))}
                 placeholder={'나누고 싶은 이야기, 감사한 일, 기도 부탁, 신앙 고민 등\n무엇이든 편하게 적어 주세요.'}
                 rows={9}
                 className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] leading-relaxed focus:outline-none focus:border-stone-400 resize-none"
               />
-              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{content.length} / 5000</p>
+              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{charCount(content)} / 5000</p>
 
               <div>
                 <p className="text-[0.875rem] font-bold text-stone-700 mb-2">어떻게 보낼까요?</p>

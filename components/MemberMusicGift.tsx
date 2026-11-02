@@ -6,6 +6,7 @@ import type { BgmTrack } from '@/lib/music';
 import BottomSheet from '@/components/BottomSheet';
 import Icon from '@/components/Icon';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
+import { clipText } from '@/lib/clip-text';
 
 // 관리자: 교우 한 사람에게 노래 선물하기·거두기 (교우 프로필 카드 → '🎵 노래 선물')
 //  - 고르는 곡은 '🔒 보관 음악'(bgm_tracks.private)에 올려 둔 곡. 선물은 music_grants (supabase/profile-music.sql)
@@ -90,7 +91,7 @@ export default function MemberMusicGift({ user, onClose, onGifted, onOpenVault }
             <>
               <label className="p-4 flex flex-col gap-1 bg-stone-50 border-b border-stone-100">
                 <span className="text-xs font-bold text-stone-600">선물하며 남길 말 (선택 · 받는 분 화면에 보여요)</span>
-                <input value={note} onChange={e => setNote(e.target.value.slice(0, 100))} placeholder="예: 보이는 라디오 사연 선물 🎵" className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
+                <input value={note} onChange={e => setNote(clipText(e.target.value, 100))} placeholder="예: 보이는 라디오 사연 선물 🎵" className="w-full px-3 py-2.5 text-sm bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
               </label>
               <div className="divide-y divide-stone-100">
                 {tracks.map(t => (

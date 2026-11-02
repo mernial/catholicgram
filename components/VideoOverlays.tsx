@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react';
 import Icon from '@/components/Icon';
+import { clipText } from '@/lib/clip-text';
 
 // 숏폼 영상 꾸미기: 영상 위에 글자·이모티콘을 올려 손가락으로 옮긴다.
 // 영상 파일은 그대로 두고 위치 정보만 posts.video_overlays 에 저장해, 재생할 때 영상 위에 겹쳐 보여준다.
@@ -206,7 +207,7 @@ export default function VideoEditor({ src, initial, musicTitle, musicRange, onOp
   };
 
   const saveText = () => {
-    const text = textInput.trim().slice(0, 60);
+    const text = clipText(textInput.trim(), 60);
     if (!text) { setPanel('none'); return; }
     if (editingTextId) update(editingTextId, { text, color: textColor, bg: textBg });
     else {
@@ -289,7 +290,7 @@ export default function VideoEditor({ src, initial, musicTitle, musicRange, onOp
         <div className="px-4 py-3 flex flex-col gap-2.5 bg-stone-900">
           <input
             value={textInput}
-            onChange={e => setTextInput(e.target.value.slice(0, 60))}
+            onChange={e => setTextInput(clipText(e.target.value, 60))}
             placeholder="영상에 넣을 문구"
             autoFocus
             className="w-full px-3 py-2.5 rounded-xl bg-white text-stone-900 text-sm focus:outline-none"

@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { charCount, clipText } from '@/lib/clip-text';
 
 export interface Notice { id: string; title: string; content: string; pinned: boolean; popup?: boolean; pushed_at: string | null; created_at: string }
 
@@ -57,7 +58,7 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
   const save = async () => {
     if (!title.trim() || !content.trim()) return;
     setSaving(true);
-    const row = { title: title.trim().slice(0, 60), content: content.trim().slice(0, 2000), pinned, popup };
+    const row = { title: clipText(title.trim(), 60), content: clipText(content.trim(), 2000), pinned, popup };
     const { data, error } = editing === 'new'
       ? await supabase.from('announcements').insert(row).select('id').single()
       : await supabase.from('announcements').update(row).eq('id', (editing as Notice).id).select('id').single();
@@ -113,9 +114,9 @@ export default function NoticeBoard({ notices, isAdmin, initialOpenId, hiddenIds
 
         {editing ? (
           <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
-            <input value={title} onChange={e => setTitle(e.target.value.slice(0, 60))} placeholder="공지 제목 (예: 10월 성지순례 안내)" className="w-full px-3.5 py-3 text-sm font-bold border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
-            <textarea value={content} onChange={e => setContent(e.target.value.slice(0, 2000))} rows={10} placeholder="공지 내용" className="w-full shrink-0 p-3.5 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
-            <p className="text-right text-xs text-stone-400 -mt-2">{content.length}/2000</p>
+            <input value={title} onChange={e => setTitle(clipText(e.target.value, 60))} placeholder="공지 제목 (예: 10월 성지순례 안내)" className="w-full px-3.5 py-3 text-sm font-bold border border-stone-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-stone-400" />
+            <textarea value={content} onChange={e => setContent(clipText(e.target.value, 2000))} rows={10} placeholder="공지 내용" className="w-full shrink-0 p-3.5 text-sm border border-stone-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-stone-400" />
+            <p className="text-right text-xs text-stone-400 -mt-2">{charCount(content)}/2000</p>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={popup} onChange={e => setPopup(e.target.checked)} className="w-5 h-5" /> <span>앱에 들어오면 팝업으로 띄우기 <span className="text-xs text-stone-400">(올린 뒤 하루 동안, 다시 보지 않기 전까지)</span></span></label>
             <label className="flex items-center gap-2 text-sm text-stone-700"><input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} className="w-5 h-5" /> <span>홈 화면 맨 위에 보이기 <span className="text-xs text-stone-400">(올린 뒤 하루 동안)</span></span></label>
             {(editing === 'new' || !(editing as Notice).pushed_at) && (

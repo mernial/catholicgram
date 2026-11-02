@@ -27,6 +27,7 @@ import { askConfirm } from '@/components/ConfirmDialog';
 import { same } from '@/lib/typing-guard';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
+import { clipText } from '@/lib/clip-text';
 
 // 단체 채팅방 (supabase/group-chats.sql)
 // 들어와 있는 교우만 읽고 쓴다. 새 대화는 Supabase 실시간으로 바로 받고, 연결이 안 되면 5초마다 확인한다.
@@ -423,9 +424,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const rename = async () => {
     const next = window.prompt('새 방 이름을 적어 주세요 (40자까지)', name);
     if (next === null || !next.trim() || next.trim() === name) return;
-    const { error: err } = await supabase.rpc('rename_group_chat', { p_chat: chatId, p_name: next.trim().slice(0, 40) });
+    const { error: err } = await supabase.rpc('rename_group_chat', { p_chat: chatId, p_name: clipText(next.trim(), 40) });
     if (err) { alert(/[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : '이름을 바꾸지 못했어요.'); return; }
-    setName(next.trim().slice(0, 40));
+    setName(clipText(next.trim(), 40));
     onChanged?.();
   };
 
@@ -696,7 +697,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           <textarea
             ref={setInputEl}
             value={input}
-            onChange={e => { setInput(e.target.value.slice(0, 1000)); typing.notify(e.target.value); }}
+            onChange={e => { setInput(clipText(e.target.value, 1000)); typing.notify(e.target.value); }}
             onCompositionStart={() => { composingRef.current = true; }}
             onCompositionEnd={() => { composingRef.current = false; }}
             enterKeyHint={enter.enterKeyHint}
