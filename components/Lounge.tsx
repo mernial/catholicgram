@@ -1,6 +1,7 @@
 'use client';
 
 import { useBackLayer } from '@/lib/back-layers';
+import { queueAlertSync } from '@/lib/alert-sync';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
@@ -198,6 +199,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     const last = messagesRef.current[messagesRef.current.length - 1]?.created_at;
     const at = Math.max(Date.now(), last ? Date.parse(last) + 1 : 0);
     try { localStorage.setItem(loungeSeenKey(user.id), new Date(at).toISOString()); } catch { /* 무시 */ }
+    queueAlertSync(user.id); // 다른 기기의 사랑방 숫자도 (lib/alert-sync)
   };
 
   // 처음 불러오기
