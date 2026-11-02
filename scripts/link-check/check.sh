@@ -11,5 +11,8 @@ grep -v '^#' "$(dirname "$0")/urls.txt" | grep -v '^$' | while read -r url; do
   grep -oiE "(href|src|content)=[\"'][^\"']*(onair|live|missa|mass|mobile|/m/|m\.catholic|details\?id=|itunes|apps\.apple|intent:|goodnews)[^\"']*[\"']" "$body" | sort -u 2>/dev/null | head -30 | sed 's/^/      /'
   grep -oE 'details\?id=[A-Za-z0-9_.]+' "$body" | sort -u 2>/dev/null | head -20 | sed 's/^/      app: /'
   grep -oE '"name":"[^"]{1,60}"|aria-label="[^"]{1,80}"' "$body" | head -15 | sed 's/^/      name: /'
+  grep -oiE '<meta[^>]+name=["\x27]viewport["\x27][^>]*>' "$body" | head -1 | sed 's/^/      viewport: /'
+  # 글 조각 (오늘 날짜·제목 같은 것)
+  sed -e 's/<[^>]*>/ /g' "$body" | tr -s ' \t\r\n' ' ' | grep -oE '.{0,40}(2026|11월|독서|복음|매일미사|설치|개발자|제공)[^ ]{0,30}.{0,40}' | head -8 | sed 's/^/      text: /'
   rm -f "$body"
 done
