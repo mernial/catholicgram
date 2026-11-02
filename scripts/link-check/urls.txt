@@ -1,9 +1,9 @@
 # 앱에 넣은 바깥 링크가 실제로 열리는지 (클라우드 작업 세션은 이 사이트들이 막혀 있어 GitHub Actions 에서 확인)
 # 한 줄에 주소 하나, '#' 줄은 설명. 고쳐서 claude/** 가지에 올리면 .github/workflows/link-check.yml 이 돌고 결과는 작업 기록에
-# 2026-11-02 매일미사가 PC 화면으로 열림 → 굿뉴스 휴대폰 화면(/mobile/…)·앱 확인, 휴대폰 화면 여부(viewport)
+# components/CatholicLinks.tsx (가톨릭 바로가기) — 굿뉴스 휴대폰 화면 오늘의 미사·매일미사 앱(Play·App Store)·성경·cpbc
+https://maria.catholic.or.kr/mobile/missa/missa_view.asp?today=on
 https://maria.catholic.or.kr/mobile/missa/missa_list.asp
-https://maria.catholic.or.kr/mobile/missa/missa.asp
-https://maria.catholic.or.kr/mobile/bible/
+https://play.google.com/store/apps/details?id=pk.catholic.missa
+https://apps.apple.com/kr/app/id346753847
 https://bible.cbck.or.kr/Knb
 https://www.cpbc.co.kr/
-https://play.google.com/store/apps/details?id=pk.catholic.missa&hl=ko
