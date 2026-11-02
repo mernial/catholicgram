@@ -1,0 +1,7 @@
+# 가톨릭 앱 바로가기 (내 공간) — 이름 패키지 (Play 스토어)
+# GitHub Actions(app-check.yml)가 Play 페이지에서 제목·개발자·아이콘을 읽어 public/apps/<이름>.png 로 올리고,
+# APK 를 받아 브라우저에서 앱을 바로 열 수 있는 주소(BROWSABLE intent-filter: scheme·host·path)를 작업 기록에 적는다
+missa pk.catholic.missa
+bible kr.or.catholic.bible
+goodnews pk.goodnews
+pbc com.pbc.ax.mobilePBC
