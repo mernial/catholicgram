@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-02-3',
+    date: '2026-11-02',
+    added: [
+      { text: '내 공간에 \'가톨릭 바로가기\' 단추가 생겼어요. 매일미사·오늘의 복음, 성경, 가톨릭평화방송을 한 번에 열 수 있어요.' },
+    ],
+  },
+  {
     id: '2026-11-02-2',
     date: '2026-11-02',
     fixed: [

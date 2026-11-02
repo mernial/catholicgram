@@ -9,6 +9,6 @@ grep -v '^#' "$(dirname "$0")/urls.txt" | grep -v '^$' | while read -r url; do
   echo "=== $url"
   echo "    $meta"
   echo "    $title"
-  grep -oiE 'href="[^"]*(onair|live|radio|missa|bible|knb)[^"]*"' "$body" | sort -u | head -12 | sed 's/^/      /'
+  grep -oiE 'href="[^"]*(onair|live|radio|missa|bible|knb)[^"]*"' "$body" | sort -u 2>/dev/null | head -12 | sed 's/^/      /'
   rm -f "$body"
 done
