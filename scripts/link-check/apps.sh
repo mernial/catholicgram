@@ -11,22 +11,25 @@ for q in 'cpbc' '가톨릭 성경' '굿뉴스'; do
   curl -sL -A "$UA" "https://play.google.com/store/search?q=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$q")&c=apps&hl=ko" \
     | grep -oE 'details\?id=[A-Za-z0-9_.]+' | sort -u | head -12 | sed 's/^/    /'
 done
-grep -v '^#' scripts/link-check/apps.txt | grep -v '^$' | while read -r key pkg; do
+grep -v '^#' scripts/link-check/apps.txt | grep -v '^$' > /tmp/apps-list.txt
+while read -r key pkg <&3; do
   echo "=== $key  $pkg"
   page=$(mktemp)
-  curl -sL -A "$UA" -H 'Accept-Language: ko-KR' -m 30 "https://play.google.com/store/apps/details?id=$pkg&hl=ko" -o "$page"
+  curl -sL -A "$UA" -H 'Accept-Language: ko-KR' -m 30 "https://play.google.com/store/apps/details?id=$pkg&hl=ko" -o "$page" </dev/null
   echo "    제목: $(grep -oE '<meta property="og:title" content="[^"]*"' "$page" | head -1)"
   echo "    개발자: $(grep -oE 'store/apps/dev(eloper)?\?id=[^"&]+' "$page" | head -1)"
   icon=$(grep -oE '<meta property="og:image" content="[^"]*"' "$page" | head -1 | sed 's/.*content="//; s/"$//')
   echo "    아이콘: $icon"
   if [ -n "$icon" ]; then
     base="${icon%%=*}"
-    curl -sL -m 30 "${base}=s256" -o "/tmp/$key-icon" && convert "/tmp/$key-icon" -resize 192x192 "public/apps/$key.png" && echo "    → public/apps/$key.png $(identify -format '%wx%h' "public/apps/$key.png")"
+    curl -sL -m 30 "${base}=s192" -o "public/apps/$key.png" </dev/null && echo "    → public/apps/$key.png $(file -b "public/apps/$key.png" | cut -c1-60)"
   fi
   rm -f "$page"
   # APK 받아 BROWSABLE intent-filter (브라우저에서 앱을 여는 주소)
   dir=$(mktemp -d)
-  ./apkeep -a "$pkg" "$dir" >/dev/null 2>&1 || ./apkeep -a "$pkg" -d apk-pure "$dir" >/dev/null 2>&1 || true
+  timeout 120 ./apkeep -a "$pkg" "$dir" </dev/null 2>&1 | tail -3 | sed 's/^/    apkeep: /'
+  [ -z "$(ls "$dir" 2>/dev/null)" ] && timeout 120 ./apkeep -a "$pkg" -d apk-pure "$dir" </dev/null 2>&1 | tail -3 | sed 's/^/    apkeep(apk-pure): /'
+  ls -la "$dir" | tail -n +2 | sed 's/^/    /' 
   f=$(ls "$dir" 2>/dev/null | head -1)
   echo "    받은 파일: ${f:-없음}"
   apk=""
@@ -71,4 +74,4 @@ PY
     echo "    (APK 를 못 받았거나 aapt2 없음)"
   fi
   rm -rf "$dir"
-done
+done 3< /tmp/apps-list.txt
