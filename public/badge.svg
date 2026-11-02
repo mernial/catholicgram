@@ -1,7 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="256" cy="256" r="214" stroke-width="26"/>
-    <path d="M256 400 V112 H298 a54 54 0 0 1 0 108 H256" stroke-width="46"/>
-    <path d="M176 206 L336 366 M176 366 L336 206" stroke-width="46"/>
-  </g>
+  <!-- 휴대폰 위쪽 줄 알림 그림: 꽉 찬 동그라미 안에 ☧ 를 비워 둠 (운영자 2026-11-02 '내부 검정 원 안에 흰 키로')
+       안드로이드는 이 그림의 모양(투명/불투명)만 쓰고 한 색으로 칠하므로 흰색 하나로 그린다 -->
+  <defs>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512">
+      <rect width="512" height="512" fill="#fff"/>
+      <g fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M256 400 V112 H298 a54 54 0 0 1 0 108 H256" stroke-width="46"/>
+        <path d="M176 206 L336 366 M176 366 L336 206" stroke-width="46"/>
+      </g>
+    </mask>
+  </defs>
+  <circle cx="256" cy="256" r="228" fill="#fff" mask="url(#cut)"/>
 </svg>
