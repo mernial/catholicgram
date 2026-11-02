@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-02',
+    date: '2026-11-02',
+    added: [
+      { text: '선물용 전용 이모티콘 \'마리유스티나\'(24개)를 더했어요. 교우 프로필 카드나 사연함의 🎁 이모티콘 선물에서 고를 수 있어요.', adminOnly: true },
+    ],
+  },
+  {
     id: '2026-11-01-12',
     date: '2026-11-01',
     added: [
