@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-02-8',
+    date: '2026-11-02',
+    changed: [
+      { text: '휴대폰 맨 위 줄에 뜨는 가톨릭그램 알림 그림을 꽉 찬 동그라미 안에 ☧ 가 보이는 모양으로 바꿨어요. 작게 떠도 앱 아이콘처럼 알아보기 쉬워요.' },
+    ],
+  },
+  {
     id: '2026-11-02-7',
     date: '2026-11-02',
     changed: [
