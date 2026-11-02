@@ -97,7 +97,7 @@ import { refreshCelebrations } from '@/lib/celebrations';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 import { outsideHref } from '@/lib/open-outside';
 import { watchVisualViewport } from '@/lib/visual-viewport';
-import CatholicLinks from '@/components/CatholicLinks';
+import CatholicApps from '@/components/CatholicApps';
 import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
@@ -562,7 +562,6 @@ export default function Home() {
   const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
   const [showMyComments, setShowMyComments] = useState(false); // 내 공간 → 내 댓글 모아 보기
   const [showShareApp, setShowShareApp] = useState(false);     // 가톨릭그램 알리기 (내 공간·설정)
-  const [showCatholicLinks, setShowCatholicLinks] = useState(false); // 가톨릭 바로가기 (내 공간 — 매일미사·성경·평화방송)
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null); // 설정 → 이용약관·개인정보처리방침 (앱 안의 창)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
@@ -3546,7 +3545,7 @@ export default function Home() {
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
     setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
-    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setShowMusicLibrary(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowCatholicLinks(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null); setMemberMusicGift(null);
+    setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setShowMusicLibrary(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null); setMemberMusicGift(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
   };
 
@@ -4031,7 +4030,7 @@ export default function Home() {
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
-    || showShareApp || showCatholicLinks || showFancyName || showDmBookmarks || !!legalDoc);
+    || showShareApp || showFancyName || showDmBookmarks || !!legalDoc);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
@@ -4117,7 +4116,7 @@ export default function Home() {
     if (showUpdateNotes) closeUpdateNotes();
     if (showSamsungGuide) closeSamsungGuide();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
-    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setShowCatholicLinks(false); setLegalDoc(null);
+    setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
     setShowMusicPicker(false); setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setShowMusicLibrary(false); setProfileEditMode(false); setShowIntentions(false); setShowVideoEditor(false); setShowNotices(false);
     // 음악·영상 꾸미기 창이 위에 열려 있으면 그것만 닫고 글쓰기 창은 둔다
@@ -5228,10 +5227,8 @@ export default function Home() {
                     <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="reply" className={ico} />내 댓글</button>
                     <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className={btn}><Icon name="gear" className={ico} />설정</button>
                   </div>
-                  {/* 가톨릭 바로가기: 매일미사·오늘의 복음 / 성경 / 가톨릭평화방송 (components/CatholicLinks, 루비로사 건의) */}
-                  <button onClick={() => setShowCatholicLinks(true)} className="mt-1.5 w-full py-2.5 rounded-lg text-[0.875rem] font-bold bg-sky-50 border border-sky-200 text-sky-900 inline-flex items-center justify-center gap-1.5">
-                    <Icon name="link" className={ico} />가톨릭 바로가기 · 매일미사·성경·평화방송
-                  </button>
+                  {/* 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자) */}
+                  <CatholicApps />
                   {/* 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp) */}
                   <button onClick={() => setShowShareApp(true)} className="mt-1.5 w-full py-2.5 rounded-lg text-[0.875rem] font-bold bg-amber-50 border border-amber-200 text-amber-900 inline-flex items-center justify-center gap-1.5">
                     <Icon name="megaphone" className={ico} />가톨릭그램 알리기 · 친구 초대
@@ -5426,7 +5423,6 @@ export default function Home() {
       })()}
 
       {showShareApp && <ShareApp onClose={() => setShowShareApp(false)} />}
-      {showCatholicLinks && <CatholicLinks onClose={() => setShowCatholicLinks(false)} />}
       {legalDoc && <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
       {showMyComments && user && (

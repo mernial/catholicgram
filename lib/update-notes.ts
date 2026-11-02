@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-02-5',
+    date: '2026-11-02',
+    changed: [
+      { text: '내 공간의 \'가톨릭 바로가기\'가 앱 그림 세 개로 바뀌었어요. 매일미사·가톨릭성경·cpbc플러스 그림을 누르면 창을 거치지 않고 바로 열려요.' },
+    ],
+  },
+  {
     id: '2026-11-02-4',
     date: '2026-11-02',
     fixed: [

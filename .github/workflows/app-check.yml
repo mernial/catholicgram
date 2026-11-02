@@ -1,0 +1,32 @@
+# 가톨릭 앱 바로가기 확인 — scripts/link-check/apps.txt·apps.sh 를 claude/** 가지에 올리면 돎
+# Play 스토어에서 앱 제목·개발자·아이콘을 읽어 public/apps/<이름>.png 로 같은 가지에 올리고,
+# 웹 주소로 그 앱이 바로 열리는지(assetlinks.json·apple-app-site-association)를 작업 기록에 적는다
+name: app-check
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/link-check/apps.txt', 'scripts/link-check/apps.sh', '.github/workflows/app-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: app-check-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: 앱 정보·아이콘·여는 주소
+        run: bash scripts/link-check/apps.sh
+      - name: 아이콘 올리기
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/apps
+          if git diff --cached --quiet; then echo "바뀐 것 없음"; exit 0; fi
+          git commit -m "앱 바로가기 아이콘 (app-check)"
+          for i in 1 2 3; do git pull --rebase -q origin "${GITHUB_REF_NAME}" && git push -q origin "HEAD:${GITHUB_REF_NAME}" && break; sleep 5; done
