@@ -1,0 +1,18 @@
+# 앱에 넣을 바깥 링크 확인 — scripts/link-check/urls.txt 를 고쳐 claude/** 가지에 올리면 돎 (결과는 작업 기록에만, 올리는 것 없음)
+# 클라우드 작업 세션은 성당·방송 사이트가 막혀 있어 여기서 확인한다
+name: link-check
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['scripts/link-check/**', '.github/workflows/link-check.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 링크 열어 보기
+        run: bash scripts/link-check/check.sh

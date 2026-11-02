@@ -1,0 +1,10 @@
+# 앱에 넣을 바깥 링크가 실제로 열리는지 (클라우드 작업 세션은 이 사이트들이 막혀 있어 GitHub Actions 에서 확인)
+# 한 줄에 주소 하나, '#' 줄은 설명
+https://maria.catholic.or.kr/mi_pr/missa/missa.asp
+https://m.catholic.or.kr/mi_pr/missa/missa.asp
+https://maria.catholic.or.kr/bible/read/bible_list.asp
+https://bible.cbck.or.kr/knb
+https://bible.cbck.or.kr/
+https://www.cpbc.co.kr/
+https://www.cpbc.co.kr/tv/onair
+https://www.cpbc.co.kr/radio/onair
