@@ -1,5 +1,7 @@
 // 새 알림이 왔을 때(앱을 열어 둔 동안) 울리는 소리 — 설정 → 알림 소리에서 여러 가지 중 고름 (이 휴대폰에만 localStorage 'alertSoundKind')
 //  - '찬미예수님': 여성 음성 (휴대폰에 들어 있는 한국어 음성, 없으면 '띵-동')
+//  - 아멘!·찬미!·평화!: 밝은 목소리 파일(public/sounds/notify/catholicgram-voice-*.mp3 — 운영자 Mac 에서 MeloTTS 한국어(MIT)로 만듦,
+//    빠르기 1.15·느낌표), 처음 고를 때·첫 터치 때 받아 두었다가(AudioBuffer) 울림. 못 받으면 '띵-동'
 //  - 띵동·성당 종소리·아멘 오르간·하프·방울·새소리·물방울: 음원 파일 없이 Web Audio 로 그 자리에서 만듦
 // 앱을 닫아 두었을 때 휴대폰 위쪽에 뜨는 알림의 소리는 휴대폰이 정함(웹 알림은 소리를 고를 수 없음) → 설정에 바꾸는 법 안내
 // 브라우저 정책상 사용자가 화면을 한 번 터치한 뒤부터 소리가 난다.
@@ -16,10 +18,42 @@ const getContext = () => {
   return ctx;
 };
 
+// 목소리 파일 소리 — 받아서 풀어 둔 소리(AudioBuffer)를 기억해 두고 알림 때 바로 울림
+const FILE_SOUNDS = new Set(['voice-amen', 'voice-chanmi', 'voice-peace']);
+export const alertSoundFile = (key: string) => `/sounds/notify/catholicgram-${key}.mp3`;
+const buffers = new Map<string, Promise<AudioBuffer | null>>();
+function loadBuffer(key: string): Promise<AudioBuffer | null> {
+  let p = buffers.get(key);
+  if (!p) {
+    const c = getContext();
+    p = !c ? Promise.resolve(null) : fetch(alertSoundFile(key))
+      .then(r => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`sound ${r.status}`))))
+      .then(b => c.decodeAudioData(b))
+      .catch(() => { buffers.delete(key); return null; }); // 다음에 다시 받아 봄
+    buffers.set(key, p);
+  }
+  return p;
+}
+function playFile(key: string) {
+  const c = getContext();
+  if (!c) return;
+  if (c.state === 'suspended') c.resume().catch(() => {});
+  loadBuffer(key).then(buf => {
+    if (!buf) { synth('dingdong'); return; }
+    const src = c.createBufferSource();
+    src.buffer = buf;
+    src.connect(c.destination);
+    src.start();
+  });
+}
+
 // 첫 터치 때 오디오를 깨워 둔다 (iOS/안드로이드 자동 재생 제한 대응)
 export function unlockAlertSound() {
   const c = getContext();
   if (c && c.state === 'suspended') c.resume().catch(() => {});
+  // 고른 소리가 목소리 파일이면 미리 받아 둔다 (알림이 왔을 때 바로 울리게)
+  const kind = getAlertSoundKind();
+  if (FILE_SOUNDS.has(kind) && read(ON_KEY) !== 'off') loadBuffer(kind);
   // iOS 는 터치 때 한 번 말해 둬야 나중에 음성이 나온다 → 소리 없는 빈 말
   const synth = getSynth();
   if (synth && !speechUnlocked) {
@@ -66,6 +100,9 @@ export function speakPraise(): boolean {
 export interface AlertSoundOption { key: string; name: string; desc: string; emoji: string }
 export const ALERT_SOUNDS: AlertSoundOption[] = [
   { key: 'praise', name: '찬미예수님', desc: '여성 목소리로 인사해요', emoji: '🙏' },
+  { key: 'voice-amen', name: '아멘!', desc: "밝은 목소리로 짧게 '아멘!'", emoji: '✝️' },
+  { key: 'voice-chanmi', name: '찬미!', desc: "밝은 목소리로 짧게 '찬미!'", emoji: '🎵' },
+  { key: 'voice-peace', name: '평화!', desc: "밝은 목소리로 짧게 '평화!'", emoji: '🕊️' },
   { key: 'dingdong', name: '띵동', desc: '짧고 또렷한 두 음', emoji: '🔔' },
   { key: 'bell', name: '성당 종소리', desc: '은은하게 울리는 종 두 번', emoji: '⛪' },
   { key: 'amen', name: '아멘 오르간', desc: "오르간 화음으로 '아-멘'", emoji: '🎹' },
@@ -114,6 +151,7 @@ export function previewAlertSound(kind: string) {
 
 function playSound(kind: string) {
   if (kind === 'praise') { if (!speakPraise()) synth('dingdong'); return; }
+  if (FILE_SOUNDS.has(kind)) { playFile(kind); return; }
   synth(kind);
 }
 
