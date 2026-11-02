@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/link-check/apps.txt 의 앱마다: Play 제목·개발자·아이콘(public/apps/<이름>.png 192px) + APK 의 BROWSABLE 주소
+# scripts/link-check/apps.txt 의 앱마다: Play 제목·개발자·아이콘(public/apps/<이름>.png 192px) + 웹 주소로 앱이 열리는지(assetlinks·AASA)
 set -u
 cd "$(dirname "$0")/../.."
 UA='Mozilla/5.0 (Linux; Android 14; SM-S918N) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36'
@@ -10,6 +10,14 @@ for q in 'cpbc' '가톨릭 성경' '굿뉴스'; do
   echo "=== Play 검색: $q"
   curl -sL -A "$UA" "https://play.google.com/store/search?q=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$q")&c=apps&hl=ko" \
     | grep -oE 'details\?id=[A-Za-z0-9_.]+' | sort -u | head -12 | sed 's/^/    /'
+done
+# 웹 주소로 앱이 열리는지 (안드로이드 App Links assetlinks.json · 아이폰 universal links apple-app-site-association)
+for d in maria.catholic.or.kr m.catholic.or.kr www.catholic.or.kr bible.cbck.or.kr www.cpbc.co.kr cpbc.co.kr; do
+  for w in .well-known/assetlinks.json .well-known/apple-app-site-association apple-app-site-association; do
+    code=$(curl -s -m 15 -o /tmp/wk -w '%{http_code} %{content_type}' "https://$d/$w" </dev/null)
+    echo "=== https://$d/$w  $code"
+    case "$code" in 200*) head -c 600 /tmp/wk | tr '\n' ' ' | sed 's/^/    /'; echo ;; esac
+  done
 done
 grep -v '^#' scripts/link-check/apps.txt | grep -v '^$' > /tmp/apps-list.txt
 while read -r key pkg <&3; do
@@ -25,53 +33,4 @@ while read -r key pkg <&3; do
     curl -sL -m 30 "${base}=s192" -o "public/apps/$key.png" </dev/null && echo "    → public/apps/$key.png $(file -b "public/apps/$key.png" | cut -c1-60)"
   fi
   rm -f "$page"
-  # APK 받아 BROWSABLE intent-filter (브라우저에서 앱을 여는 주소)
-  dir=$(mktemp -d)
-  timeout 120 ./apkeep -a "$pkg" "$dir" </dev/null 2>&1 | tail -3 | sed 's/^/    apkeep: /'
-  [ -z "$(ls "$dir" 2>/dev/null)" ] && timeout 120 ./apkeep -a "$pkg" -d apk-pure "$dir" </dev/null 2>&1 | tail -3 | sed 's/^/    apkeep(apk-pure): /'
-  ls -la "$dir" | tail -n +2 | sed 's/^/    /' 
-  f=$(ls "$dir" 2>/dev/null | head -1)
-  echo "    받은 파일: ${f:-없음}"
-  apk=""
-  if [ -n "$f" ]; then
-    case "$f" in
-      *.xapk|*.apks|*.zip) mkdir -p "$dir/x" && unzip -q -o "$dir/$f" -d "$dir/x" && apk=$(ls "$dir/x"/*.apk | grep -E "/($pkg|base)\.apk$" | head -1); [ -z "$apk" ] && apk=$(ls -S "$dir/x"/*.apk | head -1) ;;
-      *) apk="$dir/$f" ;;
-    esac
-  fi
-  if [ -n "$apk" ] && [ -n "$AAPT2" ]; then
-    "$AAPT2" dump xmltree --file AndroidManifest.xml "$apk" > "$dir/m.txt" 2>/dev/null
-    python3 - "$dir/m.txt" <<'PY'
-import re, sys
-lines = open(sys.argv[1], encoding='utf-8', errors='replace').read().split('\n')
-# activity → intent-filter 묶음에서 BROWSABLE 이 있는 것의 scheme/host/path 와 LAUNCHER 를 뽑음
-act = None; filt = None; out = []
-def flush():
-    global filt
-    if filt and 'android.intent.category.BROWSABLE' in filt['cats']:
-        out.append(f"      BROWSABLE {act}: schemes={sorted(set(filt['schemes']))} hosts={sorted(set(filt['hosts']))} paths={sorted(set(filt['paths']))[:6]}")
-    if filt and 'android.intent.category.LAUNCHER' in filt['cats']:
-        out.append(f"      LAUNCHER {act}")
-    filt = None
-for l in lines:
-    s = l.strip()
-    if s.startswith('E: activity') or s.startswith('E: activity-alias'):
-        flush(); act = '?'
-    elif s.startswith('E: intent-filter'):
-        flush(); filt = {'cats': [], 'schemes': [], 'hosts': [], 'paths': []}
-    m = re.search(r'A: http://schemas.android.com/apk/res/android:name\(0x01010003\)="([^"]+)"', s)
-    if m and act == '?' : act = m.group(1)
-    if filt is not None:
-        m = re.search(r':name\(0x01010003\)="([^"]+)"', s)
-        if m and 'category' in s.lower(): pass
-        for key, rx in (('cats', r'android:name\(0x01010003\)="(android\.intent\.category\.[A-Z_]+)"'), ('schemes', r':scheme\(0x[0-9a-f]+\)="([^"]+)"'), ('hosts', r':host\(0x[0-9a-f]+\)="([^"]+)"'), ('paths', r':path(?:Prefix|Pattern)?\(0x[0-9a-f]+\)="([^"]+)"')):
-            mm = re.search(rx, s)
-            if mm: filt[key].append(mm.group(1))
-flush()
-print('\n'.join(out) if out else '      (BROWSABLE 없음)')
-PY
-  else
-    echo "    (APK 를 못 받았거나 aapt2 없음)"
-  fi
-  rm -rf "$dir"
 done 3< /tmp/apps-list.txt
