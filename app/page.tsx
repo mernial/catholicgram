@@ -97,7 +97,7 @@ import { refreshCelebrations } from '@/lib/celebrations';
 import { FANCY_STYLES, hasLatin, initial, toFancy, toPlain } from '@/lib/fancy-name';
 import { outsideHref } from '@/lib/open-outside';
 import { watchVisualViewport } from '@/lib/visual-viewport';
-import CatholicApps from '@/components/CatholicApps';
+import { CATHOLIC_APPS } from '@/components/CatholicApps';
 import ShareApp from '@/components/ShareApp';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
@@ -5210,27 +5210,33 @@ export default function Home() {
               )}
             </div>
 
-            {/* 내 공간 단추 (운영자 2026-11-02 '배치가 어색해'): 큰 단추는 프로필 편집·메시지 둘만, 나머지는 같은 모양의 그림 메뉴 칸으로 —
-                '내 메뉴'(내 댓글·설정·건의·친구 초대·홈 화면에 추가) · '가톨릭 앱'(CatholicApps) · 관리자는 '관리자' 칸, 계정 바꾸기·로그아웃은 맨 아래 작은 글씨 */}
+            {/* 내 공간 단추 (운영자 2026-11-02 '배치가 어색해' → '박스로 감싸지 말고 아이콘으로만 정렬'): 큰 단추는 프로필 편집·메시지 둘만,
+                나머지는 상자 없이 휴대폰 첫 화면처럼 한 줄에 4개씩 같은 크기(48px) 아이콘 — 내 댓글·설정·건의·친구 초대·홈 화면에 추가·가톨릭 앱 셋,
+                관리자는 그 아래 작은 '관리자' 글씨 + 관리자 아이콘, 계정 바꾸기·로그아웃은 맨 아래 작은 글씨 */}
             {(() => {
               const btn = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-stone-100 text-stone-900 hover:bg-stone-200 transition-colors inline-flex items-center justify-center gap-1.5';
               const btnPrimary = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-blue-500 text-white hover:bg-blue-600 transition-colors inline-flex items-center justify-center gap-1.5'; // 화면 색의 주요 색
               const ico = 'w-[1.1em] h-[1.1em] shrink-0';
-              type Tile = { key: string; icon: IconName; tone: 'gold' | 'rose' | 'sky' | 'violet' | 'stone' | 'red' | 'green'; label: string; onClick: () => void; badge?: number };
-              const tileGrid = (title: string, tiles: Tile[], cols = tiles.length) => (
-                <div className="mt-2 rounded-2xl border border-stone-200 bg-white px-3 pt-2.5 pb-3">
-                  <p className="text-[0.8125rem] font-bold text-stone-500 mb-2">{title}</p>
-                  <div className="grid gap-x-1 gap-y-2.5" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.min(5, cols))}, minmax(0, 1fr))` }}>
-                    {tiles.map(t => (
-                      <button key={t.key} onClick={t.onClick} className="flex flex-col items-center gap-1.5 py-1 rounded-xl active:bg-stone-100 min-w-0">
-                        <span className="relative">
-                          <IconBadge name={t.icon} tone={t.tone} size="lg" />
-                          {!!t.badge && <span className="absolute -top-1 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{t.badge > 9 ? '9+' : t.badge}</span>}
-                        </span>
-                        <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight text-center break-keep">{t.label}</span>
-                      </button>
-                    ))}
-                  </div>
+              type Tile = { key: string; label: string; badge?: number; aria?: string }
+                & ({ icon: IconName; tone: 'gold' | 'rose' | 'sky' | 'violet' | 'stone' | 'red' | 'green'; onClick: () => void } | { img: string; href: string });
+              const tileBody = (t: Tile) => (
+                <>
+                  <span className="relative">
+                    {'img' in t
+                      // eslint-disable-next-line @next/next/no-img-element
+                      ? <img src={t.img} alt="" width={48} height={48} className="w-12 h-12 rounded-[0.9rem] border border-stone-200" />
+                      : <IconBadge name={t.icon} tone={t.tone} size="xl" />}
+                    {!!t.badge && <span className="absolute -top-1 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{t.badge > 9 ? '9+' : t.badge}</span>}
+                  </span>
+                  <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight text-center break-keep">{t.label}</span>
+                </>
+              );
+              const tileCls = 'flex flex-col items-center gap-1.5 py-1.5 rounded-xl active:bg-stone-100 min-w-0';
+              const tileGrid = (tiles: Tile[]) => (
+                <div className="grid grid-cols-4 gap-x-1 gap-y-3">
+                  {tiles.map(t => 'img' in t
+                    ? <a key={t.key} href={t.href} target="_blank" rel="noopener noreferrer" aria-label={t.aria} className={tileCls}>{tileBody(t)}</a>
+                    : <button key={t.key} onClick={t.onClick} className={tileCls}>{tileBody(t)}</button>)}
                 </div>
               );
               const myTiles: Tile[] = [
@@ -5240,6 +5246,8 @@ export default function Home() {
                 // 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp)
                 { key: 'share', icon: 'megaphone', tone: 'gold', label: '친구 초대', onClick: () => setShowShareApp(true) },
                 ...(!isStandalone ? [{ key: 'install', icon: 'phone' as IconName, tone: 'violet' as const, label: '홈 화면에 추가', onClick: handleInstallClick }] : []),
+                // 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자)
+                ...CATHOLIC_APPS.map(a => ({ key: a.key, label: a.name, img: `/apps/${a.key}.png`, href: a.url, aria: a.label })),
               ];
               const adminTiles: Tile[] = [
                 { key: 'members', icon: 'users', tone: 'green', label: '회원 명단', onClick: () => setShowAdminMembers(true) },
@@ -5275,10 +5283,13 @@ export default function Home() {
                       <button onClick={() => { storageSet(`birthdayPromptHidden:${user.id}`, '1'); setBirthdayPromptHidden(true); }} className="shrink-0 w-8 h-8 text-stone-400 text-xl leading-none" aria-label="생일 안내 닫기">×</button>
                     </div>
                   )}
-                  {tileGrid('내 메뉴', myTiles)}
-                  {/* 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자) */}
-                  <CatholicApps />
-                  {isAdmin && tileGrid('관리자', adminTiles, 4)}
+                  <div className="mt-3">{tileGrid(myTiles)}</div>
+                  {isAdmin && (
+                    <div className="mt-3">
+                      <p className="text-[0.75rem] font-bold text-stone-400 mb-1.5 px-1">관리자</p>
+                      {tileGrid(adminTiles)}
+                    </div>
+                  )}
                   {/* 계정: 자주 쓰지 않아 맨 아래 작은 글씨 (카카오 prompt=login, 구글 select_account, 네이버 auth_type=reauthenticate) */}
                   <div className="mt-2.5 flex items-center justify-center gap-1 text-[0.8125rem] text-stone-500">
                     <button onClick={switchAccount} className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 inline-flex items-center gap-1"><Icon name="users" className="w-[1.05em] h-[1.05em]" />다른 계정으로 로그인</button>

@@ -128,9 +128,9 @@ const TONES = {
 } as const;
 export type IconTone = keyof typeof TONES;
 
-export function IconBadge({ name, tone = 'stone', fill = false, size = 'md' }: { name: IconName; tone?: IconTone; fill?: boolean; size?: 'sm' | 'md' | 'lg' }) {
-  const box = size === 'lg' ? 'w-10 h-10' : size === 'md' ? 'w-8 h-8' : 'w-6 h-6';
-  const ico = size === 'lg' ? 'w-[1.375rem] h-[1.375rem]' : size === 'md' ? 'w-[1.125rem] h-[1.125rem]' : 'w-3.5 h-3.5';
+export function IconBadge({ name, tone = 'stone', fill = false, size = 'md' }: { name: IconName; tone?: IconTone; fill?: boolean; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+  const box = size === 'xl' ? 'w-12 h-12' : size === 'lg' ? 'w-10 h-10' : size === 'md' ? 'w-8 h-8' : 'w-6 h-6';
+  const ico = size === 'xl' ? 'w-[1.625rem] h-[1.625rem]' : size === 'lg' ? 'w-[1.375rem] h-[1.375rem]' : size === 'md' ? 'w-[1.125rem] h-[1.125rem]' : 'w-3.5 h-3.5';
   return (
     <span className={`inline-flex items-center justify-center rounded-full shrink-0 ${box} ${TONES[tone]}`}>
       <Icon name={name} fill={fill} className={ico} />
