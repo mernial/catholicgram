@@ -1,7 +1,7 @@
 // 새 알림이 왔을 때(앱을 열어 둔 동안) 울리는 소리 — 설정 → 알림 소리에서 여러 가지 중 고름 (이 휴대폰에만 localStorage 'alertSoundKind')
-//  - '찬미예수님': 여성 음성 (휴대폰에 들어 있는 한국어 음성, 없으면 '띵-동')
-//  - 아멘!·찬미!·평화!: 밝은 목소리 파일(public/sounds/notify/catholicgram-voice-*.mp3 — 운영자 Mac 에서 MeloTTS 한국어(MIT)로 만듦,
-//    빠르기 1.15·느낌표), 처음 고를 때·첫 터치 때 받아 두었다가(AudioBuffer) 울림. 못 받으면 '띵-동'
+//  - 찬미예수님·아멘!·찬미!·평화!: 밝은 목소리 파일(public/sounds/notify/catholicgram-{praise,voice-*}.mp3 — 운영자 Mac 에서
+//    MeloTTS 한국어(MIT)로 만든 것 중 운영자가 고른 '가장 빠르고 밝은 것'), 처음 고를 때·첫 터치 때 받아 두었다가(AudioBuffer) 울림.
+//    못 받으면 찬미예수님은 휴대폰에 들어 있는 한국어 음성으로, 그것도 없으면 '띵-동' (예전 찬미예수님은 늘 휴대폰 음성이었음)
 //  - 띵동·성당 종소리·아멘 오르간·하프·방울·새소리·물방울: 음원 파일 없이 Web Audio 로 그 자리에서 만듦
 // 앱을 닫아 두었을 때 휴대폰 위쪽에 뜨는 알림의 소리는 휴대폰이 정함(웹 알림은 소리를 고를 수 없음) → 설정에 바꾸는 법 안내
 // 브라우저 정책상 사용자가 화면을 한 번 터치한 뒤부터 소리가 난다.
@@ -19,7 +19,7 @@ const getContext = () => {
 };
 
 // 목소리 파일 소리 — 받아서 풀어 둔 소리(AudioBuffer)를 기억해 두고 알림 때 바로 울림
-const FILE_SOUNDS = new Set(['voice-amen', 'voice-chanmi', 'voice-peace']);
+const FILE_SOUNDS = new Set(['praise', 'voice-amen', 'voice-chanmi', 'voice-peace']);
 export const alertSoundFile = (key: string) => `/sounds/notify/catholicgram-${key}.mp3`;
 const buffers = new Map<string, Promise<AudioBuffer | null>>();
 function loadBuffer(key: string): Promise<AudioBuffer | null> {
@@ -39,7 +39,7 @@ function playFile(key: string) {
   if (!c) return;
   if (c.state === 'suspended') c.resume().catch(() => {});
   loadBuffer(key).then(buf => {
-    if (!buf) { synth('dingdong'); return; }
+    if (!buf) { if (key !== 'praise' || !speakPraise()) synth('dingdong'); return; }
     const src = c.createBufferSource();
     src.buffer = buf;
     src.connect(c.destination);
@@ -81,7 +81,7 @@ function pickKoreanVoice(): SpeechSynthesisVoice | null {
 // 음성 목록은 늦게 채워지는 기기가 있어 미리 한 번 불러 둔다
 if (typeof window !== 'undefined') getSynth()?.getVoices();
 
-// '찬미예수님' 음성 (한국어 음성이 없으면 false)
+// '찬미예수님' 휴대폰 음성 — 목소리 파일을 못 받았을 때만 (한국어 음성이 없으면 false)
 export function speakPraise(): boolean {
   const synth = getSynth();
   const voice = synth ? pickKoreanVoice() : null;
@@ -99,7 +99,7 @@ export function speakPraise(): boolean {
 
 export interface AlertSoundOption { key: string; name: string; desc: string; emoji: string }
 export const ALERT_SOUNDS: AlertSoundOption[] = [
-  { key: 'praise', name: '찬미예수님', desc: '여성 목소리로 인사해요', emoji: '🙏' },
+  { key: 'praise', name: '찬미예수님', desc: '밝은 목소리로 인사해요', emoji: '🙏' },
   { key: 'voice-amen', name: '아멘!', desc: "밝은 목소리로 짧게 '아멘!'", emoji: '✝️' },
   { key: 'voice-chanmi', name: '찬미!', desc: "밝은 목소리로 짧게 '찬미!'", emoji: '🎵' },
   { key: 'voice-peace', name: '평화!', desc: "밝은 목소리로 짧게 '평화!'", emoji: '🕊️' },
@@ -150,7 +150,6 @@ export function previewAlertSound(kind: string) {
 }
 
 function playSound(kind: string) {
-  if (kind === 'praise') { if (!speakPraise()) synth('dingdong'); return; }
   if (FILE_SOUNDS.has(kind)) { playFile(kind); return; }
   synth(kind);
 }

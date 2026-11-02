@@ -399,7 +399,6 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 );
               })}
             </div>
-            {sound === 'praise' && <p className="text-[0.8125rem] text-stone-400 leading-snug -mt-1">휴대폰에 한국어 목소리가 없으면 '띵동'으로 울려요.</p>}
             {/* 앱을 닫아 두었을 때 휴대폰 위쪽에 뜨는 알림의 소리는 휴대폰이 정함 (웹 알림은 소리를 고를 수 없음) */}
             <div className="mt-1 p-3.5 rounded-2xl bg-sky-50 border border-sky-100 text-[0.875rem] text-sky-950 leading-relaxed">
               <p className="font-bold mb-1">📱 앱을 닫아 두었을 때의 알림 소리</p>
@@ -412,7 +411,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                       내려받는 이름은 영어로: 한글 이름은 크롬이 'download'로 바꿔 버림) */}
                   <p className="font-bold">① 소리 파일 받기</p>
                   <div className="grid grid-cols-2 gap-1.5 mt-1 mb-1">
-                    {ALERT_SOUNDS.filter(o => o.key !== 'praise').map(o => (
+                    {ALERT_SOUNDS.map(o => (
                       <a key={o.key} href={`/sounds/notify/catholicgram-${o.key}.mp3`} download={`catholicgram-${o.key}.mp3`}
                         onClick={() => toast(`'가톨릭그램 ${o.name}' 파일을 휴대폰 '다운로드'에 저장해요`, 2200)}
                         className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white border border-sky-200 text-[0.875rem] font-bold text-sky-900 active:bg-sky-100">
@@ -420,7 +419,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                       </a>
                     ))}
                   </div>
-                  <p className="text-[0.8125rem] text-sky-800 mb-2">휴대폰 &apos;다운로드&apos;에 저장돼요. (&apos;찬미예수님&apos;은 휴대폰 목소리로 말하는 것이라 파일이 없어요)</p>
+                  <p className="text-[0.8125rem] text-sky-800 mb-2">휴대폰 &apos;다운로드&apos;에 저장돼요.</p>
                   <p className="font-bold">② 휴대폰 알림음으로 정하기</p>
                   {device.kind === 'browser' ? (
                     <ol className="list-decimal pl-5 space-y-0.5">
