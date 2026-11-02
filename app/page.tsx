@@ -5210,12 +5210,50 @@ export default function Home() {
               )}
             </div>
 
-            {/* 버튼: 두 칸씩 나란히 — 회색 단추(프로필 편집·메시지·내 댓글·설정), 테두리 단추(다른 계정으로 로그인·로그아웃) */}
+            {/* 내 공간 단추 (운영자 2026-11-02 '배치가 어색해'): 큰 단추는 프로필 편집·메시지 둘만, 나머지는 같은 모양의 그림 메뉴 칸으로 —
+                '내 메뉴'(내 댓글·설정·건의·친구 초대·홈 화면에 추가) · '가톨릭 앱'(CatholicApps) · 관리자는 '관리자' 칸, 계정 바꾸기·로그아웃은 맨 아래 작은 글씨 */}
             {(() => {
               const btn = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-stone-100 text-stone-900 hover:bg-stone-200 transition-colors inline-flex items-center justify-center gap-1.5';
               const btnPrimary = 'flex-1 py-2 rounded-lg text-[0.875rem] font-bold bg-blue-500 text-white hover:bg-blue-600 transition-colors inline-flex items-center justify-center gap-1.5'; // 화면 색의 주요 색
               const ico = 'w-[1.1em] h-[1.1em] shrink-0';
-              const sub = 'min-h-[2.25rem] px-2 py-1.5 rounded-lg border border-stone-200 text-[0.8125rem] font-bold text-stone-600 hover:bg-stone-50 inline-flex items-center justify-center gap-1.5 leading-tight';
+              type Tile = { key: string; icon: IconName; tone: 'gold' | 'rose' | 'sky' | 'violet' | 'stone' | 'red' | 'green'; label: string; onClick: () => void; badge?: number };
+              const tileGrid = (title: string, tiles: Tile[], cols = tiles.length) => (
+                <div className="mt-2 rounded-2xl border border-stone-200 bg-white px-3 pt-2.5 pb-3">
+                  <p className="text-[0.8125rem] font-bold text-stone-500 mb-2">{title}</p>
+                  <div className="grid gap-x-1 gap-y-2.5" style={{ gridTemplateColumns: `repeat(${Math.max(3, Math.min(5, cols))}, minmax(0, 1fr))` }}>
+                    {tiles.map(t => (
+                      <button key={t.key} onClick={t.onClick} className="flex flex-col items-center gap-1.5 py-1 rounded-xl active:bg-stone-100 min-w-0">
+                        <span className="relative">
+                          <IconBadge name={t.icon} tone={t.tone} size="lg" />
+                          {!!t.badge && <span className="absolute -top-1 -right-1.5 min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{t.badge > 9 ? '9+' : t.badge}</span>}
+                        </span>
+                        <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight text-center break-keep">{t.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+              const myTiles: Tile[] = [
+                { key: 'comments', icon: 'reply', tone: 'sky', label: '내 댓글', onClick: () => setShowMyComments(true) },
+                { key: 'settings', icon: 'gear', tone: 'stone', label: '설정', onClick: () => { setSettingsView('main'); setShowSettings(true); } },
+                { key: 'feedback', icon: 'envelope', tone: 'green', label: isAdmin ? '건의함' : '건의하기', onClick: () => setShowFeedback(true) },
+                // 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp)
+                { key: 'share', icon: 'megaphone', tone: 'gold', label: '친구 초대', onClick: () => setShowShareApp(true) },
+                ...(!isStandalone ? [{ key: 'install', icon: 'phone' as IconName, tone: 'violet' as const, label: '홈 화면에 추가', onClick: handleInstallClick }] : []),
+              ];
+              const adminTiles: Tile[] = [
+                { key: 'members', icon: 'users', tone: 'green', label: '회원 명단', onClick: () => setShowAdminMembers(true) },
+                { key: 'stats', icon: 'chart', tone: 'sky', label: '접속 통계', onClick: () => setShowAdminStats(true) },
+                { key: 'usage', icon: 'stack', tone: 'sky', label: '데이터 사용량', onClick: () => setShowAdminUsage(true) },
+                { key: 'testers', icon: 'phone', tone: 'green', label: '테스터 신청', onClick: () => setShowAdminTesters(true) },
+                { key: 'notice', icon: 'megaphone', tone: 'violet', label: '전체 공지', onClick: () => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); } },
+                { key: 'letters', icon: 'loveLetter', tone: 'rose', label: '사연함', onClick: () => setShowLetters(true), badge: letterNewCount },
+                { key: 'music', icon: 'music', tone: 'violet', label: '음악 목록', onClick: () => setShowMusicLibrary(true) },
+                { key: 'vault', icon: 'lock', tone: 'violet', label: '보관 음악', onClick: () => setShowMusicVault(true) },
+                { key: 'sponsor', icon: 'storefront', tone: 'gold', label: '광고 관리', onClick: () => setShowSponsorAdmin(true) },
+                { key: 'deleted', icon: 'trash', tone: 'stone', label: '삭제된 메시지', onClick: () => setShowDeletedMessages(true) },
+                { key: 'media', icon: 'image', tone: 'green', label: '사진 저장소', onClick: () => setShowMediaStorage(true) },
+              ];
               return viewingUserId === user?.id ? (
                 <>
                   <div className="mt-3 grid grid-cols-2 gap-1.5">
@@ -5224,22 +5262,10 @@ export default function Home() {
                       <Icon name="message" className={ico} />메시지
                       {messageBadgeCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{messageBadgeCount > 9 ? '9+' : messageBadgeCount}</span>}
                     </button>
-                    <button onClick={() => setShowMyComments(true)} className={btn}><Icon name="reply" className={ico} />내 댓글</button>
-                    <button onClick={() => { setSettingsView('main'); setShowSettings(true); }} className={btn}><Icon name="gear" className={ico} />설정</button>
-                  </div>
-                  {/* 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자) */}
-                  <CatholicApps />
-                  {/* 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp) */}
-                  <button onClick={() => setShowShareApp(true)} className="mt-1.5 w-full py-2.5 rounded-lg text-[0.875rem] font-bold bg-amber-50 border border-amber-200 text-amber-900 inline-flex items-center justify-center gap-1.5">
-                    <Icon name="megaphone" className={ico} />가톨릭그램 알리기 · 친구 초대
-                  </button>
-                  <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                    <button onClick={switchAccount} className={sub}><Icon name="users" className={ico} />다른 계정으로 로그인</button>
-                    <button onClick={logout} className={sub}><Icon name="signout" className={ico} />로그아웃</button>
                   </div>
                   {/* 생일을 아직 안 적은 교우: 한 번 안내 (생일 칸이 있을 때만 — supabase/birthday.sql) */}
                   {profile?.birthday === null && !birthdayPromptHidden && (
-                    <div className="mt-2.5 rounded-2xl border border-rose-200 bg-rose-50 p-3 flex items-center gap-3">
+                    <div className="mt-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 flex items-center gap-3">
                       <span className="text-[1.75rem] leading-none" aria-hidden="true">🎂</span>
                       <button onClick={openProfileEdit} className="flex-1 min-w-0 text-left">
                         <p className="text-[0.9375rem] font-bold text-stone-900">생일을 알려 주세요</p>
@@ -5249,26 +5275,15 @@ export default function Home() {
                       <button onClick={() => { storageSet(`birthdayPromptHidden:${user.id}`, '1'); setBirthdayPromptHidden(true); }} className="shrink-0 w-8 h-8 text-stone-400 text-xl leading-none" aria-label="생일 안내 닫기">×</button>
                     </div>
                   )}
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {isAdmin && (
-                      <>
-                        <button onClick={() => setShowAdminMembers(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="users" className="w-3.5 h-3.5" />회원 명단</button>
-                        <button onClick={() => setShowAdminStats(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="chart" className="w-3.5 h-3.5" />접속 통계</button>
-                        <button onClick={() => setShowAdminUsage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-sky-200 bg-sky-50 text-sky-900 inline-flex items-center gap-1"><Icon name="stack" className="w-3.5 h-3.5" />데이터 사용량</button>
-                        <button onClick={() => setShowAdminTesters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-900 inline-flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5" />테스터 신청</button>
-                        <button onClick={() => { setNoticeOpenId(null); setNoticeAdminMode(true); setShowNotices(true); }} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="megaphone" className="w-3.5 h-3.5" />전체 공지</button>
-                        <button onClick={() => setShowSponsorAdmin(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-amber-200 bg-amber-50 text-amber-800 inline-flex items-center gap-1"><Icon name="storefront" className="w-3.5 h-3.5" />광고 관리</button>
-                        <button onClick={() => setShowMusicLibrary(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="music" className="w-3.5 h-3.5" />음악 목록</button>
-                        <button onClick={() => setShowMusicVault(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-violet-200 bg-violet-50 text-violet-900 inline-flex items-center gap-1"><Icon name="lock" className="w-3.5 h-3.5" />보관 음악 (선물용)</button>
-                        <button onClick={() => setShowDeletedMessages(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-stone-50 text-stone-700 inline-flex items-center gap-1"><Icon name="trash" className="w-3.5 h-3.5" />삭제된 메시지</button>
-                        <button onClick={() => setShowMediaStorage(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-emerald-200 bg-emerald-50 text-emerald-800 inline-flex items-center gap-1"><Icon name="image" className="w-3.5 h-3.5" />사진 저장소</button>
-                        <button onClick={() => setShowLetters(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-rose-200 bg-rose-50 text-rose-800 inline-flex items-center gap-1">💌 사연함{letterNewCount > 0 && <span className="min-w-[18px] h-[18px] px-1 bg-red-500 text-white text-[0.6875rem] rounded-full flex items-center justify-center">{letterNewCount}</span>}</button>
-                      </>
-                    )}
-                    <button onClick={() => setShowFeedback(true)} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="envelope" className="w-3.5 h-3.5" />{isAdmin ? '건의함' : '건의하기'}</button>
-                    {!isStandalone && (
-                      <button onClick={handleInstallClick} className="px-3 py-1.5 rounded-full text-xs font-bold border border-stone-200 bg-white text-stone-700 inline-flex items-center gap-1"><Icon name="phone" className="w-3.5 h-3.5" />홈 화면에 추가</button>
-                    )}
+                  {tileGrid('내 메뉴', myTiles)}
+                  {/* 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자) */}
+                  <CatholicApps />
+                  {isAdmin && tileGrid('관리자', adminTiles, 4)}
+                  {/* 계정: 자주 쓰지 않아 맨 아래 작은 글씨 (카카오 prompt=login, 구글 select_account, 네이버 auth_type=reauthenticate) */}
+                  <div className="mt-2.5 flex items-center justify-center gap-1 text-[0.8125rem] text-stone-500">
+                    <button onClick={switchAccount} className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 inline-flex items-center gap-1"><Icon name="users" className="w-[1.05em] h-[1.05em]" />다른 계정으로 로그인</button>
+                    <span className="text-stone-300" aria-hidden="true">|</span>
+                    <button onClick={logout} className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 inline-flex items-center gap-1"><Icon name="signout" className="w-[1.05em] h-[1.05em]" />로그아웃</button>
                   </div>
                 </>
               ) : (
