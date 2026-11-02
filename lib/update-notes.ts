@@ -14,6 +14,13 @@ export type UpdateNote = {
 
 export const UPDATE_NOTES: UpdateNote[] = [
   {
+    id: '2026-11-02-7',
+    date: '2026-11-02',
+    changed: [
+      { text: '내 공간의 메뉴를 상자 없이 아이콘만 한 줄에 4개씩 가지런히 놓았어요. 내 댓글·설정·건의하기·친구 초대와 매일미사·가톨릭성경·cpbc플러스가 같은 크기로 나란히 있어요.' },
+    ],
+  },
+  {
     id: '2026-11-02-6',
     date: '2026-11-02',
     changed: [
