@@ -624,10 +624,9 @@ export default function Home() {
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
-  // 관리자의 선물 상자: 선물받은 사연(letters.gift), 연 선물(이 휴대폰 localStorage giftsOpened:아이디), 이번에 열지 않고 닫은 선물, 알림으로 연 선물
+  // 관리자의 선물 상자: 선물받은 사연(letters.gift), 본 선물(열었거나 × 로 닫은 것 — localStorage giftsOpened:아이디, 다른 기기·앱과 서버로 합침), 알림으로 연 선물
   const [giftLetters, setGiftLetters] = useState<string[]>([]);
   const [openedGifts, setOpenedGifts] = useState<string[] | null>(null);
-  const [snoozedGifts, setSnoozedGifts] = useState<string[]>([]);
   const [forcedGift, setForcedGift] = useState<string | null>(null);
   const [activeGift, setActiveGift] = useState<string | null>(null); // 지금 열어 본 선물 ('확인'을 누를 때까지 그대로 보임)
   const giftLettersAtRef = useRef(0);
@@ -3070,6 +3069,7 @@ export default function Home() {
       setFeastClearedAt(storageGet(`feastClearedAt:${uid}`));
       try { setHiddenAlerts(new Set(JSON.parse(storageGet(`notificationsHidden:${uid}`) || '[]'))); } catch { /* 무시 */ }
       try { setReadAlerts(new Set(JSON.parse(storageGet(`notificationsRead:${uid}`) || '[]'))); } catch { /* 무시 */ }
+      try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${uid}`) || '[]')); } catch { /* 무시 */ }
       fetchLoungeNew(uid);
     };
     window.addEventListener(ALERT_SYNC_EVENT, reload);
@@ -3968,7 +3968,7 @@ export default function Home() {
   useEffect(() => { setStickerAccess({ admin: isAdmin, handle: profile?.handle || null, grants: user ? stickerGrants : [] }); }, [isAdmin, profile?.handle, stickerGrants, user]);
 
   // 관리자의 선물: 선물받은 전용 이모티콘(sticker_grants·코드에 적은 @아이디) + 선물 대상으로 뽑힌 내 사연.
-  // 아직 열지 않은 선물이 있으면 선물 상자를 띄운다 (연 것은 이 휴대폰에 기억, 열지 않고 닫으면 다음에 앱을 열 때 다시)
+  // 아직 보지 않은 선물이 있으면 선물 상자를 한 번 띄운다 (열었거나 × 로 닫은 것은 기억 — 다른 기기·업데이트한 앱에서도, lib/alert-sync)
   const myGifts = useMemo<Gift[]>(() => {
     if (!user) return [];
     const packs = STICKER_PACKS.filter(p => p.access === 'gift' && (stickerGrants.includes(p.id) || isGiftHandle(p, profile?.handle)));
@@ -3980,8 +3980,12 @@ export default function Home() {
   }, [user, stickerGrants, profile?.handle, giftLetters, myMusicGifts]);
   useEffect(() => {
     if (!user) { setOpenedGifts(null); return; }
-    try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); }
-    try { setSnoozedGifts(JSON.parse(sessionStorage.getItem('giftsSnoozed') || '[]')); } catch { /* 무시 */ }
+    let live = true;
+    const load = () => { try { setOpenedGifts(JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]')); } catch { setOpenedGifts([]); } };
+    // 다른 기기·업데이트 전 앱에서 이미 본 선물을 서버에서 합친 뒤에 띄울지 정한다 (늦어도 4초 뒤에는 이 기기 것만으로)
+    const t = setTimeout(() => { if (live) load(); }, 4000);
+    syncAlertState(user.id).finally(() => { if (live) { clearTimeout(t); load(); } });
+    return () => { live = false; clearTimeout(t); };
   }, [user]);
   useEffect(() => {
     setUpdateNotesReady(false);
@@ -4004,24 +4008,29 @@ export default function Home() {
     const t = setTimeout(() => setForcedGift(null), 8000);
     return () => clearTimeout(t);
   }, [forcedGift, myGifts]);
-  const markGiftOpened = (key: string) => {
+  // 본 선물로 기억 (이 기기 + 서버 → 다른 기기·업데이트한 앱에서도 다시 안 뜸)
+  const rememberGift = (key: string) => {
     if (!user) return;
-    setActiveGift(key);
     setOpenedGifts(prev => {
-      const next = [...new Set([...(prev || []), key])].slice(-200);
+      let stored: string[] = [];
+      try { stored = JSON.parse(storageGet(`giftsOpened:${user.id}`) || '[]'); } catch { /* 무시 */ }
+      const next = [...new Set([...stored, ...(prev || []), key])].slice(-200);
       storageSet(`giftsOpened:${user.id}`, JSON.stringify(next));
       return next;
     });
+    queueAlertSync(user.id);
   };
+  const markGiftOpened = (key: string) => {
+    if (!user) return;
+    setActiveGift(key);
+    rememberGift(key);
+  };
+  // 열지 않고 × 로 닫아도 다시 띄우지 않는다 (운영자 2026-11-03: '앱이 업데이트되고 나면 선물상자가 계속 떠').
+  // 선물(이모티콘·노래·사연)은 상자를 열지 않아도 그대로 쓸 수 있음. 알림을 눌러 연 선물은 그때 다시 보임
   const closeGift = (gift: Gift) => {
     setForcedGift(null);
     setActiveGift(null);
-    if (openedGifts?.includes(gift.key)) return;
-    setSnoozedGifts(prev => {
-      const next = [...prev, gift.key];
-      try { sessionStorage.setItem('giftsSnoozed', JSON.stringify(next)); } catch { /* 무시 */ }
-      return next;
-    });
+    if (!openedGifts?.includes(gift.key)) rememberGift(gift.key);
   };
   isAdminRef.current = isAdmin;
   // 로그인(관리자 여부)이 정해지면 기도지향을 다시 읽는다 (관리자는 올린 사람까지)
@@ -4068,7 +4077,7 @@ export default function Home() {
     || showShareApp || showFancyName || showDmBookmarks || !!legalDoc);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
-    : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key) && !snoozedGifts.includes(g.key)) : undefined;
+    : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key)) : undefined;
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup && !shownGift;
   // 업데이트 소식: 홈에서, 다른 창·선물·팝업 공지가 없을 때 (가장 최근 소식부터 한 창에)
