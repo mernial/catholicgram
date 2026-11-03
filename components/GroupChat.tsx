@@ -35,7 +35,13 @@ import { clipText } from '@/lib/clip-text';
 // 손동작은 1:1 메시지와 같다: 꾹 누르기 = 그 자리 메뉴(위에 감정, 아래에 답장·고치기…), 두 번 누르기 = 하트, 옆으로 밀기 = 답장
 interface GroupMessage { id: string; chat_id: string; user_id: string | null; content: string; kind: 'text' | 'system'; created_at: string; reply_to?: string | null; edited_at?: string | null; image_url?: string | null; images?: string[] | null }
 const ALL_EMOJIS = [...REACTION_EMOJIS, ...MORE_EMOJIS];
-interface Member { user_id: string; joined_at: string }
+interface Member { user_id: string; joined_at: string; last_read_at?: string | null }
+// 서버 시각(마이크로초까지)을 비교할 수 있는 숫자로 — Date 는 밀리초까지라 같은 밀리초 안의 읽음·보냄을 가리지 못한다
+const microsOf = (iso?: string | null) => {
+  if (!iso) return 0;
+  const frac = iso.match(/\.(\d+)/)?.[1] ?? '';
+  return Date.parse(iso) * 1000 + Number((frac + '000000').slice(3, 6));
+};
 interface Reaction { user_id: string; emoji: string }
 
 const EXTRAS_HINT = '단체 채팅방 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/group-chats.sql 다시 실행 필요)';
@@ -129,17 +135,39 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const loadRoom = async () => {
     const [{ data: chat, error: e1 }, { data: mem }] = await Promise.all([
       supabase.from('group_chats').select('id, name').eq('id', chatId).maybeSingle(),
-      supabase.from('group_chat_members').select('user_id, joined_at').eq('chat_id', chatId).order('joined_at', { ascending: true }),
+      supabase.from('group_chat_members').select('user_id, joined_at, last_read_at').eq('chat_id', chatId).order('joined_at', { ascending: true }),
     ]);
     if (e1) { setError(isGroupSetupError(e1) ? GROUP_SETUP_HINT : '채팅방을 불러오지 못했어요.'); return false; }
     if (!chat) { setError('채팅방을 찾을 수 없어요. 나갔거나 없어진 방이에요.'); return false; }
     setName(chat.name);
-    setMembers((mem || []) as Member[]);
+    setMembers(prev => same(prev, (mem || []) as Member[]));
     loadPeople((mem || []).map(m => m.user_id));
     return true;
   };
 
-  const markRead = () => { if (!adminView) supabase.rpc('mark_group_chat_read', { p_chat: chatId }).then(() => {}, () => {}); };
+  // 읽음: 교우마다 이 방을 마지막으로 본 때(last_read_at) → 메시지마다 아직 안 읽은 교우 수 (카카오톡의 노란 숫자)
+  // 누가 방을 보면 그 기기가 'read' 를 알려 바로 다시 읽고, 놓쳐도 5초마다 확인한다
+  const loadReads = async () => {
+    const { data } = await supabase.from('group_chat_members').select('user_id, joined_at, last_read_at').eq('chat_id', chatId).order('joined_at', { ascending: true });
+    if (!data) return;
+    setMembers(prev => same(prev, data as Member[]));
+    loadPeople(data.map(m => m.user_id));
+  };
+  const readsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const readsSoon = () => {
+    if (readsTimer.current) return;
+    readsTimer.current = setTimeout(() => { readsTimer.current = null; loadReads(); }, 400);
+  };
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+
+  const markRead = () => {
+    if (adminView) return;
+    supabase.rpc('mark_group_chat_read', { p_chat: chatId }).then(({ error: err }) => {
+      if (err) return;
+      // 방에 있는 다른 교우 화면의 숫자를 바로 줄이게 (저장하지 않는 실시간 알림)
+      try { channelRef.current?.send({ type: 'broadcast', event: 'read', payload: {} }).catch(() => {}); } catch { /* 연결 전 */ }
+    }, () => {});
+  };
   const readTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 화면에 보일 때만 읽음 표시 (앱이 뒤에 있는데 읽음이 되면, 서버가 '보고 있다'고 여겨 아이폰·아이패드 알림을 보내지 않음 — push/notify VIEW_WAIT_MS)
   const readLater = useRef(false);
@@ -213,11 +241,14 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const id = (payload.old as { id?: string }).id;
         if (id) setMessages(prev => prev.filter(m => m.id !== id));
       })
+      .on('broadcast', { event: 'read' }, () => readsSoon())
       .subscribe(status => { live = status === 'SUBSCRIBED'; });
+    channelRef.current = channel;
     const poll = setInterval(async () => {
       if (document.visibilityState === 'hidden') return;
       const shown = textIds(messagesRef.current).slice(-PAGE);
       loadReactions(shown);
+      loadReads();
       if (live) return;
       const last = messagesRef.current[messagesRef.current.length - 1];
       let q = supabase.from('group_chat_messages').select('*').eq('chat_id', chatId).order('created_at', { ascending: true }).limit(50);
@@ -230,7 +261,12 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         if (edited) applyEdits(edited as { id: string; content: string; edited_at: string | null }[]);
       }
     }, 5000);
-    return () => { clearInterval(poll); supabase.removeChannel(channel); };
+    return () => {
+      clearInterval(poll);
+      if (readsTimer.current) { clearTimeout(readsTimer.current); readsTimer.current = null; }
+      channelRef.current = null;
+      supabase.removeChannel(channel);
+    };
   }, [chatId]);
 
   // 맨 아래를 보고 있었으면: 사진이 늦게 불러와지거나 키보드가 올라와도 계속 맨 아래에
@@ -444,6 +480,18 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const canWriteRef = useRef(canWrite);
   canWriteRef.current = canWrite;
   const nameOf = (id: string | null) => (id === user.id ? '나' : (id && people[id]?.baptismal_name) || '교우');
+  // 이 메시지를 읽은 교우·안 읽은 교우 (보낸 사람과 그 뒤에 들어온 교우는 빼고, 지금 방을 보고 있는 나는 읽음)
+  const memberTimes = members.map(x => ({ id: x.user_id, joined: microsOf(x.joined_at), read: microsOf(x.last_read_at) }));
+  const readersOf = (m: GroupMessage) => {
+    const at = microsOf(m.created_at);
+    const read: string[] = [], unread: string[] = [];
+    memberTimes.forEach(x => {
+      if (x.id === m.user_id || x.joined > at) return;
+      if ((!adminView && x.id === user.id) || x.read >= at) read.push(x.id); else unread.push(x.id);
+    });
+    return { read, unread };
+  };
+  const unreadOf = (m: GroupMessage) => (m.kind === 'text' ? readersOf(m).unread.length : 0);
   const preview = (m: GroupMessage) => (m.user_id && blockedIds.has(m.user_id) ? '차단한 교우의 메시지' : quoteLabel(m));
 
   // 입력 중 표시 (관리자 보기는 보기만, 알리지 않음)
@@ -466,6 +514,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
 
   // 카톡식 메뉴: 복사 · 선택 복사 · 책갈피 · 캡처 · 내 화면에서만 지우기 (이 휴대폰에만 저장)
   const [selectCopy, setSelectCopy] = useState<string | null>(null);
+  const [readInfo, setReadInfo] = useState<GroupMessage | null>(null); // '읽음 확인' 창
   const [showBookmarks, setShowBookmarks] = useState(false);
   const bookmarks = useBookmarks(user.id, `group:${chatId}`);
   const hiddenMsgs = useHiddenMessages(user.id, `group:${chatId}`);
@@ -507,6 +556,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   // 단체방 안의 작은 창은 휴대폰 뒤로가기로 그것만 닫는다 (단체방은 그대로, lib/back-layers)
   useBackLayer(!!menuMsg, () => setMenuMsg(null));
   useBackLayer(showMembers, () => setShowMembers(false));
+  useBackLayer(!!readInfo, () => setReadInfo(null));
   useBackLayer(selectCopy !== null, () => setSelectCopy(null));
   useBackLayer(showBookmarks, () => setShowBookmarks(false));
   useBackLayer(!!captureAsk, () => setCaptureAsk(null));
@@ -588,6 +638,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
             const tone = mine ? 'bg-blue-600 text-white rounded-br-md' : 'bg-white text-stone-900 rounded-bl-md shadow-sm';
             if (hiddenMsgs.hidden.has(m.id)) return null; // 내 화면에서만 지운 메시지
             const picked = !!capturePick?.has(m.id);
+            const unread = unreadOf(m);
             return (
               <div key={m.id} id={`gm-${m.id}`}>
                 {dayLine}
@@ -649,7 +700,14 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           </button>
                         )}
                       </div>
-                      <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">{m.edited_at && <span className="text-stone-400">수정됨</span>}{bookmarks.has(m.id) && <span aria-label="책갈피">🔖</span>}<span>{timeOf(m.created_at)}</span></span>
+                      <span className="shrink-0 text-[0.6875rem] leading-tight text-stone-500 pb-0.5 flex flex-col items-center">
+                        {/* 아직 안 읽은 교우 수 (카카오톡처럼, 모두 읽으면 사라짐) — 누르면 누가 읽었는지 */}
+                        {unread > 0 && (
+                          <button type="button" onClick={() => setReadInfo(m)} className="text-[0.75rem] font-bold text-amber-500 px-1 -mx-1 leading-tight"
+                            aria-label={`안 읽은 교우 ${unread}명 · 눌러서 읽은 교우 보기`}>{unread}</button>
+                        )}
+                        {m.edited_at && <span className="text-stone-400">수정됨</span>}{bookmarks.has(m.id) && <span aria-label="책갈피">🔖</span>}<span>{timeOf(m.created_at)}</span>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -740,6 +798,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
               ...(canWrite && canEdit(m) ? [{ label: '고치기', run: () => startEdit(m) }] : []),
               { label: bookmarks.has(m.id) ? '책갈피 해제' : '책갈피 설정', run: () => { close(); bookmarks.toggle({ id: m.id, text: text || (parseSticker(m.content) ? m.content : isVideoUrl(m.image_url) ? '🎬 동영상' : '📷 사진'), name: nameOf(m.user_id), at: m.created_at }); } },
               { label: '캡처', run: () => { close(); setCaptureAsk(m.id); } },
+              ...(m.kind === 'text' ? [{ label: '읽음 확인', run: () => { close(); setReadInfo(m); } }] : []),
               ...(adminView && !mine && m.user_id ? [{ label: '프로필 보기', run: () => { close(); onOpenProfile(m.user_id!); } }] : []),
               ...(!mine && !adminView && m.user_id ? [{ label: '신고', run: () => { close(); onReport({ type: 'user', id: m.user_id!, userId: m.user_id!, userName: people[m.user_id!]?.baptismal_name, preview: `[단체 채팅방 '${name}'] ${m.content}` }); } }] : []),
               ...(mine && !adminView
@@ -795,6 +854,41 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           </div>
         </div>
       )}
+
+      {/* 읽음 확인: 이 메시지를 읽은 교우·안 읽은 교우 */}
+      {readInfo && (() => {
+        const { read, unread } = readersOf(readInfo);
+        const row = (id: string) => {
+          const p = people[id];
+          return (
+            <li key={id} className="px-5 py-2.5 flex items-center gap-3">
+              <CelebrateBand id={id}>{p?.avatar_url
+                ? <img loading="lazy" src={p.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
+                : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
+              <span className="flex-1 min-w-0 flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900 truncate">{p?.baptismal_name || '교우'}{id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} /></span>
+            </li>
+          );
+        };
+        return (
+          <div className="fixed inset-0 z-[6] bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setReadInfo(null)}>
+            <div className="w-full sm:w-96 max-h-[80dvh] flex flex-col bg-white rounded-t-3xl sm:rounded-3xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label="읽음 확인">
+              <div className="shrink-0 px-5 pt-5 pb-3 flex items-start justify-between gap-2 border-b border-stone-100">
+                <div className="min-w-0">
+                  <h3 className="font-bold text-[1.125rem] text-stone-900">읽음 확인</h3>
+                  <p className="text-[0.8125rem] text-stone-500 truncate">{nameOf(readInfo.user_id)} · {preview(readInfo)}</p>
+                </div>
+                <button onClick={() => setReadInfo(null)} className="w-10 h-10 -mr-2 -mt-1 shrink-0 flex items-center justify-center text-stone-500 text-2xl" aria-label="닫기">×</button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto pb-2">
+                <p className="px-5 pt-3 pb-1 text-[0.8125rem] font-bold text-amber-600">안 읽음 {unread.length}명</p>
+                {unread.length ? <ul>{unread.map(row)}</ul> : <p className="px-5 py-2 text-[0.875rem] text-stone-500">모두 읽었어요 🙏</p>}
+                <p className="px-5 pt-3 pb-1 text-[0.8125rem] font-bold text-stone-600">읽음 {read.length}명</p>
+                {read.length ? <ul>{read.map(row)}</ul> : <p className="px-5 py-2 text-[0.875rem] text-stone-500">아직 아무도 읽지 않았어요</p>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showInvite && (
         <NewChat user={user} mode="invite" chatId={chatId} excludeIds={members.map(m => m.user_id)} blockedIds={blockedIds}

@@ -19,6 +19,7 @@ export interface MenuAction { label: string; run: () => void; danger?: boolean }
 const ACTION_ICONS: [RegExp, IconName][] = [
   [/답장|답글/, 'reply'], [/복사/, 'stack'], [/고치기|수정/, 'pencil'], [/책갈피/, 'bookmark'], [/캡처/, 'camera'],
   [/삭제|지우기/, 'trash'], [/신고/, 'siren'], [/프로필/, 'user'], [/저장/, 'download'], [/공유/, 'share'],
+  [/읽음/, 'check'],
 ];
 const LEADING_EMOJI = /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation})\uFE0F?\s*/u;
 const actionIcon = (label: string) => ACTION_ICONS.find(([re]) => re.test(label))?.[1];
