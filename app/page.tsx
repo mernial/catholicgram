@@ -90,7 +90,7 @@ import PhotoStrip from '@/components/PhotoStrip';
 import MyComments from '@/components/MyComments';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
-import Collage, { COLLAGE_MAX } from '@/components/Collage';
+import Collage from '@/components/Collage';
 import { startVisitTracking } from '@/lib/visit';
 import { birthdayFromMeta, CHEER_ICON, CHEER_WORD, cheerKindOf, cheerMessage, cheerWordOfMany, formatFeastDay, isTodayMonthDay, isValidFeastDay, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
 import CelebrateAvatar, { CelebrateBand } from '@/components/CelebrateAvatar';
@@ -5027,19 +5027,19 @@ export default function Home() {
               </div>
             </form>
             )}
-            {/* 콜라주: 고른 사진(앞의 10장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
+            {/* 콜라주: 고른 사진(9장보다 많으면 9장까지 골라서)을 한 장으로 → 그 사진들 대신 맨 앞에 콜라주 한 장, 넣지 않은 사진은 뒤에 그대로 */}
             {showCollage && selectedFiles.length > 1 && (
               <Collage
                 files={selectedFiles}
                 onCancel={() => setShowCollage(false)}
-                onDone={made => {
+                onDone={(made, usedIdx) => {
                   const url = URL.createObjectURL(made);
-                  const used = Math.min(COLLAGE_MAX, selectedFiles.length);
-                  setSelectedFiles(prev => [made, ...prev.slice(used)]);
-                  setPreviewUrls(prev => [url, ...prev.slice(used)]);
+                  const usedSet = new Set(usedIdx);
+                  setSelectedFiles(prev => [made, ...prev.filter((_, i) => !usedSet.has(i))]);
+                  setPreviewUrls(prev => [url, ...prev.filter((_, i) => !usedSet.has(i))]);
                   setComposerPhotoIdx(0);
                   setShowCollage(false);
-                  setToast({ key: `collage-${Date.now()}`, icon: <Icon name="collage" className="w-7 h-7 text-sky-700" />, title: `사진 ${used}장을 콜라주 한 장으로 모았어요`, body: '원래 사진은 사진 칸에서 다시 고를 수 있어요', action: () => {}, stay: true });
+                  setToast({ key: `collage-${Date.now()}`, icon: <Icon name="collage" className="w-7 h-7 text-sky-700" />, title: `사진 ${usedIdx.length}장을 콜라주 한 장으로 모았어요`, body: '원래 사진은 사진 칸에서 다시 고를 수 있어요', action: () => {}, stay: true });
                 }}
               />
             )}

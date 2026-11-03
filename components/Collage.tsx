@@ -1,8 +1,9 @@
 'use client';
 
 // 콜라주 (루비로사 건의 2026-11-01: '4장의 사진을 모아 올릴 때 사진 모양에 따라 비율을 달리하며 자주 사용해요' —
-// 삼성 갤러리 '만들기 → 콜라주'처럼): 글쓰기에서 고른 사진 2~10장을 한 장으로 모은다
-// (2026-11-03 루비로사: 사진은 10장까지 고르는데 콜라주가 9장까지라 1장이 빠졌음 → 10장까지).
+// 삼성 갤러리 '만들기 → 콜라주'처럼): 글쓰기에서 고른 사진 2~9장을 한 장으로 모은다.
+// 글에는 사진을 10장까지 고를 수 있어서, 9장보다 많으면 먼저 콜라주에 넣을 사진을 9장까지 고른다
+// (2026-11-03 루비로사·운영자: 10장을 골랐더니 콜라주에서 1장이 말없이 빠졌음 → '콜라주로 고를 때는 9장까지').
 //  · 모양(칸 나누기) — 사진 수에 맞는 여러 모양 · 비율 — 세로/가로 + 1:1·5:4·4:3·3:2·16:9 (1:1 은 방향 없음)
 //  · 간격·모서리 둥글게·바탕 색 · 칸을 누르면 고름 → 끌어서 사진 위치, 두 손가락이나 막대로 확대, '⇄ 자리 바꾸기'
 //  · 완료하면 긴 쪽 2048px JPEG 한 장 (onDone)
@@ -11,7 +12,7 @@ import Icon from '@/components/Icon';
 
 type Cell = { x: number; y: number; w: number; h: number };
 type Fit = { ox: number; oy: number; zoom: number }; // ox·oy: -1~1 (사진이 칸보다 남는 만큼 중 어디), zoom ≥ 1
-export const COLLAGE_MAX = 10; // 한 글 사진 수(page MAX_PHOTOS)와 같게
+export const COLLAGE_MAX = 9; // 콜라주에 넣을 수 있는 사진 수 (더 많으면 CollagePicker 로 고름)
 const OUT = 2048;
 const EPS = 0.001;
 
@@ -30,8 +31,7 @@ export function collageLayouts(n: number): Cell[][] {
     case 6: return [rows([2, 2, 2]), rows([3, 3]), rows([1, 2, 3]), transpose(rows([1, 2, 3])), rows([3, 1, 2])];
     case 7: return [rows([2, 3, 2]), rows([3, 1, 3]), rows([2, 2, 3]), transpose(rows([2, 3, 2]))];
     case 8: return [rows([3, 2, 3]), rows([2, 2, 2, 2]), rows([4, 4]), transpose(rows([3, 2, 3]))];
-    case 9: return [rows([3, 3, 3]), rows([2, 3, 4]), transpose(rows([2, 3, 4])), rows([4, 1, 4])];
-    default: return [rows([3, 4, 3]), rows([2, 3, 3, 2]), transpose(rows([3, 4, 3])), transpose(rows([2, 3, 3, 2])), rows([4, 2, 4]), rows([5, 5])];
+    default: return [rows([3, 3, 3]), rows([2, 3, 4]), transpose(rows([2, 3, 4])), rows([4, 1, 4])];
   }
 }
 
@@ -65,9 +65,73 @@ function coverBox(iw: number, ih: number, cw: number, ch: number, f: Fit) {
 }
 const loadImage = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
 
-export default function Collage({ files, onDone, onCancel }: { files: File[]; onDone: (f: File) => void; onCancel: () => void }) {
-  const used = files.slice(0, COLLAGE_MAX);
-  const urls = useMemo(() => files.slice(0, COLLAGE_MAX).map(f => URL.createObjectURL(f)), [files]);
+// 콜라주: 사진이 9장보다 많으면 먼저 넣을 사진을 고르고(CollagePicker), 그다음 꾸미기(CollageEditor).
+// onDone 의 used = 콜라주에 들어간 사진의 번호(files 기준) → page 가 그 사진들 자리에 콜라주 한 장을 넣음
+export default function Collage({ files, onDone, onCancel }: { files: File[]; onDone: (f: File, used: number[]) => void; onCancel: () => void }) {
+  const needPick = files.length > COLLAGE_MAX;
+  const [picked, setPicked] = useState<number[] | null>(() => (needPick ? null : files.map((_, i) => i)));
+  const [lastPick, setLastPick] = useState<number[]>(() => files.slice(0, COLLAGE_MAX).map((_, i) => i));
+  const chosen = useMemo(() => (picked ? picked.map(i => files[i]) : []), [picked, files]);
+  if (!picked) {
+    return <CollagePicker files={files} initial={lastPick} onCancel={onCancel} onNext={idx => { setLastPick(idx); setPicked(idx); }} />;
+  }
+  return (
+    <CollageEditor key={picked.join(',')} files={chosen} onCancel={onCancel}
+      onRepick={needPick ? () => setPicked(null) : undefined}
+      onDone={f => onDone(f, picked)} />
+  );
+}
+
+// 콜라주에 넣을 사진 고르기 (9장까지): 누르는 순서대로 번호, 다시 누르면 빠짐. 처음엔 앞의 9장이 골라져 있음
+function CollagePicker({ files, initial, onNext, onCancel }: { files: File[]; initial: number[]; onNext: (idx: number[]) => void; onCancel: () => void }) {
+  const urls = useMemo(() => files.map(f => URL.createObjectURL(f)), [files]);
+  useEffect(() => () => urls.forEach(u => URL.revokeObjectURL(u)), [urls]);
+  const [sel, setSel] = useState<number[]>(initial);
+  const [warn, setWarn] = useState(false);
+  const toggle = (i: number) => {
+    setSel(prev => {
+      if (prev.includes(i)) { setWarn(false); return prev.filter(x => x !== i); }
+      if (prev.length >= COLLAGE_MAX) { setWarn(true); return prev; }
+      setWarn(false);
+      return [...prev, i];
+    });
+  };
+  return (
+    <div data-no-pinch className="fixed inset-0 z-[88] bg-black flex flex-col select-none text-white" role="dialog" aria-label="콜라주에 넣을 사진 고르기">
+      <div className="shrink-0 flex items-center justify-between px-3 pt-[calc(0.6rem+env(safe-area-inset-top))] pb-2">
+        <button type="button" onClick={onCancel} className="px-2 py-2 text-[1rem] text-white/80">취소</button>
+        <p className="font-bold text-[1.0625rem] inline-flex items-center gap-1.5"><Icon name="collage" className="w-5 h-5 text-[#fbe7b0]" />콜라주 사진 고르기</p>
+        <button type="button" onClick={() => onNext(sel)} disabled={sel.length < 2} className="px-2 py-2 text-[1rem] font-bold text-[#fbe7b0] disabled:opacity-40">다음</button>
+      </div>
+      <div className="shrink-0 px-4 pb-3 text-center">
+        <p className="text-[1rem] font-bold">콜라주에는 사진을 <span className="text-[#fbe7b0]">{COLLAGE_MAX}장까지</span> 넣을 수 있어요</p>
+        <p className={`text-[0.875rem] mt-1 ${warn ? 'text-[#ffb4a8] font-bold' : 'text-white/65'}`} role="status">
+          {warn ? `${COLLAGE_MAX}장을 다 골랐어요 · 뺄 사진을 먼저 눌러 주세요` : `넣을 사진을 누르세요 · ${sel.length}/${COLLAGE_MAX}장 골랐어요`}
+        </p>
+      </div>
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div className="grid grid-cols-3 gap-1.5">
+          {urls.map((u, i) => {
+            const no = sel.indexOf(i);
+            return (
+              <button key={i} type="button" onClick={() => toggle(i)} aria-pressed={no >= 0} aria-label={`${i + 1}번 사진${no >= 0 ? ` (${no + 1}번째로 넣음)` : ''}`}
+                className="relative aspect-square overflow-hidden rounded-lg bg-stone-800">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={u} alt="" draggable={false} className={`w-full h-full object-cover transition-opacity ${no >= 0 ? '' : 'opacity-40'}`} />
+                {no >= 0 && <span className="pointer-events-none absolute inset-0 rounded-lg ring-[3px] ring-inset ring-[#fbe7b0]" />}
+                <span className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center text-[0.875rem] font-bold ${no >= 0 ? 'bg-[#fbe7b0] text-stone-900' : 'border-2 border-white/80 bg-black/30'}`}>{no >= 0 ? no + 1 : ''}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CollageEditor({ files, onDone, onCancel, onRepick }: { files: File[]; onDone: (f: File) => void; onCancel: () => void; onRepick?: () => void }) {
+  const used = files;
+  const urls = useMemo(() => files.map(f => URL.createObjectURL(f)), [files]);
   useEffect(() => () => urls.forEach(u => URL.revokeObjectURL(u)), [urls]);
   const [dims, setDims] = useState<({ w: number; h: number } | null)[]>([]);
   // 처음 비율: 사진들이 대체로 세로면 세로 4:3(=3:4), 가로면 가로 4:3, 섞였으면 1:1
@@ -301,7 +365,10 @@ export default function Collage({ files, onDone, onCancel }: { files: File[]; on
                 </button>
               ))}
             </div>
-            <p className="text-center text-[0.75rem] text-white/60">{files.length > COLLAGE_MAX ? `앞의 ${COLLAGE_MAX}장으로 만들어요 · ` : ''}칸을 누르면 사진 위치·크기·자리를 바꿀 수 있어요</p>
+            <p className="text-center text-[0.75rem] text-white/60">
+              {onRepick && <><button type="button" onClick={onRepick} className="font-bold text-[#fbe7b0] underline underline-offset-2">‹ 사진 다시 고르기</button> · </>}
+              칸을 누르면 사진 위치·크기·자리를 바꿀 수 있어요
+            </p>
           </>
         )}
       </div>
