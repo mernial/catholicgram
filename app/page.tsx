@@ -2582,6 +2582,8 @@ export default function Home() {
     const info = await getVideoInfo(file).catch(() => null);
     if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); return; }
     if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`1분 이하의 영상만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); return; }
+    // 한 게시물에는 사진과 영상 중 하나만 — 고른 사진이 있으면 말없이 빼지 않고 먼저 묻는다 (루비로사 2026-11-03)
+    if (selectedFiles.length > 0 && !(await askConfirm({ title: '고른 사진 대신 영상으로 올릴까요?', message: `한 게시물에는 사진과 영상 중 하나만 넣을 수 있어요. 영상을 넣으면 고른 사진 ${selectedFiles.length}장은 빠져요.`, ok: '영상으로', cancel: '사진 그대로', icon: 'video' }))) return;
     // 고르자마자 그 영상을 보여 준다. 영상은 사진 대신 하나만 (배경음악은 함께 넣을 수 있음)
     setSelectedFiles([]); setPreviewUrls([]);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -2611,12 +2613,15 @@ export default function Home() {
     setSelectedVideo(video); // 미리보기는 원본 그대로 (꾸미던 화면이 다시 불러와지지 않게)
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 고른 영상이 있을 때 사진을 넣으면: 말없이 영상을 빼지 않고 먼저 묻는다 (한 게시물에는 사진과 영상 중 하나만 — 루비로사 2026-11-03)
+  const photosOverVideo = async () => !selectedVideo || await askConfirm({ title: '고른 영상 대신 사진으로 올릴까요?', message: '한 게시물에는 사진과 영상 중 하나만 넣을 수 있어요. 사진을 넣으면 고른 영상은 빠져요.', ok: '사진으로', cancel: '영상 그대로', icon: 'image' });
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files) return;
     // 사진은 최대 MAX_PHOTOS(10)장: 여러 번 나눠 골라도 이어서 추가됨
     const picked = Array.from(e.target.files);
     e.target.value = '';
     if (picked.length === 0) return;
+    if (!(await photosOverVideo())) return;
     clearVideo();
     // 새 게시물 1단계: 고른 사진은 모두 아래 사진 칸에 미리보기로 모은다
     //  - 한 장만 골랐으면 그 사진을 고른 상태로
@@ -2651,7 +2656,8 @@ export default function Home() {
     setPreviewUrls(prev => [...prev, ...added.map(f => URL.createObjectURL(f))]);
   };
   // 사진 칸에서 미리보기를 눌렀을 때: 한 장 모드는 그 사진으로 바꾸고, 여러 장 모드는 고르기/크게 보기/빼기
-  const pickFromTray = (item: { file: File; url: string }) => {
+  const pickFromTray = async (item: { file: File; url: string }) => {
+    if (selectedVideo) { if (!(await photosOverVideo())) return; clearVideo(); }
     const pos = selectedFiles.indexOf(item.file);
     if (!composerMulti) { setSelectedFiles([item.file]); setPreviewUrls([item.url]); setComposerPhotoIdx(0); return; }
     const shown = Math.min(composerPhotoIdx, Math.max(0, selectedFiles.length - 1));
@@ -4944,16 +4950,13 @@ export default function Home() {
                       <Icon name="stack" className="w-4 h-4" />{composerMulti ? '여러 장 선택 중' : '여러 장 선택'}
                     </button>
                   </div>
-                  {/* 사진 칸: 카메라 · 앨범 · 영상 · 고른 사진 */}
+                  {/* 사진 칸: 카메라 · 앨범 (영상은 맨 아래 '게시물 · 스토리 · 영상' 줄에서만 — 루비로사 2026-11-03: 같은 일을 하는 '영상' 단추가 두 개라 헷갈림) */}
                   <div className="grid grid-cols-4 gap-[2px]">
                     <label htmlFor="photo-camera" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="camera" className="w-8 h-8" /><span className="text-[0.75rem]">사진 찍기</span>
                     </label>
                     <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#3a3a3a] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="image" className="w-8 h-8" /><span className="text-[0.75rem] font-bold">사진첩 열기</span>
-                    </label>
-                    <label htmlFor="video-upload" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
-                      <Icon name="video" className="w-8 h-8" /><span className="text-[0.75rem]">영상</span>
                     </label>
                   </div>
                   {/* 고른 사진은 단추 줄 아래 새 줄부터 (루비로사 건의 2026-11-01: 영상 단추 옆에 이어 붙어 보기 어려웠음) */}
