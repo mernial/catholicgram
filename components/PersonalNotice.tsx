@@ -42,6 +42,16 @@ export function PersonalNoticePopup({ notices, preview, onHide, onClose, onActio
                 <div key={s.heading}>
                   <p className="text-[0.9375rem] font-bold text-stone-900">{s.heading}</p>
                   {s.text && <p className="mt-1 text-[0.9375rem] text-stone-700 leading-relaxed"><Rich text={s.text} /></p>}
+                  {s.bullets && (
+                    <ul className="mt-1.5 flex flex-col gap-1.5">
+                      {s.bullets.map(b => (
+                        <li key={b} className="flex gap-2 text-[0.9375rem] text-stone-700 leading-relaxed">
+                          <span className="text-rose-400 shrink-0" aria-hidden="true">•</span>
+                          <span><Rich text={b} /></span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {s.steps && (
                     <ol className="mt-2 flex flex-col gap-2">
                       {s.steps.map((st, i) => (
