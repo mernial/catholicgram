@@ -92,6 +92,10 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
     setAlertSoundChoice(key);
     setSound(key);
     if (key !== 'off') previewAlertSound(key);
+    // 안드로이드: 여기서 고른 소리는 앱을 열어 둔 동안만 — 앱을 닫아 두었을 때 휴대폰 알림 소리는 휴대폰 설정에서 따로 (루비로사 건의 2026-11-03)
+    if (device.android && key !== 'off') toast(device.kind === 'play' && key !== 'praise'
+      ? '앱을 열어 둔 동안 울려요 · 앱을 닫아 두었을 때는 휴대폰 알림 소리(처음엔 찬미예수님)가 울려요 — 아래에서 바꿔요'
+      : '앱을 열어 둔 동안 울리는 소리예요', 3200);
   };
   const [appInfo, setAppInfo] = useState<{ title: string; detail: string } | null>(null);
   useEffect(() => { setAppInfo(appKindLabel()); }, []);
@@ -382,6 +386,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
         ) : view === 'sound' ? (
           <div key="sound" className="overflow-y-auto p-4 flex flex-col gap-3">
             <p className="text-[0.9375rem] text-stone-600 leading-relaxed">앱을 <b>열어 둔 동안</b> 새 알림(댓글·메시지 등)이 오면 울리는 소리예요. 누르면 들어 볼 수 있어요.</p>
+            {device.kind === 'play' && (
+              <p className="-mt-1 text-[0.875rem] text-amber-900 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2 leading-relaxed">앱을 <b>닫아 두었을 때</b> 휴대폰 위쪽에 뜨는 알림은 따로 정해요. 처음엔 <b>찬미예수님</b>이 울려요 — 바꾸는 법은 맨 아래 📱 칸에 있어요.</p>
+            )}
             <div className="flex flex-col gap-1.5" role="radiogroup" aria-label="알림 소리">
               {[...ALERT_SOUNDS, { key: 'off', name: '소리 없음', desc: '알림이 와도 소리를 내지 않아요', emoji: '🔇' }].map(o => {
                 const on = sound === o.key;
@@ -406,7 +413,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 <p>아이폰·아이패드는 휴대폰 위쪽에 뜨는 알림의 소리를 고를 수 없어요(애플이 기본 소리만 쓰게 해 두었어요). 휴대폰 <b>설정 → 알림 → 가톨릭그램</b>에서 <b>사운드</b>를 켜고 끌 수만 있어요.</p>
               ) : device.android ? (
                 <>
-                  <p className="mb-2">휴대폰 위쪽에 뜨는 알림의 소리는 <b>휴대폰 설정</b>에서 골라요. 위의 가톨릭그램 소리도 파일로 받아 휴대폰 알림음으로 쓸 수 있어요.</p>
+                  {device.kind === 'play'
+                    ? <p className="mb-2">Play 스토어 가톨릭그램 앱은 따로 정하지 않아도 휴대폰 알림이 <b>찬미예수님</b>으로 울려요. 위에서 고른 소리(예: 방울)로 바꾸고 싶으면 아래처럼 <b>휴대폰 설정</b>에서 한 번 바꿔 주세요.</p>
+                    : <p className="mb-2">휴대폰 위쪽에 뜨는 알림의 소리는 <b>휴대폰 설정</b>에서 골라요. 위의 가톨릭그램 소리도 파일로 받아 휴대폰 알림음으로 쓸 수 있어요.</p>}
                   {/* 가톨릭그램 소리 파일 (public/sounds/notify — 앱 안 소리와 같은 소리, 파일 안 제목이 '가톨릭그램 …'이라 휴대폰 소리 목록에서 찾기 쉬움.
                       내려받는 이름은 영어로: 한글 이름은 크롬이 'download'로 바꿔 버림) */}
                   <p className="font-bold">① 소리 파일 받기</p>
@@ -426,6 +435,13 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                       <li>휴대폰 <b>설정 → 애플리케이션 → {device.browser}</b></li>
                       <li><b>알림</b> → 알림 종류에서 <b>사이트</b>(또는 catholicgram) 누르기</li>
                       <li><b>소리</b> 누르기</li>
+                      <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
+                    </ol>
+                  ) : device.kind === 'play' ? (
+                    <ol className="list-decimal pl-5 space-y-0.5">
+                      <li>바탕화면의 <b>가톨릭그램 아이콘을 꾹</b> 누르기</li>
+                      <li><b>ⓘ (앱 정보)</b> → <b>알림</b></li>
+                      <li>알림 종류에서 <b>가톨릭그램 알림</b> 누르기 → <b>소리</b>(알림음)</li>
                       <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
                     </ol>
                   ) : (
