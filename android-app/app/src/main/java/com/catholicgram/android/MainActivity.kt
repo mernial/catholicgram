@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
             WindowInsetsCompat.CONSUMED
         }
 
+        lockPhonePortrait()
         setupWebView()
         bridge = AppBridge(this)
         bridge.attach(web)
@@ -157,6 +158,20 @@ class MainActivity : ComponentActivity() {
         root.removeView(web)
         web.destroy()
         super.onDestroy()
+    }
+
+    // 휴대폰은 세로로, 태블릿·펼친 폴드(짧은 쪽 600dp 이상)는 자유롭게 (웹의 DEVICE_BOOT_SCRIPT 와 같은 기준)
+    private fun lockPhonePortrait() {
+        requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        lockPhonePortrait()
     }
 
     /** 앱이 먼저 웹에 알림 (알림 도착·토큰 바뀜 등) */
@@ -271,7 +286,14 @@ class MainActivity : ComponentActivity() {
     fun handleNavigation(uri: Uri): Boolean {
         val scheme = uri.scheme?.lowercase() ?: return true
         if (scheme == "https" || scheme == "http") {
-            if (isOurSite(uri)) return false
+            if (isOurSite(uri)) {
+                // 설정 → 알림 소리 '소리 파일 받기' 같은 소리 파일은 웹뷰에서 틀지 않고 내려받기
+                if (Regex("\\.(mp3|m4a|wav|ogg)$", RegexOption.IGNORE_CASE).containsMatchIn(uri.path ?: "")) {
+                    downloadFile(uri.toString(), web.settings.userAgentString, null, null)
+                    return true
+                }
+                return false
+            }
             openExternal(uri)
             return true
         }

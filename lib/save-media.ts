@@ -2,6 +2,7 @@
 
 import { isVideoUrl } from '@/lib/upload';
 import { copyText, toast } from '@/lib/chat-actions';
+import { isNativeApp, nativeSave, nativeShare } from '@/lib/native-app';
 
 // 대화(1:1·단체방·사랑방)에서 받은 사진·동영상을 휴대폰에 저장하거나 다른 앱(카카오톡·문자 등)으로 보내기
 //  - 저장: 안드로이드·컴퓨터는 바로 내려받기(다운로드 폴더 → 갤러리에도 보임),
@@ -61,6 +62,10 @@ export const download = (file: File) => {
 };
 
 export async function saveMedia(urls: string[]): Promise<MediaResult> {
+  // 안드로이드 앱(하이브리드): 앱이 직접 받아 사진첩(Pictures·Movies/가톨릭그램)에 저장 — 여러 장도 한 번에
+  if (isNativeApp()) {
+    try { return (await nativeSave(urls.map(url => ({ url })))) > 0 ? 'saved' : 'failed'; } catch { return 'failed'; }
+  }
   const list = await getFiles(urls);
   if (!list) { window.open(urls[0], '_blank', 'noopener'); return 'opened'; } // 받지 못하면 새 창에서 꾹 눌러 저장
   if (isAppleDevice() && canShareFiles(list)) {
@@ -89,6 +94,9 @@ export const savePanelStore = {
 export function openSavePanel(files: File[], saved: number[] = []) { panel = { files, saved }; emitPanel(); }
 
 export async function shareMedia(urls: string[]): Promise<MediaResult> {
+  if (isNativeApp()) {
+    try { await nativeShare({ title: '가톨릭그램', files: urls.map(url => ({ url })) }); return 'shared'; } catch { return 'failed'; }
+  }
   const list = await getFiles(urls);
   if (list && canShareFiles(list)) {
     try { await navigator.share({ files: list, title: '가톨릭그램' }); return 'shared'; }

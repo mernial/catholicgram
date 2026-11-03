@@ -75,6 +75,8 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
+    // Firebase 가 옛 fragment 를 끌어와 사진 고르기·권한 묻기(registerForActivityResult)가 어긋나지 않게 새 판으로
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
