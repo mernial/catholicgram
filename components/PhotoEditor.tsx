@@ -362,6 +362,26 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
   const ratio = cropped ? cropped.canvas.width / cropped.canvas.height : 1;
   const boxW = stage ? Math.max(40, Math.min(stage.w - 24, (stage.h - 16) * ratio)) : null;
   const boxH = boxW ? boxW / ratio : null;
+  // ↻ 손잡이 자리: 붙인 것 바깥에 두어 겹치지 않게 (루비로사 2026-11-03: 작은 모자이크 동그라미와 ↻ 동그라미가 겹쳐
+  // 손가락으로 옮기기·키우기가 어려웠음 — 예전엔 늘 오른쪽 아래 모서리에 걸쳐 있어 작은 것은 손잡이가 덮어 버림).
+  // 사진 칸 밖으로 나가 잘리면 다른 모서리(왼쪽 아래·오른쪽 위·왼쪽 위)로. 값은 붙인 것 가운데에서 (돌리기 전) 떨어진 거리(px)
+  const HANDLE_R = 22;
+  const handleSpot = (c: Cover) => {
+    if (!boxW || !boxH) return { x: 0, y: 0 };
+    const r = (c.size * boxW) / 2;
+    const d = c.kind === 'mosaic' ? (r + HANDLE_R + 8) / Math.SQRT2 : r + 20; // 동그라미는 둘레에서, 네모는 모서리에서 떨어지게
+    const rad = (c.rotation * Math.PI) / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    const cx = c.x * boxW, cy = c.y * boxH;
+    let best = { x: d, y: d }, bestRoom = -Infinity;
+    for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const lx = sx * d, ly = sy * d;
+      const px = cx + lx * cos - ly * sin, py = cy + lx * sin + ly * cos;
+      const room = Math.min(px - HANDLE_R, boxW - HANDLE_R - px, py - HANDLE_R, boxH - HANDLE_R - py);
+      if (room >= 0) return { x: lx, y: ly };
+      if (room > bestRoom) { bestRoom = room; best = { x: lx, y: ly }; }
+    }
+    return best;
+  };
   // 모자이크 미리 보기: 실제로 만들어질 모자이크를 사진 칸 크기로 그려 사진 위에 얹음
   const previewRef = useRef<HTMLCanvasElement>(null);
   const pixelCache = useRef<{ key: string; base: HTMLCanvasElement; canvas: HTMLCanvasElement } | null>(null);
@@ -417,23 +437,29 @@ export default function PhotoEditor({ file, onDone, onCancel, startStep = 'crop'
                   style={{ width: brush * Math.min(boxW, boxH), height: brush * Math.min(boxW, boxH) }} />
               )}
               {masking && <span className="absolute inset-x-0 top-3 mx-auto w-max px-3 py-1.5 rounded-full bg-black/70 text-white text-[0.8125rem] font-bold pointer-events-none">✨ 맞추는 중…</span>}
-              {covers.map(c => (
+              {covers.map(c => {
+                const h = selectedId === c.id ? handleSpot(c) : null;
+                return (
                 <div
                   key={c.id}
                   onPointerDown={e => onItemDown(e, c)}
                   className={`absolute flex items-center justify-center ${drawMode ? 'pointer-events-none' : ''} ${c.kind === 'mosaic' ? 'rounded-full' : ''} ${selectedId === c.id ? 'outline outline-2 outline-dashed outline-white/90 outline-offset-2' : ''}`}
                   style={{ left: `${c.x * 100}%`, top: `${c.y * 100}%`, width: `${c.size * 100}cqw`, height: `${c.size * 100}cqw`, transform: `translate(-50%, -50%) rotate(${c.rotation}deg)` }}
                 >
+                  {/* 아주 작게 줄인 것도 손가락으로 잡을 수 있게 둘레를 넓힌 투명 칸 (48px) */}
+                  {boxW && c.size * boxW < 48 && <span aria-hidden="true" className="absolute rounded-full" style={{ inset: -(48 - c.size * boxW) / 2 }} />}
                   {c.kind === 'mosaic'
                     ? <span className="absolute inset-0 rounded-full" /> /* 모자이크는 아래 미리 보기 캔버스에 그려짐 */
                     : c.kind === 'sticker'
                       ? <img src={c.src} alt={c.label || '이모티콘'} draggable={false} className="w-full h-full object-contain pointer-events-none" style={c.flip ? { transform: 'scaleX(-1)' } : undefined} />
                       : <span style={{ fontSize: `${c.size * 100}cqw`, lineHeight: 1, fontFamily: EMOJI_FONT, transform: c.flip ? 'scaleX(-1)' : undefined }}>{c.emoji}</span>}
-                  {selectedId === c.id && (
-                    <span onPointerDown={e => onHandleDown(e, c)} className="absolute -right-5 -bottom-5 w-11 h-11 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white flex items-center justify-center font-black text-2xl shadow-lg" style={{ transform: `rotate(${-c.rotation}deg)` }} aria-label="돌리기·크기">↻</span>
+                  {h && (
+                    <span onPointerDown={e => onHandleDown(e, c)} data-handle="" className="absolute w-11 h-11 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white flex items-center justify-center font-black text-2xl shadow-lg"
+                      style={{ left: `calc(50% + ${h.x}px)`, top: `calc(50% + ${h.y}px)`, transform: `translate(-50%, -50%) rotate(${-c.rotation}deg)` }} aria-label="돌리기·크기">↻</span>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
       )}
