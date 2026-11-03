@@ -656,6 +656,11 @@ export default function Home() {
   dmThreadsRef.current = { ...dmThreadsRef.current, map: dmThreads, ready: dmThreadsReady };
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  // 지금 열린 1:1 대화 상대 (늦게 도착한 다른 대화방의 메시지를 버리려고 — 운영자 2026-11-03: 실비아님 알림을 눌렀더니
+  // 루비로사님과의 대화 아래에 실비아님 메시지가 붙어 나왔음. 앞 대화방에서 보낸 불러오기가 방을 바꾼 뒤에 도착해 목록을 덮고,
+  // 3초마다 새 메시지를 받을 때 그 목록의 마지막 시각 뒤의 실비아님 메시지를 덧붙였음)
+  const chatPartnerIdRef = useRef<string | null>(null);
+  chatPartnerIdRef.current = currentChatUser?.id ?? null;
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 1:1 대화방: 열면 최신 글(맨 아래)부터, 사진이 늦게 불러와져도 맨 아래 유지
@@ -980,6 +985,9 @@ export default function Home() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (activeTab === 'chat' && currentChatUser && user) {
+      // 다른 상대와의 대화가 남아 있으면 먼저 비움 (어느 길로 대화방을 바꾸었든)
+      const pid = currentChatUser.id;
+      setChatMessages(prev => (prev.some(m => !inThread(m, pid)) ? [] : prev));
       fetchChatMessages(currentChatUser.id);
       // 3초마다 새 메시지만 받고, 15초마다 한 번 전체를 다시 받는다(읽음·삭제·하트 반영). 앱이 뒤에 있으면 쉰다
       let tick = 0;
@@ -1422,7 +1430,7 @@ export default function Home() {
     setSelectedPostDetail(null); // 크게 보기에서 메시지를 누른 경우 닫기
     if (!requireProfile()) return;
     if (partner.id === user.id) return;
-    if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
+    if (chatPartnerIdRef.current !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
     setOpenGroup(null); setShowNewChat(false); // 단체 채팅방·새 채팅에서 1:1 대화로
     navigate({ screen: true, tab: 'chat', chatUser: partner });
     setActionModalUser(null);
@@ -1462,13 +1470,17 @@ export default function Home() {
     setOpenGroup({ id, adminView });
   };
 
+  // 이 메시지가 나와 그 상대의 1:1 대화인지
+  const inThread = (m: Message, partnerId: string) =>
+    !!user && ((m.sender_id === user.id && m.receiver_id === partnerId) || (m.sender_id === partnerId && m.receiver_id === user.id));
   const fetchChatMessages = async (partnerId: string) => {
     if (!user) return;
     if (!dmThreadsRef.current.checked) await fetchDmThreads();
     const { data: all, error } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .order('created_at', { ascending: true });
-    const data = all ? all.filter(m => afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
+    if (chatPartnerIdRef.current !== partnerId) return; // 그사이 다른 대화방으로 옮겼으면 이 결과는 버림
+    const data = all ? all.filter(m => inThread(m, partnerId) && afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
     if (data) {
       setChatMessages(prev => same(prev, data)); // 15초마다 다시 받을 때 바뀐 게 없으면 다시 그리지 않음 (치는 글자를 지키려고)
       // 메시지 요청이면 수락하기 전까지 읽음 표시를 하지 않는다 (상대가 읽었는지 모르게)
@@ -1504,16 +1516,20 @@ export default function Home() {
   const fetchNewChatMessages = async (partnerId: string) => {
     if (!user) return;
     const list = chatMessagesRef.current;
+    // 목록에 다른 대화방 메시지가 섞여 있으면(방을 막 바꿈) 덧붙이지 않고 전체를 새로 받음
+    if (list.some(m => !inThread(m, partnerId))) { fetchChatMessages(partnerId); return; }
     const last = list.length ? list[list.length - 1].created_at : null;
     if (!last) { fetchChatMessages(partnerId); return; }
     const { data } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .gt('created_at', last)
       .order('created_at', { ascending: true });
+    if (chatPartnerIdRef.current !== partnerId) return; // 그사이 다른 대화방으로 옮겼으면 버림
     if (!data || data.length === 0) return;
     setChatMessages(prev => {
+      if (prev.some(m => !inThread(m, partnerId))) return prev; // 그사이 목록이 바뀌었으면 다음 전체 받기에 맡김
       const seen = new Set(prev.map(m => String(m.id)));
-      const fresh = data.filter(m => !seen.has(String(m.id)));
+      const fresh = data.filter(m => !seen.has(String(m.id)) && inThread(m, partnerId));
       return fresh.length ? [...prev, ...fresh] : prev;
     });
     if (!isRequestThread(partnerId, [...list, ...data]) && data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
