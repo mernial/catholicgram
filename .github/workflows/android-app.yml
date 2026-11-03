@@ -24,8 +24,11 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug 2>&1 | tee build.log | grep -E "^e: |^w: |error:|What went wrong|BUILD (SUCCESSFUL|FAILED)|FAILURE|> " || true
-          test "${PIPESTATUS[0]}" = 0 || { tail -n 60 build.log; exit 1; }
+          set +e
+          ./gradlew --no-daemon assembleDebug > build.log 2>&1
+          code=$?
+          grep -E "^e: |error:|What went wrong|BUILD (SUCCESSFUL|FAILED)" -A3 build.log | head -n 120
+          [ "$code" = 0 ] || { echo '--- 끝부분 ---'; grep -v '^\s*at ' build.log | tail -n 60; exit 1; }
       - name: 코드 검사 (lint)
         working-directory: android-app
         continue-on-error: true
