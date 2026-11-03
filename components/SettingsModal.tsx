@@ -437,23 +437,23 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                   {device.kind === 'browser' ? (
                     <ol className="list-decimal pl-5 space-y-0.5">
                       <li>휴대폰 <b>설정 → 애플리케이션 → {device.browser}</b></li>
-                      <li><b>알림</b> → 알림 종류에서 <b>사이트</b>(또는 catholicgram) 누르기</li>
+                      <li><b>알림</b> → 맨 아래 <b>알림 카테고리</b>(알림 종류)에서 <b>사이트</b>(또는 catholicgram) 누르기</li>
                       <li><b>소리</b> 누르기</li>
                       <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
                     </ol>
                   ) : device.kind === 'play' ? (
                     <ol className="list-decimal pl-5 space-y-0.5">
-                      <li>바탕화면의 <b>가톨릭그램 아이콘을 꾹</b> 누르기</li>
-                      <li><b>ⓘ (앱 정보)</b> → <b>알림</b></li>
-                      <li>알림 종류에서 <b>가톨릭그램 알림</b> 누르기 → <b>소리</b>(알림음)</li>
-                      <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
+                      <li>바탕화면의 <b>가톨릭그램 아이콘을 꾹</b> → <b>ⓘ (애플리케이션 정보)</b></li>
+                      <li>맨 위 <b>알림</b>(아래에 &lsquo;허용됨&rsquo;) 누르기</li>
+                      <li>그 화면 맨 아래 <b>알림 카테고리</b> → <b>가톨릭그램 알림</b> 글자 누르기 (오른쪽 스위치 말고)</li>
+                      <li><b>소리</b> → 목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → <b>다운로드</b>에서 받은 파일(catholicgram-…) 고르기</li>
                     </ol>
                   ) : (
                     <>
                       <ol className="list-decimal pl-5 space-y-0.5">
                         <li>바탕화면의 <b>가톨릭그램 아이콘을 꾹</b> 누르기</li>
                         <li><b>ⓘ (앱 정보)</b> → <b>알림</b></li>
-                        <li>알림 종류(카테고리)를 하나 누르고 <b>소리</b> 누르기</li>
+                        <li>맨 아래 <b>알림 카테고리</b>(알림 종류)에서 하나를 글자로 누르고 <b>소리</b> 누르기</li>
                         <li>목록 위의 <b>＋</b>(또는 맨 아래 <b>알림음 추가</b>) → 받은 <b>가톨릭그램 …</b>(파일 이름 catholicgram-…) 고르기</li>
                       </ol>
                       <p className="mt-1.5 text-[0.8125rem] text-sky-800">휴대폰에 들어 있는 다른 소리를 골라도 돼요. 앱 정보에 알림 종류가 없으면 <b>설정 → 애플리케이션 → {device.browser} → 알림</b>에서 catholicgram 사이트의 소리를 바꿔 주세요.</p>
