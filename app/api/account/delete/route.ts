@@ -44,7 +44,8 @@ export async function POST(request: Request) {
       .map(name => decodeURIComponent(name));
     if (postFiles.length > 0) await admin.storage.from('community-images').remove(postFiles);
     const { data: avatars } = await admin.storage.from('avatars').list('', { search: uid, limit: 100 });
-    const avatarFiles = (avatars || []).map(f => f.name).filter(name => name.startsWith(uid));
+    // 단체방 사진(`<id>_group_…`, 방장이 올림)은 남은 교우들이 계속 보므로 지우지 않는다
+    const avatarFiles = (avatars || []).map(f => f.name).filter(name => name.startsWith(uid) && !name.includes('_group_'));
     if (avatarFiles.length > 0) await admin.storage.from('avatars').remove(avatarFiles);
     const { data: videos } = await admin.storage.from('post-videos').list(uid, { limit: 1000 });
     const videoFiles = (videos || []).map(f => `${uid}/${f.name}`);

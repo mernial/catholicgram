@@ -51,6 +51,8 @@ import MusicPicker, { type SelectedMusic, type MusicSegmentTarget } from '@/comp
 import BgmAdmin from '@/components/BgmAdmin';
 import MusicLibrary from '@/components/MusicLibrary';
 import Switch from '@/components/Switch';
+import ChatGallery, { galleryItems } from '@/components/ChatGallery';
+import { clearChatMutes, dmRoom as dmMuteRoom, groupRoom, isRoomMuted as isRoomMutedNow, loadChatMutes, MUTE_SETUP_ADMIN, MUTE_SETUP_HINT, setRoomMuted, useChatMutes } from '@/lib/chat-mutes';
 import ProfileMusicPicker from '@/components/ProfileMusicPicker';
 import MusicGift from '@/components/MusicGift';
 import MemberMusicGift from '@/components/MemberMusicGift';
@@ -530,6 +532,7 @@ export default function Home() {
   const [lettersStart, setLettersStart] = useState<'write' | 'mine'>('write'); // 사연함: 알림으로 열면 '보낸 사연'
   const [showLounge, setShowLounge] = useState(false);   // 모두의 사랑방 (전체 대화방)
   const [groupChats, setGroupChats] = useState<GroupChatRow[]>([]);  // 내 단체 채팅방 (안 읽은 수 포함)
+  const [groupAvatars, setGroupAvatars] = useState<Record<string, string>>({}); // 단체방 사진 (방장이 바꾼 것)
   const [openGroup, setOpenGroup] = useState<{ id: string; adminView: boolean } | null>(null); // 열려 있는 단체 채팅방 (관리자는 몰래 읽기)
   const [showNewChat, setShowNewChat] = useState(false);              // 새 채팅: 교우 찾아 1:1 · 단체방 만들기
   const [switchingAccount, setSwitchingAccount] = useState(false);    // '다른 계정으로 로그인': 로그인 창에서 계정을 새로 고르게
@@ -1446,6 +1449,12 @@ export default function Home() {
   const fetchGroupChats = async () => {
     const { data, error } = await supabase.rpc('my_group_chats');
     if (!error) { setGroupChats((data || []) as GroupChatRow[]); groupsLoadedRef.current = true; }
+    // 방 사진 (방장이 바꾼 것, supabase/chat-settings.sql 전이면 없음)
+    const ids = ((data || []) as GroupChatRow[]).map(g => g.id);
+    if (ids.length) {
+      const { data: pics } = await supabase.from('group_chats').select('id, avatar_url').in('id', ids);
+      if (pics) setGroupAvatars(prev => same(prev, Object.fromEntries((pics as { id: string; avatar_url: string | null }[]).filter(x => x.avatar_url).map(x => [x.id, x.avatar_url as string]))));
+    }
   };
   // 관리자: 모든 단체 채팅방
   const fetchAdminGroups = async () => {
@@ -1811,12 +1820,13 @@ export default function Home() {
   // 메시지 목록에서 대화방 나가기 (1:1은 내 화면에서만 지움 · 단체방은 방에서 나감)
   const [swipedRow, setSwipedRow] = useState<string | null>(null); // 메시지 목록에서 옆으로 밀어 '나가기'가 나온 줄
   const leaveDmThread = async (p: { id: string; baptismal_name: string; isRequest?: boolean }) => {
-    if (!(await askConfirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`))) return;
+    if (!(await askConfirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`))) return false;
     const now = new Date().toISOString();
     // 수락했던 대화는 나중에 다시 메시지가 오면 바로 보이고, 요청이던 대화는 다시 요청으로
-    if (!(await saveDmThread(p.id, { left_at: now, accepted_at: p.isRequest ? null : now }))) return;
+    if (!(await saveDmThread(p.id, { left_at: now, accepted_at: p.isRequest ? null : now }))) return false;
     setChatPartners(prev => prev.filter(x => x.id !== p.id));
     setUnreadMessages(prev => prev.filter(u => u.partner.id !== p.id));
+    return true;
   };
   const leaveGroupFromList = async (g: GroupChatRow) => {
     if (!(await askConfirm(`'${g.name}' 채팅방에서 나갈까요?\n나가면 이 방의 대화를 더 볼 수 없어요.`))) return;
@@ -1829,6 +1839,21 @@ export default function Home() {
   const [selectCopy, setSelectCopy] = useState<string | null>(null);
   const [showDmBookmarks, setShowDmBookmarks] = useState(false);
   const dmRoom = currentChatUser ? `dm:${currentChatUser.id}` : null;
+  // 채팅방 알림 끄기 목록 (로그인할 때·메시지 목록을 열 때 서버와 맞춤)
+  useEffect(() => { if (user?.id) loadChatMutes(user.id); else clearChatMutes(); }, [user?.id, activeTab === 'messages']); // eslint-disable-line react-hooks/exhaustive-deps
+  // 1:1 대화방 메뉴(⋯): 알림 끄기 · 사진·동영상 모아 보기 · 프로필 · 나가기
+  const [dmMenuOpen, setDmMenuOpen] = useState(false);
+  const [dmGallery, setDmGallery] = useState(false);
+  useBackLayer(dmMenuOpen, () => setDmMenuOpen(false));
+  useEffect(() => { setDmMenuOpen(false); setDmGallery(false); }, [currentChatUser?.id, activeTab]);
+  const chatMutes = useChatMutes();
+  const dmMuted = !!currentChatUser && chatMutes.rooms.has(dmMuteRoom(currentChatUser.id));
+  const toggleChatMute = async (room: string, next: boolean) => {
+    const r = await setRoomMuted(room, next);
+    if (r === 'missing') showAlert(isAdminRef.current ? MUTE_SETUP_ADMIN : MUTE_SETUP_HINT);
+    else if (r === 'error') showAlert('바꾸지 못했어요.\n잠시 후 다시 해 주세요.');
+    else showToast(next ? '🔕 이 채팅방 알림을 껐어요' : '🔔 이 채팅방 알림을 켰어요');
+  };
   const dmBookmarks = useBookmarks(user?.id, dmRoom);
   const dmHidden = useHiddenMessages(user?.id, dmRoom);
   // '읽음'은 상대가 읽은 내 마지막 메시지에 — 그 뒤에 상대가 답을 보냈으면 읽은 게 당연하니 숨김 (테스터 건의, 카카오톡·인스타그램처럼)
@@ -3517,7 +3542,8 @@ export default function Home() {
     unreadMessages.forEach(u => {
       const chattingNow = activeTab === 'chat' && currentChatUser?.id === u.partner.id;
       // 조용히 보낸 메시지(🔕)는 배너·소리 없이 — 안 읽은 숫자에만
-      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow && !u.lastSilent) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner), at: u.lastAt });
+      // 알림을 끈 대화방(🔕)도 배너·소리 없이
+      if (isNew(`m:${u.partner.id}:${u.lastAt}`, u.lastAt) && !chattingNow && !u.lastSilent && !isRoomMutedNow(dmMuteRoom(u.partner.id))) fresh.push({ key: `m:${u.partner.id}`, icon: '✉️', title: `${u.partner.baptismal_name}님의 메시지`, body: u.lastMessage, action: () => openChatRoom(u.partner), at: u.lastAt });
     });
     notifications.forEach(n => {
       if (isNew(`c:${n.id}`, n.created_at)) fresh.push({ key: `c:${n.id}`, icon: n.mention ? '🏷️' : '💬', title: n.mention ? '회원님이 언급되었어요' : n.is_reply ? '새 답글' : '새 댓글', body: `${n.author_name}님: ${n.content}`, action: () => openNotification(n), at: n.created_at });
@@ -3611,6 +3637,7 @@ export default function Home() {
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
     setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setShowMusicLibrary(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null); setMemberMusicGift(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
+    setDmMenuOpen(false); setDmGallery(false);
   };
 
   // 푸시 알림을 눌러 들어온 경우 해당 글/대화로 이동
@@ -4592,6 +4619,7 @@ export default function Home() {
                 <div className="flex items-center gap-1 min-w-0">
                   <h1 className="font-bold text-stone-900 text-sm truncate">{currentChatUser?.baptismal_name}</h1>
                   <RoleBadge type={currentChatUser?.badge_type} />
+                  {dmMuted && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-4 h-4 text-stone-400" /></span>}
                 </div>
                 <p className="text-[0.75rem] text-stone-400 truncate">@{currentChatUser?.handle}</p>
               </div>
@@ -4602,7 +4630,9 @@ export default function Home() {
           <div className="flex items-center">
             <ChatSearchButton onClick={() => dmSearch.setOpen(true)} />
             {dmBookmarks.list.length > 0 && <button onClick={() => setShowDmBookmarks(true)} className="w-10 h-10 flex items-center justify-center text-lg" aria-label={`책갈피 ${dmBookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
-            <button onClick={() => openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })} className="text-stone-500 hover:text-stone-900 px-2 text-lg font-bold" aria-label="더보기">⋯</button>
+            <button onClick={() => setDmMenuOpen(true)} className="w-10 h-10 flex items-center justify-center text-stone-600 hover:text-stone-900" aria-label="채팅방 메뉴 (알림 끄기 · 사진·동영상 · 나가기)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" d="M4 7h16M4 12h16M4 17h16" /></svg>
+            </button>
           </div>
         )) : (
           <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
@@ -5667,11 +5697,14 @@ export default function Home() {
               return <>{items.map(({ group: g, partner }, idx) => g ? (
                 <SwipeRow key={`g-${g.id}`} {...swipe(`g-${g.id}`, () => leaveGroupFromList(g))}>
                 <button onClick={() => openGroupChat(g.id)} className="w-full p-4 flex items-center gap-3 hover:bg-stone-50 transition-colors text-left">
-                  <span className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xl shrink-0">👥</span>
+                  {groupAvatars[g.id]
+                    ? <img loading="lazy" src={groupAvatars[g.id]} alt="" className="w-12 h-12 rounded-full object-cover border border-stone-200 shrink-0" />
+                    : <span className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-xl shrink-0">👥</span>}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-1.5">
                       <h3 className="font-bold text-stone-800 text-sm truncate">{g.name}</h3>
                       <span className="shrink-0 text-xs text-stone-400">{g.member_count}</span>
+                      {chatMutes.rooms.has(groupRoom(g.id)) && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-3.5 h-3.5 text-stone-400" /></span>}
                     </div>
                     <p className={`text-xs mt-0.5 line-clamp-1 ${g.unread > 0 ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>
                       {!g.last_message ? '단체 채팅방' : g.last_kind === 'system' ? g.last_message : `${g.last_sender}: ${chatPreview(g.last_message)}`}
@@ -5703,6 +5736,7 @@ export default function Home() {
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
                   <RoleBadge type={partner.badge_type} />
+                  {chatMutes.rooms.has(dmMuteRoom(partner.id)) && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-3.5 h-3.5 text-stone-400" /></span>}
                   {partner.isRequest && <span className="shrink-0 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">요청</span>}
                 </div>
                 <p className={`text-xs mt-0.5 line-clamp-1 ${unreadMessages.some(u => u.partner.id === partner.id) ? 'text-stone-900 font-bold' : 'text-stone-500'}`}>{partner.lastMessage || `@${partner.handle}`}</p>
@@ -5908,6 +5942,55 @@ export default function Home() {
           )}
           {captured && <CapturePreview blob={captured.blob} title={captured.title} onClose={() => setCaptured(null)} />}
           {selectCopy !== null && <SelectCopySheet text={selectCopy} onClose={() => setSelectCopy(null)} />}
+          {/* 1:1 채팅방 메뉴 */}
+          {dmMenuOpen && currentChatUser && (() => {
+            const p = currentChatUser;
+            const isReq = chatPartners.find(x => x.id === p.id)?.isRequest;
+            const row = 'w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-stone-50';
+            return (
+              <div className="fixed inset-0 z-[80] bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setDmMenuOpen(false)}>
+                <div className="w-full sm:w-96 flex flex-col bg-white rounded-t-3xl sm:rounded-3xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label="채팅방 메뉴">
+                  <div className="px-5 pt-5 pb-3 flex items-center gap-3 border-b border-stone-100">
+                    {p.avatar_url
+                      ? <img src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
+                      : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{initial(p.baptismal_name)}</span>}
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-bold text-[1.0625rem] text-stone-900 truncate">{p.baptismal_name}님과의 대화</span>
+                      <span className="block text-[0.8125rem] text-stone-500 truncate">@{p.handle}</span>
+                    </span>
+                    <button onClick={() => setDmMenuOpen(false)} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl" aria-label="닫기">×</button>
+                  </div>
+                  <div className="divide-y divide-stone-100">
+                    <div className="px-5 py-3 flex items-center gap-3">
+                      <Icon name={dmMuted ? 'bellSlash' : 'bell'} className={`w-5 h-5 ${dmMuted ? 'text-stone-400' : 'text-amber-600'}`} />
+                      <span className="flex-1 min-w-0">
+                        <span className="block font-bold text-[0.9375rem] text-stone-900">채팅방 알림</span>
+                        <span className="block text-[0.8125rem] text-stone-500">{dmMuted ? '꺼짐 · 새 메시지가 와도 휴대폰 알림이 울리지 않아요' : '켜짐 · 새 메시지가 오면 휴대폰 알림'}</span>
+                      </span>
+                      <Switch on={!dmMuted} onChange={next => toggleChatMute(dmMuteRoom(p.id), !next)} label="채팅방 알림" />
+                    </div>
+                    <button onClick={() => { setDmMenuOpen(false); setDmGallery(true); }} className={row}>
+                      <Icon name="image" className="w-5 h-5 text-sky-700" />
+                      <span className="flex-1 font-bold text-[0.9375rem] text-stone-900">사진·동영상 모아 보기</span>
+                      <span className="text-stone-400" aria-hidden="true">›</span>
+                    </button>
+                    <button onClick={() => { setDmMenuOpen(false); openProfileCard({ id: p.id, name: p.baptismal_name, avatar_url: p.avatar_url, handle: p.handle, badge_type: p.badge_type }); }} className={row}>
+                      <Icon name="user" className="w-5 h-5 text-stone-600" />
+                      <span className="flex-1 font-bold text-[0.9375rem] text-stone-900">프로필 보기</span>
+                      <span className="text-stone-400" aria-hidden="true">›</span>
+                    </button>
+                  </div>
+                  <button onClick={async () => { setDmMenuOpen(false); if (await leaveDmThread({ id: p.id, baptismal_name: p.baptismal_name, isRequest: isReq })) goToTab('messages'); }}
+                    className="m-4 mt-3 py-3 rounded-xl border-2 border-red-200 text-red-600 font-bold">🚪 대화방 나가기</button>
+                </div>
+              </div>
+            );
+          })()}
+          {dmGallery && currentChatUser && (
+            <ChatGallery title={`${currentChatUser.baptismal_name}님과의 대화`}
+              items={galleryItems(chatMessages.filter(m => !m.deleted_at && !dmHidden.hidden.has(String(m.id)) && (m.image_url || m.images?.length)))}
+              onClose={() => setDmGallery(false)} />
+          )}
           {showDmBookmarks && (
             <BookmarkSheet items={dmBookmarks.list} onClose={() => setShowDmBookmarks(false)} onRemove={dmBookmarks.remove}
               onJump={id => { setShowDmBookmarks(false); if (document.getElementById(`dm-${id}`)) setTimeout(() => jumpToMessage(id), 50); else alert('지금 불러온 대화에 없는 메시지예요.'); }} />

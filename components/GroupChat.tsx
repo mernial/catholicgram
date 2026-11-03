@@ -23,7 +23,12 @@ import { usePressGestures } from '@/lib/use-press-gestures';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
-import { askConfirm } from '@/components/ConfirmDialog';
+import { askConfirm, showAlert } from '@/components/ConfirmDialog';
+import Switch from '@/components/Switch';
+import ChatGallery, { galleryItems, type GalleryItem } from '@/components/ChatGallery';
+import { groupRoom, MUTE_SETUP_ADMIN, MUTE_SETUP_HINT, setRoomMuted, useChatMutes } from '@/lib/chat-mutes';
+import { uploadMedia } from '@/lib/upload';
+import { ADMIN_EMAILS } from '@/lib/admin';
 import { same } from '@/lib/typing-guard';
 import { ChatSearchBar, ChatSearchButton, HighlightText, chatSearchText, likePattern, useChatSearch } from '@/components/ChatSearch';
 import { ChatDayDivider, isNewChatDay } from '@/components/ChatDayDivider';
@@ -48,6 +53,27 @@ const EXTRAS_HINT = '단체 채팅방 답장·감정 표시·고치기를 준비
 const isMissing = (e: { code?: string; message?: string } | null) => !!e && ['42703', '42P01', '42883', 'PGRST202', 'PGRST204', 'PGRST205'].includes(e.code || '');
 
 const PAGE = 80;
+const OWNER_SETUP = '방장 기능(채팅방 사진·내보내기)을 준비 중이에요.';
+const OWNER_SETUP_ADMIN = '방장 기능을 쓰려면 Supabase 에서 supabase/chat-settings.sql 을 실행해 주세요.';
+
+// 방 사진: 가운데를 정사각형으로 잘라 512px JPEG
+function squareJpeg(file: File): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const out = Math.min(512, side);
+      const c = document.createElement('canvas');
+      c.width = c.height = out;
+      c.getContext('2d')!.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, out, out);
+      URL.revokeObjectURL(url);
+      c.toBlob(b => (b ? resolve(b) : reject(new Error('blob'))), 'image/jpeg', 0.88);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('image')); };
+    img.src = url;
+  });
+}
 const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit' });
 
 export default function GroupChat({ user, chatId, adminView = false, blockedIds, onClose, onOpenProfile, onReport, onSent, onChanged, onZoom }: {
@@ -63,6 +89,13 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   onZoom?: (images: string[], index: number) => void; // 사진 크게 보기
 }) {
   const [name, setName] = useState('');
+  const [ownerId, setOwnerId] = useState<string | null>(null);     // 방장 (chat-settings.sql 전이면 null)
+  const [roomPhoto, setRoomPhoto] = useState<string | null>(null);  // 방 사진
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [gallery, setGallery] = useState<{ items: GalleryItem[]; loading: boolean } | null>(null); // 사진·동영상 모아 보기
+  const mutes = useChatMutes();
+  const muted = mutes.rooms.has(groupRoom(chatId));
+  const isAdminUser = !!user.email && ADMIN_EMAILS.includes(user.email);
   const [members, setMembers] = useState<Member[]>([]);
   const [people, setPeople] = useState<Record<string, ChatPerson>>({});
   const [messages, setMessages] = useState<GroupMessage[]>([]);
@@ -85,6 +118,8 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const contentRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const atBottomRef = useRef(true);
+  const membersRef = useRef(members);
+  useEffect(() => { membersRef.current = members; }, [members]);
   const peopleRef = useRef(people);
   peopleRef.current = people;
   const messagesRef = useRef(messages);
@@ -133,13 +168,19 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   };
 
   const loadRoom = async () => {
+    // 방장·방 사진 칸(chat-settings.sql)이 없으면 예전처럼 이름만
+    const full = await supabase.from('group_chats').select('id, name, owner_id, avatar_url').eq('id', chatId).maybeSingle();
+    const ready = !(full.error && isMissing(full.error));
     const [{ data: chat, error: e1 }, { data: mem }] = await Promise.all([
-      supabase.from('group_chats').select('id, name').eq('id', chatId).maybeSingle(),
+      ready ? Promise.resolve(full) : supabase.from('group_chats').select('id, name').eq('id', chatId).maybeSingle(),
       supabase.from('group_chat_members').select('user_id, joined_at, last_read_at').eq('chat_id', chatId).order('joined_at', { ascending: true }),
     ]);
     if (e1) { setError(isGroupSetupError(e1) ? GROUP_SETUP_HINT : '채팅방을 불러오지 못했어요.'); return false; }
     if (!chat) { setError('채팅방을 찾을 수 없어요. 나갔거나 없어진 방이에요.'); return false; }
     setName(chat.name);
+    const extra = chat as { owner_id?: string | null; avatar_url?: string | null };
+    setOwnerId(ready ? extra.owner_id ?? null : null);
+    setRoomPhoto(ready ? extra.avatar_url ?? null : null);
     setMembers(prev => same(prev, (mem || []) as Member[]));
     loadPeople((mem || []).map(m => m.user_id));
     return true;
@@ -150,6 +191,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const loadReads = async () => {
     const { data } = await supabase.from('group_chat_members').select('user_id, joined_at, last_read_at').eq('chat_id', chatId).order('joined_at', { ascending: true });
     if (!data) return;
+    // 방장이 내보냈거나 방이 없어짐 (내가 들어와 있지 않으면 교우 명단이 비어 옴)
+    if (!adminView && data.length === 0 && membersRef.current.some(m => m.user_id === user.id)) {
+      setError('이 채팅방에서 나왔어요. 방장이 내보냈거나 방이 없어졌어요.');
+      onChanged?.();
+    }
     setMembers(prev => same(prev, data as Member[]));
     loadPeople(data.map(m => m.user_id));
   };
@@ -474,6 +520,63 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
     onClose();
   };
 
+  // 방장: 방 사진 바꾸기·지우기, 교우 내보내기 (서버 함수가 방장인지 다시 확인)
+  const isOwner = !adminView && !!ownerId && ownerId === user.id;
+  const ownerError = (err: { code?: string; message: string }) => {
+    if (isMissing(err)) return showAlert(isAdminUser ? OWNER_SETUP_ADMIN : OWNER_SETUP);
+    return showAlert(/[가-힣]/.test(err.message) ? err.message.replace(/^.*?: /, '') : '하지 못했어요. 잠시 후 다시 해 주세요.');
+  };
+  const pickRoomPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !isOwner) return;
+    setPhotoBusy(true);
+    try {
+      const blob = await squareJpeg(file);
+      const url = await uploadMedia(blob, { kind: 'avatars', ext: 'jpg', contentType: 'image/jpeg', bucket: 'avatars', path: `${user.id}_group_${Date.now()}.jpg` });
+      const { error: err } = await supabase.rpc('set_group_chat_avatar', { p_chat: chatId, p_url: url });
+      if (err) { await ownerError(err); return; }
+      setRoomPhoto(url);
+      onChanged?.();
+      toast('채팅방 사진을 바꿨어요');
+    } catch {
+      showAlert('사진을 올리지 못했어요.\n잠시 후 다시 해 주세요.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+  const removeRoomPhoto = async () => {
+    if (!(await askConfirm('채팅방 사진을 지울까요?\n기본 그림(👥)으로 돌아가요.'))) return;
+    const { error: err } = await supabase.rpc('set_group_chat_avatar', { p_chat: chatId, p_url: null });
+    if (err) { await ownerError(err); return; }
+    setRoomPhoto(null);
+    onChanged?.();
+  };
+  const kick = async (memberId: string) => {
+    const who = people[memberId]?.baptismal_name || '교우';
+    if (!(await askConfirm({ title: `${who}님을 내보낼까요?`, message: '이 채팅방에서 나가게 돼요. 나중에 다시 초대할 수 있어요.', ok: '내보내기', danger: true }))) return;
+    const { error: err } = await supabase.rpc('remove_from_group_chat', { p_chat: chatId, p_user: memberId });
+    if (err) { await ownerError(err); return; }
+    loadRoom();
+    onChanged?.();
+  };
+  const toggleMute = async (next: boolean) => {
+    const r = await setRoomMuted(groupRoom(chatId), next);
+    if (r === 'missing') showAlert(isAdminUser ? MUTE_SETUP_ADMIN : MUTE_SETUP_HINT);
+    else if (r === 'error') showAlert('바꾸지 못했어요.\n잠시 후 다시 해 주세요.');
+    else toast(next ? '🔕 이 채팅방 알림을 껐어요' : '🔔 이 채팅방 알림을 켰어요');
+  };
+  // 사진·동영상 모아 보기: 아직 안 불러온 옛 대화까지 서버에서 (최근 500개 메시지)
+  const openGallery = async () => {
+    const hidden = (m: { id: string; user_id: string | null }) => hiddenMsgs.hidden.has(m.id) || (!!m.user_id && blockedIds.has(m.user_id));
+    const local = messagesRef.current.filter(m => m.kind === 'text' && (m.image_url || m.images?.length) && !hidden(m));
+    setGallery({ items: galleryItems(local), loading: true });
+    const { data, error: err } = await supabase.from('group_chat_messages').select('id, user_id, image_url, images, created_at')
+      .eq('chat_id', chatId).eq('kind', 'text').or('image_url.not.is.null,images.not.is.null').order('created_at', { ascending: false }).limit(500);
+    const rows = err ? local : ((data || []) as GroupMessage[]).filter(m => !hidden(m));
+    setGallery(g => (g ? { items: galleryItems(rows), loading: false } : g));
+  };
+
   const me = members.some(m => m.user_id === user.id);
   const canWrite = !adminView && me && !error;
   useTypeToInput(() => inputRef.current, !!canWrite); // 실제 자판: 입력칸 밖에서 엔터·글자 → 입력칸으로
@@ -591,9 +694,15 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-stone-700" aria-label="뒤로">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
         </button>
-        <button onClick={() => setShowMembers(true)} className="flex-1 min-w-0 text-left" aria-label="참여한 교우 보기">
-          <h2 className="font-bold text-[1.0625rem] text-stone-900 truncate">👥 {name || '단체 채팅방'}</h2>
-          <p className="text-[0.8125rem] text-stone-500">{members.length}명 함께하는 중 <span className="text-stone-400">▾ 누구?</span></p>
+        <button onClick={() => setShowMembers(true)} className="flex-1 min-w-0 text-left flex items-center gap-2" aria-label="채팅방 설정 · 참여한 교우 보기">
+          {roomPhoto && <img src={roomPhoto} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200 shrink-0" />}
+          <span className="min-w-0">
+            <h2 className="font-bold text-[1.0625rem] text-stone-900 truncate flex items-center gap-1">
+              <span className="truncate">{roomPhoto ? '' : '👥 '}{name || '단체 채팅방'}</span>
+              {muted && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-4 h-4 text-stone-400" /></span>}
+            </h2>
+            <p className="text-[0.8125rem] text-stone-500">{members.length}명 함께하는 중 <span className="text-stone-400">▾ 누구?</span></p>
+          </span>
         </button>
         <ChatSearchButton onClick={() => search.setOpen(true)} className="w-11 h-11 text-stone-600" />
         {bookmarks.list.length > 0 && <button onClick={() => setShowBookmarks(true)} className="w-11 h-11 flex items-center justify-center text-lg" aria-label={`책갈피 ${bookmarks.list.length}개 보기`}><Icon name="bookmark" fill className="w-6 h-6 text-amber-600" /></button>}
@@ -820,75 +929,88 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
           onJump={id => { setShowBookmarks(false); if (document.getElementById(`gm-${id}`)) setTimeout(() => jumpTo(id), 50); else alert('지금 불러온 대화에 없는 메시지예요. 위로 올려 \'이전 대화 더 보기\'를 눌러 주세요.'); }} />
       )}
 
-      {/* 참여한 교우 · 초대 · 이름 바꾸기 · 나가기 */}
+      {/* 채팅방 설정: 방 사진(방장) · 알림 · 사진·동영상 · 초대 · 이름 바꾸기 · 참여한 교우(방장은 내보내기) · 나가기 */}
       {showMembers && (
         <div className="fixed inset-0 z-[5] bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setShowMembers(false)}>
-          <div className="w-full sm:w-96 max-h-[85dvh] flex flex-col bg-white rounded-t-3xl sm:rounded-3xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label="참여한 교우">
-            <div className="shrink-0 px-5 pt-5 pb-3 flex items-center justify-between border-b border-stone-100">
-              <h3 className="font-bold text-[1.125rem] text-stone-900 truncate">👥 {name} · {members.length}명</h3>
+          <div className="w-full sm:w-96 max-h-[88dvh] flex flex-col bg-white rounded-t-3xl sm:rounded-3xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label="채팅방 설정">
+            <div className="shrink-0 px-5 pt-3 flex justify-end">
               <button onClick={() => setShowMembers(false)} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl" aria-label="닫기">×</button>
             </div>
-            {canWrite && (
-              <div className="shrink-0 px-4 py-3 grid grid-cols-2 gap-2 border-b border-stone-100">
-                <button onClick={() => { setShowMembers(false); setShowInvite(true); }} className="py-2.5 rounded-xl bg-blue-600 text-white text-[0.9375rem] font-bold">➕ 교우 초대</button>
-                <button onClick={rename} className="py-2.5 rounded-xl border border-stone-300 text-stone-700 text-[0.9375rem] font-bold">✏️ 방 이름 바꾸기</button>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {/* 방 사진 · 이름 */}
+              <div className="px-5 pb-4 flex flex-col items-center text-center border-b border-stone-100">
+                <div className="relative">
+                  {roomPhoto
+                    ? <img src={roomPhoto} alt="채팅방 사진" className="w-20 h-20 rounded-full object-cover border border-stone-200" />
+                    : <span className="w-20 h-20 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 flex items-center justify-center text-4xl">👥</span>}
+                  {isOwner && (
+                    <label className={`absolute -right-1 -bottom-1 w-9 h-9 rounded-full bg-blue-600 text-white border-2 border-white flex items-center justify-center cursor-pointer ${photoBusy ? 'opacity-60' : ''}`} aria-label="채팅방 사진 바꾸기">
+                      {photoBusy ? <span className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" /> : <Icon name="camera" className="w-4.5 h-4.5" />}
+                      <input type="file" accept="image/*" className="hidden" disabled={photoBusy} onChange={pickRoomPhoto} />
+                    </label>
+                  )}
+                </div>
+                <h3 className="mt-2 font-bold text-[1.125rem] text-stone-900 break-all">{name}</h3>
+                <p className="text-[0.8125rem] text-stone-500">{members.length}명{ownerId && <> · 방장 {nameOf(ownerId)}</>}</p>
+                {isOwner && roomPhoto && <button onClick={removeRoomPhoto} className="mt-1 text-[0.8125rem] text-stone-500 underline">사진 지우기</button>}
               </div>
-            )}
-            <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100">
-              {members.map(m => {
-                const p = people[m.user_id];
-                return (
-                  <button key={m.user_id} onClick={() => { setShowMembers(false); onOpenProfile(m.user_id); }} className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
-                    <CelebrateBand id={m.user_id}>{p?.avatar_url
-                      ? <img loading="lazy" src={p.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-stone-200" />
-                      : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
+              {/* 알림 · 사진·동영상 */}
+              <div className="divide-y divide-stone-100 border-b border-stone-100">
+                {!adminView && me && (
+                  <div className="px-5 py-3 flex items-center gap-3">
+                    <Icon name={muted ? 'bellSlash' : 'bell'} className={`w-5 h-5 ${muted ? 'text-stone-400' : 'text-amber-600'}`} />
                     <span className="flex-1 min-w-0">
-                      <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900">{p?.baptismal_name || '교우'}{m.user_id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} /></span>
-                      {p?.handle && <span className="block text-[0.8125rem] text-stone-500">@{p.handle}</span>}
+                      <span className="block font-bold text-[0.9375rem] text-stone-900">채팅방 알림</span>
+                      <span className="block text-[0.8125rem] text-stone-500">{muted ? '꺼짐 · 새 메시지가 와도 휴대폰 알림이 울리지 않아요' : '켜짐 · 새 메시지가 오면 휴대폰 알림'}</span>
                     </span>
-                  </button>
-                );
-              })}
+                    <Switch on={!muted} onChange={next => toggleMute(!next)} label="채팅방 알림" />
+                  </div>
+                )}
+                <button onClick={openGallery} className="w-full px-5 py-3 flex items-center gap-3 text-left hover:bg-stone-50">
+                  <Icon name="image" className="w-5 h-5 text-sky-700" />
+                  <span className="flex-1 font-bold text-[0.9375rem] text-stone-900">사진·동영상 모아 보기</span>
+                  <span className="text-stone-400" aria-hidden="true">›</span>
+                </button>
+              </div>
+              {canWrite && (
+                <div className="px-4 py-3 grid grid-cols-2 gap-2 border-b border-stone-100">
+                  <button onClick={() => { setShowMembers(false); setShowInvite(true); }} className="py-2.5 rounded-xl bg-blue-600 text-white text-[0.9375rem] font-bold">➕ 교우 초대</button>
+                  <button onClick={rename} className="py-2.5 rounded-xl border border-stone-300 text-stone-700 text-[0.9375rem] font-bold">✏️ 방 이름 바꾸기</button>
+                </div>
+              )}
+              <p className="px-5 pt-3 pb-1 text-[0.8125rem] font-bold text-stone-500">참여한 교우 {members.length}명</p>
+              <ul className="divide-y divide-stone-100">
+                {members.map(m => {
+                  const p = people[m.user_id];
+                  const owner = m.user_id === ownerId;
+                  return (
+                    <li key={m.user_id} className="flex items-center hover:bg-stone-50">
+                      <button onClick={() => { setShowMembers(false); onOpenProfile(m.user_id); }} className="flex-1 min-w-0 px-5 py-3 flex items-center gap-3 text-left">
+                        <CelebrateBand id={m.user_id}>{p?.avatar_url
+                          ? <img loading="lazy" src={p.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover border border-stone-200" />
+                          : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
+                        <span className="flex-1 min-w-0">
+                          <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900">
+                            <span className="truncate">{p?.baptismal_name || '교우'}</span>{m.user_id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} />
+                            {owner && <span className="shrink-0 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">👑 방장</span>}
+                          </span>
+                          {p?.handle && <span className="block text-[0.8125rem] text-stone-500">@{p.handle}</span>}
+                        </span>
+                      </button>
+                      {isOwner && m.user_id !== user.id && (
+                        <button onClick={() => kick(m.user_id)} className="shrink-0 mr-4 px-3 h-8 rounded-full border border-red-200 text-red-600 text-[0.8125rem] font-bold" aria-label={`${p?.baptismal_name || '교우'}님 내보내기`}>내보내기</button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
             {canWrite && <button onClick={leave} className="shrink-0 m-4 mt-2 py-3 rounded-xl border-2 border-red-200 text-red-600 font-bold">🚪 채팅방 나가기</button>}
           </div>
         </div>
       )}
 
-      {/* 읽음 확인: 이 메시지를 읽은 교우·안 읽은 교우 */}
-      {readInfo && (() => {
-        const { read, unread } = readersOf(readInfo);
-        const row = (id: string) => {
-          const p = people[id];
-          return (
-            <li key={id} className="px-5 py-2.5 flex items-center gap-3">
-              <CelebrateBand id={id}>{p?.avatar_url
-                ? <img loading="lazy" src={p.avatar_url} alt="" className="w-9 h-9 rounded-full object-cover border border-stone-200" />
-                : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
-              <span className="flex-1 min-w-0 flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900 truncate">{p?.baptismal_name || '교우'}{id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} /></span>
-            </li>
-          );
-        };
-        return (
-          <div className="fixed inset-0 z-[6] bg-black/50 flex items-end sm:items-center justify-center" onClick={() => setReadInfo(null)}>
-            <div className="w-full sm:w-96 max-h-[80dvh] flex flex-col bg-white rounded-t-3xl sm:rounded-3xl pb-[env(safe-area-inset-bottom)]" onClick={e => e.stopPropagation()} role="dialog" aria-label="읽음 확인">
-              <div className="shrink-0 px-5 pt-5 pb-3 flex items-start justify-between gap-2 border-b border-stone-100">
-                <div className="min-w-0">
-                  <h3 className="font-bold text-[1.125rem] text-stone-900">읽음 확인</h3>
-                  <p className="text-[0.8125rem] text-stone-500 truncate">{nameOf(readInfo.user_id)} · {preview(readInfo)}</p>
-                </div>
-                <button onClick={() => setReadInfo(null)} className="w-10 h-10 -mr-2 -mt-1 shrink-0 flex items-center justify-center text-stone-500 text-2xl" aria-label="닫기">×</button>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto pb-2">
-                <p className="px-5 pt-3 pb-1 text-[0.8125rem] font-bold text-amber-600">안 읽음 {unread.length}명</p>
-                {unread.length ? <ul>{unread.map(row)}</ul> : <p className="px-5 py-2 text-[0.875rem] text-stone-500">모두 읽었어요 🙏</p>}
-                <p className="px-5 pt-3 pb-1 text-[0.8125rem] font-bold text-stone-600">읽음 {read.length}명</p>
-                {read.length ? <ul>{read.map(row)}</ul> : <p className="px-5 py-2 text-[0.875rem] text-stone-500">아직 아무도 읽지 않았어요</p>}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      {gallery && <ChatGallery title={name || '단체 채팅방'} items={gallery.items} loading={gallery.loading} onClose={() => setGallery(null)} />}
 
       {showInvite && (
         <NewChat user={user} mode="invite" chatId={chatId} excludeIds={members.map(m => m.user_id)} blockedIds={blockedIds}
