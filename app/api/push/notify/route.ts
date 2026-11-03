@@ -45,6 +45,15 @@ async function viewingNow(admin: SupabaseClient, who: { userId: string; room: st
   return new Set(data.filter(r => wanted.has(`${r.user_id}|${r.room}`)).map(r => r.user_id as string));
 }
 
+// 채팅방 알림을 끈 교우 (supabase/chat-settings.sql 의 chat_mutes — 방 이름은 chat_presence 와 같음). 표가 없으면(SQL 전) 아무도 없음
+async function mutedNow(admin: SupabaseClient, who: { userId: string; room: string }[]) {
+  const rooms = Array.from(new Set(who.map(w => w.room)));
+  const { data, error } = await admin.from('chat_mutes').select('user_id, room').in('user_id', who.map(w => w.userId)).in('room', rooms);
+  if (error || !data) return new Set<string>();
+  const wanted = new Set(who.map(w => `${w.userId}|${w.room}`));
+  return new Set(data.filter(r => wanted.has(`${r.user_id}|${r.room}`)).map(r => r.user_id as string));
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -392,6 +401,13 @@ export async function POST(request: Request) {
     const viewing = await viewingNow(admin, targets.map(t => ({ userId: t.recipientId, room: roomOf(t.recipientId) })));
     targets = targets.filter(t => !viewing.has(t.recipientId));
     if (targets.length === 0) return Response.json({ sent: 0, skipped: 'viewing' });
+  }
+  // 1:1·단체방: 그 채팅방 알림을 끈 교우에게는 보내지 않는다 (사랑방 부르기는 그대로)
+  if (presenceRoom && (type === 'message' || type === 'group_message')) {
+    const roomOf = presenceRoom;
+    const muted = await mutedNow(admin, targets.map(t => ({ userId: t.recipientId, room: roomOf(t.recipientId) })));
+    targets = targets.filter(t => !muted.has(t.recipientId));
+    if (targets.length === 0) return Response.json({ sent: 0, skipped: 'muted' });
   }
   // 알림마다 주소에 고유 표시(n)를 붙인다 → 앱이 같은 알림 주소로 두 번 열리지 않게 (휴대폰이 예전 주소로 앱을 다시 띄우는 경우)
   const nonce = Date.now().toString(36);
