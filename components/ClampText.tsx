@@ -5,7 +5,7 @@ import { registerExpander } from '@/lib/select-scope';
 
 // 글을 정해진 줄 수만 보여 주고, 넘치면 마지막 줄의 글 바로 뒤에 '… 더 보기'를 붙인다.
 // 글이나 '더 보기'를 누르면 전체를 펼치고, onCollapse가 있으면 끝에 '간략히 보기'로 다시 접는다.
-export default function ClampText({ lines, expanded, onExpand, onCollapse, prefix, prefixText = '', text, renderText, className = '' }: {
+export default function ClampText({ lines, expanded, onExpand, onCollapse, prefix, prefixText = '', text, renderText, className = '', selectId }: {
   lines: number;
   expanded: boolean;
   onExpand: () => void;
@@ -15,6 +15,7 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
   text: string;
   renderText: (text: string) => React.ReactNode;
   className?: string;
+  selectId?: string;          // 이 글을 꾹 눌러 고르면 page 가 '글 복사·글만 사진으로' 막대를 띄울 때 쓰는 id (lib/select-scope)
 }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [cut, setCut] = useState<number | null>(null); // 보여 줄 글자 수 (null = 전부)
@@ -104,12 +105,12 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
       {prefix}
       {folded ? (
         <>
-          <span data-select-scope="" data-folded="1" data-select-key={selectKey}>{renderText(text.slice(0, cut).trimEnd())}</span>{' '}
+          <span data-select-scope="" data-folded="1" data-select-key={selectKey} data-select-id={selectId}>{renderText(text.slice(0, cut).trimEnd())}</span>{' '}
           <button type="button" {...tap(onExpand)} className="font-semibold text-stone-500 whitespace-nowrap py-1">… 더 보기</button>
         </>
       ) : (
         <>
-          <span data-select-scope="" data-select-key={selectKey}>{renderText(text)}</span>
+          <span data-select-scope="" data-select-key={selectKey} data-select-id={selectId}>{renderText(text)}</span>
           {expanded && long && onCollapse && (
             <>
               {' '}

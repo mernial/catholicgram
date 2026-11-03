@@ -3775,7 +3775,8 @@ export default function Home() {
   useBackLayer(!!commentMenu, () => setCommentMenu(null)); // 댓글 꾹 누르기 메뉴: 뒤로가기는 메뉴만
   useBackLayer(showCollage, () => setShowCollage(false)); // 글쓰기의 콜라주 만들기: 뒤로가기는 콜라주만 (쓰던 글은 그대로)
   // 게시글의 글만 복사·사진으로 (루비로사 건의: 묵상글만 캡처·저장) + '모두 선택'은 그 글 안으로 (lib/select-scope)
-  useSelectScope();
+  // 글을 꾹 눌러 고르는 동안만 '글 복사·글만 사진으로' 막대 (루비로사 건의 2026-11-03 — 예전엔 크게 보기 글 아래에 늘 보였음)
+  const selectingPostId = useSelectScope();
   const [postCard, setPostCard] = useState<{ blob: Blob; title: string } | null>(null);
   useBackLayer(!!postCard, () => setPostCard(null));
   const postTextOf = (p: Post) => postPlainText(p.content).trim();
@@ -5010,7 +5011,7 @@ export default function Home() {
               </div>
             </form>
             )}
-            {/* 콜라주: 고른 사진(앞의 9장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
+            {/* 콜라주: 고른 사진(앞의 10장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
             {showCollage && selectedFiles.length > 1 && (
               <Collage
                 files={selectedFiles}
@@ -5136,6 +5137,7 @@ export default function Home() {
                           <button onClick={e => { e.stopPropagation(); openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type }); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
                         }
                         text={shownText}
+                        selectId={post.id}
                         renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
                       />
                       </>
@@ -7121,15 +7123,10 @@ export default function Home() {
                   onCollapse={() => setViewerTextOpen(false)}
                   className="text-stone-900 text-[1rem] whitespace-pre-wrap leading-relaxed"
                   text={splitPostStickers(selectedPostDetail.content).text}
+                  selectId={selectedPostDetail.id}
                   renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
                 />
                 <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
-                {postTextOf(selectedPostDetail) && (
-                  <div className="flex gap-1.5">
-                    <button onClick={() => copyPostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="copy" className="w-4 h-4" />글 복사</button>
-                    <button onClick={() => capturePostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
-                  </div>
-                )}
                 {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
                 {user?.id === selectedPostDetail.user_id && (
                   <div className="mt-3 pt-3 border-t border-stone-100 flex flex-col gap-2">
@@ -7309,6 +7306,21 @@ export default function Home() {
                 {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* 글을 꾹 눌러 고르는 동안: 아래에 '이 글 전체 · 글 복사 · 글만 사진으로' (고른 부분과 상관없이 그 글 전체) */}
+      {(() => {
+        if (!selectingPostId || postCard) return null;
+        const p = selectedPostDetail?.id === selectingPostId ? selectedPostDetail : posts.find(x => x.id === selectingPostId);
+        if (!p || !postTextOf(p)) return null;
+        const act = (fn: (p: Post) => void) => () => { try { document.getSelection()?.removeAllRanges(); } catch { /* 무시 */ } fn(p); };
+        return (
+          <div className="fixed z-[86] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-max max-w-[calc(100vw-1.5rem)] flex items-center gap-1.5 p-1.5 pl-3.5 rounded-full bg-stone-900/95 text-white shadow-xl animate-fade-in" role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
+            <span className="text-[0.8125rem] text-white/70 font-bold whitespace-nowrap mr-0.5">이 글 전체</span>
+            <button type="button" onClick={act(copyPostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="copy" className="w-4 h-4" />글 복사</button>
+            <button type="button" onClick={act(capturePostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
           </div>
         );
       })()}
