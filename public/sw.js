@@ -33,7 +33,7 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data && event.data.text() }; }
   const title = data.title || '가톨릭그램';
   event.waitUntil((async () => {
-    // 앱을 보고 있는 중이면: 휴대폰 알림음은 끄고, 앱이 '찬미예수님' 음성으로 알린다
+    // 앱을 보고 있는 중이면: 휴대폰 알림은 띄우지 않고(애플 기기는 소리 없이), 앱이 화면 배너와 설정에서 고른 알림 소리로 알린다
     const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true }).catch(() => []);
     const visible = windows.filter(c => c.visibilityState === 'visible');
     if (visible.length > 0) {
@@ -43,8 +43,11 @@ self.addEventListener('push', (event) => {
       // appleBanner: 아이폰·아이패드는 앱을 보는 중에도 휴대폰 알림 배너가 떠서, 앱 화면 배너까지 띄우면 같은 알림이 두 번 보인다
       visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '', appleBanner: isApple() && !viewing }));
       if (!viewing) windows.forEach(c => c.postMessage({ type: 'push-shown' }));
-      if (viewing && !isApple()) return;
-      // 알림은 꼭 띄워야 하므로(안 띄우면 아이폰이 알림 권한을 거둬 감) 소리 없이 띄운다.
+      // 안드로이드·컴퓨터: 앱 화면 배너와 앱 알림 소리(설정에서 고른 소리)로 알렸으니 휴대폰 알림은 띄우지 않는다.
+      // (운영자 2026-11-03: 단체방 메시지에 '평화!'와 '찬미예수님'이 동시에 울림 — Play 앱 1.0.2 는 크롬이 소리 없이 띄운
+      //  알림도 '가톨릭그램 알림' 종류로 옮기면서 소리가 나서, 앱 소리와 휴대폰 알림 소리가 겹쳤음)
+      if (!isApple()) return;
+      // 아이폰·아이패드·맥 사파리: 알림은 꼭 띄워야 하므로(안 띄우면 알림 권한을 거둬 감) 소리 없이 띄운다.
       // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)
       const shownNow = viewing ? { title, body: data.body || '', data: { url: data.url || '/' } } : await combined(data, title);
       await self.registration.showNotification(shownNow.title, {
