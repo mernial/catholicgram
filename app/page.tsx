@@ -1459,8 +1459,8 @@ export default function Home() {
   // 관리자: 모든 단체 채팅방
   const fetchAdminGroups = async () => {
     const { data, error } = await supabase.rpc('admin_group_chats');
-    // 구성원이 없는 방은 보이지 않게 (서버는 supabase/group-cleanup.sql 이후 목록을 열 때 지움)
-    setAdminGroups(error ? [] : ((data || []) as AdminGroupRow[]).filter(g => g.member_count > 0));
+    // 교우가 한 명 이하인 방은 보이지 않게 (서버는 supabase/group-cleanup.sql 이후 목록을 열 때 지움)
+    setAdminGroups(error ? [] : ((data || []) as AdminGroupRow[]).filter(g => g.member_count > 1));
   };
   viewingRef.current = (url: string) => {
     if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
