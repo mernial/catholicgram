@@ -63,7 +63,6 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
   const [results, setResults] = useState<ChatPerson[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [picked, setPicked] = useState<ChatPerson[]>([]);
-  const [roomName, setRoomName] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -96,7 +95,7 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
   const create = async () => {
     if (picked.length === 0 || saving) return;
     setSaving(true);
-    const { data, error } = await supabase.rpc('create_group_chat', { p_name: (roomName.trim() || defaultName).slice(0, 40), p_members: picked.map(p => p.id) });
+    const { data, error } = await supabase.rpc('create_group_chat', { p_name: clipText(defaultName, 40), p_members: picked.map(p => p.id) });
     setSaving(false);
     if (error || !data) { alert(error ? friendly(error, `채팅방을 만들지 못했어요.\n(${error.message})`) : '채팅방을 만들지 못했어요.'); return; }
     onCreated?.(data as string);
@@ -118,9 +117,19 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
     <BottomSheet bare label={title} onClose={onClose} z="z-[86]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-[1.125rem] text-stone-900">{title}</h2>
-            <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
+          {/* 단체방: 만들기·초대 단추는 머리줄 오른쪽에 (아래 칸이 목록을 가려 고른 교우가 안 보였음 — 운영자 2026-11-03).
+              방 이름은 고른 교우 이름으로 정하고, 만든 뒤 방 안 ☰ → 방 이름 바꾸기 */}
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="font-bold text-[1.125rem] text-stone-900 truncate">{title}</h2>
+            <span className="flex items-center gap-1 shrink-0">
+              {kind === 'group' && (
+                <button onClick={mode === 'invite' ? invite : create} disabled={picked.length === 0 || saving}
+                  className="h-9 px-4 rounded-full bg-emerald-700 disabled:bg-stone-200 disabled:text-stone-400 text-white text-[0.9375rem] font-bold">
+                  {saving ? '잠시만요…' : `${mode === 'invite' ? '초대' : '만들기'}${picked.length ? ` ${picked.length}` : ''}`}
+                </button>
+              )}
+              <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
+            </span>
           </div>
           {/* 찾는 중엔 1:1·단체 칸을 접어 찾은 교우 자리를 넓힘 (자판이 올라온 태블릿 가로 화면 — 루비로사) */}
           {mode === 'start' && !typing && (
@@ -145,12 +154,13 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
           )}
         </div>
 
-        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto">
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto pb-[env(safe-area-inset-bottom)]">
           {results === null && list.length > 0 && <p className="px-4 pt-3 text-[0.8125rem] font-bold text-stone-500">최근 대화한 교우</p>}
           {!searching && results !== null && list.length > 0 && <p className="px-4 pt-3 pb-1 text-[0.8125rem] font-bold text-stone-500">&lsquo;{cleanQuery(query)}&rsquo; 찾은 교우 {list.length}명</p>}
           {results === null && list.length === 0 && (
             <p className="p-8 text-center text-[0.9375rem] text-stone-500 leading-relaxed">
               {kind === 'dm' ? '메시지를 보낼 교우의' : '함께할 교우의'} <b>@아이디</b>나 <b>이름</b>을<br />위 칸에 적어 찾아 주세요.
+              {kind === 'group' && <span className="block mt-2 text-[0.8125rem] text-stone-400">교우를 고르고 위의 <b>{mode === 'invite' ? '초대' : '만들기'}</b>를 눌러 주세요.{mode === 'start' && <> 방 이름은 만든 뒤 방 안 ☰ 에서 바꿀 수 있어요.</>}</span>}
             </p>
           )}
           {searching && <p className="p-6 text-center text-sm text-stone-400">찾는 중...</p>}
@@ -174,19 +184,6 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
           })}
         </div>
 
-        {/* 찾는 동안(검색어가 있으면)은 찾은 교우가 잘 보이게 방 이름 칸을 접고, 고른 교우가 있을 때만 만들기 단추 */}
-        {kind === 'group' && (!typing || picked.length > 0) && (
-          <div className="shrink-0 border-t border-stone-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-2 bg-white">
-            {mode === 'start' && !typing && (
-              <input value={roomName} onChange={e => setRoomName(clipText(e.target.value, 40))} placeholder={picked.length ? `방 이름 (안 적으면 '${defaultName}')` : '방 이름 (예: 성경 공부 모임)'}
-                aria-label="방 이름" className="w-full px-4 py-2.5 rounded-xl border border-stone-300 bg-stone-50 text-[0.9375rem] focus:outline-none focus:border-stone-500" />
-            )}
-            <button onClick={mode === 'invite' ? invite : create} disabled={picked.length === 0 || saving}
-              className="w-full py-3 rounded-xl bg-emerald-700 disabled:bg-stone-300 text-white text-[1rem] font-bold">
-              {saving ? '잠시만요...' : picked.length === 0 ? '함께할 교우를 골라 주세요' : mode === 'invite' ? `${picked.length}명 초대하기` : `${picked.length}명과 단체 채팅방 만들기`}
-            </button>
-          </div>
-        )}
       </div>
     </BottomSheet>
   );
