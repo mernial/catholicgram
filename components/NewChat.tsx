@@ -122,7 +122,8 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
             <h2 className="font-bold text-[1.125rem] text-stone-900">{title}</h2>
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
-          {mode === 'start' && (
+          {/* 찾는 중엔 1:1·단체 칸을 접어 찾은 교우 자리를 넓힘 (자판이 올라온 태블릿 가로 화면 — 루비로사) */}
+          {mode === 'start' && !typing && (
             <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-stone-100" role="tablist">
               {([['dm', '✉️ 1:1 메시지'], ['group', '👥 단체 채팅방 만들기']] as const).map(([k, label]) => (
                 <button key={k} role="tab" aria-selected={kind === k} onClick={() => setKind(k)}
@@ -134,9 +135,9 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
             placeholder="@아이디 또는 이름으로 찾기" aria-label="교우 찾기"
             className="w-full px-4 py-3 rounded-2xl border border-stone-300 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-500" />
           {kind === 'group' && picked.length > 0 && (
-            <div className="flex flex-wrap gap-1.5" aria-label="고른 교우">
+            <div className={`flex gap-1.5 ${typing ? 'overflow-x-auto [scrollbar-width:none] -mx-4 px-4' : 'flex-wrap'}`} aria-label="고른 교우">
               {picked.map(p => (
-                <button key={p.id} onClick={() => toggle(p)} className="pl-2.5 pr-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[0.875rem] font-bold text-emerald-900" aria-label={`${p.baptismal_name} 빼기`}>
+                <button key={p.id} onClick={() => toggle(p)} className="shrink-0 pl-2.5 pr-2 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[0.875rem] font-bold text-emerald-900" aria-label={`${p.baptismal_name} 빼기`}>
                   {p.baptismal_name} <span className="text-emerald-600">×</span>
                 </button>
               ))}
