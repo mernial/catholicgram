@@ -141,13 +141,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        PushService.foreground = this
+        PushService.setForeground(this)
         web.onResume()
         bridge.onResume()
     }
 
     override fun onPause() {
-        if (PushService.foreground === this) PushService.foreground = null
+        if (PushService.foreground() === this) PushService.setForeground(null)
         web.onPause()
         CookieManager.getInstance().flush()
         super.onPause()
@@ -404,7 +404,7 @@ class MainActivity : ComponentActivity() {
             // 안드로이드 사진 고르기 (사진첩 모양)
             Intent(MediaStore.ACTION_PICK_IMAGES).apply {
                 if (imageOnly) type = "image/*" else if (videoOnly) type = "video/*"
-                if (multiple && Build.VERSION.SDK_INT >= 33) putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit())
+                if (multiple) putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit())
             }
         } else {
             Intent(Intent.ACTION_GET_CONTENT).apply {

@@ -34,7 +34,12 @@ jobs:
         continue-on-error: true
         run: |
           ./gradlew --no-daemon lintDebug > lint.log 2>&1 || true
-          cat app/build/reports/lint-results-debug.txt 2>/dev/null | head -n 200 || tail -n 40 lint.log
+          R=app/build/reports/lint-results-debug.txt
+          if [ -f "$R" ]; then
+            echo '=== 오류(Error) ==='; grep -E ": Error: " "$R" | head -n 40
+            echo '=== 경고(Warning) 종류 ==='; grep -oE "\[[A-Za-z]+\]$" "$R" | sort | uniq -c | sort -rn | head -n 30
+            tail -n 3 "$R"
+          else tail -n 40 lint.log; fi
       - name: 빌드 결과 올리기
         uses: actions/upload-artifact@v4
         with:

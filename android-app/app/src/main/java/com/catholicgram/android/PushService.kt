@@ -19,7 +19,7 @@ class PushService : FirebaseMessagingService() {
 
     override fun onNewToken(token: String) {
         getSharedPreferences("cg", Context.MODE_PRIVATE).edit().putString("fcmToken", token).apply()
-        foreground?.let { activity ->
+        foreground()?.let { activity ->
             Handler(Looper.getMainLooper()).post {
                 activity.bridgeEmit("push-token", JSONObject().put("token", token))
             }
@@ -32,7 +32,7 @@ class PushService : FirebaseMessagingService() {
         val body = d["body"] ?: message.notification?.body ?: ""
         val url = d["url"] ?: "/"
         val tag = d["tag"]
-        val activity = foreground
+        val activity = foreground()
         if (activity != null) {
             Handler(Looper.getMainLooper()).post {
                 activity.bridgeEmit("push", JSONObject().put("title", title).put("body", body).put("url", url).put("tag", tag ?: ""))
@@ -43,9 +43,11 @@ class PushService : FirebaseMessagingService() {
     }
 
     companion object {
-        /** 지금 화면에 떠 있는 앱 화면 (없으면 null) */
+        /** 지금 화면에 떠 있는 앱 화면 (없으면 null) — 화면을 붙잡아 두지 않게 약한 참조로 */
         @Volatile
-        var foreground: MainActivity? = null
+        private var foregroundRef: java.lang.ref.WeakReference<MainActivity>? = null
+        fun foreground(): MainActivity? = foregroundRef?.get()
+        fun setForeground(activity: MainActivity?) { foregroundRef = activity?.let { java.lang.ref.WeakReference(it) } }
 
         /** 이 휴대폰의 알림 주소(토큰) — Firebase 가 없거나 못 받으면 null */
         fun token(done: (String?) -> Unit) {

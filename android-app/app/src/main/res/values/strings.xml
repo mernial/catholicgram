@@ -3,9 +3,6 @@
     <string name="channel_name">가톨릭그램 알림</string>
     <string name="channel_desc">댓글·메시지·공지 등 가톨릭그램 소식</string>
     <string name="no_app_for_link">이 링크를 열 수 있는 앱이 없어요</string>
-    <string name="saved_to_gallery">사진첩에 저장했어요</string>
     <string name="save_failed">저장하지 못했어요. 다시 시도해 주세요.</string>
-    <string name="offline_title">인터넷에 연결되어 있지 않아요</string>
-    <string name="offline_retry">다시 시도</string>
     <string name="download_started">내려받는 중이에요 (알림 줄에서 볼 수 있어요)</string>
 </resources>
