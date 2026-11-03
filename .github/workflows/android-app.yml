@@ -1,0 +1,40 @@
+# 가톨릭그램 하이브리드 안드로이드 앱(android-app/) 시험 빌드 — claude/** 가지에 android-app 을 고쳐 올리면 돎.
+# 클라우드 작업 세션은 구글 안드로이드 저장소가 막혀 있어 여기서 빌드한다.
+# 결과: '가톨릭그램 시험'(패키지 com.catholicgram.android.dev) APK — Play 스토어 앱과 나란히 설치해 시험할 수 있음.
+# 서명 키·Firebase 설정은 여기 없음 (정식 .aab 는 운영자 Mac 에서 만듦)
+name: android-app
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['android-app/**', '.github/workflows/android-app.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: 시험판 APK 만들기
+        working-directory: android-app
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleDebug lintDebug
+      - name: 빌드 결과 올리기
+        uses: actions/upload-artifact@v4
+        with:
+          name: catholicgram-dev-apk
+          path: android-app/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+      - name: 검사 결과 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-report
+          path: android-app/app/build/reports/lint-results-debug.*
+          retention-days: 7

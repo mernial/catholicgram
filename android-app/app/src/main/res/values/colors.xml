@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cg_bar">#FAF7F2</color>
+    <color name="cg_splash">#101A3F</color>
+    <color name="cg_icon_bg">#0A112C</color>
+</resources>
