@@ -23,6 +23,25 @@ const friendly = (e: { code?: string; message?: string }, fallback: string) =>
 // 검색어에서 PostgREST 거르기 문법을 깨는 글자(쉼표·괄호·별표 등)는 뺀다
 const cleanQuery = (q: string) => q.trim().replace(/^@+/, '').replace(/[^0-9A-Za-z_.가-힣ㄱ-ㅎㅏ-ㅣ\s-]/g, '').slice(0, 30);
 
+// 찾은 교우 순서: 이름·@아이디가 똑같음 → 이름이 그 말로 시작 → @아이디가 그 말로 시작 → 이름에 들어 있음 → @아이디에 들어 있음
+// (같으면 최근 대화한 교우 먼저, 그다음 짧은 이름) — 찾은 사람이 맨 위 추천으로 보이게 (운영자 2026-11-03)
+const squash = (t: string | null | undefined) => (t || '').toLowerCase().replace(/\s+/g, '');
+export function rankPeople(rows: ChatPerson[], q: string, known: Set<string>) {
+  const k = squash(q);
+  const score = (p: ChatPerson) => {
+    const n = squash(p.baptismal_name), h = squash(p.handle);
+    if (n === k || h === k) return 0;
+    if (n.startsWith(k)) return 1;
+    if (h.startsWith(k)) return 2;
+    if (n.includes(k)) return 3;
+    return 4;
+  };
+  return rows
+    .map(p => ({ p, s: score(p), known: known.has(p.id) ? 0 : 1 }))
+    .sort((a, b) => a.s - b.s || a.known - b.known || a.p.baptismal_name.length - b.p.baptismal_name.length || a.p.baptismal_name.localeCompare(b.p.baptismal_name, 'ko'))
+    .map(x => x.p);
+}
+
 const Avatar = ({ p, size = 'w-11 h-11' }: { p: ChatPerson; size?: string }) => <CelebrateBand id={p.id}>{p.avatar_url
   ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
   : <span className={`${size} rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center shrink-0`}>{initial(p.baptismal_name, '교')}</span>}</CelebrateBand>;
@@ -47,7 +66,10 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
   const [roomName, setRoomName] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const skip = new Set([user.id, ...excludeIds, ...blockedIds]);
+  const knownRef = useRef(new Set<string>()); // 최근 대화한 교우 (같은 순위면 먼저)
+  useEffect(() => { knownRef.current = new Set(suggestions.map(p => p.id)); }, [suggestions]);
 
   // 글자를 칠 때마다가 아니라 잠깐 멈추면 찾는다
   useEffect(() => {
@@ -56,18 +78,17 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
     setSearching(true);
     const t = setTimeout(async () => {
       const { data } = await supabase.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type')
-        .or(`handle.ilike.%${q}%,baptismal_name.ilike.%${q}%`).neq('id', user.id).limit(30);
+        .or(`handle.ilike.%${q}%,baptismal_name.ilike.%${q}%`).neq('id', user.id).limit(50);
       if (cleanQuery(inputRef.current?.value || '') !== q) return; // 그 사이 다른 걸 쳤으면 버림
-      // @아이디가 정확히 맞는 교우를 맨 위에
-      const rows = ((data || []) as ChatPerson[]).filter(p => p.baptismal_name);
-      rows.sort((a, b) => Number((b.handle || '').toLowerCase() === q.toLowerCase()) - Number((a.handle || '').toLowerCase() === q.toLowerCase()));
-      setResults(rows);
+      setResults(rankPeople(((data || []) as ChatPerson[]).filter(p => p.baptismal_name), q, knownRef.current));
       setSearching(false);
+      if (listRef.current) listRef.current.scrollTop = 0; // 가장 잘 맞는 교우가 보이게 맨 위부터
     }, 300);
     return () => clearTimeout(t);
   }, [query, user.id]);
 
   const list = (results ?? suggestions).filter(p => !skip.has(p.id));
+  const typing = !!cleanQuery(query);
   const isPicked = (id: string) => picked.some(p => p.id === id);
   const toggle = (p: ChatPerson) => setPicked(prev => prev.some(x => x.id === p.id) ? prev.filter(x => x.id !== p.id) : prev.length >= 49 ? prev : [...prev, p]);
   const defaultName = picked.slice(0, 3).map(p => p.baptismal_name).join(', ') + (picked.length > 3 ? ` 외 ${picked.length - 3}명` : '');
@@ -123,8 +144,9 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
           )}
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto">
           {results === null && list.length > 0 && <p className="px-4 pt-3 text-[0.8125rem] font-bold text-stone-500">최근 대화한 교우</p>}
+          {!searching && results !== null && list.length > 0 && <p className="px-4 pt-3 pb-1 text-[0.8125rem] font-bold text-stone-500">&lsquo;{cleanQuery(query)}&rsquo; 찾은 교우 {list.length}명</p>}
           {results === null && list.length === 0 && (
             <p className="p-8 text-center text-[0.9375rem] text-stone-500 leading-relaxed">
               {kind === 'dm' ? '메시지를 보낼 교우의' : '함께할 교우의'} <b>@아이디</b>나 <b>이름</b>을<br />위 칸에 적어 찾아 주세요.
@@ -151,9 +173,10 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
           })}
         </div>
 
-        {kind === 'group' && (
+        {/* 찾는 동안(검색어가 있으면)은 찾은 교우가 잘 보이게 방 이름 칸을 접고, 고른 교우가 있을 때만 만들기 단추 */}
+        {kind === 'group' && (!typing || picked.length > 0) && (
           <div className="shrink-0 border-t border-stone-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex flex-col gap-2 bg-white">
-            {mode === 'start' && (
+            {mode === 'start' && !typing && (
               <input value={roomName} onChange={e => setRoomName(clipText(e.target.value, 40))} placeholder={picked.length ? `방 이름 (안 적으면 '${defaultName}')` : '방 이름 (예: 성경 공부 모임)'}
                 aria-label="방 이름" className="w-full px-4 py-2.5 rounded-xl border border-stone-300 bg-stone-50 text-[0.9375rem] focus:outline-none focus:border-stone-500" />
             )}
