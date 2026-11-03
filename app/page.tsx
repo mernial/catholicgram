@@ -656,6 +656,11 @@ export default function Home() {
   dmThreadsRef.current = { ...dmThreadsRef.current, map: dmThreads, ready: dmThreadsReady };
   const [currentChatUser, setCurrentChatUser] = useState<UserProfile | null>(null);
   const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  // 지금 열린 1:1 대화 상대 (늦게 도착한 다른 대화방의 메시지를 버리려고 — 운영자 2026-11-03: 실비아님 알림을 눌렀더니
+  // 루비로사님과의 대화 아래에 실비아님 메시지가 붙어 나왔음. 앞 대화방에서 보낸 불러오기가 방을 바꾼 뒤에 도착해 목록을 덮고,
+  // 3초마다 새 메시지를 받을 때 그 목록의 마지막 시각 뒤의 실비아님 메시지를 덧붙였음)
+  const chatPartnerIdRef = useRef<string | null>(null);
+  chatPartnerIdRef.current = currentChatUser?.id ?? null;
   const [messageInput, setMessageInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // 1:1 대화방: 열면 최신 글(맨 아래)부터, 사진이 늦게 불러와져도 맨 아래 유지
@@ -980,6 +985,9 @@ export default function Home() {
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (activeTab === 'chat' && currentChatUser && user) {
+      // 다른 상대와의 대화가 남아 있으면 먼저 비움 (어느 길로 대화방을 바꾸었든)
+      const pid = currentChatUser.id;
+      setChatMessages(prev => (prev.some(m => !inThread(m, pid)) ? [] : prev));
       fetchChatMessages(currentChatUser.id);
       // 3초마다 새 메시지만 받고, 15초마다 한 번 전체를 다시 받는다(읽음·삭제·하트 반영). 앱이 뒤에 있으면 쉰다
       let tick = 0;
@@ -1422,7 +1430,7 @@ export default function Home() {
     setSelectedPostDetail(null); // 크게 보기에서 메시지를 누른 경우 닫기
     if (!requireProfile()) return;
     if (partner.id === user.id) return;
-    if (currentChatUser?.id !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
+    if (chatPartnerIdRef.current !== partner.id) setChatMessages([]); // 이전 상대와의 대화가 잠깐 보이지 않도록
     setOpenGroup(null); setShowNewChat(false); // 단체 채팅방·새 채팅에서 1:1 대화로
     navigate({ screen: true, tab: 'chat', chatUser: partner });
     setActionModalUser(null);
@@ -1462,13 +1470,17 @@ export default function Home() {
     setOpenGroup({ id, adminView });
   };
 
+  // 이 메시지가 나와 그 상대의 1:1 대화인지
+  const inThread = (m: Message, partnerId: string) =>
+    !!user && ((m.sender_id === user.id && m.receiver_id === partnerId) || (m.sender_id === partnerId && m.receiver_id === user.id));
   const fetchChatMessages = async (partnerId: string) => {
     if (!user) return;
     if (!dmThreadsRef.current.checked) await fetchDmThreads();
     const { data: all, error } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .order('created_at', { ascending: true });
-    const data = all ? all.filter(m => afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
+    if (chatPartnerIdRef.current !== partnerId) return; // 그사이 다른 대화방으로 옮겼으면 이 결과는 버림
+    const data = all ? all.filter(m => inThread(m, partnerId) && afterLeft(partnerId, m.created_at)) : null; // 나가기 전 대화는 빼고
     if (data) {
       setChatMessages(prev => same(prev, data)); // 15초마다 다시 받을 때 바뀐 게 없으면 다시 그리지 않음 (치는 글자를 지키려고)
       // 메시지 요청이면 수락하기 전까지 읽음 표시를 하지 않는다 (상대가 읽었는지 모르게)
@@ -1504,16 +1516,20 @@ export default function Home() {
   const fetchNewChatMessages = async (partnerId: string) => {
     if (!user) return;
     const list = chatMessagesRef.current;
+    // 목록에 다른 대화방 메시지가 섞여 있으면(방을 막 바꿈) 덧붙이지 않고 전체를 새로 받음
+    if (list.some(m => !inThread(m, partnerId))) { fetchChatMessages(partnerId); return; }
     const last = list.length ? list[list.length - 1].created_at : null;
     if (!last) { fetchChatMessages(partnerId); return; }
     const { data } = await supabase.from('messages').select('*')
       .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
       .gt('created_at', last)
       .order('created_at', { ascending: true });
+    if (chatPartnerIdRef.current !== partnerId) return; // 그사이 다른 대화방으로 옮겼으면 버림
     if (!data || data.length === 0) return;
     setChatMessages(prev => {
+      if (prev.some(m => !inThread(m, partnerId))) return prev; // 그사이 목록이 바뀌었으면 다음 전체 받기에 맡김
       const seen = new Set(prev.map(m => String(m.id)));
-      const fresh = data.filter(m => !seen.has(String(m.id)));
+      const fresh = data.filter(m => !seen.has(String(m.id)) && inThread(m, partnerId));
       return fresh.length ? [...prev, ...fresh] : prev;
     });
     if (!isRequestThread(partnerId, [...list, ...data]) && data.some(m => m.sender_id === partnerId && !m.read_at)) markMessagesRead(partnerId);
@@ -3775,7 +3791,8 @@ export default function Home() {
   useBackLayer(!!commentMenu, () => setCommentMenu(null)); // 댓글 꾹 누르기 메뉴: 뒤로가기는 메뉴만
   useBackLayer(showCollage, () => setShowCollage(false)); // 글쓰기의 콜라주 만들기: 뒤로가기는 콜라주만 (쓰던 글은 그대로)
   // 게시글의 글만 복사·사진으로 (루비로사 건의: 묵상글만 캡처·저장) + '모두 선택'은 그 글 안으로 (lib/select-scope)
-  useSelectScope();
+  // 글을 꾹 눌러 고르는 동안만 '글 복사·글만 사진으로' 막대 (루비로사 건의 2026-11-03 — 예전엔 크게 보기 글 아래에 늘 보였음)
+  const selectingPostId = useSelectScope();
   const [postCard, setPostCard] = useState<{ blob: Blob; title: string } | null>(null);
   useBackLayer(!!postCard, () => setPostCard(null));
   const postTextOf = (p: Post) => postPlainText(p.content).trim();
@@ -5010,7 +5027,7 @@ export default function Home() {
               </div>
             </form>
             )}
-            {/* 콜라주: 고른 사진(앞의 9장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
+            {/* 콜라주: 고른 사진(앞의 10장까지)을 한 장으로 → 그 사진들 자리에 콜라주 한 장 (원래 사진은 사진 칸에서 다시 고를 수 있음) */}
             {showCollage && selectedFiles.length > 1 && (
               <Collage
                 files={selectedFiles}
@@ -5136,6 +5153,7 @@ export default function Home() {
                           <button onClick={e => { e.stopPropagation(); openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type }); }} className="font-bold text-stone-900 mr-1.5">{post.author_name}</button>
                         }
                         text={shownText}
+                        selectId={post.id}
                         renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={goToHandle} />}
                       />
                       </>
@@ -7121,15 +7139,10 @@ export default function Home() {
                   onCollapse={() => setViewerTextOpen(false)}
                   className="text-stone-900 text-[1rem] whitespace-pre-wrap leading-relaxed"
                   text={splitPostStickers(selectedPostDetail.content).text}
+                  selectId={selectedPostDetail.id}
                   renderText={t => <HashtagText text={t} onTag={openHashtag} onMention={h => { setSelectedPostDetail(null); goToHandle(h); }} />}
                 />
                 <span className="text-[0.8125rem] text-stone-400 mt-1">{new Date(selectedPostDetail.created_at).toLocaleString('ko-KR')}</span>
-                {postTextOf(selectedPostDetail) && (
-                  <div className="flex gap-1.5">
-                    <button onClick={() => copyPostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="copy" className="w-4 h-4" />글 복사</button>
-                    <button onClick={() => capturePostText(selectedPostDetail)} className="px-3 py-1.5 rounded-full bg-stone-100 text-[0.8125rem] font-bold text-stone-700 inline-flex items-center gap-1"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
-                  </div>
-                )}
                 {/* 내 글이면 여기서 공개 범위를 바로 바꿀 수 있음 */}
                 {user?.id === selectedPostDetail.user_id && (
                   <div className="mt-3 pt-3 border-t border-stone-100 flex flex-col gap-2">
@@ -7309,6 +7322,21 @@ export default function Home() {
                 {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
               </div>
             </div>
+          </div>
+        );
+      })()}
+
+      {/* 글을 꾹 눌러 고르는 동안: 아래에 '이 글 전체 · 글 복사 · 글만 사진으로' (고른 부분과 상관없이 그 글 전체) */}
+      {(() => {
+        if (!selectingPostId || postCard) return null;
+        const p = selectedPostDetail?.id === selectingPostId ? selectedPostDetail : posts.find(x => x.id === selectingPostId);
+        if (!p || !postTextOf(p)) return null;
+        const act = (fn: (p: Post) => void) => () => { try { document.getSelection()?.removeAllRanges(); } catch { /* 무시 */ } fn(p); };
+        return (
+          <div className="fixed z-[86] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-max max-w-[calc(100vw-1.5rem)] flex items-center gap-1.5 p-1.5 pl-3.5 rounded-full bg-stone-900/95 text-white shadow-xl animate-fade-in" role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
+            <span className="text-[0.8125rem] text-white/70 font-bold whitespace-nowrap mr-0.5">이 글 전체</span>
+            <button type="button" onClick={act(copyPostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="copy" className="w-4 h-4" />글 복사</button>
+            <button type="button" onClick={act(capturePostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
           </div>
         );
       })()}

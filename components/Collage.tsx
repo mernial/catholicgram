@@ -1,7 +1,8 @@
 'use client';
 
 // 콜라주 (루비로사 건의 2026-11-01: '4장의 사진을 모아 올릴 때 사진 모양에 따라 비율을 달리하며 자주 사용해요' —
-// 삼성 갤러리 '만들기 → 콜라주'처럼): 글쓰기에서 고른 사진 2~9장을 한 장으로 모은다.
+// 삼성 갤러리 '만들기 → 콜라주'처럼): 글쓰기에서 고른 사진 2~10장을 한 장으로 모은다
+// (2026-11-03 루비로사: 사진은 10장까지 고르는데 콜라주가 9장까지라 1장이 빠졌음 → 10장까지).
 //  · 모양(칸 나누기) — 사진 수에 맞는 여러 모양 · 비율 — 세로/가로 + 1:1·5:4·4:3·3:2·16:9 (1:1 은 방향 없음)
 //  · 간격·모서리 둥글게·바탕 색 · 칸을 누르면 고름 → 끌어서 사진 위치, 두 손가락이나 막대로 확대, '⇄ 자리 바꾸기'
 //  · 완료하면 긴 쪽 2048px JPEG 한 장 (onDone)
@@ -10,7 +11,7 @@ import Icon from '@/components/Icon';
 
 type Cell = { x: number; y: number; w: number; h: number };
 type Fit = { ox: number; oy: number; zoom: number }; // ox·oy: -1~1 (사진이 칸보다 남는 만큼 중 어디), zoom ≥ 1
-export const COLLAGE_MAX = 9;
+export const COLLAGE_MAX = 10; // 한 글 사진 수(page MAX_PHOTOS)와 같게
 const OUT = 2048;
 const EPS = 0.001;
 
@@ -29,7 +30,8 @@ export function collageLayouts(n: number): Cell[][] {
     case 6: return [rows([2, 2, 2]), rows([3, 3]), rows([1, 2, 3]), transpose(rows([1, 2, 3])), rows([3, 1, 2])];
     case 7: return [rows([2, 3, 2]), rows([3, 1, 3]), rows([2, 2, 3]), transpose(rows([2, 3, 2]))];
     case 8: return [rows([3, 2, 3]), rows([2, 2, 2, 2]), rows([4, 4]), transpose(rows([3, 2, 3]))];
-    default: return [rows([3, 3, 3]), rows([2, 3, 4]), transpose(rows([2, 3, 4]))];
+    case 9: return [rows([3, 3, 3]), rows([2, 3, 4]), transpose(rows([2, 3, 4])), rows([4, 1, 4])];
+    default: return [rows([3, 4, 3]), rows([2, 3, 3, 2]), transpose(rows([3, 4, 3])), transpose(rows([2, 3, 3, 2])), rows([4, 2, 4]), rows([5, 5])];
   }
 }
 
