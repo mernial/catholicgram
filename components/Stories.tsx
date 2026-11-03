@@ -29,12 +29,14 @@ const ago = (iso: string) => {
   return m < 1 ? '방금' : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간`;
 };
 
-export default function Stories({ posts, unavailable, openRequest, onOpenHandled, pickRequest, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
+export default function Stories({ posts, unavailable, openRequest, onOpenHandled, pickedFile, onDraftEnd, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
   posts: StoryPost[];                   // 24시간 안의 스토리 (화면이 불러옴)
   unavailable: boolean;                 // SQL 실행 전
   openRequest?: string | null;          // 이 교우의 스토리를 바로 열기 (알림을 눌렀을 때)
   onOpenHandled?: () => void;
-  pickRequest?: number;                 // 숫자가 바뀌면 스토리 사진 고르기 (새 게시물 화면의 '스토리')
+  // 새 게시물 화면의 '스토리'에서 고른 사진 → 바로 '새 스토리' 미리보기 (고르기는 새 게시물 화면이 하므로, 고르지 않고 닫으면 그 화면 그대로)
+  pickedFile?: { file: File; key: number } | null;
+  onDraftEnd?: (posted: boolean) => void; // '새 스토리' 미리보기가 닫힘 (posted: 올림 / false: 취소·뒤로가기)
   me: { id: string; name: string; avatar?: string | null } | null;
   followingIds: Set<string>;
   blockedIds: Set<string>;
@@ -60,7 +62,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
   // 올리기
   const [draft, setDraft] = useState<{ file: File; url: string } | null>(null);
-  useBackLayer(!!draft, () => { if (draft) URL.revokeObjectURL(draft.url); setDraft(null); }); // 새 스토리 미리보기: 뒤로가기는 취소
+  useBackLayer(!!draft, () => { if (draft) URL.revokeObjectURL(draft.url); setDraft(null); onDraftEnd?.(false); }); // 새 스토리 미리보기: 뒤로가기는 취소
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -161,7 +163,13 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     if (!canPost()) return;
     fileRef.current?.click();
   };
-  useEffect(() => { if (pickRequest) pick(); }, [pickRequest]);
+  // 새 게시물 화면에서 고른 사진 → '새 스토리' 미리보기 (받은 사진마다 한 번 — 효과 대신 그리는 중에 맞춤)
+  const [pickedKey, setPickedKey] = useState<number | null>(null);
+  if (pickedFile && pickedFile.key !== pickedKey) {
+    setPickedKey(pickedFile.key);
+    setCaption('');
+    setDraft({ file: pickedFile.file, url: URL.createObjectURL(pickedFile.file) });
+  }
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -183,6 +191,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       }
       URL.revokeObjectURL(draft.url);
       setDraft(null);
+      onDraftEnd?.(true);
       // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
       if (created?.[0]?.id) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -248,7 +257,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       {draft && (
         <div className="fixed inset-0 z-[90] bg-black flex flex-col">
           <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 text-white">
-            <button onClick={() => { URL.revokeObjectURL(draft.url); setDraft(null); }} className="text-[0.9375rem]">취소</button>
+            <button onClick={() => { URL.revokeObjectURL(draft.url); setDraft(null); onDraftEnd?.(false); }} className="text-[0.9375rem]">취소</button>
             <p className="font-bold">새 스토리</p>
             <span className="w-8" />
           </div>
