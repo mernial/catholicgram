@@ -568,6 +568,7 @@ export default function Home() {
   // 새 게시물 화면 아래 '스토리' (루비로사 2026-11-03: 스토리 사진 고르기를 그냥 닫으면 새 게시물 화면이 아니라 홈으로 나갔음 — '영상'은 새 게시물 화면으로 돌아옴)
   // → 사진 고르기는 새 게시물 화면이 열어 두고(고르지 않고 닫으면 그대로), 고른 사진만 스토리 줄(components/Stories)의 '새 스토리' 미리보기로 넘김.
   //   미리보기는 새 게시물 화면 위에 뜨고, 취소하면 새 게시물 화면 그대로, 스토리를 올리면 그때 새 게시물 화면을 닫음
+  const restoreOverlayRef = useRef<{ group?: string; lounge?: boolean } | null>(null); // 1분 안에 다시 열린 앱: 이어서 열 단체방·사랑방
   const [storyFile, setStoryFile] = useState<{ file: File; key: number } | null>(null);
   const [storyFromComposer, setStoryFromComposer] = useState(false); // 새 게시물 화면에서 연 '새 스토리' (올린 뒤 내 스토리가 뜰 때까지 뒤로가기 칸을 지킴)
   const storyFromComposerRef = useRef(false);
@@ -795,15 +796,25 @@ export default function Home() {
 
     // 앱을 새로 켜면(휴대폰을 껐다 켬·앱을 완전히 닫았다 엶) 홈에서 시작한다.
     // 앱이 켜져 있는 동안 새로고침된 경우(새 버전 적용 등)만 보던 화면을 이어서 연다 — sessionStorage 는 앱을 닫으면 지워진다.
-    // 단 1분 넘게 떠나 있었던 뒤면(휴대폰이 뒤에 둔 앱을 정리했다가 다시 띄운 경우 등) 홈부터 (RESUME_HOME_AFTER)
+    // 단 1분 넘게 떠나 있었던 뒤면 홈부터 (RESUME_HOME_AFTER).
+    // 1분 안에 다시 열렸으면 sessionStorage 가 비어 있어도 보던 화면 그대로 (운영자 2026-11-03: 메시지를 보내다 다른 화면에 갔다 1분 안에 왔는데 메인이었음 —
+    // 휴대폰이 뒤에 둔 앱을 메모리 때문에 정리했다 다시 띄우면(Play 앱은 새 창으로 열림) sessionStorage 가 비어 '새로 켠 앱'으로 보았음)
     const sameSession = (() => {
       try {
         const had = sessionStorage.getItem('appOpened') === '1';
         sessionStorage.setItem('appOpened', '1');
         const hiddenAt = Number(storageGet('appHiddenAt') || 0);
-        return had && !(hiddenAt && Date.now() - hiddenAt >= RESUME_HOME_AFTER);
+        const away = hiddenAt ? Date.now() - hiddenAt : 0;
+        if (hiddenAt && away >= 0 && away < RESUME_HOME_AFTER) return true;
+        return had && !hiddenAt;
       } catch { return false; }
     })();
+    // 단체 채팅방·사랑방(화면 위에 뜨는 창)도 그대로 다시 연다 — 로그인 정보가 온 뒤에 (아래 효과)
+    if (sameSession && storageGet('activeTab') === 'messages') {
+      const g = storageGet('openGroupId');
+      if (g) restoreOverlayRef.current = { group: g };
+      else if (storageGet('loungeOpen') === '1') restoreOverlayRef.current = { lounge: true };
+    }
     const savedTab = sameSession ? storageGet('activeTab') as Tab | null : null;
     const savedUserId = storageGet('viewingUserId');
     const savedChatUserId = storageGet('chatUserId');
@@ -1489,6 +1500,18 @@ export default function Home() {
   useChatPresence(user?.id, showLounge ? presenceRoom.lounge
     : openGroup && !openGroup.adminView ? presenceRoom.group(openGroup.id)
     : activeTab === 'chat' && currentChatUser ? presenceRoom.dm(currentChatUser.id) : null);
+  // 앱이 1분 안에 다시 열리면(휴대폰이 뒤에 둔 앱을 정리했다 다시 띄움) 보던 단체 채팅방·사랑방도 다시 연다 (위 시작 효과가 읽어 둠)
+  // 이 기기에 지금 열린 방을 적어 둔다 — 시작 효과(위)가 먼저 읽은 뒤에 돌므로 처음 한 번 빈 값으로 덮어써도 괜찮음
+  useEffect(() => { storageSet('openGroupId', openGroup && !openGroup.adminView ? openGroup.id : ''); }, [openGroup]);
+  useEffect(() => { storageSet('loungeOpen', showLounge ? '1' : ''); }, [showLounge]);
+  useEffect(() => {
+    const r = restoreOverlayRef.current;
+    if (!r || !user || !profile || needsProfileSetup) return;
+    restoreOverlayRef.current = null;
+    if (linkHandledAt) return; // 알림을 눌러 열었으면 그 화면이 먼저
+    if (r.group) { setMessagesView('group'); openGroupChat(r.group); }
+    else if (r.lounge) { setMessagesView('group'); setShowLounge(true); }
+  }, [user?.id, profile?.id, needsProfileSetup]); // eslint-disable-line react-hooks/exhaustive-deps
   const openGroupChat = (id: string, adminView = false) => {
     closeOsNotifications(`group-${id}`);
     if (!user) { setShowAuthModal(true); return; }
