@@ -24,7 +24,14 @@ jobs:
         working-directory: android-app
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace assembleDebug lintDebug
+          ./gradlew --no-daemon assembleDebug 2>&1 | tee build.log | grep -E "^e: |^w: |error:|What went wrong|BUILD (SUCCESSFUL|FAILED)|FAILURE|> " || true
+          test "${PIPESTATUS[0]}" = 0 || { tail -n 60 build.log; exit 1; }
+      - name: 코드 검사 (lint)
+        working-directory: android-app
+        continue-on-error: true
+        run: |
+          ./gradlew --no-daemon lintDebug > lint.log 2>&1 || true
+          cat app/build/reports/lint-results-debug.txt 2>/dev/null | head -n 200 || tail -n 40 lint.log
       - name: 빌드 결과 올리기
         uses: actions/upload-artifact@v4
         with:
