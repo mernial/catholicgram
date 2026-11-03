@@ -5,6 +5,7 @@
 --    서버(/api/push/notify)가 1:1·단체방 새 메시지 알림을 보낼 때 이 표를 보고 그 교우에게는 보내지 않는다.
 --    방 이름: 'dm:<상대 교우 id>' · 'group:<단체방 id>'
 --  * 방장: 단체방을 만든 교우. 방장이 나가면(탈퇴·내보내짐 포함) 가장 먼저 들어온 교우가 방장이 된다.
+--    (한 명만 남으면 방이 없어진다 — group-cleanup.sql)
 --    방장만 방 사진을 바꾸고 다른 교우를 내보낼 수 있다 (서버 함수로만).
 
 ------------------------------------------------------------
@@ -129,7 +130,10 @@ begin
   if p_user is null or p_user = me then raise exception '방장은 내보낼 수 없어요. 방에서 나가려면 나가기를 눌러 주세요'; end if;
   delete from group_chat_members where chat_id = p_chat and user_id = p_user;
   if not found then return; end if;
-  perform group_system_message(p_chat, me, group_name_of(me) || '님이 ' || group_name_of(p_user) || '님을 내보냈어요');
+  -- 한 명만 남으면 방이 없어지므로(group_member_after_delete) 남아 있을 때만 안내
+  if exists (select 1 from group_chats where id = p_chat) then
+    perform group_system_message(p_chat, me, group_name_of(me) || '님이 ' || group_name_of(p_user) || '님을 내보냈어요');
+  end if;
 end $$;
 
 revoke execute on function public.set_group_chat_avatar(uuid, text), public.remove_from_group_chat(uuid, uuid) from public, anon;

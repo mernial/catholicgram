@@ -191,9 +191,9 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const loadReads = async () => {
     const { data } = await supabase.from('group_chat_members').select('user_id, joined_at, last_read_at').eq('chat_id', chatId).order('joined_at', { ascending: true });
     if (!data) return;
-    // 방장이 내보냈거나 방이 없어짐 (내가 들어와 있지 않으면 교우 명단이 비어 옴)
+    // 방장이 내보냈거나 방이 없어짐(한 명만 남으면 방이 지워짐) — 내가 들어와 있지 않으면 교우 명단이 비어 옴
     if (!adminView && data.length === 0 && membersRef.current.some(m => m.user_id === user.id)) {
-      setError('이 채팅방에서 나왔어요. 방장이 내보냈거나 방이 없어졌어요.');
+      setError('이 채팅방에서 나왔어요. 방장이 내보냈거나, 다른 교우가 모두 나가서 방이 없어졌어요.');
       onChanged?.();
     }
     setMembers(prev => same(prev, data as Member[]));

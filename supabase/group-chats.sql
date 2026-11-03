@@ -116,11 +116,11 @@ drop trigger if exists group_message_after_insert on public.group_chat_messages;
 create trigger group_message_after_insert after insert on public.group_chat_messages
 for each row execute function public.group_message_after_insert();
 
--- 아무도 남지 않은 방은 없앤다 (나가기·탈퇴)
+-- 한 명 이하만 남은 방은 없앤다 (나가기·내보내기·탈퇴 — 운영자 요청 2026-11-03: 한 명만 있어도 지우기)
 create or replace function public.group_member_after_delete()
 returns trigger language plpgsql security definer set search_path = public as $$
 begin
-  if not exists (select 1 from group_chat_members where chat_id = old.chat_id) then
+  if (select count(*) from group_chat_members where chat_id = old.chat_id) <= 1 then
     delete from group_chats where id = old.chat_id;
   end if;
   return null;
