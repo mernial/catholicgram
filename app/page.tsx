@@ -7333,10 +7333,12 @@ export default function Home() {
         if (!p || !postTextOf(p)) return null;
         const act = (fn: (p: Post) => void) => () => { try { document.getSelection()?.removeAllRanges(); } catch { /* 무시 */ } fn(p); };
         return (
-          <div className="fixed z-[86] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-max max-w-[calc(100vw-1.5rem)] flex items-center gap-1.5 p-1.5 pl-3.5 rounded-full bg-stone-900/95 text-white shadow-xl animate-fade-in" role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
-            <span className="text-[0.8125rem] text-white/70 font-bold whitespace-nowrap mr-0.5">이 글 전체</span>
-            <button type="button" onClick={act(copyPostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="copy" className="w-4 h-4" />글 복사</button>
-            <button type="button" onClick={act(capturePostText)} className="px-3 py-2 rounded-full bg-white/15 text-[0.875rem] font-bold inline-flex items-center gap-1 whitespace-nowrap"><Icon name="image" className="w-4 h-4" />글만 사진으로</button>
+          // 앱의 다른 단추(기도·공감·댓글, 내 공간 아이콘)와 같은 모양: 흰 카드 + 연한 색 동그라미 안의 아이콘 (운영자 2026-11-03)
+          <div className="fixed z-[86] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-max max-w-[calc(100vw-1rem)] flex items-center gap-0.5 p-1.5 pl-3.5 rounded-full bg-white border border-stone-200 text-stone-800 shadow-[0_8px_28px_rgba(40,30,20,0.18)] animate-fade-in" role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
+            <span className="text-[0.8125rem] text-stone-500 font-bold whitespace-nowrap leading-tight text-center">이 글<br />전체</span>
+            <span className="w-px h-8 bg-stone-200 mx-2 shrink-0" aria-hidden="true" />
+            <button type="button" onClick={act(copyPostText)} className="pl-1 pr-3 py-1 rounded-full hover:bg-stone-50 active:bg-stone-100 text-[0.9375rem] font-bold inline-flex items-center gap-1.5 whitespace-nowrap"><IconBadge name="copy" tone="sky" size="lg" />글 복사</button>
+            <button type="button" onClick={act(capturePostText)} className="pl-1 pr-3 py-1 rounded-full hover:bg-stone-50 active:bg-stone-100 text-[0.9375rem] font-bold inline-flex items-center gap-1.5 whitespace-nowrap"><IconBadge name="image" tone="gold" size="lg" />글만 사진으로</button>
           </div>
         );
       })()}
