@@ -565,7 +565,13 @@ export default function Home() {
   const [composerMulti, setComposerMulti] = useState(false); // 여러 장 선택
   // 새 게시물 1단계 아래 사진 칸: 사진첩에서 한꺼번에 고른 사진들(미리보기). 이 중에서 눌러 올릴 사진을 고른다
   const [tray, setTray] = useState<{ file: File; url: string }[]>([]);
-  const [storyPickRequest, setStoryPickRequest] = useState(0); // 글쓰기 아래 '스토리'를 누르면 스토리 사진 고르기
+  // 새 게시물 화면 아래 '스토리' (루비로사 2026-11-03: 스토리 사진 고르기를 그냥 닫으면 새 게시물 화면이 아니라 홈으로 나갔음 — '영상'은 새 게시물 화면으로 돌아옴)
+  // → 사진 고르기는 새 게시물 화면이 열어 두고(고르지 않고 닫으면 그대로), 고른 사진만 스토리 줄(components/Stories)의 '새 스토리' 미리보기로 넘김.
+  //   미리보기는 새 게시물 화면 위에 뜨고, 취소하면 새 게시물 화면 그대로, 스토리를 올리면 그때 새 게시물 화면을 닫음
+  const [storyFile, setStoryFile] = useState<{ file: File; key: number } | null>(null);
+  const [storyFromComposer, setStoryFromComposer] = useState(false); // 새 게시물 화면에서 연 '새 스토리' (올린 뒤 내 스토리가 뜰 때까지 뒤로가기 칸을 지킴)
+  const storyFromComposerRef = useRef(false);
+  useEffect(() => { storyFromComposerRef.current = storyFromComposer; }, [storyFromComposer]);
   const [fabOpen, setFabOpen] = useState(false); // + 버튼 메뉴 펼침
   const [showAdminStats, setShowAdminStats] = useState(false); // 관리자: 접속 통계
   const [showAdminUsage, setShowAdminUsage] = useState(false); // 관리자: 데이터 사용량
@@ -2549,6 +2555,26 @@ export default function Home() {
   };
 
   // 숏폼 영상 고르기: 1분 이하인지 확인하고, 너무 크면 화질을 줄여 본다
+  // 새 게시물 화면 아래 '스토리'에서 사진을 골랐을 때 (고르지 않고 닫으면 여기 오지 않음 → 새 게시물 화면 그대로)
+  const handleStoryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const hasDraft = !!(content.trim() || selectedFiles.length || selectedVideo || composerStickers.length);
+    if (hasDraft && !(await askConfirm({ title: '스토리로 올릴까요?', message: '스토리를 올리면 작성하던 게시글과 고른 사진은 지워져요. 스토리를 취소하면 그대로 남아 있어요.', ok: '스토리로', cancel: '계속 쓰기', icon: 'pencil' }))) return;
+    storyFromComposerRef.current = true;
+    setStoryFromComposer(true);
+    setStoryFile({ file, key: Date.now() });
+  };
+  // '새 스토리' 미리보기가 닫힘: 취소면 새 게시물 화면 그대로, 올렸으면 새 게시물 화면을 닫음(내 스토리가 뜰 때까지 뒤로가기 칸은 그대로 — 아래 효과)
+  const handleStoryDraftEnd = (posted: boolean) => {
+    setStoryFile(null); // 스토리 줄이 다시 그려져도(탭을 오가도) 미리보기가 또 뜨지 않게
+    if (!storyFromComposerRef.current) return;
+    if (!posted) { setStoryFromComposer(false); return; }
+    discardComposer();
+    setTimeout(() => setStoryFromComposer(false), 4000); // 내 스토리가 끝내 안 뜨면(불러오기 실패 등)
+  };
+  useEffect(() => { if (storyViewerOpen && storyFromComposer) setStoryFromComposer(false); }, [storyViewerOpen, storyFromComposer]);
   const handleVideoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -4138,7 +4164,7 @@ export default function Home() {
 
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || storyFromComposer || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
     || showShareApp || showFancyName || showDmBookmarks || !!legalDoc);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
@@ -4258,6 +4284,7 @@ export default function Home() {
     setFabOpen(false);
     setCommentSheetId(null);
     setStoryViewerOpen(false);
+    setStoryFromComposer(false);
     setAvatarPreview(null);
     setShowDeletedMessages(false);
     setShowMediaStorage(false);
@@ -4729,7 +4756,8 @@ export default function Home() {
             unavailable={storiesUnavailable}
             openRequest={storyOpenRequest}
             onOpenHandled={() => setStoryOpenRequest(null)}
-            pickRequest={storyPickRequest}
+            pickedFile={storyFile}
+            onDraftEnd={handleStoryDraftEnd}
             onPosted={fetchStories}
             onDelete={deleteStory}
             myReactions={myPostReactions}
@@ -4860,6 +4888,7 @@ export default function Home() {
             <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
             <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="photo-camera" />
             <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
+            <input type="file" accept="image/*" onChange={handleStoryFile} className="hidden" id="story-upload" />
             {composerStep === 'pick' ? (
               <>
                 {/* 1단계 (인스타그램처럼 어두운 화면): ✕ · 새 게시물 · 다음 */}
@@ -4964,7 +4993,7 @@ export default function Home() {
                 <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
                   <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
                     <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
-                    <button type="button" onClick={() => { const pick = () => setStoryPickRequest(n => n + 1); if (leaveComposer(pick)) pick(); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>
+                    {(!storiesUnavailable || isAdmin) && <label htmlFor="story-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</label>}
                     <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
                   </div>
                 </div>
