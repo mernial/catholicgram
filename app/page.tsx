@@ -3792,7 +3792,7 @@ export default function Home() {
   useBackLayer(showCollage, () => setShowCollage(false)); // 글쓰기의 콜라주 만들기: 뒤로가기는 콜라주만 (쓰던 글은 그대로)
   // 게시글의 글만 복사·사진으로 (루비로사 건의: 묵상글만 캡처·저장) + '모두 선택'은 그 글 안으로 (lib/select-scope)
   // 글을 꾹 눌러 고르는 동안만 '글 복사·글만 사진으로' 막대 (루비로사 건의 2026-11-03 — 예전엔 크게 보기 글 아래에 늘 보였음)
-  const selectingPostId = useSelectScope();
+  const selecting = useSelectScope(); // { id: 고르는 글, place: 막대 자리(휴대폰 복사 메뉴 반대쪽) }
   const [postCard, setPostCard] = useState<{ blob: Blob; title: string } | null>(null);
   useBackLayer(!!postCard, () => setPostCard(null));
   const postTextOf = (p: Post) => postPlainText(p.content).trim();
@@ -7328,13 +7328,13 @@ export default function Home() {
 
       {/* 글을 꾹 눌러 고르는 동안: 아래에 '이 글 전체 · 글 복사 · 글만 사진으로' (고른 부분과 상관없이 그 글 전체) */}
       {(() => {
-        if (!selectingPostId || postCard) return null;
-        const p = selectedPostDetail?.id === selectingPostId ? selectedPostDetail : posts.find(x => x.id === selectingPostId);
+        if (!selecting || postCard) return null;
+        const p = selectedPostDetail?.id === selecting.id ? selectedPostDetail : posts.find(x => x.id === selecting.id);
         if (!p || !postTextOf(p)) return null;
         const act = (fn: (p: Post) => void) => () => { try { document.getSelection()?.removeAllRanges(); } catch { /* 무시 */ } fn(p); };
         return (
           // 앱의 다른 단추(기도·공감·댓글, 내 공간 아이콘)와 같은 모양: 흰 카드 + 연한 색 동그라미 안의 아이콘 (운영자 2026-11-03)
-          <div className="fixed z-[86] left-1/2 -translate-x-1/2 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] w-max max-w-[calc(100vw-1rem)] flex items-center gap-0.5 p-1.5 pl-3.5 rounded-full bg-white border border-stone-200 text-stone-800 shadow-[0_8px_28px_rgba(40,30,20,0.18)] animate-fade-in" role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
+          <div className={`fixed z-[86] left-1/2 -translate-x-1/2 ${selecting.place === 'top' ? 'top-[calc(4.5rem+env(safe-area-inset-top))]' : 'bottom-[calc(5.5rem+env(safe-area-inset-bottom))]'} w-max max-w-[calc(100vw-1rem)] flex items-center gap-0.5 p-1.5 pl-3.5 rounded-full bg-white border border-stone-200 text-stone-800 shadow-[0_8px_28px_rgba(40,30,20,0.18)] animate-fade-in`} data-place={selecting.place} role="toolbar" aria-label="이 글 전체 복사·사진으로" onMouseDown={e => e.preventDefault()}>
             <span className="text-[0.8125rem] text-stone-500 font-bold whitespace-nowrap leading-tight text-center">이 글<br />전체</span>
             <span className="w-px h-8 bg-stone-200 mx-2 shrink-0" aria-hidden="true" />
             <button type="button" onClick={act(copyPostText)} className="pl-1 pr-3 py-1 rounded-full hover:bg-stone-50 active:bg-stone-100 text-[0.9375rem] font-bold inline-flex items-center gap-1.5 whitespace-nowrap"><IconBadge name="copy" tone="sky" size="lg" />글 복사</button>
