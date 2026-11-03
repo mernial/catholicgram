@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import Icon from '@/components/Icon';
 import { clipText } from '@/lib/clip-text';
 
@@ -43,9 +43,36 @@ export function OverlayLayer({ overlays }: { overlays?: VideoOverlays | null }) 
   );
 }
 
+// ↻ 손잡이 자리: 글자·이모티콘 바깥 모서리 너머(겹치지 않게 — 루비로사 2026-11-03: '영상 꾸미기의 글자와 이모티콘도
+// 손잡이와 겹쳐 터치로 작업하기 어려워요', 예전엔 늘 오른쪽 아래 모서리에 걸쳐 작은 것은 손잡이 밑에 묻혔음).
+// 영상 칸 밖으로 나가 잘리면 왼쪽 아래·오른쪽 위·왼쪽 위 순으로 (돌린 각도 반영)
+const HANDLE_GAP = 20;  // 모서리에서 손잡이 가운데까지 (가로·세로 각각) — 손잡이 반지름 24px 보다 멀게
+const HANDLE_R = 24;
 function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; selected?: boolean; onHandleDown?: (e: React.PointerEvent) => void }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [corner, setCorner] = useState<[number, number]>([1, 1]);
+  const editing = !!(selected && onHandleDown);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const box = el?.closest('[data-overlay-box]')?.getBoundingClientRect();
+    if (!editing || !el || !box) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    const hw = el.offsetWidth / 2 + HANDLE_GAP, hh = el.offsetHeight / 2 + HANDLE_GAP;
+    const rad = ((item.rotation || 0) * Math.PI) / 180, cos = Math.cos(rad), sin = Math.sin(rad);
+    let best: [number, number] = [1, 1], bestRoom = -Infinity;
+    for (const [sx, sy] of [[1, 1], [-1, 1], [1, -1], [-1, -1]] as [number, number][]) {
+      const lx = sx * hw, ly = sy * hh;
+      const px = cx + lx * cos - ly * sin, py = cy + lx * sin + ly * cos;
+      const room = Math.min(px - box.left - HANDLE_R, box.right - HANDLE_R - px, py - box.top - HANDLE_R, box.bottom - HANDLE_R - py);
+      if (room >= 0) { best = [sx, sy]; bestRoom = room; break; }
+      if (room > bestRoom) { bestRoom = room; best = [sx, sy]; }
+    }
+    setCorner(prev => (prev[0] === best[0] && prev[1] === best[1] ? prev : best));
+  }, [editing, item.x, item.y, item.size, item.rotation, item.text, item.bg]);
   return (
     <span
+      ref={ref}
       className={`absolute whitespace-pre-wrap text-center font-bold leading-tight select-none ${item.type === 'text' && item.bg ? 'px-[0.35em] py-[0.15em] rounded-[0.3em]' : ''} ${selected ? 'outline outline-2 outline-dashed outline-white/90 outline-offset-4' : ''}`}
       style={{
         left: `${item.x * 100}%`,
@@ -59,12 +86,20 @@ function OverlayView({ item, selected, onHandleDown }: { item: OverlayItem; sele
       }}
     >
       {item.text}
-      {selected && onHandleDown && (
+      {/* 아주 작게 줄인 것도 손가락으로 잡기 쉽게 둘레를 넓힌 투명 칸 */}
+      {editing && <span aria-hidden="true" className="absolute -inset-3" />}
+      {editing && (
         // 한 손가락으로 끌면 돌리기 + 키우기 (55세 이상도 잘 보이고 누르기 쉽게 크게)
         <span
           onPointerDown={onHandleDown}
-          className="absolute -right-6 -bottom-6 w-12 h-12 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white shadow-[0_0_0_4px_rgba(232,184,90,0.35),0_4px_12px_rgba(0,0,0,0.5)] flex items-center justify-center font-black touch-none cursor-grab"
-          style={{ fontSize: 26, lineHeight: 1, transform: `rotate(${-(item.rotation || 0)}deg)` }}
+          data-handle=""
+          className="absolute w-12 h-12 rounded-full bg-[#e8b85a] text-[#101a3f] border-[3px] border-white shadow-[0_0_0_4px_rgba(232,184,90,0.35),0_4px_12px_rgba(0,0,0,0.5)] flex items-center justify-center font-black touch-none cursor-grab"
+          style={{
+            fontSize: 26, lineHeight: 1,
+            left: corner[0] > 0 ? `calc(100% + ${HANDLE_GAP}px)` : `-${HANDLE_GAP}px`,
+            top: corner[1] > 0 ? `calc(100% + ${HANDLE_GAP}px)` : `-${HANDLE_GAP}px`,
+            transform: `translate(-50%, -50%) rotate(${-(item.rotation || 0)}deg)`,
+          }}
           aria-label="돌리기·크기"
         >↻</span>
       )}
@@ -238,6 +273,7 @@ export default function VideoEditor({ src, initial, musicTitle, musicRange, onOp
       <div className="flex-1 flex items-center justify-center px-3 min-h-0">
         <div
           ref={boxRef}
+          data-overlay-box=""
           className="relative w-full max-w-sm aspect-[4/5] max-h-full bg-stone-900 rounded-xl overflow-hidden [container-type:inline-size] touch-none"
           onPointerMove={onPointerMove}
           onPointerUp={onPointerUp}
