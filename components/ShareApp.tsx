@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import BottomSheet from '@/components/BottomSheet';
 import { copyText } from '@/lib/chat-actions';
+import { isNativeApp, nativeShare } from '@/lib/native-app';
 
 // 가톨릭그램 알리기 (운영자 요청: 사람들이 알 수 있게 공유하는 방법)
 //  1) 카카오톡·문자·밴드로 보내기: 휴대폰 공유 창(navigator.share) — 카카오톡에서는 미리 보기 카드(public/og-catholicgram.jpg)로 보임
@@ -18,6 +19,7 @@ export default function ShareApp({ onClose }: { onClose: () => void }) {
   const say = (t: string) => { setNote(t); setTimeout(() => setNote(n => (n === t ? '' : n)), 3500); };
 
   const shareLink = async () => {
+    if (isNativeApp()) { nativeShare({ title: '가톨릭그램', text: MESSAGE, url: SITE_URL }).catch(() => {}); return; }
     if (navigator.share) {
       try { await navigator.share({ title: '가톨릭그램', text: MESSAGE, url: SITE_URL }); return; } catch (e) { if (aborted(e)) return; }
     }
@@ -25,6 +27,7 @@ export default function ShareApp({ onClose }: { onClose: () => void }) {
   };
   const copyLink = async () => { if (await copyText(SITE_URL)) say('주소를 복사했어요'); };
   const shareQr = async () => {
+    if (isNativeApp()) { nativeShare({ title: '가톨릭그램 QR', files: [{ url: new URL(QR, window.location.origin).toString(), name: '가톨릭그램-QR.png', mime: 'image/png' }] }).catch(() => say('공유하지 못했어요')); return; }
     try {
       const blob = await (await fetch(QR)).blob();
       const file = new File([blob], '가톨릭그램-QR.png', { type: 'image/png' });

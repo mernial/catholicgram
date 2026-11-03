@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 사진 찍기·공유하기에 쓰는 잠깐 파일 (앱 안 캐시) -->
+    <cache-path name="shared" path="shared/" />
+    <cache-path name="camera" path="camera/" />
+</paths>

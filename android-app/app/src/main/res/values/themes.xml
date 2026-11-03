@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Catholicgram" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/cg_bar</item>
+        <item name="android:statusBarColor">@color/cg_bar</item>
+        <item name="android:navigationBarColor">@color/cg_bar</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- 앱을 켤 때 잠깐 보이는 화면: 남색 바탕 + 앱 아이콘 -->
+    <style name="Theme.Catholicgram.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/cg_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Catholicgram</item>
+    </style>
+</resources>

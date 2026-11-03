@@ -109,6 +109,8 @@ import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
 import { setBackLayerHost, hasBackLayer, popBackLayer, useBackLayer } from '@/lib/back-layers';
 import { useSelectScope } from '@/lib/select-scope';
+import { exposeNativeHooks, isNativeApp, nativeLogin, nativeShare } from '@/lib/native-app';
+import { syncNativeBars } from '@/lib/theme';
 import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
@@ -706,7 +708,8 @@ export default function Home() {
 
     // 홈 화면 추가(앱 설치) 상태 확인
     const nav = navigator as Navigator & { standalone?: boolean };
-    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true);
+    // 안드로이드 앱(하이브리드, lib/native-app)도 설치한 앱이라 '홈 화면에 추가' 안내를 띄우지 않음
+    setIsStandalone(window.matchMedia('(display-mode: standalone)').matches || nav.standalone === true || isNativeApp());
     setIsIOS(/iPhone|iPad|iPod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
     setInstallBannerDismissed(storageGet('installBannerDismissed') === '1');
     const onBeforeInstallPrompt = (e: Event) => {
@@ -752,6 +755,9 @@ export default function Home() {
       const link = deepLinkFromSearch(new URL(url, window.location.origin).search);
       if (link) setDeepLink(link);
     };
+    // 안드로이드 앱: 알림·공유 링크를 눌러 앱이 이미 떠 있으면 새로 불러오지 않고 이 함수로 그 화면을 연다 (lib/native-app)
+    exposeNativeHooks(url => pendingLinkHandler?.(url));
+    syncNativeBars(); // 앱의 시계 줄·아래 막대 색을 화면 색에 맞춤
     linkLog('start', `${window.location.search || '(주소 없음)'} 마지막화면=${storageGet('activeTab') || ''}`);
     const touchMark = () => { lastTouchAt = Date.now(); };
     window.addEventListener('pointerdown', touchMark, { capture: true });
@@ -1870,8 +1876,13 @@ export default function Home() {
     finally { setCapturing(false); }
   };
 
+  // 안드로이드 앱(하이브리드): 앱 안 웹뷰에서는 구글이 로그인을 막아서 크롬 창에서 로그인하고 돌아온다 (lib/app-login)
+  const appLogin = (provider: 'kakao' | 'google' | 'naver') => {
+    nativeLogin(provider, switchingAccount).catch(() => alert('로그인을 시작하지 못했습니다. 앱을 다시 열어 주세요.'));
+  };
   const handleKakaoLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
+    if (isNativeApp()) { appLogin('kakao'); return; }
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'kakao', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true, ...(switchingAccount ? { queryParams: { prompt: 'login' } } : {}) },
     });
@@ -1898,6 +1909,7 @@ export default function Home() {
 
   const handleGoogleLogin = async (e: React.MouseEvent) => {
     e.preventDefault();
+    if (isNativeApp()) { appLogin('google'); return; }
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google', options: { redirectTo: 'https://catholicgram-dey7.vercel.app/auth/signin-complete', skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
     });
@@ -2646,6 +2658,7 @@ export default function Home() {
   const postLink = (post: Post) => `${window.location.origin}/p/${post.id}`;
   const sharePost = async (post: Post) => {
     const url = postLink(post);
+    if (isNativeApp()) { nativeShare({ title: `${post.author_name}님의 글 · 가톨릭그램`, text: postPlainText(post.content).slice(0, 80), url }).catch(() => {}); return; }
     if (navigator.share) {
       try { await navigator.share({ title: `${post.author_name}님의 글 · 가톨릭그램`, text: postPlainText(post.content).slice(0, 80), url }); return; }
       catch (e) { if ((e as Error)?.name === 'AbortError') return; }
@@ -6972,6 +6985,7 @@ export default function Home() {
               </button>
               <a
                 href={switchingAccount ? '/api/auth/naver/start?switch=1' : '/api/auth/naver/start'}
+                onClick={e => { if (isNativeApp()) { e.preventDefault(); appLogin('naver'); } }}
                 className="w-full flex items-center justify-center gap-3 bg-[#03C75A] text-white py-3 rounded-xl text-sm font-semibold hover:bg-[#02b350] transition-colors"
               >
                 <span className="w-5 h-5 flex items-center justify-center font-black text-base leading-none">N</span>

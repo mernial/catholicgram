@@ -1,3 +1,4 @@
+import { nativeSetBars } from '@/lib/native-app';
 // 화면 색 (설정 → 화면 색): 다섯 가지 중 고르면 앱 전체 바탕·글자·주요 단추 색이 바뀐다 (이 휴대폰에만 저장)
 // 색 값은 app/globals.css 의 [data-theme] 변수, tailwind.config.js 의 white·stone·blue 가 그 변수를 쓴다.
 // preview: 고르는 칸을 그 색으로 미리 보여 줄 [바탕, 주요 색, 글자]
@@ -57,6 +58,15 @@ export function applyTheme(choice: string) {
   document.querySelectorAll('meta[name="color-scheme"]').forEach(m => m.setAttribute('content', colorSchemeFor(theme.key)));
   restyle();
   try { localStorage.setItem(THEME_STORAGE_KEY, choice === AUTO_THEME ? AUTO_THEME : theme.key); } catch { /* 저장 불가 환경 */ }
+  syncNativeBars();
+}
+
+/** 안드로이드 앱(하이브리드): 시계 줄·아래 막대 색을 지금 화면 색에 맞춤 (앱이 아니면 아무 일 없음) */
+export function syncNativeBars() {
+  if (typeof document === 'undefined') return;
+  const key = document.documentElement.dataset.theme || DEFAULT_THEME;
+  const theme = THEMES.find(t => t.key === key) || THEMES.find(t => t.key === DEFAULT_THEME)!;
+  nativeSetBars(theme.bar, theme.key === DARK_THEME);
 }
 
 // 첫 화면이 그려지기 전에 저장된 색을 적용하는 스크립트 (app/layout.tsx). color-scheme meta 도 여기서 head 맨 앞에 만든다(휴대폰 다크 모드가 화면 색을 억지로 바꾸지 않게). 다른 창에서 색을 바꾸거나(storage)

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from '@/lib/chat-actions';
+import { isNativeApp, nativeSave, nativeShare } from '@/lib/native-app';
 
 // 대화 캡처 (1:1 메시지·단체 채팅방·사랑방 공통)
 //  1) 무엇을: '대화 골라서'(메시지를 눌러 고름) 또는 '지금 화면'(지금 보이는 대화)
@@ -234,11 +235,23 @@ export function CapturePreview({ blob, title, onClose }: { blob: Blob; title: st
   const canShare = typeof navigator !== 'undefined' && !!navigator.canShare?.({ files: [file] });
 
   const save = () => {
+    // 안드로이드 앱(하이브리드): 앱이 사진첩에 바로 저장
+    if (isNativeApp()) {
+      nativeSave([{ blob, name: file.name, mime: 'image/png' }]).then(n => toast(n > 0 ? '사진첩에 저장했어요' : '저장하지 못했어요')).catch(() => toast('저장하지 못했어요'));
+      return;
+    }
     const a = document.createElement('a');
     a.href = url; a.download = file.name;
     document.body.appendChild(a); a.click(); a.remove();
   };
   const share = async () => {
+    if (isNativeApp()) {
+      setBusy(true);
+      try { await nativeShare({ title, files: [{ blob, name: file.name, mime: 'image/png' }] }); }
+      catch { alert('공유하지 못했어요. 사진으로 저장해서 보내 주세요.'); }
+      finally { setBusy(false); }
+      return;
+    }
     if (!canShare) { save(); toast('사진으로 저장했어요'); return; }
     setBusy(true);
     try { await navigator.share({ files: [file], title }); }
