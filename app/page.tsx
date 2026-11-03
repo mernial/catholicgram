@@ -115,6 +115,8 @@ import { exposeNativeHooks, isNativeApp, nativeLogin, nativeShare } from '@/lib/
 import { syncNativeBars } from '@/lib/theme';
 import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
+import { PERSONAL_NOTICES, myPersonalNotices, personalHiddenKey } from '@/lib/personal-notices';
+import { PersonalNoticePopup } from '@/components/PersonalNotice';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -447,6 +449,10 @@ export default function Home() {
   const [samsungGuideHidden, setSamsungGuideHidden] = useState(true);   // 이 휴대폰에서 '다시 보지 않기' 했는지 (읽기 전엔 숨김)
   const [samsungGuideClosed, setSamsungGuideClosed] = useState(false);  // 이번에 '닫기'
   const [samsungGuideOpen, setSamsungGuideOpen] = useState<null | 'open' | 'preview'>(null); // 설정·알림창에서 직접 열기, 관리자 미리 보기
+  // 개인 안내(lib/personal-notices): 한 교우에게만 보내는 안내 — '다시 보지 않기'(이 휴대폰)·이번에 '닫기', 관리자 미리 보기
+  const [personalHidden, setPersonalHidden] = useState<string[]>([]);
+  const [personalClosed, setPersonalClosed] = useState<string[]>([]);
+  const [personalPreview, setPersonalPreview] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -4050,6 +4056,7 @@ export default function Home() {
     if (!user) { setUpdateNotesHidden(null); return; }
     try { setUpdateNotesHidden(JSON.parse(storageGet(hiddenNotesKey(user.id)) || '[]')); } catch { setUpdateNotesHidden([]); }
     setSamsungGuideHidden(storageGet(samsungGuideKey(user.id)) === '1');
+    try { setPersonalHidden(JSON.parse(storageGet(personalHiddenKey(user.id)) || '[]')); } catch { setPersonalHidden([]); }
     const t = setTimeout(() => setUpdateNotesReady(true), 2500);
     return () => clearTimeout(t);
   }, [user]);
@@ -4138,11 +4145,25 @@ export default function Home() {
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key)) : undefined;
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
   const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup && !shownGift;
+  // 개인 안내: 받는 교우에게만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (업데이트 소식보다 먼저)
+  const personalToShow = personalPreview ? PERSONAL_NOTICES
+    : user && updateNotesReady ? myPersonalNotices({ handle: profile?.handle, hidden: personalHidden, closed: personalClosed }) : [];
+  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice);
+  const closePersonal = () => {
+    if (personalPreview) { setPersonalPreview(false); return; }
+    setPersonalClosed(prev => [...prev, ...personalToShow.map(n => n.id)]);
+  };
+  const hidePersonal = () => {
+    if (!user) return;
+    const next = [...new Set([...personalHidden, ...personalToShow.map(n => n.id)])].slice(-100);
+    setPersonalHidden(next);
+    storageSet(personalHiddenKey(user.id), JSON.stringify(next));
+  };
   // 업데이트 소식: 홈에서, 다른 창·선물·팝업 공지가 없을 때 (가장 최근 소식부터 한 창에)
   const updateNotesToShow = user && updateNotesHidden && updateNotesReady
     ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
     : [];
-  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice;
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showPersonal;
   const hideUpdateNotes = () => {
     if (!user) return;
     const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
@@ -4152,10 +4173,10 @@ export default function Home() {
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
   // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
   const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
-    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showUpdateNotes);
+    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showPersonal && !showUpdateNotes);
   const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
   const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showUpdateNotes || showSamsungGuide;
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showPersonal || showUpdateNotes || showSamsungGuide;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -4217,6 +4238,7 @@ export default function Home() {
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     if (showUpdateNotes) closeUpdateNotes();
     if (showSamsungGuide) closeSamsungGuide();
+    if (showPersonal) closePersonal();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -6115,6 +6137,7 @@ export default function Home() {
           onShareApp={() => openFromSettings(() => setShowShareApp(true))}
           onOpenLegal={(doc: LegalDoc) => openFromSettings(() => setLegalDoc(doc))}
           onSamsungGuide={(preview: boolean) => openFromSettings(() => setSamsungGuideOpen(preview ? 'preview' : 'open'))}
+          onPersonalPreview={isAdmin && PERSONAL_NOTICES.length > 0 ? () => openFromSettings(() => setPersonalPreview(true)) : undefined}
           onOpenNotices={() => openFromSettings(() => { setNoticeAdminMode(false); setNoticeOpenId(null); setShowNotices(true); })}
           initialView={settingsView} restoreScroll={settingsRestore} backRef={settingsBackRef} onSubView={settingsSubView}
           onOpenMembers={isAdmin ? () => openFromSettings(() => setShowAdminMembers(true)) : undefined}
@@ -6475,6 +6498,11 @@ export default function Home() {
         </div>
       )}
 
+      {/* 개인 안내 (lib/personal-notices): 받는 교우에게만 */}
+      {showPersonal && (
+        <PersonalNoticePopup notices={personalToShow} preview={personalPreview} onClose={closePersonal} onHide={personalPreview ? undefined : hidePersonal}
+          onAction={a => { if (a !== 'sound') return; closePersonal(); setSettingsView('sound'); setShowSettings(true); }} />
+      )}
       {/* 업데이트 소식 (lib/update-notes): 고친 것·새로 생긴 것·바뀐 것 */}
       {showUpdateNotes && <UpdatePopup notes={updateNotesToShow} onHide={hideUpdateNotes} onClose={closeUpdateNotes} />}
       {showSamsungGuide && <SamsungGuidePopup kind={appKind()} preview={samsungGuideOpen === 'preview'} onClose={closeSamsungGuide} onHide={samsungGuideOpen ? undefined : hideSamsungGuide} />}
