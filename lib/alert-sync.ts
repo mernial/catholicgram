@@ -1,6 +1,7 @@
 // 알림 '확인함'을 여러 기기에서 함께 (운영자 2026-11-02: '하나의 기기에서 확인했으면 다른 기기에서도 확인한 것으로')
 // 이 기기에 저장해 두던 값(localStorage)을 서버 한 줄(supabase/alert-sync.sql — user_alert_state)과 합친다:
 //   알림 목록을 연 때(종 옆 숫자) · 모두 지우기 · 오늘 생일·축일 안내 접음 · 사랑방을 본 때 · 확인한 알림 · 지운 알림
+//   · 본 관리자 선물 상자(giftsOpened — 2026-11-03: 앱이 업데이트되거나 다른 기기에서 열면 본 선물 상자가 또 떴음)
 // 합치는 규칙은 서버 함수 merge_alert_state: 시각은 늦은 쪽, 알림 표시는 합집합(4일 지난 것은 빠짐).
 // 앱은 1분마다·다시 열 때(fetchNotifications·fetchLoungeNew 앞) 합치고, 이 기기에서 확인하면 곧바로(0.4초 뒤) 올린다.
 // SQL 전이면(함수 없음) 조용히 예전처럼 이 기기에만.
@@ -16,6 +17,7 @@ const keysFor = (uid: string) => ({
   lounge: `loungeSeenAt:${uid}`,
   read: `notificationsRead:${uid}`,
   hidden: `notificationsHidden:${uid}`,
+  gifts: `giftsOpened:${uid}`,
 });
 
 const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -25,6 +27,7 @@ const iso = (v: string | null) => { if (!v) return null; const t = Date.parse(v)
 const later = (a: string | null, b: string | null) => (!a ? b : !b ? a : Date.parse(a) >= Date.parse(b) ? a : b);
 
 let unsupported = false;           // SQL 전 (함수 없음) → 이 기기에만
+let giftsUnsupported = false;      // 선물 칸을 더하기 전의 SQL (p_gifts 없는 함수) → 선물만 이 기기에
 let inflight: Promise<boolean> | null = null;
 let lastAt = 0;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -32,6 +35,7 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 type Row = {
   last_seen_at: string | null; cleared_at: string | null; feast_cleared_at: string | null; lounge_seen_at: string | null;
   read_keys: Record<string, number> | null; hidden_keys: Record<string, number> | null;
+  gift_keys?: Record<string, number> | null;
 };
 
 /** 이 기기 값과 서버 값을 합쳐 양쪽에 둔다. 이 기기 값이 바뀌었으면 true */
@@ -43,12 +47,18 @@ export function syncAlertState(uid: string, force = false): Promise<boolean> {
     const k = keysFor(uid);
     const local = {
       seen: iso(get(k.seen)), cleared: iso(get(k.cleared)), feast: iso(get(k.feast)), lounge: iso(get(k.lounge)),
-      read: list(k.read), hidden: list(k.hidden),
+      read: list(k.read), hidden: list(k.hidden), gifts: list(k.gifts),
     };
-    const { data, error } = await supabase.rpc('merge_alert_state', {
+    const args = {
       p_last_seen: local.seen, p_cleared: local.cleared, p_feast_cleared: local.feast, p_lounge_seen: local.lounge,
       p_read: local.read.slice(-600), p_hidden: local.hidden.slice(-600),
-    });
+    };
+    let { data, error } = await supabase.rpc('merge_alert_state', giftsUnsupported ? args : { ...args, p_gifts: local.gifts.slice(-300) });
+    // 선물 칸을 더하기 전의 SQL 이면(같은 이름의 함수는 있는데 p_gifts 를 모름) 선물 없이 한 번 더
+    if (error && !giftsUnsupported && (error.code === 'PGRST202' || error.code === '42883')) {
+      giftsUnsupported = true;
+      ({ data, error } = await supabase.rpc('merge_alert_state', args));
+    }
     if (error) {
       // 함수가 아직 없음(SQL 전) → 이번 실행 동안은 다시 묻지 않음. 인터넷 끊김 등은 다음에 다시
       if (error.code === 'PGRST202' || error.code === '42883' || /merge_alert_state/.test(error.message || '')) unsupported = true;
@@ -72,6 +82,7 @@ export function syncAlertState(uid: string, force = false): Promise<boolean> {
     };
     putKeys(k.read, local.read, row.read_keys);
     putKeys(k.hidden, local.hidden, row.hidden_keys);
+    if (row.gift_keys) putKeys(k.gifts, local.gifts, row.gift_keys);
     if (changed) window.dispatchEvent(new CustomEvent(ALERT_SYNC_EVENT));
     return changed;
   })().catch(() => false).finally(() => { if (inflight === run) inflight = null; lastAt = Date.now(); });

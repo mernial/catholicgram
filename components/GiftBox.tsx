@@ -31,7 +31,7 @@ const confettiPieces = () => Array.from({ length: 30 }, (_, i) => {
 export default function GiftBox({ gift, onOpened, onClose, onShowLetters, onUseMusic }: {
   gift: Gift;
   onOpened: (key: string) => void;   // 상자를 열었음 (다시 띄우지 않게 기억)
-  onClose: () => void;               // 닫기 (열지 않고 닫으면 다음에 앱을 열 때 다시)
+  onClose: () => void;               // 닫기 (열지 않고 닫아도 본 선물로 기억 — 다시 저절로 뜨지 않음)
   onShowLetters?: () => void;        // 사연 선물: 내 사연 보기
   onUseMusic?: (trackId: string) => Promise<boolean>; // 노래 선물: 내 공간 음악으로 하기
 }) {
