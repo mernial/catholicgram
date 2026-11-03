@@ -6,7 +6,26 @@
 // 접혀 있던 글('… 더 보기')이면 먼저 펼친 뒤 펼친 글 전체를 고른다 (ClampText 가 registerExpander 로 펼치기를 맡겨 둠).
 // 고르고 있는 글의 id(data-select-id)를 돌려준다 → page 가 그동안만 '글 복사·글만 사진으로' 막대를 띄움
 // (루비로사 건의 2026-11-03: '글 복사와 글만 사진으로 버튼은 직접 글을 꾹 눌러 복사를 원할 때 보이게')
+// 막대 자리(place): 휴대폰이 띄우는 복사·모두 선택 메뉴는 고른 글 바로 위(자리가 없으면 아래)에 뜨므로,
+// 막대는 그 메뉴와 화면의 반대쪽에 둔다 — 메뉴가 화면 아래쪽이면 막대는 위, 위쪽이면 아래
+// (운영자 2026-11-03: 크게 보기에서 글을 고르니 휴대폰 메뉴와 막대가 같은 자리에 겹쳐 '창이 이중으로 떠')
 import { useEffect, useState } from 'react';
+
+export type SelectBarPlace = 'top' | 'bottom';
+export type SelectScopeState = { id: string; place: SelectBarPlace } | null;
+
+// 휴대폰 메뉴가 뜰 높이를 짐작해 막대 자리를 정한다
+function barPlace(): SelectBarPlace {
+  try {
+    const sel = document.getSelection();
+    if (!sel || sel.rangeCount === 0) return 'bottom';
+    const r = sel.getRangeAt(0).getBoundingClientRect();
+    const h = window.visualViewport?.height || window.innerHeight;
+    const ROOM = 90; // 메뉴 높이 + 여백
+    const menuY = r.top > ROOM ? r.top : r.bottom < h - ROOM ? r.bottom : h / 2;
+    return menuY > h * 0.5 ? 'top' : 'bottom';
+  } catch { return 'bottom'; }
+}
 
 const expanders = new Map<string, () => void>();
 export function registerExpander(key: string, fn: () => void) {
@@ -17,9 +36,15 @@ export function registerExpander(key: string, fn: () => void) {
 const scopeOf = (n: Node | null): HTMLElement | null =>
   ((n && (n.nodeType === 1 ? (n as Element) : n.parentElement))?.closest?.('[data-select-scope]') as HTMLElement | null) ?? null;
 
-export function useSelectScope(): string | null {
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+export function useSelectScope(): SelectScopeState {
+  const [state, setState] = useState<SelectScopeState>(null);
   useEffect(() => {
+    let current: string | null = null;
+    const put = (id: string | null) => {
+      current = id;
+      const next: SelectScopeState = id ? { id, place: barPlace() } : null;
+      setState(prev => (prev?.id === next?.id && prev?.place === next?.place ? prev : next));
+    };
     let scope: HTMLElement | null = null;
     let busy = false;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -27,9 +52,16 @@ export function useSelectScope(): string | null {
     const show = (el: HTMLElement | null) => {
       if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
       const id = el?.dataset.selectId || null;
-      if (id) setSelectedId(id);
-      else hideTimer = setTimeout(() => { hideTimer = null; setSelectedId(null); }, 700);
+      if (id) put(id);
+      else hideTimer = setTimeout(() => { hideTimer = null; put(null); }, 700);
     };
+    // 고른 채로 화면을 올리고 내리면 휴대폰 메뉴도 따라 움직이므로 막대 자리도 다시 정함
+    let raf = 0;
+    const onScroll = () => {
+      if (!current || raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; if (current) put(current); });
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
     const onChange = () => {
       if (busy) return;
       const sel = document.getSelection();
@@ -54,7 +86,12 @@ export function useSelectScope(): string | null {
       show(scope);
     };
     document.addEventListener('selectionchange', onChange);
-    return () => { document.removeEventListener('selectionchange', onChange); if (hideTimer) clearTimeout(hideTimer); };
+    return () => {
+      document.removeEventListener('selectionchange', onChange);
+      window.removeEventListener('scroll', onScroll, { capture: true });
+      if (hideTimer) clearTimeout(hideTimer);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
-  return selectedId;
+  return state;
 }
