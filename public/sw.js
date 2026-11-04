@@ -110,13 +110,16 @@ self.addEventListener('fetch', (event) => {
   let url;
   try { url = new URL(req.url); } catch { return; }
   if (!isCachedImage(url)) return;
+  // 사진을 못 받아 앱이 다시 받을 때(components/ImageRetry) 붙이는 cgr=번호 는 빼고 보관 → 다음엔 원래 주소로 바로 꺼냄
+  let key = req.url;
+  if (url.searchParams.has('cgr')) { url.searchParams.delete('cgr'); key = url.toString(); }
   event.respondWith((async () => {
     try {
       const cache = await caches.open(IMG_CACHE);
-      const hit = await cache.match(req.url);
+      const hit = await cache.match(key);
       if (hit) return hit;
       const res = await fetch(req.url, { mode: 'cors', credentials: 'omit' });
-      if (res.ok) event.waitUntil(cache.put(req.url, res.clone()).then(trimImages).catch(() => {}));
+      if (res.ok) event.waitUntil(cache.put(key, res.clone()).then(trimImages).catch(() => {}));
       return res;
     } catch {
       return fetch(req);
