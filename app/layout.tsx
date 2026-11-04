@@ -8,6 +8,7 @@ import { TYPING_GUARD_SCRIPT } from "@/lib/typing-guard";
 import PinchPeek from "@/components/PinchPeek";
 import ConfirmHost from "@/components/ConfirmDialog";
 import SavePanelHost from "@/components/SavePanel";
+import ImageRetry from "@/components/ImageRetry";
 
 // 나눔스퀘어라운드 (네이버, OFL 무료 글꼴) — 둥글고 부드러운 고딕체
 const nanumSquareRound = localFont({
@@ -69,7 +70,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: DEVICE_BOOT_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: TYPING_GUARD_SCRIPT }} />
       </head>
-      <body className="min-h-full flex flex-col">{children}<PinchPeek /><SavePanelHost /><ConfirmHost /></body>
+      <body className="min-h-full flex flex-col">{children}<PinchPeek /><ImageRetry /><SavePanelHost /><ConfirmHost /></body>
     </html>
   );
 }
