@@ -377,11 +377,11 @@ window.render = function (t) {
     case 'me': {
       let P = whipIn({ ...base, ...sway });
       const z = eInOut(prog(u, .5, .5));
-      const f = focus(195, 520, 540, 1220, 1.45);
+      const f = focus(195, 540, 540, 1360, 1.15);
       P = { ...P, cx: lerp(P.cx, f.cx, z), cy: lerp(P.cy, f.cy, z), s: lerp(P.s, f.s, z), rx: lerp(P.rx, 0, z), ry: lerp(P.ry, 0, z) };
       W += phoneHTML({ ...P, src: 'me' });
       X += head(s);
-      if (z > .9) { const m = toStage(P, 150, 540); F += tapHTML(m.x, m.y, u - 1.5); F += burst(m.x, m.y, u - 1.55, ['📖', '✝️', '✨'], 1001, 10, 300, 56); }
+      if (z > .9) { const m = toStage(P, 150, 540); F += tapHTML(m.x, m.y, u - 1.5); F += burst(m.x, m.y, u - 1.55, ['📖', '🙏', '✨'], 1001, 10, 300, 56); }
       break;
     }
     case 'theme': {
