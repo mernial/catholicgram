@@ -90,6 +90,7 @@ import LoadMore from '@/components/LoadMore';
 import LettersModal from '@/components/LettersModal';
 import PhotoStrip from '@/components/PhotoStrip';
 import MyComments from '@/components/MyComments';
+import PostList from '@/components/PostList';
 import SwipeRow from '@/components/SwipeRow';
 import PhotoEditor from '@/components/PhotoEditor';
 import Collage from '@/components/Collage';
@@ -559,6 +560,7 @@ export default function Home() {
   const [showComposer, setShowComposer] = useState(false); // 글쓰기 창 (+ 버튼으로 열기)
   const [showAnon, setShowAnon] = useState(false);         // 익명 고민상담 (사연함·알림처럼 아래에서 올라오는 창)
   const [showMyComments, setShowMyComments] = useState(false); // 내 공간 → 내 댓글 모아 보기
+  const [postListFor, setPostListFor] = useState<string | null>(null); // 공간 머리 '게시물 N' → 그 교우의 게시글 목록 (공간 주인 id)
   const [showShareApp, setShowShareApp] = useState(false);     // 가톨릭그램 알리기 (내 공간·설정)
   const [legalDoc, setLegalDoc] = useState<LegalDoc | null>(null); // 설정 → 이용약관·개인정보처리방침 (앱 안의 창)
   const [composerStep, setComposerStep] = useState<'pick' | 'write'>('pick'); // 인스타그램처럼: 사진 고르기 → 문구 쓰기
@@ -3695,7 +3697,7 @@ export default function Home() {
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowNotices(false);
     setShowIntentions(false); setFollowList(null); setShowAdminStats(false); setShowAdminUsage(false); setShowTesterSignup(false); setShowAdminTesters(false); setShowAdminMembers(false); setPostMenuId(null);
     setFabOpen(false); setFeedMenuOpen(false); setCommentSheetId(null); setStoryViewerOpen(false);
-    setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false);
+    setShowDeletedMessages(false); setShowMediaStorage(false); setShowLetters(false); setShowLounge(false); setShowMyComments(false); setPostListFor(null);
     setOpenGroup(null); setShowNewChat(false); setShowAnon(false);
     setShowBgmAdmin(false); setShowProfileMusicPicker(false); setShowMusicVault(false); setShowMusicLibrary(false); setMusicGiftTrack(null); setShowSponsorAdmin(false); setShowShareApp(false); setShowInstallGuide(false); setShowFancyName(false); setStickerGiftFor(null); setMemberMusicGift(null);
     setShowDmBookmarks(false); setMessageSheet(null); setSelectCopy(null); setCaptureAsk(null); setCaptured(null); setDmCapture(null);
@@ -4191,10 +4193,15 @@ export default function Home() {
     : null;
   const feedBanners = liveBanners.filter(b => b.placement !== 'top');
 
+  // 공간 '게시물 N' 목록: 그 공간을 보고 있는 동안만 (다른 화면·다른 교우 공간으로 가면 닫음)
+  const showPostList = !!postListFor && activeTab === 'profile' && postListFor === viewingUserId;
+  if (postListFor && !showPostList) setPostListFor(null);
+  // 목록에서 연 크게 보기: 휴대폰 뒤로가기는 크게 보기만 닫고 목록으로 (창 안의 작은 창 규칙)
+  useBackLayer(showPostList && !!selectedPostDetail, () => setSelectedPostDetail(null));
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
     || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || storyFromComposer || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
-    || showShareApp || showFancyName || showDmBookmarks || !!legalDoc);
+    || showShareApp || showFancyName || showDmBookmarks || !!legalDoc || showPostList);
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
     : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key)) : undefined;
@@ -4319,6 +4326,7 @@ export default function Home() {
     setShowMediaStorage(false);
     setShowLetters(false);
     setShowMyComments(false);
+    setPostListFor(null);
     // 사랑방·단체 채팅방 위에 신고·교우 창이 열려 있으면 그것만 닫는다
     if (!reportTarget && !actionModalUser) { setShowLounge(false); setShowAnon(false); }
     if (!reportTarget && !actionModalUser && !showNewChat) setOpenGroup(null);
@@ -5328,7 +5336,7 @@ export default function Home() {
                 ) : <div className="shrink-0">{avatar}</div>);
               })()}
               <div className="flex-1 grid grid-cols-3 text-center">
-                <div><p className="text-lg font-bold text-stone-900">{myPosts.length}</p><p className="text-[0.8125rem] text-stone-600">게시물</p></div>
+                <button onClick={() => { if (viewingUserId) setPostListFor(viewingUserId); }} aria-label={`게시물 ${myPosts.length}개 목록 보기`}><p className="text-lg font-bold text-stone-900">{myPosts.length}</p><p className="text-[0.8125rem] text-stone-600">게시물</p></button>
                 <button onClick={() => openFollowList('followers')}><p className="text-lg font-bold text-stone-900">{followData.followers}</p><p className="text-[0.8125rem] text-stone-600">팔로워</p></button>
                 <button onClick={() => openFollowList('following')}><p className="text-lg font-bold text-stone-900">{followData.following}</p><p className="text-[0.8125rem] text-stone-600">팔로잉</p></button>
               </div>
@@ -6604,6 +6612,17 @@ export default function Home() {
           onSent={id => sendPush('letter', id)}
           onChanged={fetchLetterCount}
         />
+      )}
+
+      {/* 공간 머리 '게시물 N' → 게시글 목록 (누르면 크게 보기, 위아래로 밀면 목록 차례대로) */}
+      {showPostList && (
+        <BottomSheet label="게시물 목록" z="z-[74]" tone="bg-white" onClose={() => setPostListFor(null)}
+          title={viewingUserId === user?.id ? `내 게시물 ${myPosts.length}개` : `${viewingProfile?.baptismal_name || '교우'}님의 게시물 ${myPosts.length}개`}
+          subtitle="최근에 올린 글부터 · 누르면 크게 볼 수 있어요">
+          <PostList posts={myPosts} commentCounts={commentCounts} mine={viewingUserId === user?.id}
+            visibilityIcon={v => { const info = VISIBILITY[v as Visibility]; return info ? { icon: info.icon, label: info.label } : null; }}
+            onOpen={(id, queue) => { const p = posts.find(x => x.id === id); if (p) { openPostViewer(p); setViewerQueue(queue); } }} />
+        </BottomSheet>
       )}
 
       {/* 팔로워·팔로잉 목록 */}
