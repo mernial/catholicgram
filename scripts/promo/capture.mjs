@@ -32,6 +32,7 @@ async function shot(name, fn, { theme = 'sage', viewport = { width: 390, height:
   report();
   await ctx.close();
 }
+const expand = async p => { for (let k = 0; k < 6; k++) { const m = p.locator('main button:has-text("더 보기"), main span:has-text("더 보기")').first(); if (!(await m.count())) break; await m.click().catch(() => {}); await p.waitForTimeout(150); } };
 const snap = (p, name) => p.screenshot({ path: `/tmp/cgpromo/shots/${name}.png` });
 const nav = (p, i) => p.locator('nav button').nth(i).click();
 import fs from 'fs';
@@ -44,6 +45,7 @@ await shot('home-pray', async p => {
   await snap(p, 'home-pray');
 });
 await shot('react', async p => {
+  await expand(p);
   const pray = p.locator('button[aria-label^="기도 "]').first();
   await pray.scrollIntoViewIfNeeded(); await p.evaluate(() => { const m = document.querySelector('main'); if (m) m.scrollBy(0, 120); }); await p.waitForTimeout(500);
   await boxes(p, 'react', { pray: 'button[aria-label^="기도 "]', like: 'button[aria-label^="공감 "]' });
@@ -51,7 +53,7 @@ await shot('react', async p => {
   await pray.click(); await p.waitForTimeout(600); await snap(p, 'react-pray');
   await p.locator('button[aria-label^="공감 "]').first().click(); await p.waitForTimeout(700); await snap(p, 'react-both');
 });
-await shot('home-tall', async p => { await snap(p, 'home-tall'); }, { viewport: { width: 390, height: 2400 } });
+await shot('home-tall', async p => { await expand(p); await p.evaluate(() => document.querySelector('main')?.scrollTo(0, 0)); await p.waitForTimeout(300); await snap(p, 'home-tall'); }, { viewport: { width: 390, height: 2400 } });
 for (const t of ['ivory', 'navy', 'burgundy', 'charcoal']) await shot('theme-' + t, async p => { await snap(p, 'theme-' + t); }, { theme: t });
 await shot('me', async p => { await nav(p, 4); await p.waitForTimeout(1500); await boxes(p, 'me', { music: '[data-profile-music]', missa: 'text=매일미사', bible: 'text=가톨릭성경', head: 'text=클라라' }); await snap(p, 'me'); });
 await shot('me-list', async p => { await nav(p, 4); await p.waitForTimeout(1200); await p.locator('button[aria-label^="게시물 "]').click(); await p.waitForTimeout(800); await snap(p, 'me-list'); });
@@ -102,6 +104,10 @@ await shot('music', async p => {
   await snap(p, 'write');
   await p.locator('button', { hasText: '음악 추가' }).click(); await p.waitForTimeout(1500);
   await snap(p, 'music');
+});
+await shot('comments', async p => {
+  await p.locator('text=댓글 5개 모두 보기').first().scrollIntoViewIfNeeded(); await p.locator('text=댓글 5개 모두 보기').first().click(); await p.waitForTimeout(1800);
+  await snap(p, 'comments');
 });
 await shot('intentions', async p => { await p.locator('text=오늘의 첫 기도지향').first().click().catch(() => p.locator('text=오늘의 기도').first().click()); await p.waitForTimeout(1500); await boxes(p, 'intentions', { row: 'text=수험생 아들을 위하여', count: 'text=24' }); await snap(p, 'intentions'); });
 await shot('letters', async p => { await p.locator('button[aria-label="사연 보내기"]').click(); await p.waitForTimeout(1500); await snap(p, 'letters'); });
