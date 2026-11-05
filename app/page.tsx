@@ -1857,6 +1857,8 @@ export default function Home() {
   };
   // 메시지 목록에서 대화방 나가기 (1:1은 내 화면에서만 지움 · 단체방은 방에서 나감)
   const [swipedRow, setSwipedRow] = useState<string | null>(null); // 메시지 목록에서 옆으로 밀어 '나가기'가 나온 줄
+  // 메시지 목록을 떠나면(뒤로가기·내 공간 등) 밀어 둔 줄을 닫는다 — 예전엔 다시 들어와도 '나가기'가 나온 채였음 (루비로사 2026-11-05)
+  if (swipedRow && activeTab !== 'messages') setSwipedRow(null);
   const leaveDmThread = async (p: { id: string; baptismal_name: string; isRequest?: boolean }) => {
     if (!(await askConfirm(`${p.baptismal_name}님과의 대화방에서 나갈까요?\n대화 내용이 내 화면에서 모두 지워져요. (상대방 화면에는 남아요)`))) return false;
     const now = new Date().toISOString();
