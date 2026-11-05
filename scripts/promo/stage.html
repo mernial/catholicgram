@@ -1,0 +1,460 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:NSR;font-weight:800;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundEB.woff2)}
+@font-face{font-family:NSR;font-weight:700;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundB.woff2)}
+@font-face{font-family:NSR;font-weight:400;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundR.woff2)}
+html,body{margin:0;width:1080px;height:1920px;overflow:hidden;background:#fff}
+body{font-family:NSR,'Noto Color Emoji',sans-serif;-webkit-font-smoothing:antialiased}
+#stage{position:relative;width:1080px;height:1920px;overflow:hidden}
+#bg{position:absolute;inset:0}
+.orb{position:absolute;border-radius:50%;filter:blur(40px);will-change:transform}
+.spark{position:absolute;color:#fff;font-size:34px;text-shadow:0 0 18px rgba(255,255,255,.9)}
+#cap{position:absolute;left:540px;top:130px;transform:translateX(-50%);z-index:5;padding:30px 50px 34px;border-radius:48px;background:rgba(255,255,255,.62);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);box-shadow:0 14px 40px rgba(60,60,120,.12),inset 0 0 0 2px rgba(255,255,255,.7);display:flex;flex-direction:column;align-items:center;text-align:center;max-width:980px}
+#title{display:flex;flex-direction:column;align-items:center}
+.tline{font-weight:800;font-size:86px;line-height:1.16;color:#1d2442;letter-spacing:-1px;white-space:nowrap}
+.tline .hl{background:linear-gradient(transparent 58%, rgba(255,205,64,.75) 58%);padding:0 6px;border-radius:8px}
+#sub{margin-top:14px;text-align:center;font-weight:700;font-size:38px;color:#3d4566;line-height:1.35;white-space:nowrap}
+#phone{position:absolute;left:0;top:0;z-index:3;width:608px;height:1283px;transform-origin:0 0}
+#bezel{position:absolute;inset:0;border-radius:74px;background:#121318;box-shadow:0 40px 90px rgba(30,30,70,.35),0 8px 24px rgba(0,0,0,.25),inset 0 0 0 3px #2b2d36}
+#screen{position:absolute;left:14px;top:14px;width:580px;height:1255px;overflow:hidden;border-radius:60px;background:#fff}
+.layer{position:absolute;left:0;top:0;width:580px;transform-origin:0 0}
+.layer img{display:block;width:580px}
+#cam{position:absolute;left:50%;top:30px;width:26px;height:26px;margin-left:-13px;border-radius:50%;background:#0b0c10;box-shadow:0 0 0 3px #1c1d24}
+.strip{position:absolute;left:0;width:580px;overflow:hidden}
+.strip img{position:absolute;left:0;width:580px}
+#fx{position:absolute;inset:0;pointer-events:none;z-index:6}
+.tap{position:absolute;border-radius:50%;border:8px solid rgba(255,255,255,.95);box-shadow:0 0 0 4px rgba(60,80,160,.25),0 6px 20px rgba(0,0,0,.25)}
+.tapdot{position:absolute;border-radius:50%;background:rgba(255,255,255,.85);box-shadow:0 4px 16px rgba(0,0,0,.25)}
+.emo{position:absolute;font-size:64px;line-height:1;will-change:transform}
+.stk{position:absolute;width:210px;height:210px;filter:drop-shadow(0 10px 18px rgba(0,0,0,.18))}
+.stk img{width:100%;height:100%;object-fit:contain}
+#notif{position:absolute;left:16px;right:16px;top:-140px;height:118px;border-radius:30px;background:rgba(255,255,255,.97);box-shadow:0 10px 30px rgba(0,0,0,.22);display:flex;align-items:center;gap:16px;padding:0 20px;box-sizing:border-box}
+#notif img{width:62px;height:62px;border-radius:16px}
+#notif .t1{font-size:22px;font-weight:700;color:#666}
+#notif .t2{font-size:27px;font-weight:800;color:#111;margin-top:4px}
+#notif .t3{font-size:24px;color:#333;margin-top:2px;white-space:nowrap}
+.chip{position:absolute;padding:22px 34px;border-radius:999px;background:#fff;font-weight:800;font-size:44px;color:#1d2442;box-shadow:0 12px 30px rgba(40,50,110,.16);white-space:nowrap}
+#end{position:absolute;inset:0;z-index:4}
+#icon{position:absolute;width:300px;height:300px;border-radius:70px;box-shadow:0 30px 70px rgba(10,20,60,.35)}
+#brand{position:absolute;left:0;right:0;text-align:center;font-weight:800;color:#1d2442}
+#cta{position:absolute;left:90px;right:90px;text-align:center}
+#cta .btn{display:inline-flex;align-items:center;gap:18px;padding:28px 46px;border-radius:999px;background:#1d2442;color:#fff;font-weight:800;font-size:50px;box-shadow:0 18px 40px rgba(29,36,66,.35)}
+#cta .url{margin-top:30px;font-weight:700;font-size:36px;color:#3d4566}
+.conf{position:absolute;width:18px;height:30px;border-radius:5px}
+#flash{position:absolute;inset:0;background:#fff;pointer-events:none;z-index:7}
+.themetag{position:absolute;padding:16px 30px;border-radius:999px;font-weight:800;font-size:38px;box-shadow:0 10px 26px rgba(0,0,0,.18);white-space:nowrap}
+</style></head>
+<body><div id="stage">
+  <div id="bg"></div>
+  <div id="orbs"></div>
+  <div id="sparks"></div>
+  <div id="cap"><div id="title"></div><div id="sub"></div></div>
+  <div id="phone">
+    <div id="bezel"></div>
+    <div id="screen">
+      <div id="layers" style="position:absolute;inset:0;z-index:1"></div>
+      <div id="tall" style="display:none;position:absolute;inset:0;z-index:0">
+        <div class="strip" id="tallMid"><img id="tallMidImg"></div>
+        <div class="strip" id="tallTop"><img id="tallTopImg"></div>
+        <div class="strip" id="tallBot"><img id="tallBotImg"></div>
+      </div>
+      <div id="notif"><img id="notifIcon"><div><div class="t1">가톨릭그램 · 지금</div><div class="t2">🔔 모니카님이 댓글을 남겼어요</div><div class="t3">"꽃이 정말 예뻐요! 축하해요 💐"</div></div></div>
+    </div>
+    <div id="cam"></div>
+  </div>
+  <div id="fx"></div>
+  <div id="end"></div>
+  <div id="flash"></div>
+</div>
+<script>
+const ROOT = 'file:///tmp/cgpromo/';
+const APP = 'file:///home/user/catholicgram/public/';
+const SHOTS = ['home-tall','react-before','react-pray','react-both','celebrate','compose-pick','effect-panel','effect-sticker','collage','music','reels','dm','lounge','anon','intentions','me','alerts','theme-ivory','theme-navy','theme-burgundy','theme-charcoal','home'];
+const STICKERS = { sheep: APP + 'stickers/sheep/', cloud: APP + 'stickers/cloud/', bell: APP + 'stickers/bell/', candle: APP + 'stickers/candle/' };
+const imgs = {};
+function load(key, src) { return new Promise(res => { const i = new Image(); i.onload = () => res(); i.onerror = () => { console.log('missing ' + src); res(); }; i.src = src; imgs[key] = i; }); }
+window.ready = (async () => {
+  const jobs = SHOTS.map(s => load(s, ROOT + 'shots/' + s + '.png'));
+  jobs.push(load('icon', APP + 'icon-v2-512.png'));
+  for (const [k, d] of Object.entries(STICKERS)) for (const n of ['01','03','05','07','09','12','15','18','20','22']) jobs.push(load(k + n, d + n + '.webp'));
+  await Promise.all(jobs);
+  await document.fonts.load('800 80px NSR'); await document.fonts.load('700 40px NSR'); await document.fonts.load('400 40px NSR');
+  await document.fonts.ready;
+  build();
+  return true;
+})();
+
+// ---------- 시간 ----------
+const T0 = 0.3947, BAR = 2.4, BEAT = 0.6;
+const bar = k => T0 + BAR * k;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, x) => a + (b - a) * x;
+const eOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const eIn = x => Math.pow(clamp(x), 3);
+const eInOut = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eBack = x => { x = clamp(x); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const eElastic = x => { x = clamp(x); if (x === 0 || x === 1) return x; return Math.pow(2, -10 * x) * Math.sin((x * 10 - .75) * (2 * Math.PI / 3)) + 1; };
+const prog = (t, a, d) => clamp((t - a) / d);
+function rnd(seed) { let s = seed * 9301 + 49297; return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; }; }
+
+// ---------- 장면 ----------
+// 화면 좌표(css px, 390×844) → 폰 화면 px
+const K = 580 / 390;
+const PH = { w: 608, h: 1283, x: 236, y: 590 }; // 기본 자리 (가운데)
+const SC = [
+  { id: 'intro', a: 0, b: bar(2), lines: [], sub: '' },
+  { id: 'home', a: bar(2), b: bar(4), lines: ['기도와 일상을', '<span class="hl">함께</span> 나눠요'], sub: '사진·글로 오늘을 나누는 가톨릭 SNS' },
+  { id: 'react', a: bar(4), b: bar(5), lines: ['🙏 기도 · ❤️ 공감'], sub: '마음을 담아 톡! 눌러 주세요' },
+  { id: 'celebrate', a: bar(5), b: bar(7), lines: ['생일·축일엔', '다 함께 <span class="hl">축하</span>해요'], sub: '오늘의 주인공에게 리본과 비둘기가 🎀🕊️' },
+  { id: 'effect', a: bar(7), b: bar(9), lines: ['사진에', '<span class="hl">이모티콘</span> 쏙!'], sub: '자르기 · 이모티콘 · 모자이크 효과' },
+  { id: 'collage', a: bar(9), b: bar(10), lines: ['<span class="hl">콜라주</span>도', '한 번에'], sub: '여러 장을 예쁘게 한 장으로' },
+  { id: 'music', a: bar(10), b: bar(11), lines: ['글에', '<span class="hl">배경음악</span> 🎵'], sub: '분위기에 맞는 음악을 골라요' },
+  { id: 'reels', a: bar(11), b: bar(12), lines: ['짧은 <span class="hl">영상</span>도', '올려요'], sub: '위로 밀면 다음 영상' },
+  { id: 'dm', a: bar(12), b: bar(14), lines: ['이모티콘으로', '<span class="hl">1:1 대화</span>'], sub: '답장 · 감정 표현 · 사진도 편하게' },
+  { id: 'lounge', a: bar(14), b: bar(16), lines: ['모두의 <span class="hl">사랑방</span>에서', '함께 이야기해요'], sub: '실시간으로 인사하고 함께 기도해요' },
+  { id: 'anon', a: bar(16), b: bar(17), lines: ['<span class="hl">익명</span> 고민상담'], sub: '이름 없이 털어놓고 따뜻한 위로를' },
+  { id: 'intentions', a: bar(17), b: bar(18), lines: ['함께 바치는', '<span class="hl">기도지향</span>'], sub: '오늘의 기도에 마음을 더해요' },
+  { id: 'me', a: bar(18), b: bar(20), lines: ['<span class="hl">나만의</span> 공간'], sub: '배경음악 · 매일미사 · 성경 바로가기' },
+  { id: 'alerts', a: bar(20), b: bar(21), lines: ['알림은', '<span class="hl">"찬미예수님!"</span>'], sub: '반가운 목소리로 알려 드려요' },
+  { id: 'themes', a: bar(21), b: bar(22), lines: ['화면 색도', '<span class="hl">내 마음대로</span>'], sub: '다섯 가지 색 · 큰 글씨' },
+  { id: 'more', a: bar(22), b: bar(23), lines: ['그리고 <span class="hl">더!</span>'], sub: '' },
+  { id: 'end', a: bar(23), b: 60.01, lines: [], sub: '' },
+];
+const LAST = { intro: null, home: 'home', react: 'react-both', celebrate: 'celebrate', effect: 'effect-sticker', collage: 'collage', music: 'music', reels: 'reels', dm: 'dm', lounge: 'lounge', anon: 'anon', intentions: 'intentions', me: 'me', alerts: 'alerts', themes: 'theme-charcoal' };
+const sceneAt = t => SC.find(s => t >= s.a && t < s.b) || SC[SC.length - 1];
+// 장면별 배경색 (위·아래)
+const BG = {
+  intro: ['#fff3dc', '#ffd9e6'], home: ['#fff6e3', '#ffe2c4'], react: ['#ffeef2', '#ffd6e0'], celebrate: ['#fff1f6', '#ffe0b8'],
+  effect: ['#eef6ff', '#d8ecff'], collage: ['#eaf7ff', '#dff3e8'], music: ['#f3eeff', '#e2d6ff'], reels: ['#eef0ff', '#d6dcff'],
+  dm: ['#ecfaf2', '#d3f2e0'], lounge: ['#fff5e6', '#ffe6c2'], anon: ['#f5efff', '#ead9ff'], intentions: ['#fff7e6', '#ffe9b8'],
+  me: ['#fff0f4', '#ffe0ea'], alerts: ['#eef7ff', '#dbeeff'], themes: ['#f4f4f4', '#e6e6ee'], more: ['#fff6e0', '#ffe3ef'], end: ['#fff3dc', '#ffdbe8'],
+};
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+const mix = (a, b, x) => { const A = hex(a), B = hex(b); return `rgb(${A.map((v, i) => Math.round(lerp(v, B[i], x))).join(',')})`; };
+
+// ---------- 화면 만들기 ----------
+let orbs = [], sparks = [];
+function build() {
+  const O = document.getElementById('orbs');
+  const cols = ['rgba(255,196,120,.55)', 'rgba(255,150,190,.45)', 'rgba(130,190,255,.45)', 'rgba(170,240,200,.45)', 'rgba(255,230,140,.55)', 'rgba(200,170,255,.4)'];
+  const r = rnd(7);
+  for (let i = 0; i < 9; i++) { const d = document.createElement('div'); d.className = 'orb'; const s = 220 + r() * 260; Object.assign(d.style, { width: s + 'px', height: s + 'px', background: cols[i % cols.length] }); d._p = { x: r() * 1080, y: r() * 1920, s, sp: .2 + r() * .4, ph: r() * 6.28 }; O.appendChild(d); orbs.push(d); }
+  const S = document.getElementById('sparks');
+  for (let i = 0; i < 26; i++) { const d = document.createElement('div'); d.className = 'spark'; d.textContent = i % 3 ? '✦' : '✧'; d._p = { x: 40 + r() * 1000, y: 120 + r() * 1700, ph: r() * 6.28, sp: 1 + r() * 2, sz: 18 + r() * 26 }; S.appendChild(d); sparks.push(d); }
+  document.getElementById('notifIcon').src = APP + 'icon-v2-512.png';
+  ['tallMidImg', 'tallTopImg', 'tallBotImg'].forEach(id => document.getElementById(id).src = imgs['home-tall'].src);
+}
+
+// 레이어 (폰 화면 안 사진)
+function layers(list) {
+  const L = document.getElementById('layers');
+  while (L.children.length < list.length) { const d = document.createElement('div'); d.className = 'layer'; d.appendChild(new Image()); L.appendChild(d); }
+  [...L.children].forEach((d, i) => {
+    const l = list[i];
+    if (!l) { d.style.display = 'none'; return; }
+    d.style.display = 'block';
+    const img = d.firstChild; if (img.src !== imgs[l.src].src) img.src = imgs[l.src].src;
+    d.style.opacity = l.o ?? 1;
+    d.style.transform = `translate(${(l.x || 0) * K}px, ${(l.y || 0) * K}px) scale(${l.s || 1})`;
+    d.style.zIndex = i;
+  });
+}
+// 폰 위치: 기본 자리 + 확대(focus: 화면 css 좌표를 무대 좌표 q 로)
+let phoneT = { x: PH.x, y: PH.y, s: 1, r: 0 };
+function phone(x, y, s, r = 0, o = 1) {
+  phoneT = { x, y, s, r };
+  const P = document.getElementById('phone');
+  P.style.transform = `translate(${x}px, ${y}px) rotate(${r}deg) scale(${s})`;
+  P.style.opacity = o;
+}
+const focusPhone = (px, py, qx, qy, s) => ({ x: qx - (14 + px * K) * s, y: qy - (14 + py * K) * s, s });
+const toStage = (px, py) => ({ x: phoneT.x + (14 + px * K) * phoneT.s, y: phoneT.y + (14 + py * K) * phoneT.s });
+
+// 효과 그리기 (매 장면 새로)
+function fx(html) { document.getElementById('fx').innerHTML = html; }
+function tapHTML(px, py, age) {
+  if (age < 0 || age > 0.7) return '';
+  const p = toStage(px, py);
+  const r = 30 + eOut(age / 0.7) * 70, o = 1 - eIn(age / 0.7);
+  const d = age < 0.18 ? 1 - age / 0.18 * 0.3 : 0.7 * (1 - eOut((age - .18) / .3));
+  return `<div class="tap" style="left:${p.x - r}px;top:${p.y - r}px;width:${r * 2 - 16}px;height:${r * 2 - 16}px;opacity:${o}"></div>` +
+    (d > 0 ? `<div class="tapdot" style="left:${p.x - 26}px;top:${p.y - 26}px;width:52px;height:52px;opacity:${d}"></div>` : '');
+}
+function burstHTML(x, y, age, emojis, seed, n = 12, spread = 380, size = 64) {
+  if (age < 0 || age > 1.4) return '';
+  const r = rnd(seed); let h = '';
+  for (let i = 0; i < n; i++) {
+    const ang = -Math.PI / 2 + (r() - .5) * Math.PI * 1.5, sp = spread * (.5 + r() * .7);
+    const t = age;
+    const dx = Math.cos(ang) * sp * eOut(t / 1.0), dy = Math.sin(ang) * sp * eOut(t / 1.0) + 260 * t * t;
+    const sc = eBack(t / .35) * (1 - eIn((t - .8) / .6) * .4), o = 1 - eIn((t - .7) / .7);
+    const rot = (r() - .5) * 60 * t;
+    h += `<div class="emo" style="left:${x - size / 2}px;top:${y - size / 2}px;font-size:${size * (.7 + r() * .6)}px;opacity:${o};transform:translate(${dx}px,${dy}px) scale(${sc}) rotate(${rot}deg)">${emojis[i % emojis.length]}</div>`;
+  }
+  return h;
+}
+function stickerHTML(key, x, y, age, size = 210, rot = 0, out = 99) {
+  if (age < 0) return '';
+  const s = eBack(age / .45) * (1 - eIn((age - out) / .3));
+  if (s <= 0.01) return '';
+  const bob = Math.sin(age * 3.2) * 10;
+  return `<div class="stk" style="left:${x - size / 2}px;top:${y - size / 2}px;width:${size}px;height:${size}px;transform:translateY(${bob}px) rotate(${rot + Math.sin(age * 2.4) * 4}deg) scale(${s})"><img src="${imgs[key].src}"></div>`;
+}
+function notesHTML(t, seed) { const r = rnd(seed); let h = ''; for (let i = 0; i < 8; i++) { const st = r() * 2.4, age = ((t - st) % 2.4 + 2.4) % 2.4; const x = 120 + r() * 840, y = 1500 - age * 420; const o = Math.sin(clamp(age / 2.4) * Math.PI); h += `<div class="emo" style="left:${x}px;top:${y}px;font-size:${54 + r() * 30}px;opacity:${o};transform:rotate(${Math.sin(age * 3 + i) * 15}deg)">${['🎵', '🎶', '♪'][i % 3]}</div>`; } return h; }
+function confettiHTML(age, seed, n = 70) {
+  if (age < 0 || age > 3.5) return '';
+  const r = rnd(seed); const cols = ['#ff5d8f', '#ffc83d', '#4cc9f0', '#7ae582', '#b388ff', '#ff9f43']; let h = '';
+  for (let i = 0; i < n; i++) { const x0 = 540 + (r() - .5) * 200, vx = (r() - .5) * 1500, vy = -900 - r() * 900; const x = x0 + vx * age * .6, y = 900 + vy * age + 900 * age * age; const rot = r() * 360 + age * 400 * (r() - .5); h += `<div class="conf" style="left:${x}px;top:${y}px;background:${cols[i % cols.length]};transform:rotate(${rot}deg) scaleX(${Math.cos(age * 8 + i)});opacity:${1 - eIn((age - 2.5))}"></div>`; }
+  return h;
+}
+
+// 제목 (장면이 바뀔 때 통! 튀어나옴)
+let lastTitle = '';
+function title(s, u) {
+  const T = document.getElementById('title'), S = document.getElementById('sub');
+  const key = s.id;
+  if (lastTitle !== key) { T.innerHTML = s.lines.map(l => `<div class="tline">${l}</div>`).join(''); S.textContent = s.sub; lastTitle = key; }
+  [...T.children].forEach((d, i) => { const a = u - i * 0.12; const sc = eBack(a / .42); d.style.transform = `translateY(${(1 - eOut(a / .42)) * 40}px) scale(${0.6 + 0.4 * sc})`; d.style.opacity = clamp(a / .2); });
+  const out = s.b - s.a - u; // 끝나기 직전 살짝 사라짐
+  const capOn = s.id !== 'end' && s.id !== 'intro';
+  document.getElementById('cap').style.opacity = capOn ? clamp(u / .15) * clamp(out / .12) : 0;
+  document.getElementById('cap').style.display = capOn ? 'flex' : 'none';
+  document.getElementById('sub').style.display = s.sub ? 'block' : 'none';
+  T.style.opacity = 1;
+  S.style.opacity = clamp((u - .25) / .3) * clamp(out / .12);
+  S.style.transform = `translateY(${(1 - eOut((u - .25) / .4)) * 20}px)`;
+}
+
+// ---------- 매 프레임 ----------
+window.render = function (t) {
+  const s = sceneAt(t), u = t - s.a, D = s.b - s.a;
+  // 배경
+  const i = SC.indexOf(s), nx = SC[i + 1];
+  let top = BG[s.id][0], botc = BG[s.id][1];
+  if (nx && t > s.b - .35) { const x = eInOut((t - (s.b - .35)) / .35); top = mix(BG[s.id][0], BG[nx.id][0], x); botc = mix(BG[s.id][1], BG[nx.id][1], x); }
+  document.getElementById('bg').style.background = `linear-gradient(180deg, ${top} 0%, ${botc} 100%)`;
+  orbs.forEach((d, k) => { const p = d._p; d.style.transform = `translate(${p.x - p.s / 2 + Math.sin(t * p.sp + p.ph) * 90}px, ${p.y - p.s / 2 + Math.cos(t * p.sp * .8 + p.ph) * 120}px)`; });
+  sparks.forEach(d => { const p = d._p; const o = Math.pow(Math.max(0, Math.sin(t * p.sp + p.ph)), 3); d.style.cssText = `left:${p.x}px;top:${p.y}px;font-size:${p.sz}px;opacity:${o * .9};transform:scale(${.6 + o * .6}) rotate(${t * 30}deg)`; });
+  // 박자마다 살짝 통통 (화면 전체 아님 — 폰만)
+  const beatPhase = ((t - T0) % BEAT + BEAT) % BEAT;
+  const pulse = t > bar(4) && t < bar(22) ? Math.exp(-beatPhase * 9) * 0.012 : 0;
+  title(s, u);
+  document.getElementById('tall').style.display = 'none';
+  document.getElementById('notif').style.top = '-160px';
+  document.getElementById('end').innerHTML = '';
+  document.getElementById('flash').style.opacity = 0;
+  let F = '';
+  // 장면 바뀔 때 화면 안 사진이 옆에서 밀려 들어옴
+  const slideIn = (src, extra = {}) => { const x = 1 - eOut(u / .38); return { src, x: 390 * x, o: 1, ...extra }; };
+  // 새 화면이 오른쪽에서 밀려 들어오는 동안 앞 장면의 화면은 왼쪽으로 조금 밀려나며 어두워짐
+  const sl = (src, extra = {}) => { const prev = i > 0 ? LAST[SC[i - 1].id] : null; const x = eOut(u / .38); const L = []; if (prev && x < 1) L.push({ src: prev, x: -120 * x, o: 1 - 0.5 * x }); L.push(slideIn(src, extra)); return L; };
+  const fl = Math.sin(t * 1.6) * 7;
+  let P = { x: PH.x, y: PH.y + fl, s: 1 + pulse, r: Math.sin(t * 1.1) * 0.6, o: 1 };
+  phone(P.x, P.y, P.s, P.r, P.o);
+  const setP = q => { P = q; phone(P.x, P.y, P.s, P.r, P.o); };
+
+  switch (s.id) {
+    case 'intro': {
+      // 앱 아이콘 통! → 이름 → 캐릭터들 → 폰이 아래에서 올라옴
+      const ia = u - 0.15;
+      const isz = 300 * (ia < 0 ? 0 : eElastic(ia / 1.1));
+      const lift = eInOut((u - 3.9) / 1.0);
+      const iy = lerp(560, 300, lift), isc = lerp(1, 0.55, lift);
+      let E = '';
+      if (isz > 0) E += `<img id="icon" src="${imgs.icon.src}" style="left:${540 - isz * isc / 2}px;top:${iy - isz * isc / 2}px;width:${isz * isc}px;height:${isz * isc}px;transform:rotate(${(1 - eOut(ia / .8)) * -25}deg)">`;
+      const na = u - 0.9;
+      if (na > 0) E += `<div id="brand" style="top:${lerp(780, 470, lift)}px;font-size:${lerp(120, 0, lift > .98 ? 1 : 0) || 120}px;opacity:${clamp(na / .3) * (1 - lift)};transform:scale(${0.7 + 0.3 * eBack(na / .5)})">가톨릭그램</div>`;
+      const la = u - 1.7;
+      if (la > 0) E += `<div id="brand" style="top:${lerp(950, 600, lift)}px;font-size:58px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3) * (1 - lift)};transform:translateY(${(1 - eOut(la / .4)) * 30}px)">성당 밖에서도 함께하는<br>가톨릭 신자들의 SNS</div>`;
+      document.getElementById('end').innerHTML = E;
+      // 캐릭터 넷이 박자에 맞춰 톡톡
+      F += stickerHTML('sheep05', 200, 1320, u - bar(1), 230, -10, 1.8) + stickerHTML('cloud07', 880, 1260, u - (bar(1) + 0.3), 220, 8, 1.5)
+        + stickerHTML('bell09', 230, 1640, u - (bar(1) + 0.6), 210, 6, 1.2) + stickerHTML('candle03', 850, 1600, u - (bar(1) + 0.9), 210, -6, 0.9);
+      // 폰은 마지막 0.9초에 아래에서
+      const pa = eOut((u - 4.2) / 0.95);
+      setP({ x: PH.x, y: lerp(1950, PH.y, pa), s: 1, r: (1 - pa) * 6, o: pa > 0 ? 1 : 0 });
+      layers([]);
+      document.getElementById('tall').style.display = pa > 0 ? 'block' : 'none';
+      tallScroll(0);
+      break;
+    }
+    case 'home': {
+      // 피드를 아래로 스르륵 (두 번 멈칫)
+      const sc = eInOut(prog(u, 0.6, 1.6)) * 560 + eInOut(prog(u, 2.9, 1.4)) * 600;
+      layers([]);
+      document.getElementById('tall').style.display = 'block';
+      tallScroll(sc);
+      F += stickerHTML('sheep12', 110, 1500, u - 1.2, 190, -12, 3.2);
+      break;
+    }
+    case 'react': {
+      // 반응 줄로 확대 → 기도 톡 → 공감 톡
+      const z = eInOut(u / .45) * (1 - eInOut(prog(u, D - .4, .4)));
+      const f = focusPhone(140, 685, 540, 1300, 1.6);
+      setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z), r: 0, o: 1 });
+      phone(P.x, P.y, P.s);
+      const t1 = 0.6, t2 = 1.2;
+      layers([{ src: u < t1 + .05 ? 'react-before' : u < t2 + .05 ? 'react-pray' : 'react-both', o: clamp(u / .18) }]);
+      if (u < .18) { document.getElementById('tall').style.display = 'block'; tallScroll(1160); }
+      F += tapHTML(44, 685, u - t1) + tapHTML(118, 685, u - t2);
+      const a = toStage(44, 685), b = toStage(118, 685);
+      F += burstHTML(a.x, a.y, u - t1 - .05, ['🙏', '✨', '🙏'], 11, 11) + burstHTML(b.x, b.y, u - t2 - .05, ['❤️', '💕', '❤️'], 12, 12);
+      break;
+    }
+    case 'celebrate': {
+      // 스토리 줄(리본·비둘기) 확대 → 축하 카드로
+      const z1 = eInOut(u / .5) * (1 - eInOut(prog(u, D - .45, .45))), z2 = eInOut(prog(u, 2.3, .7));
+      const f1 = focusPhone(195, 105, 540, 1000, 1.6), f2 = focusPhone(195, 360, 540, 1260, 1.4);
+      const fx_ = lerp(f1.x, f2.x, z2), fy = lerp(f1.y, f2.y, z2), fs = lerp(f1.s, f2.s, z2);
+      setP({ x: lerp(PH.x, fx_, z1), y: lerp(PH.y, fy, z1), s: lerp(1, fs, z1), r: 0, o: 1 });
+      phone(P.x, P.y, P.s);
+      layers(sl('celebrate'));
+      F += tapHTML(320, 456, u - 3.3);
+      { const c = toStage(320, 456); F += burstHTML(c.x, c.y, u - 3.35, ['🎉', '🎂', '🕊️', '💐'], 23, 12, 340, 60); }
+      F += confettiHTML(u - 0.55, 21, 60) + confettiHTML(u - 3.35, 22, 50);
+      break;
+    }
+    case 'effect': {
+      const st = u < 0.95 ? 'compose-pick' : u < 2.45 ? 'effect-panel' : 'effect-sticker';
+      const L = [];
+      if (u < 0.95) L.push(...sl('compose-pick'));
+      else if (u < 2.45) { const x = 1 - eOut((u - .95) / .35); L.push({ src: 'compose-pick', o: 1 }); L.push({ src: 'effect-panel', y: 844 * x }); }
+      else L.push({ src: 'effect-sticker' });
+      layers(L);
+      F += tapHTML(54, 414, u - 0.55);   // 효과 단추
+      F += tapHTML(195, 728, u - 2.0);  // 이모티콘 하나
+      const sp = toStage(150, 190);
+      if (u > 2.45) F += burstHTML(sp.x, sp.y, u - 2.45, ['✨', '⭐', '💛'], 31, 10, 300, 56);
+      // 붙인 이모티콘 쪽으로 살짝 확대
+      const z = eInOut(prog(u, 2.5, .8)) * (1 - eInOut(prog(u, 4.3, .4)));
+      const f = focusPhone(195, 300, 540, 1150, 1.4);
+      setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z) + pulse, r: 0, o: 1 });
+      break;
+    }
+    case 'collage': {
+      layers(sl('collage'));
+      const z = eInOut(prog(u, .5, 1.2));
+      const f = focusPhone(195, 330, 540, 1090, 1.35);
+      setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z), r: 0, o: 1 });
+      break;
+    }
+    case 'music': {
+      layers(sl('music'));
+      F += notesHTML(u, 41);
+      F += tapHTML(345, 352, u - 1.3);
+      break;
+    }
+    case 'reels': {
+      const k = 1 + u * 0.03;
+      layers(sl('reels', { s: 1 }));
+      F += burstHTML(toStage(345, 610).x, toStage(345, 610).y, u - 1.2, ['❤️', '💖', '❤️'], 51, 9, 260, 54);
+      F += tapHTML(195, 400, u - 1.0) + tapHTML(195, 400, u - 1.18);
+      break;
+    }
+    case 'dm': {
+      layers(sl('dm'));
+      const z = eInOut(prog(u, .5, .9)) * (1 - eInOut(prog(u, 3.6, .6)));
+      const f = focusPhone(195, 470, 540, 1250, 1.28);
+      setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z) + pulse, r: 0, o: 1 });
+      phone(P.x, P.y, P.s);
+      const hp = toStage(350, 300);
+      F += burstHTML(hp.x, hp.y, u - 1.6, ['❤️', '💕'], 61, 8, 220, 50);
+      break;
+    }
+    case 'lounge': {
+      layers(sl('lounge'));
+      F += stickerHTML('bell12', 150, 1460, u - 0.8, 190, -8, 3.6) + stickerHTML('cloud15', 930, 1380, u - 1.4, 190, 8, 3.0);
+      const a = toStage(195, 420);
+      F += burstHTML(a.x, a.y, u - 2.7, ['🙏', '😊', '❤️'], 71, 10, 300, 54);
+      break;
+    }
+    case 'anon': {
+      layers(sl('anon'));
+      F += tapHTML(55, 559, u - 1.0);
+      const a = toStage(55, 559);
+      F += burstHTML(a.x, a.y, u - 1.05, ['🙏', '🤍'], 81, 8, 240, 50);
+      break;
+    }
+    case 'intentions': {
+      layers(sl('intentions'));
+      F += tapHTML(336, 513, u - 1.0);
+      const a = toStage(336, 513);
+      F += burstHTML(a.x, a.y, u - 1.05, ['🙏', '✨'], 91, 9, 240, 50);
+      break;
+    }
+    case 'me': {
+      layers(sl('me'));
+      const z1 = eInOut(prog(u, .5, .7)) * (1 - eInOut(prog(u, D - .45, .45))), z2 = eInOut(prog(u, 2.4, .7));
+      const f1 = focusPhone(195, 280, 540, 1150, 1.5), f2 = focusPhone(195, 545, 540, 1250, 1.45);
+      setP({ x: lerp(PH.x, lerp(f1.x, f2.x, z2), z1), y: lerp(PH.y, lerp(f1.y, f2.y, z2), z1), s: lerp(1, lerp(f1.s, f2.s, z2), z1), r: 0, o: 1 });
+      phone(P.x, P.y, P.s);
+      F += notesHTML(u, 101).replace(/top:(\d+)/g, (m, y) => 'top:' + (y - 300));
+      F += tapHTML(150, 540, u - 3.3);
+      F += tapHTML(113, 327, u - 1.25);
+      break;
+    }
+    case 'alerts': {
+      layers([{ src: u < .7 ? 'home' : 'alerts', y: u < .7 ? 0 : 844 * (1 - eOut((u - .7) / .4)) }, ...(u >= .7 ? [] : [])]);
+      if (u >= .7) layers([{ src: 'home' }, { src: 'alerts', y: 844 * (1 - eOut((u - .7) / .4)) }]);
+      // 휴대폰 위쪽 알림이 쑥 내려옴 (찬미예수님!)
+      const n = eBack(prog(u, 0.05, .4)) * (1 - eIn(prog(u, 1.6, .4)));
+      document.getElementById('notif').style.top = (-160 + n * 200) + 'px';
+      const bp = toStage(195, 60);
+      F += burstHTML(bp.x, bp.y + 80, u - 0.25, ['🔔', '✨', '🎶'], 111, 9, 260, 52);
+      break;
+    }
+    case 'themes': {
+      const keys = ['home', 'theme-ivory', 'theme-navy', 'theme-burgundy', 'theme-charcoal'];
+      const names = [['세이지 & 스톤', '#5F7D55', '#fff'], ['아이보리 & 골드', '#A48248', '#fff'], ['화이트 & 네이비', '#192B49', '#fff'], ['에디토리얼 버건디', '#713C47', '#fff'], ['차콜 & 샴페인', '#18191C', '#C9A96E']];
+      const idx = Math.min(4, Math.floor(u / 0.48));
+      layers([{ src: keys[idx] }]);
+      const fl = Math.max(0, 1 - ((u % 0.48) / 0.12));
+      document.getElementById('flash').style.opacity = idx > 0 ? fl * 0.35 : 0;
+      const nm = names[idx];
+      const ta = (u % 0.48);
+      F += `<div class="themetag" style="left:540px;top:1530px;background:${nm[1]};color:${nm[2]};transform:translateX(-50%) scale(${0.8 + 0.2 * eBack(ta / .2)})">🎨 ${nm[0]}</div>`;
+      break;
+    }
+    case 'more': {
+      // 폰은 아래로 빠지고 기능 칩이 통통
+      const pa = eIn(u / .35);
+      setP({ x: PH.x, y: lerp(PH.y, 2000, pa), s: 1, r: pa * 5, o: 1 - pa });
+      layers([{ src: 'theme-charcoal' }]);
+      const chips = [['🔍 탐색 · 해시태그', 300, 700], ['💌 사연함', 760, 800], ['👥 단체 채팅방', 330, 900], ['🔕 조용히 보내기', 720, 1010], ['🔎 대화 내용 찾기', 320, 1120], ['🔠 큰 글씨', 790, 1220], ['📿 오늘의 기도', 330, 1330], ['🎁 이모티콘 선물', 740, 1440]];
+      chips.forEach(([txt, x, y], k) => { const a = u - 0.15 - k * 0.27; if (a < 0) return; const sc = eBack(a / .35); F += `<div class="chip" style="left:${x}px;top:${y}px;transform:translate(-50%,-50%) scale(${sc}) rotate(${(k % 2 ? 1 : -1) * 3}deg)">${txt}</div>`; });
+      break;
+    }
+    case 'end': {
+      setP({ x: PH.x, y: 2100, s: 1, r: 0, o: 0 });
+      layers([]);
+      const ia = u;
+      const isz = 330 * eElastic(ia / 1.1);
+      let E = `<img id="icon" src="${imgs.icon.src}" style="left:${540 - isz / 2}px;top:${560 - isz / 2 + Math.sin(u * 2.4) * 8}px;width:${isz}px;height:${isz}px">`;
+      const na = u - .35;
+      if (na > 0) E += `<div id="brand" style="top:780px;font-size:118px;opacity:${clamp(na / .25)};transform:scale(${0.7 + 0.3 * eBack(na / .45)})">가톨릭그램</div>`;
+      const la = u - .75;
+      if (la > 0) E += `<div id="brand" style="top:945px;font-size:52px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3)}">가톨릭 신자들의 SNS</div>`;
+      const ca = u - 1.2;
+      if (ca > 0) E += `<div id="cta" style="top:1110px;opacity:${clamp(ca / .3)};transform:translateY(${(1 - eOut(ca / .45)) * 40}px) scale(${0.9 + 0.1 * eBack(ca / .45)})"><div class="btn">▶ Play 스토어에서 '가톨릭그램'</div><div class="url">catholicgram-dey7.vercel.app</div></div>`;
+      document.getElementById('end').innerHTML = E;
+      F += confettiHTML(u - 0.2, 131, 90);
+      F += stickerHTML('sheep03', 170, 1520, u - 1.6, 220, -10) + stickerHTML('cloud05', 400, 1600, u - 1.9, 200, 6) + stickerHTML('bell03', 660, 1600, u - 2.2, 200, -6) + stickerHTML('candle05', 900, 1520, u - 2.5, 220, 10);
+      // 마지막 0.6초 살짝 어두워짐 없이 그대로 (쇼츠는 반복 재생)
+      break;
+    }
+  }
+  if (!['react', 'celebrate', 'dm', 'me'].includes(s.id)) phone(P.x, P.y, P.s, P.r, P.o);
+  else phone(P.x, P.y, P.s, P.r, P.o);
+  fx(F);
+};
+// 홈 피드 긴 그림: 머리줄(64)·아래 탭(72) 은 그대로, 가운데만 스크롤
+function tallScroll(sc) {
+  const top = 64, nav = 72, H = 2400, view = 844;
+  const mid = document.getElementById('tallMid'), mi = document.getElementById('tallMidImg');
+  mid.style.top = top * K + 'px'; mid.style.height = (view - top - nav) * K + 'px';
+  mi.style.top = -(top + sc) * K + 'px';
+  const tp = document.getElementById('tallTop'); tp.style.top = '0px'; tp.style.height = top * K + 'px'; document.getElementById('tallTopImg').style.top = '0px';
+  const bt = document.getElementById('tallBot'); bt.style.top = (view - nav) * K + 'px'; bt.style.height = nav * K + 'px'; document.getElementById('tallBotImg').style.top = -(H - nav) * K + 'px';
+}
+</script></body></html>
