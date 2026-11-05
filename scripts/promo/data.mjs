@@ -7,7 +7,7 @@ export function makeData() {
   const S = 'https://example.supabase.co/storage/v1/object/public/community-images/demo/';
   const A = 'https://example.supabase.co/storage/v1/object/public/avatars/demo/';
   const files = {};
-  for (const n of ['sunset', 'candles', 'flowers', 'sea', 'stars', 'rosary']) files[`${n}.jpg`] = `/tmp/cgpromo/img/${n}.jpg`;
+  for (const n of ['sunset', 'candles', 'flowers', 'sea', 'stars', 'rosary', 'bible', 'churchday']) files[`${n}.jpg`] = `/tmp/cgpromo/img/${n}.jpg`;
   for (const n of ['joseph', 'maria', 'peter', 'lucia', 'michael', 'cecilia', 'anna', 'stephano']) files[`av-${n}.jpg`] = `/tmp/cgpromo/av/${n}.jpg`;
   files['reel.webm'] = '/tmp/cgpromo/img/reel.webm';
   const img = n => S + n + '.jpg';
@@ -26,13 +26,13 @@ export function makeData() {
   ];
   const post = (id, user_id, content, images, extra = {}) => ({ id, user_id, author_name: profiles.find(p => p.id === user_id).baptismal_name, content, images, pray_count: 0, like_count: 0, created_at: ago(30), visibility: 'public', music: null, is_story: false, video_url: null, video_poster: null, ...extra });
   const posts = [
-    post('p1', 'monica', '오늘 새벽 미사 다녀왔어요 ☀️\n하루를 주님께 봉헌합니다 🙏 #새벽미사 #감사', [img('sunset')], { pray_count: 18, like_count: 32, created_at: ago(12), music: 'bgm:builtin-new-beginning' }),
-    post('p2', 'andrea', '모든 일에 감사하는 하루 되세요.\n평화를 빕니다 🕊 #평화', [img('candles')], { pray_count: 41, like_count: 57, created_at: ago(55) }),
-    post('p3', 'agnes', '성당 꽃꽂이 봉사 다녀왔어요 🌸 #봉사', [img('flowers'), img('rosary'), img('sea')], { pray_count: 9, like_count: 26, created_at: ago(120) }),
-    post('p4', 'paulo', '오늘도 묵주기도 함께해요 📿 #묵주기도', [img('rosary')], { pray_count: 23, like_count: 14, created_at: ago(200) }),
-    post('p5', 'raphael', '저녁 기도 드리며 하루를 마무리해요 ✨', [img('stars')], { pray_count: 15, like_count: 21, created_at: ago(300) }),
-    post('p6', 'katarina', '바다에서 드린 감사 기도 🌊', [img('sea')], { pray_count: 7, like_count: 19, created_at: ago(420) }),
-    post('r1', 'stephano', '성당 가는 길 🌙 #영상', [], { video_url: S + 'reel.webm', video_poster: img('stars'), pray_count: 11, like_count: 38, created_at: ago(90) }),
+    post('p1', 'monica', '이번 주 토요일 청년 성서 모임 있어요 📖\n처음 오시는 분도 환영해요! #성서모임 #성당소식', [img('bible')], { pray_count: 18, like_count: 32, created_at: ago(12), music: 'bgm:builtin-new-beginning' }),
+    post('p2', 'andrea', '위령성월을 맞아 세상을 떠난 이들을 위해\n함께 기도해요 🙏 #위령성월 #기도', [img('candles')], { pray_count: 41, like_count: 57, created_at: ago(55) }),
+    post('p3', 'agnes', '성당 꽃꽂이 봉사자 모집해요 🌸\n관심 있는 분 댓글 주세요! #봉사 #성당소식', [img('flowers'), img('rosary'), img('sea')], { pray_count: 9, like_count: 26, created_at: ago(120) }),
+    post('p4', 'paulo', '우리 본당 주일 미사 시간 정리해 봤어요 ⛪\n저장해 두세요! #미사시간 #정보', [img('churchday')], { pray_count: 23, like_count: 44, created_at: ago(40) }),
+    post('p5', 'raphael', '저녁 기도 드리며 하루를 마무리해요 ✨ #저녁기도', [img('stars')], { pray_count: 15, like_count: 21, created_at: ago(300) }),
+    post('p6', 'katarina', '피정 다녀왔어요. 마음이 맑아졌어요 🌊 #피정후기', [img('sea')], { pray_count: 7, like_count: 19, created_at: ago(420) }),
+    post('r1', 'stephano', '성당 가는 길 🌙 #영상', [], { video_url: S + 'reel.webm', video_poster: img('stars'), pray_count: 11, like_count: 38, created_at: ago(250) }),
     // 내 글
     post('m1', 'me', '꽃 선물 받았어요 💐 #감사', [img('flowers')], { pray_count: 6, like_count: 22, created_at: ago(1500) }),
     post('m2', 'me', '촛불 봉헌 🕯', [img('candles')], { pray_count: 12, like_count: 18, created_at: ago(2900) }),
@@ -49,7 +49,12 @@ export function makeData() {
   ];
   const comments = [];
   const cmt = (id, post_id, user_id, content, m) => comments.push({ id, post_id, user_id, author_name: profiles.find(p => p.id === user_id).baptismal_name, content, created_at: ago(m), parent_id: null });
-  ['p1', 'p1', 'p1', 'p2', 'p2', 'p2', 'p2', 'p3', 'p4', 'p5'].forEach((p, i) => cmt('c' + i, p, ['andrea', 'agnes', 'paulo', 'raphael'][i % 4], '함께 기도할게요 🙏', 5 + i));
+  ['p1', 'p1', 'p1', 'p2', 'p2', 'p2', 'p2', 'p4', 'p5'].forEach((p, i) => cmt('c' + i, p, ['andrea', 'agnes', 'paulo', 'raphael'][i % 4], '함께 기도할게요 🙏', 5 + i));
+  cmt('q1', 'p3', 'monica', '저도 해 보고 싶어요! 몇 시에 모여요?', 100);
+  cmt('q2', 'p3', 'agnes', '토요일 오전 10시, 성당 2층이에요 😊', 95);
+  cmt('q3', 'p3', 'paulo', '처음인데 괜찮을까요? 🙋‍♂️', 80);
+  cmt('q4', 'p3', 'agnes', '그럼요! 처음 오셔도 금방 배워요 🌸', 75);
+  cmt('q5', 'p3', 'katarina', '저도 같이 갈게요! 꽃 좋아해요 💐', 60);
   cmt('cm1', 'm1', 'monica', '꽃이 정말 예뻐요! 축하해요 💐', 8);
   cmt('cm2', 'm2', 'andrea', '기도 안에서 함께합니다 🙏', 25);
   cmt('cm3', 'm3', 'agnes', '사진 너무 좋아요 ☺️', 70);

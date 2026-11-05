@@ -60,6 +60,31 @@ const scenes = {
     <g fill="#0b1029"><rect x="380" y="780" width="320" height="340"/><polygon points="360,790 540,640 720,790"/><rect x="522" y="470" width="36" height="190"/><rect x="488" y="520" width="104" height="26"/></g>
     <g fill="#ffd77a"><rect x="425" y="860" width="40" height="70" rx="20"/><rect x="615" y="860" width="40" height="70" rx="20"/><rect x="505" y="960" width="70" height="160" rx="35"/></g>
   </svg>`,
+  // 성경 모임 (펼친 성경 + 커피)
+  bible: `<svg viewBox="0 0 1080 1350" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="t" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f6e2c4"/><stop offset="1" stop-color="#e2bf8f"/></linearGradient><linearGradient id="pg" x1="0" x2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset=".5" stop-color="#f3e6cf"/><stop offset="1" stop-color="#fffaf0"/></linearGradient></defs>
+    <rect width="1080" height="1350" fill="url(#t)"/>
+    <g opacity=".25" fill="#b8874e">${Array.from({length:9},(_,i)=>`<rect x="0" y="${i*160}" width="1080" height="6"/>`).join('')}</g>
+    <g transform="rotate(-8 540 700)">
+      <path d="M150 520 Q 345 470 540 540 L540 1040 Q 345 980 150 1030Z" fill="url(#pg)" stroke="#c9a46a" stroke-width="6"/>
+      <path d="M930 520 Q 735 470 540 540 L540 1040 Q 735 980 930 1030Z" fill="url(#pg)" stroke="#c9a46a" stroke-width="6"/>
+      ${Array.from({length:9},(_,i)=>`<rect x="200" y="${590+i*44}" width="${270-(i%3)*30}" height="10" rx="5" fill="#b9a587"/><rect x="590" y="${590+i*44}" width="${280-(i%4)*25}" height="10" rx="5" fill="#b9a587"/>`).join('')}
+      <rect x="760" y="440" width="30" height="230" fill="#b3263a"/><polygon points="760,670 790,670 775,650" fill="#e2bf8f"/>
+      <g fill="#c9a03c"><rect x="320" y="540" width="14" height="60"/><rect x="306" y="556" width="42" height="12"/></g>
+    </g>
+    <g transform="translate(830 1110)"><ellipse cx="0" cy="90" rx="150" ry="34" fill="#8a5a2b" opacity=".35"/><rect x="-110" y="-60" width="220" height="150" rx="30" fill="#ffffff"/><path d="M110 -20 q70 0 70 50 q0 50 -70 50" fill="none" stroke="#fff" stroke-width="24"/><ellipse cx="0" cy="-60" rx="110" ry="26" fill="#6b3d1e"/><path d="M-30 -130 q20 -30 0 -60 M20 -125 q20 -30 0 -60" stroke="#fff" stroke-width="8" fill="none" opacity=".7"/></g>
+  </svg>`,
+  // 낮의 성당
+  churchday: `<svg viewBox="0 0 1080 1350" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="k" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7cc4ff"/><stop offset="1" stop-color="#e8f6ff"/></linearGradient></defs>
+    <rect width="1080" height="1350" fill="url(#k)"/>
+    <g fill="#fff"><ellipse cx="230" cy="250" rx="160" ry="48"/><ellipse cx="300" cy="215" rx="100" ry="60"/><ellipse cx="850" cy="330" rx="150" ry="44"/></g>
+    <path d="M0 1050 C 300 1000 700 1060 1080 1010 L1080 1350 L0 1350Z" fill="#8fd27a"/>
+    <g><rect x="330" y="620" width="420" height="440" fill="#f4e9da"/><polygon points="300,640 540,420 780,640" fill="#c45b4a"/><rect x="480" y="300" width="120" height="340" fill="#f4e9da"/><polygon points="465,310 540,200 615,310" fill="#c45b4a"/><rect x="528" y="110" width="24" height="110" fill="#d9a441"/><rect x="500" y="140" width="80" height="20" fill="#d9a441"/>
+    <circle cx="540" cy="430" r="44" fill="#7fb6e8" stroke="#d9a441" stroke-width="10"/><rect x="490" y="880" width="100" height="180" rx="50" fill="#8b5a3c"/>
+    ${[380,660].map(x=>`<rect x="${x}" y="720" width="60" height="110" rx="30" fill="#7fb6e8"/>`).join('')}</g>
+    <g fill="#4f9a45"><circle cx="160" cy="930" r="110"/><rect x="148" y="960" width="24" height="120" fill="#7a5230"/><circle cx="930" cy="950" r="90"/><rect x="920" y="970" width="20" height="110" fill="#7a5230"/></g>
+  </svg>`,
 };
 const b = await chromium.launch();
 const p = await b.newPage({ viewport: { width: W, height: H } });

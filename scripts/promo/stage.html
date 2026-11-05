@@ -70,7 +70,7 @@ body{font-family:NSR,'Noto Color Emoji',sans-serif;-webkit-font-smoothing:antial
 <script>
 const ROOT = 'file:///tmp/cgpromo/';
 const APP = 'file:///home/user/catholicgram/public/';
-const SHOTS = ['home-tall','react-before','react-pray','react-both','celebrate','compose-pick','effect-panel','effect-sticker','collage','music','reels','dm','lounge','anon','intentions','me','alerts','theme-ivory','theme-navy','theme-burgundy','theme-charcoal','home'];
+const SHOTS = ['home-tall','react-before','react-pray','react-both','celebrate','compose-pick','effect-panel','effect-sticker','collage','music','reels','dm','lounge','anon','intentions','me','alerts','theme-ivory','theme-navy','theme-burgundy','theme-charcoal','home','comments','explore','me-list','letters'];
 const STICKERS = { sheep: APP + 'stickers/sheep/', cloud: APP + 'stickers/cloud/', bell: APP + 'stickers/bell/', candle: APP + 'stickers/candle/' };
 const imgs = {};
 function load(key, src) { return new Promise(res => { const i = new Image(); i.onload = () => res(); i.onerror = () => { console.log('missing ' + src); res(); }; i.src = src; imgs[key] = i; }); }
@@ -104,15 +104,16 @@ const K = 580 / 390;
 const PH = { w: 608, h: 1283, x: 236, y: 590 }; // 기본 자리 (가운데)
 const SC = [
   { id: 'intro', a: 0, b: bar(2), lines: [], sub: '' },
-  { id: 'home', a: bar(2), b: bar(4), lines: ['기도와 일상을', '<span class="hl">함께</span> 나눠요'], sub: '사진·글로 오늘을 나누는 가톨릭 SNS' },
+  { id: 'home', a: bar(2), b: bar(4), lines: ['신앙 이야기도', '<span class="hl">성당 소식</span>도 함께'], sub: '가톨릭 신자들끼리 모이는 SNS' },
   { id: 'react', a: bar(4), b: bar(5), lines: ['🙏 기도 · ❤️ 공감'], sub: '마음을 담아 톡! 눌러 주세요' },
-  { id: 'celebrate', a: bar(5), b: bar(7), lines: ['생일·축일엔', '다 함께 <span class="hl">축하</span>해요'], sub: '오늘의 주인공에게 리본과 비둘기가 🎀🕊️' },
+  { id: 'comments', a: bar(5), b: bar(6), lines: ['궁금한 건', '<span class="hl">댓글</span>로 물어봐요'], sub: '봉사 · 모임 · 미사 정보를 함께 나눠요' },
+  { id: 'celebrate', a: bar(6), b: bar(7), lines: ['생일·축일엔', '다 함께 <span class="hl">축하</span>해요'], sub: '오늘의 주인공에게 리본과 비둘기가 🎀🕊️' },
   { id: 'effect', a: bar(7), b: bar(9), lines: ['사진에', '<span class="hl">이모티콘</span> 쏙!'], sub: '자르기 · 이모티콘 · 모자이크 효과' },
   { id: 'collage', a: bar(9), b: bar(10), lines: ['<span class="hl">콜라주</span>도', '한 번에'], sub: '여러 장을 예쁘게 한 장으로' },
   { id: 'music', a: bar(10), b: bar(11), lines: ['글에', '<span class="hl">배경음악</span> 🎵'], sub: '분위기에 맞는 음악을 골라요' },
   { id: 'reels', a: bar(11), b: bar(12), lines: ['짧은 <span class="hl">영상</span>도', '올려요'], sub: '위로 밀면 다음 영상' },
   { id: 'dm', a: bar(12), b: bar(14), lines: ['이모티콘으로', '<span class="hl">1:1 대화</span>'], sub: '답장 · 감정 표현 · 사진도 편하게' },
-  { id: 'lounge', a: bar(14), b: bar(16), lines: ['모두의 <span class="hl">사랑방</span>에서', '함께 이야기해요'], sub: '실시간으로 인사하고 함께 기도해요' },
+  { id: 'lounge', a: bar(14), b: bar(16), lines: ['신자들끼리', '<span class="hl">사랑방</span>에서 이야기'], sub: '실시간으로 인사하고 함께 기도해요' },
   { id: 'anon', a: bar(16), b: bar(17), lines: ['<span class="hl">익명</span> 고민상담'], sub: '이름 없이 털어놓고 따뜻한 위로를' },
   { id: 'intentions', a: bar(17), b: bar(18), lines: ['함께 바치는', '<span class="hl">기도지향</span>'], sub: '오늘의 기도에 마음을 더해요' },
   { id: 'me', a: bar(18), b: bar(20), lines: ['<span class="hl">나만의</span> 공간'], sub: '배경음악 · 매일미사 · 성경 바로가기' },
@@ -121,11 +122,11 @@ const SC = [
   { id: 'more', a: bar(22), b: bar(23), lines: ['그리고 <span class="hl">더!</span>'], sub: '' },
   { id: 'end', a: bar(23), b: 60.01, lines: [], sub: '' },
 ];
-const LAST = { intro: null, home: 'home', react: 'react-both', celebrate: 'celebrate', effect: 'effect-sticker', collage: 'collage', music: 'music', reels: 'reels', dm: 'dm', lounge: 'lounge', anon: 'anon', intentions: 'intentions', me: 'me', alerts: 'alerts', themes: 'theme-charcoal' };
+const LAST = { intro: null, home: 'home', react: 'react-both', comments: 'comments', celebrate: 'celebrate', effect: 'effect-sticker', collage: 'collage', music: 'music', reels: 'reels', dm: 'dm', lounge: 'lounge', anon: 'anon', intentions: 'intentions', me: 'me', alerts: 'alerts', themes: 'theme-charcoal' };
 const sceneAt = t => SC.find(s => t >= s.a && t < s.b) || SC[SC.length - 1];
 // 장면별 배경색 (위·아래)
 const BG = {
-  intro: ['#fff3dc', '#ffd9e6'], home: ['#fff6e3', '#ffe2c4'], react: ['#ffeef2', '#ffd6e0'], celebrate: ['#fff1f6', '#ffe0b8'],
+  intro: ['#fff3dc', '#ffd9e6'], home: ['#fff6e3', '#ffe2c4'], react: ['#ffeef2', '#ffd6e0'], comments: ['#eef8ff', '#dcefff'], celebrate: ['#fff1f6', '#ffe0b8'],
   effect: ['#eef6ff', '#d8ecff'], collage: ['#eaf7ff', '#dff3e8'], music: ['#f3eeff', '#e2d6ff'], reels: ['#eef0ff', '#d6dcff'],
   dm: ['#ecfaf2', '#d3f2e0'], lounge: ['#fff5e6', '#ffe6c2'], anon: ['#f5efff', '#ead9ff'], intentions: ['#fff7e6', '#ffe9b8'],
   me: ['#fff0f4', '#ffe0ea'], alerts: ['#eef7ff', '#dbeeff'], themes: ['#f4f4f4', '#e6e6ee'], more: ['#fff6e0', '#ffe3ef'], end: ['#fff3dc', '#ffdbe8'],
@@ -266,7 +267,7 @@ window.render = function (t) {
       const na = u - 0.9;
       if (na > 0) E += `<div id="brand" style="top:${lerp(780, 470, lift)}px;font-size:${lerp(120, 0, lift > .98 ? 1 : 0) || 120}px;opacity:${clamp(na / .3) * (1 - lift)};transform:scale(${0.7 + 0.3 * eBack(na / .5)})">가톨릭그램</div>`;
       const la = u - 1.7;
-      if (la > 0) E += `<div id="brand" style="top:${lerp(950, 600, lift)}px;font-size:58px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3) * (1 - lift)};transform:translateY(${(1 - eOut(la / .4)) * 30}px)">성당 밖에서도 함께하는<br>가톨릭 신자들의 SNS</div>`;
+      if (la > 0) E += `<div id="brand" style="top:${lerp(950, 600, lift)}px;font-size:58px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3) * (1 - lift)};transform:translateY(${(1 - eOut(la / .4)) * 30}px)">가톨릭 신자들이 모여<br>신앙과 정보를 나누는 SNS</div>`;
       document.getElementById('end').innerHTML = E;
       // 캐릭터 넷이 박자에 맞춰 톡톡
       F += stickerHTML('sheep05', 200, 1320, u - bar(1), 230, -10, 1.8) + stickerHTML('cloud07', 880, 1260, u - (bar(1) + 0.3), 220, 8, 1.5)
@@ -291,28 +292,35 @@ window.render = function (t) {
     case 'react': {
       // 반응 줄로 확대 → 기도 톡 → 공감 톡
       const z = eInOut(u / .45) * (1 - eInOut(prog(u, D - .4, .4)));
-      const f = focusPhone(140, 685, 540, 1300, 1.6);
+      const f = focusPhone(140, 301, 540, 1180, 1.6);
       setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z), r: 0, o: 1 });
       phone(P.x, P.y, P.s);
       const t1 = 0.6, t2 = 1.2;
       layers([{ src: u < t1 + .05 ? 'react-before' : u < t2 + .05 ? 'react-pray' : 'react-both', o: clamp(u / .18) }]);
       if (u < .18) { document.getElementById('tall').style.display = 'block'; tallScroll(1160); }
-      F += tapHTML(44, 685, u - t1) + tapHTML(118, 685, u - t2);
-      const a = toStage(44, 685), b = toStage(118, 685);
+      F += tapHTML(44, 301, u - t1) + tapHTML(118, 301, u - t2);
+      const a = toStage(44, 301), b = toStage(118, 301);
       F += burstHTML(a.x, a.y, u - t1 - .05, ['🙏', '✨', '🙏'], 11, 11) + burstHTML(b.x, b.y, u - t2 - .05, ['❤️', '💕', '❤️'], 12, 12);
       break;
     }
+    case 'comments': {
+      layers(sl('comments'));
+      const z = eInOut(prog(u, .35, .5)) * (1 - eInOut(prog(u, D - .35, .35)));
+      const f = focusPhone(195, 230, 540, 1120, 1.35);
+      setP({ x: lerp(PH.x, f.x, z), y: lerp(PH.y, f.y, z), s: lerp(1, f.s, z), r: 0, o: 1 });
+      { const q = toStage(330, 145); F += burstHTML(q.x, q.y, u - .9, ['❓', '💬'], 141, 6, 200, 52); }
+      { const q = toStage(330, 215); F += burstHTML(q.x, q.y, u - 1.5, ['😊', '💡', '👍'], 142, 7, 220, 52); }
+      break;
+    }
     case 'celebrate': {
-      // 스토리 줄(리본·비둘기) 확대 → 축하 카드로
-      const z1 = eInOut(u / .5) * (1 - eInOut(prog(u, D - .45, .45))), z2 = eInOut(prog(u, 2.3, .7));
+      const z1 = eInOut(u / .4) * (1 - eInOut(prog(u, D - .35, .35))), z2 = eInOut(prog(u, 1.0, .5));
       const f1 = focusPhone(195, 105, 540, 1000, 1.6), f2 = focusPhone(195, 360, 540, 1260, 1.4);
       const fx_ = lerp(f1.x, f2.x, z2), fy = lerp(f1.y, f2.y, z2), fs = lerp(f1.s, f2.s, z2);
       setP({ x: lerp(PH.x, fx_, z1), y: lerp(PH.y, fy, z1), s: lerp(1, fs, z1), r: 0, o: 1 });
-      phone(P.x, P.y, P.s);
       layers(sl('celebrate'));
-      F += tapHTML(320, 456, u - 3.3);
-      { const c = toStage(320, 456); F += burstHTML(c.x, c.y, u - 3.35, ['🎉', '🎂', '🕊️', '💐'], 23, 12, 340, 60); }
-      F += confettiHTML(u - 0.55, 21, 60) + confettiHTML(u - 3.35, 22, 50);
+      F += tapHTML(320, 456, u - 1.6);
+      { const c = toStage(320, 456); F += burstHTML(c.x, c.y, u - 1.65, ['🎉', '🎂', '🕊️', '💐'], 23, 12, 340, 60); }
+      F += confettiHTML(u - 0.35, 21, 60);
       break;
     }
     case 'effect': {
@@ -434,9 +442,9 @@ window.render = function (t) {
       const na = u - .35;
       if (na > 0) E += `<div id="brand" style="top:780px;font-size:118px;opacity:${clamp(na / .25)};transform:scale(${0.7 + 0.3 * eBack(na / .45)})">가톨릭그램</div>`;
       const la = u - .75;
-      if (la > 0) E += `<div id="brand" style="top:945px;font-size:52px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3)}">가톨릭 신자들의 SNS</div>`;
+      if (la > 0) E += `<div id="brand" style="top:935px;font-size:52px;font-weight:700;color:#3d4566;opacity:${clamp(la / .3)}">가톨릭 신자들의 SNS<div style="margin-top:10px;font-size:38px;color:#7a5a2a">신앙 이야기 · 성당 소식 · 함께 기도</div></div>`;
       const ca = u - 1.2;
-      if (ca > 0) E += `<div id="cta" style="top:1110px;opacity:${clamp(ca / .3)};transform:translateY(${(1 - eOut(ca / .45)) * 40}px) scale(${0.9 + 0.1 * eBack(ca / .45)})"><div class="btn">▶ Play 스토어에서 '가톨릭그램'</div><div class="url">catholicgram-dey7.vercel.app</div></div>`;
+      if (ca > 0) E += `<div id="cta" style="top:1150px;opacity:${clamp(ca / .3)};transform:translateY(${(1 - eOut(ca / .45)) * 40}px) scale(${0.9 + 0.1 * eBack(ca / .45)})"><div class="btn">▶ Play 스토어에서 '가톨릭그램'</div><div class="url">catholicgram-dey7.vercel.app</div></div>`;
       document.getElementById('end').innerHTML = E;
       F += confettiHTML(u - 0.2, 131, 90);
       F += stickerHTML('sheep03', 170, 1520, u - 1.6, 220, -10) + stickerHTML('cloud05', 400, 1600, u - 1.9, 200, 6) + stickerHTML('bell03', 660, 1600, u - 2.2, 200, -6) + stickerHTML('candle05', 900, 1520, u - 2.5, 220, 10);
