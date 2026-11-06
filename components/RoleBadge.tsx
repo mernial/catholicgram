@@ -1,7 +1,7 @@
 'use client';
 
 import type React from 'react';
-import { Medal, CLERGY_ART } from '@/components/BadgeIcon';
+import { ClergyIcon, CLERGY_ART } from '@/components/BadgeIcon';
 
 // --- 성직자/수도자 인증 뱃지 ---
 // profiles.badge_type 값에 따라 이름 옆에 메달(금테 + 십자가 문양, components/BadgeIcon Medal)과 호칭을 보여준다.
@@ -24,7 +24,7 @@ export default function RoleBadge({ type, size = 'sm', showLabel = true, onClick
   const Tag = onClick ? 'button' : 'span';
   return (
     <Tag type={onClick ? 'button' : undefined} onClick={onClick ? (e: React.MouseEvent) => { e.stopPropagation(); onClick(); } : undefined} className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`} aria-label={onClick ? `인증된 ${badge.label} — 무슨 뱃지인지 보기` : undefined}>
-      <Medal colors={art.colors} rim={art.rim} size={icon} title={`인증된 ${badge.label}`}>{art.emblem}</Medal>
+      <ClergyIcon type={type!} size={icon} title={`인증된 ${badge.label}`} />
       {showLabel && (
         <span className={`rounded-full border font-serif font-bold leading-tight ${badge.className} ${text}`}>{badge.label}</span>
       )}

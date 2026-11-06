@@ -373,5 +373,32 @@ export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' 
   ) },
 };
 
+// 인증 뱃지 그림: 금테 메달 없이 둥근 네모 색 바탕에 사람·주교관을 크게 (운영자 2026-11-06: '원 말고 안의 그림이 더 크게')
+export function ClergyIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
+  const id = `cg${useId().replace(/[^\w-]/g, '')}`;
+  const art = CLERGY_ART[type];
+  if (!art) return null;
+  const px = typeof size === 'number' ? `${size}px` : size;
+  return (
+    <svg viewBox="0 0 64 64" width={px} height={px} className={`shrink-0 ${className}`} role="img" aria-label={title} style={{ width: px, height: px }}>
+      {title && <title>{title}</title>}
+      <defs>
+        <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={art.colors[0]} /><stop offset="1" stopColor={art.colors[1]} />
+        </linearGradient>
+        <clipPath id={`${id}-clip`}><rect x="2" y="2" width="60" height="60" rx="14" /></clipPath>
+        <filter id={`${id}-sh`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="0.8" stdDeviation="0.7" floodColor="#000" floodOpacity="0.35" />
+        </filter>
+      </defs>
+      <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${id}-bg)`} />
+      <rect x="2.8" y="2.8" width="58.4" height="58.4" rx="13.4" fill="none" stroke="#fff" strokeOpacity="0.35" strokeWidth="1.2" />
+      <g clipPath={`url(#${id}-clip)`} filter={`url(#${id}-sh)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
+        <g transform={type === 'bishop' ? 'translate(32 33) scale(1.42)' : 'translate(32 36) scale(1.55)'}>{art.emblem}</g>
+      </g>
+    </svg>
+  );
+}
+
 // 뱃지 목록 (관리자 고르기·소개 창에서)
 export const ALL_BADGES = MEMBER_BADGES;
