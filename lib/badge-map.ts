@@ -29,6 +29,8 @@ export async function loadBadgeMap(force = false) {
         ((profiles || []) as { id: string; hide_badges?: boolean }[]).forEach(p => { if (p.hide_badges) hidden.add(p.id); });
       }
       const next: BadgeMap = {};
+      // 이름 옆에는 1등 뱃지·기념 뱃지를 먼저, 달성 도장(permanent)은 뒤에 (많아질 수 있으므로 +N 으로)
+      rows.sort((a, b) => Number(!!badgeOf(a.badge_key)?.permanent) - Number(!!badgeOf(b.badge_key)?.permanent));
       rows.forEach(r => { if (!hidden.has(r.user_id)) (next[r.user_id] ||= []).push(r.badge_key); });
       map = next; loadedAt = Date.now(); emit();
     } finally { loading = null; }

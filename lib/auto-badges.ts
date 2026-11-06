@@ -11,8 +11,8 @@ export async function refreshAutoBadges(admin: SupabaseClient): Promise<{ awarde
   const targets = awarded.map(r => {
     const def = badgeOf(r.badge_key)!;
     return { recipientId: r.user_id, payload: {
-      title: `🏅 '${def.label}' 뱃지를 받았어요`,
-      body: `${def.desc} — 지금 1등이에요! 내 공간에서 확인해 보세요`,
+      title: def.permanent ? `🏅 '${def.label}' 도장을 받았어요` : `🏅 '${def.label}' 뱃지를 받았어요`,
+      body: def.permanent ? `${def.desc} — 내 공간 '도장 모음'에 오늘 날짜로 남아요` : `${def.desc} — 지금 1등이에요! 내 공간에서 확인해 보세요`,
       url: `/?profile=${r.user_id}`, tag: `badge-${r.user_id}`,
     } };
   });
