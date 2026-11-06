@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
@@ -65,6 +66,7 @@ export function StampBook({ userId, name, mine, onClose }: { userId: string; nam
   });
   const kinds = new Set(stamps.map(s => s.badge_key)).size;
   return (
+    <div onClick={e => e.stopPropagation()} className="contents">
     <BottomSheet bare label="도장 모음" onClose={onClose} z="z-[86]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
@@ -100,6 +102,7 @@ export function StampBook({ userId, name, mine, onClose }: { userId: string; nam
         <StampDetail def={def} stamp={open} held={held} onClose={() => setOpen(null)} />
       ); })()}
     </BottomSheet>
+    </div>
   );
 }
 
@@ -202,8 +205,10 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
       </div>
     </div>
   );
-  return (
-    <div className="fixed inset-0 z-[96] bg-black/60 flex items-end sm:items-center justify-center animate-fade-in" onClick={onClose} role="dialog" aria-label={`${who}님의 뱃지`}>
+  // 이름 옆 뱃지는 글쓴이 단추(프로필 카드 열기) 안에 있어, 이 창 안의 누름(×·바깥)이 그 단추로 올라가면 닫힌 뒤 프로필 카드가 떴음(운영자 2026-11-06) → 누름을 여기서 멈추고 body 에 그림
+  if (typeof document === 'undefined') return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[96] bg-black/60 flex items-end sm:items-center justify-center animate-fade-in" onClick={e => { e.stopPropagation(); onClose(); }} role="dialog" aria-label={`${who}님의 뱃지`}>
       <div className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="shrink-0 px-5 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between">
           <h3 className="text-[1.0625rem] font-bold text-stone-900">🏅 {who}님의 뱃지{total > 0 ? ` ${total}` : ''}</h3>
@@ -220,7 +225,8 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
         </div>
       </div>
       {book && <StampBook userId={userId} name={who} mine={false} onClose={() => setBook(false)} />}
-    </div>
+    </div>,
+    document.body
   );
 }
 
