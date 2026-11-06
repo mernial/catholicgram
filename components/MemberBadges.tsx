@@ -132,16 +132,89 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   );
 }
 
-// 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 이름만 안내)
+// 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 무슨 뱃지인지 크게 — 누구나)
 export function BadgeRow({ userId, size = 22, max = 6, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
   const { rows, hidden } = useMemberBadges(userId);
+  const [open, setOpen] = useState<Row | null>(null);
   if (rows.length === 0 || hidden) return null;
   const shown = rows.slice(0, max);
   return (
     <span className={`inline-flex items-center gap-1 ${className}`} aria-label={`뱃지 ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
-      {shown.map(r => <BadgeIcon key={r.id} badge={r.badge_key} size={size} />)}
+      {shown.map(r => (
+        <button key={r.id} type="button" onClick={e => { e.stopPropagation(); setOpen(r); }} className="rounded-full" aria-label={`${badgeOf(r.badge_key)!.label} 뱃지 보기`}>
+          <BadgeIcon badge={r.badge_key} size={size} />
+        </button>
+      ))}
       {rows.length > max && <span className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - max}</span>}
+      {open && <BadgeDetail row={open} admin={false} onClose={() => setOpen(null)} />}
     </span>
+  );
+}
+
+// 관리자: 뱃지마다 지금 1등(받은 교우) 현황
+export function BadgeLeaderboard({ onClose, onOpenProfile }: { onClose: () => void; onOpenProfile: (id: string) => void }) {
+  type Holder = { id: string; baptismal_name: string; avatar_url?: string | null; handle?: string | null; created_at: string; auto: boolean };
+  const [byBadge, setByBadge] = useState<Record<string, Holder[]> | null>(null);
+  const [missing, setMissing] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase.from('member_badges').select('user_id, badge_key, created_at, auto').order('created_at', { ascending: true });
+      if (!alive) return;
+      if (error) { setMissing(true); setByBadge({}); return; }
+      const rows = (data || []) as { user_id: string; badge_key: string; created_at: string; auto: boolean }[];
+      const ids = Array.from(new Set(rows.map(r => r.user_id)));
+      const { data: profiles } = ids.length > 0 ? await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle').in('id', ids) : { data: [] };
+      if (!alive) return;
+      const pmap = new Map(((profiles || []) as { id: string; baptismal_name: string; avatar_url?: string | null; handle?: string | null }[]).map(p => [p.id, p]));
+      const map: Record<string, Holder[]> = {};
+      rows.forEach(r => { const p = pmap.get(r.user_id); if (!p || !badgeOf(r.badge_key)) return; (map[r.badge_key] ||= []).push({ ...p, created_at: r.created_at, auto: !!r.auto }); });
+      setByBadge(map);
+    })();
+    return () => { alive = false; };
+  }, []);
+  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'honor'];
+  return (
+    <BottomSheet bare label="뱃지 1등 현황" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
+          <div>
+            <h2 className="font-bold text-[1.125rem] text-stone-900">🏆 뱃지 1등 현황</h2>
+            <p className="text-[0.8125rem] text-stone-500 mt-0.5">뱃지마다 지금 달고 있는 교우 · 매일 아침 다시 계산해요 (관리자는 1등에서 뺌)</p>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none shrink-0" aria-label="닫기">×</button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {byBadge === null ? <p className="p-6 text-center text-sm text-stone-400">불러오는 중…</p> : missing ? (
+            <div className="mt-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-[0.875rem] text-amber-900">아직 뱃지 표가 없어요. <b>supabase/member-badges.sql</b> 을 실행해 주세요.</div>
+          ) : groups.map(g => (
+            <div key={g} className="mt-4">
+              <p className="text-[0.8125rem] font-bold text-stone-500 mb-1.5">{BADGE_GROUPS[g]}</p>
+              <div className="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white overflow-hidden">
+                {MEMBER_BADGES.filter(b => b.group === g).map(b => { const holders = byBadge[b.key] || []; return (
+                  <div key={b.key} className="flex items-center gap-3 px-3 py-2.5">
+                    <BadgeIcon badge={b} size={40} className={holders.length ? '' : 'opacity-40 grayscale'} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[0.9375rem] font-bold text-stone-900">{b.label}{b.stat && <span className="ml-1 text-[0.75rem] font-normal text-stone-400">{STAT_LABELS[b.stat]} 1등</span>}</p>
+                      {holders.length === 0 ? <p className="text-[0.8125rem] text-stone-400">아직 아무도 없어요</p> : (
+                        <div className="flex flex-wrap gap-1.5 mt-0.5">
+                          {holders.map(h => (
+                            <button key={h.id} onClick={() => onOpenProfile(h.id)} className="inline-flex items-center gap-1.5 pl-0.5 pr-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[0.8125rem] font-bold text-amber-900">
+                              {h.avatar_url ? <img src={h.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" /> : <span className="w-5 h-5 rounded-full bg-stone-200 text-[0.625rem] flex items-center justify-center text-stone-600">{(h.baptismal_name || '교').slice(0, 1)}</span>}
+                              {h.baptismal_name}{!h.auto && <span className="text-[0.6875rem] font-normal text-amber-700">직접</span>}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ); })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </BottomSheet>
   );
 }
 

@@ -1,5 +1,6 @@
 'use client';
 
+import type React from 'react';
 import { Medal, CLERGY_ART } from '@/components/BadgeIcon';
 
 // --- 성직자/수도자 인증 뱃지 ---
@@ -14,18 +15,19 @@ export const BADGES: Record<string, { label: string; className: string }> = {
   seminarian: { label: '신학생', className: 'bg-stone-50 text-stone-700 border-stone-300' },
 };
 
-export default function RoleBadge({ type, size = 'sm', showLabel = true }: { type?: string | null; size?: 'xs' | 'sm' | 'md'; showLabel?: boolean }) {
+export default function RoleBadge({ type, size = 'sm', showLabel = true, onClick }: { type?: string | null; size?: 'xs' | 'sm' | 'md'; showLabel?: boolean; onClick?: () => void }) {
   const badge = type ? BADGES[type] : undefined;
   const art = type ? CLERGY_ART[type] : undefined;
   if (!badge || !art) return null;
   const icon = size === 'md' ? 22 : size === 'sm' ? 18 : 15;
   const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[0.75rem] px-1.5 py-px' : 'text-[0.6875rem] px-1 py-px';
+  const Tag = onClick ? 'button' : 'span';
   return (
-    <span className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`}>
+    <Tag type={onClick ? 'button' : undefined} onClick={onClick ? (e: React.MouseEvent) => { e.stopPropagation(); onClick(); } : undefined} className="inline-flex items-center gap-1 shrink-0" title={`인증된 ${badge.label}`} aria-label={onClick ? `인증된 ${badge.label} — 무슨 뱃지인지 보기` : undefined}>
       <Medal colors={art.colors} rim={art.rim} size={icon} title={`인증된 ${badge.label}`}>{art.emblem}</Medal>
       {showLabel && (
         <span className={`rounded-full border font-serif font-bold leading-tight ${badge.className} ${text}`}>{badge.label}</span>
       )}
-    </span>
+    </Tag>
   );
 }
