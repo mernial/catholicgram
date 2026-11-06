@@ -4,6 +4,7 @@ import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { CHEER_ICON, CHEER_WORD, cheerKindOf, cheerWordOfMany, selfCheer, todayFeastKeys, todayKst, type CheerKind } from '@/lib/feast';
 import { onePerDevice } from '@/lib/push-devices';
 import { sendScheduledTesterNotice } from '@/lib/tester-notice';
+import { refreshAutoBadges } from '@/lib/auto-badges';
 
 // 매일 아침 8시(한국 시간) Vercel Cron 이 호출한다. (vercel.json 참고)
 // 1) 오늘 생일·축일인 교우 본인에게 축하 푸시
@@ -38,6 +39,9 @@ export async function GET(request: Request) {
   // 축일 알림과 상관없이 먼저 (축일인 교우가 없는 날에도 보내야 함)
   const testerNotice = await sendScheduledTesterNotice(admin, vapidPrivateKey).catch(e => ({ error: String(e) }));
   if (testerNotice) console.log('tester notice', JSON.stringify(testerNotice));
+  // 활동 1등 뱃지 다시 계산 (lib/auto-badges, 표가 없으면(SQL 전) 오류만 기록)
+  const badges = await refreshAutoBadges(admin).catch(e => ({ awarded: [], pushed: 0, error: String(e) }));
+  console.log('auto badges', JSON.stringify(badges));
 
   // 생일 칸(birthday.sql)이 아직 없으면 축일만
   type Celebrant = { id: string; baptismal_name: string | null; feast_day?: string | null; birthday?: string | null };
