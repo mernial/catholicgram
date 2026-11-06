@@ -4,6 +4,7 @@ import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { extractMentions } from '@/lib/mentions';
 import { STICKER_PACKS, chatPreview, postPlainText } from '@/lib/stickers';
+import { badgeOf } from '@/lib/badges';
 import { onePerDevice, type PushSub } from '@/lib/push-devices';
 import { postMentionTargets } from '@/lib/push-send';
 
@@ -22,7 +23,7 @@ const isApplePush = (endpoint: string) => { try { return /(^|\.)push\.apple\.com
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
+type NotifyBody = { type?: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -73,7 +74,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
+  if (!id || !type || !['badge', 'sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -94,7 +95,20 @@ export async function POST(request: Request) {
     return (data || []).map(p => p.id as string).filter(pid => !skip.has(pid));
   };
 
-  if (type === 'sticker_gift') {
+  if (type === 'badge') {
+    // 관리자가 교우 뱃지를 달아 줌 → 받은 교우에게 (관리자만, lib/badges.ts)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: row } = await admin.from('member_badges').select('user_id, badge_key, note, created_at').eq('id', id).maybeSingle();
+    if (!row) return Response.json({ error: 'not found' }, { status: 404 });
+    if (Date.now() - new Date(row.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
+    const def = badgeOf(row.badge_key as string);
+    if (!def) return Response.json({ error: 'not found' }, { status: 404 });
+    list.push({ recipientId: row.user_id as string, payload: {
+      title: `🏅 '${def.label}' 뱃지를 받았어요`,
+      body: row.note ? `${def.desc} · “${row.note}”` : `${def.desc} — 내 공간에서 확인해 보세요`,
+      url: `/?profile=${row.user_id}`, tag: `badge-${row.user_id}`,
+    } });
+  } else if (type === 'sticker_gift') {
     // 관리자가 전용 이모티콘을 선물 → 받은 교우에게 (관리자만 보낼 수 있음)
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
     const { data: grant } = await admin.from('sticker_grants').select('user_id, pack_id, created_at').eq('id', id).maybeSingle();
