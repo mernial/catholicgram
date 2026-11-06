@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
-import { BADGE_GROUPS, MEMBER_BADGES, badgeOf, type BadgeGroup, type MemberBadgeRow } from '@/lib/badges';
+import { BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type MemberBadgeRow, type StatKey } from '@/lib/badges';
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
 
@@ -118,6 +118,19 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState('');
   const have = new Map(rows.map(r => [r.badge_key, r]));
+  // 그 교우의 앱 활동 숫자 (서버 /api/admin/member-stats, 관리자만) — 어떤 뱃지가 어울리는지 참고
+  const [stats, setStats] = useState<Partial<Record<StatKey, number>> | null>(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch(`/api/admin/member-stats?user=${encodeURIComponent(user.id)}`, { headers: { Authorization: `Bearer ${session.access_token}` } }).catch(() => null);
+      if (!alive || !res || !res.ok) return;
+      setStats(await res.json());
+    })();
+    return () => { alive = false; };
+  }, [user.id]);
   const notify = () => window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: user.id }));
   const toggle = async (key: string) => {
     if (busy) return;
@@ -137,7 +150,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
       reload(); notify();
     } finally { setBusy(null); }
   };
-  const groups: BadgeGroup[] = ['service', 'community', 'honor'];
+  const groups: BadgeGroup[] = ['love', 'activity', 'help', 'honor'];
   return (
     <BottomSheet bare label="뱃지 달기" onClose={onClose} z="z-[94]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
@@ -147,6 +160,13 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
           <p className="text-[0.8125rem] text-stone-500 mt-0.5">누르면 달고, 다시 누르면 떼요. 달면 교우에게 휴대폰 알림이 가요.</p>
+          {stats && (
+            <div className="mt-2 flex flex-wrap gap-1" aria-label="이 교우의 활동">
+              {(Object.keys(STAT_LABELS) as StatKey[]).map(k => (
+                <span key={k} className="text-[0.6875rem] px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-600"><b className="text-stone-900">{stats[k] ?? 0}</b> {STAT_LABELS[k]}</span>
+              ))}
+            </div>
+          )}
           <input value={note} onChange={e => setNote(clipText(e.target.value, 60))} placeholder="함께 남길 말 (선택, 예: 2026년 성탄 성가대 봉사 감사해요)" aria-label="남길 말"
             className="mt-2 w-full px-3 py-2 rounded-xl border border-stone-300 bg-stone-50 text-[0.9375rem] focus:outline-none focus:border-stone-500" />
           {note && <p className="text-right text-[0.6875rem] text-stone-400 mt-0.5">{charCount(note)}/60</p>}
@@ -166,6 +186,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
                     <BadgeIcon badge={b} size={52} className={on ? '' : 'opacity-80'} />
                     <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight">{b.label}</span>
                     <span className="text-[0.6875rem] text-stone-500 leading-snug">{b.desc}</span>
+                    {b.stat && stats && <span className="text-[0.6875rem] font-bold text-amber-700">{STAT_LABELS[b.stat]} {stats[b.stat] ?? 0}</span>}
                     {on && <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[0.75rem] font-bold flex items-center justify-center" aria-hidden>✓</span>}
                   </button>
                 ); })}

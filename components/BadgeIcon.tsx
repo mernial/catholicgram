@@ -68,101 +68,107 @@ export function Medal({ colors, rim = 'gold', size = 40, title, className = '', 
   );
 }
 
-// 문양 (가운데 0,0 기준, 반지름 24 안에 그린다)
+// 문양 (가운데 0,0 기준, 반지름 24 안에 그린다) — 한눈에 알아보이는 그림으로
 const EMBLEMS: Record<string, ReactNode> = {
-  volunteer: (
+  // 공감왕: 큰 하트 (오른쪽 위 반짝)
+  hearts: (
     <g>
-      <path strokeWidth="0" d="M0 7.5C-8.2 1.4-9.4-6.6-4.6-8.5-1.9-9.5-.4-7.6 0-6.4.4-7.6 1.9-9.5 4.6-8.5 9.4-6.6 8.2 1.4 0 7.5Z" />
-      <path fill="none" strokeWidth="2.3" d="M-12.5 3.5C-12.5 10.5-6.5 14.5 0 14.5S12.5 10.5 12.5 3.5" />
-      <path fill="none" strokeWidth="2.3" d="M-12.5 3.5l-2.5-3M12.5 3.5l2.5-3" />
+      <path strokeWidth="0" d="M0 13C-11.5 5.2-14-5.2-7.4-9-3.6-11.2-.8-9 0-6.8.8-9 3.6-11.2 7.4-9 14-5.2 11.5 5.2 0 13Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.14" d="M0 13C-11.5 5.2-14-5.2-7.4-9c2.2-1.3 4.1-1.1 5.6-.1C-8.2-5.6-9.4 3.6 0 10.6Z" />
+      <path fill="none" strokeWidth="1.6" strokeOpacity="0.9" d="M11.5-14v5M9-11.5h5" />
     </g>
   ),
-  choir: (
-    <g>
-      <ellipse cx="-7" cy="9" rx="4.4" ry="3.2" transform="rotate(-18 -7 9)" strokeWidth="0" />
-      <ellipse cx="6" cy="6.5" rx="4.4" ry="3.2" transform="rotate(-18 6 6.5)" strokeWidth="0" />
-      <path fill="none" strokeWidth="2.4" d="M-3.4 8.2V-9.5M9.6 5.7V-12" />
-      <path strokeWidth="0" d="M-3.4-9.5 9.6-12v5.2L-3.4-4.3Z" />
-      <path fill="none" strokeWidth="1.6" strokeOpacity="0.8" d="M-14-3.5c-1.5 3.5-1.5 7 0 10.5M14.5-7c1.5 3.5 1.5 7 0 10.5" />
+  // 기도의 손: 앱의 기도 단추와 같은 모은 두 손 (components/Icon pray, 256 → 34)
+  prayers: (
+    <g transform="translate(-17 -17) scale(0.1328)">
+      <path fillRule="evenodd" strokeWidth="0" d="M235.32,180l-36.24-36.25L162.62,23.46A21.76,21.76,0,0,0,128,12.93,21.76,21.76,0,0,0,93.38,23.46L56.92,143.76,20.68,180a16,16,0,0,0,0,22.62l32.69,32.69a16,16,0,0,0,22.63,0L124.28,187a40.68,40.68,0,0,0,3.72-4.29,40.68,40.68,0,0,0,3.72,4.29L180,235.32a16,16,0,0,0,22.63,0l32.69-32.69A16,16,0,0,0,235.32,180ZM122.50,24.00 L122.50,178.00 L133.50,178.00 L133.50,24.00ZM46.11,164.89 L91.11,209.89 L98.89,202.11 L53.89,157.11ZM202.11,157.11 L157.11,202.11 L164.89,209.89 L209.89,164.89Z" />
     </g>
   ),
-  catechist: (
+  // 인기 글: 트로피
+  trophy: (
     <g>
-      <path strokeWidth="1.2" d="M-13-3.5C-9-5.8-4-5.6-.4-3.2V10.8C-4 8.4-9 8.2-13 10.5Z" />
-      <path strokeWidth="1.2" d="M13-3.5C9-5.8 4-5.6.4-3.2V10.8C4 8.4 9 8.2 13 10.5Z" />
-      <path fill="none" strokeWidth="1.4" strokeOpacity="0.55" stroke={'#000'} d="M-9.5 0.5c2.6-.9 5-.9 7.2 0M-9.5 4.2c2.6-.9 5-.9 7.2 0M2.3 0.5c2.6-.9 5-.9 7.2 0M2.3 4.2c2.6-.9 5-.9 7.2 0" />
-      <path fill="none" strokeWidth="2.6" d="M0-14.5v8M-3.5-11.5h7" />
+      <path strokeWidth="0" d="M-9-14h18v7c0 5.5-3.6 9.5-9 9.5s-9-4-9-9.5Z" />
+      <path fill="none" strokeWidth="2.4" d="M-9-11h-4.5c-.6 4.8 1.8 7.8 5.5 8.6M9-11h4.5c.6 4.8-1.8 7.8-5.5 8.6" />
+      <path strokeWidth="0" d="M-2.2 2.5h4.4v4.5h-4.4Z" />
+      <path strokeWidth="0" d="M-7.5 7h15c0 2.2-1.2 3.5-3.2 3.5h-8.6c-2 0-3.2-1.3-3.2-3.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.2" d="M0-14h9v7c0 5.5-3.6 9.5-9 9.5Z" />
+      <path fill="none" strokeWidth="1.8" strokeOpacity="0.9" d="M-5.2-10.5v6" />
     </g>
   ),
-  liturgy: (
+  // 소통왕: 말풍선 둘
+  talker: (
+    <g>
+      <path strokeWidth="0" d="M-13.5-11h15.5c2 0 3.5 1.5 3.5 3.5v7.5c0 2-1.5 3.5-3.5 3.5h-7.3l-4.2 4v-4h-4c-2 0-3.5-1.5-3.5-3.5V-7.5c0-2 1.5-3.5 3.5-3.5Z" />
+      <path strokeWidth="1.6" stroke="#fff" fillOpacity="0.75" d="M13.5-2.5H-2c-2 0-3.5 1.5-3.5 3.5v7.5c0 2 1.5 3.5 3.5 3.5h7.3l4.2 4v-4h4c2 0 3.5-1.5 3.5-3.5V1c0-2-1.5-3.5-3.5-3.5Z" />
+      <circle cx="-8.5" cy="-3.5" r="1.4" fill="#000" fillOpacity="0.35" strokeWidth="0" /><circle cx="-4" cy="-3.5" r="1.4" fill="#000" fillOpacity="0.35" strokeWidth="0" />
+    </g>
+  ),
+  // 이야기꾼: 연필 + 종이
+  writer: (
+    <g>
+      <path strokeWidth="0" fillOpacity="0.55" d="M-13-12h16l5 5v18h-21Z" />
+      <path strokeWidth="0" d="M12.5-9.5l3 3L2 7l-4.2 1.2L-1 4Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.3" d="M-1 4l1.2 1.2L-2.2 8.2Z" />
+      <path fill="none" strokeWidth="1.4" strokeOpacity="0.5" stroke="#000" d="M-9-5h7M-9-1h5M-9 3h3" />
+    </g>
+  ),
+  // 사진작가: 카메라
+  photo: (
+    <g>
+      <path strokeWidth="0" d="M-14.5-6h6l2.5-4h12l2.5 4h6v16h-29Z" />
+      <circle r="5.8" cy="2" fill="#000" fillOpacity="0.4" strokeWidth="0" />
+      <circle r="3.6" cy="2" strokeWidth="0" />
+      <circle cx="-1.3" cy="0.6" r="1" fill="#000" fillOpacity="0.25" strokeWidth="0" />
+      <circle cx="10.5" cy="-2.5" r="1.3" fill="#000" fillOpacity="0.35" strokeWidth="0" />
+    </g>
+  ),
+  // 기도지향: 촛불
+  intention: (
     <g>
       <path strokeWidth="0" d="M0-15.5c-4.2 4.8-5.6 8.2-3.6 10.8 1 1.3 2.3 2 3.6 2s2.6-.7 3.6-2c2-2.6.6-6-3.6-10.8Z" />
       <path strokeWidth="0" fillOpacity="0.45" d="M0-9.5c-1.6 2.2-2.1 3.8-1.3 5 .3.5.8.8 1.3.8s1-.3 1.3-.8c.8-1.2.3-2.8-1.3-5Z" fill="#000" />
       <rect x="-4" y="-1" width="8" height="12" rx="1.6" strokeWidth="0" />
-      <path fill="none" strokeWidth="1.2" strokeOpacity="0.5" stroke="#000" d="M-1.5 1.5v8" />
       <path strokeWidth="0" d="M-9 11.4h18c0 1.9-1 3-2.8 3H-6.2c-1.8 0-2.8-1.1-2.8-3Z" />
     </g>
   ),
-  legio: (
+  // 사랑방 단골: 찻잔 + 김
+  lounge: (
     <g>
-      {[0, 72, 144, 216, 288].map(a => (
-        <ellipse key={a} cx="0" cy="-7.2" rx="4.6" ry="6.6" transform={`rotate(${a})`} strokeWidth="1" strokeOpacity="0.6" fillOpacity="0.92" />
-      ))}
-      <circle r="4.2" strokeWidth="0" fill="#000" fillOpacity="0.28" />
-      <circle r="2.6" strokeWidth="0" />
-      <path fill="none" strokeWidth="2" d="M0 7v8.5M0 10.5c2.2-1.6 4.6-2 6.5-1.3-1 2-3.5 3-6.5 2.6" />
+      <path strokeWidth="0" d="M-12 -1h19v7c0 4.4-3.6 8-8 8h-3c-4.4 0-8-3.6-8-8Z" />
+      <path fill="none" strokeWidth="2.4" d="M7-1h4c2.5 0 4 1.6 4 4s-1.5 4-4 4H7" />
+      <path strokeWidth="0" d="M-13.5 15h22c0 1.6-1 2.5-2.5 2.5h-17c-1.5 0-2.5-.9-2.5-2.5Z" />
+      <path fill="none" strokeWidth="1.8" strokeOpacity="0.9" d="M-6.5-13c-1.5 2-1.5 3.5 0 5.5M-1.5-14.5c-1.5 2-1.5 3.5 0 5.5M3.5-13c-1.5 2-1.5 3.5 0 5.5" />
     </g>
   ),
-  youth: (
+  // 매일 출석: 달력 + 체크
+  daily: (
     <g>
-      <path strokeWidth="0" d="M0-15c-6.8 7.2-9.8 12.3-8.2 17.3C-7 6.2-4 9.6 0 9.6S7 6.2 8.2 2.3C9.8-2.7 6.8-7.8 0-15Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.32" d="M0-6.5C-3.4-2.5-4.9.7-3.9 3.4-3.2 5.4-1.8 6.6 0 6.6s3.2-1.2 3.9-3.2c1-2.7-.5-5.9-3.9-9.9Z" />
-      <path fill="none" strokeWidth="2.2" d="M-9 13.5h18" />
+      <rect x="-12.5" y="-10" width="25" height="23" rx="3" strokeWidth="0" />
+      <rect x="-12.5" y="-10" width="25" height="6.5" rx="3" fill="#000" fillOpacity="0.32" strokeWidth="0" />
+      <path fill="none" strokeWidth="2.4" d="M-6.5-14.5v6M6.5-14.5v6" />
+      <path fill="none" strokeWidth="3" stroke={'#000'} strokeOpacity="0.45" d="M-6 3.5l4 4 8.5-8.5" />
     </g>
   ),
-  leader: (
+  // 아이디어 천사: 전구
+  idea: (
     <g>
-      <path strokeWidth="0" d="M-12.5 1.5 0-9.5 12.5 1.5v11c0 .9-.7 1.6-1.6 1.6h-21.8c-.9 0-1.6-.7-1.6-1.6Z" />
-      <path fill="none" strokeWidth="2.6" d="M0-16v6M-3-13h6" />
-      <rect x="-3.2" y="4.5" width="6.4" height="9.6" rx="1" fill="#000" fillOpacity="0.35" strokeWidth="0" />
-      <path fill="none" strokeWidth="2.2" strokeOpacity="0.6" stroke="#000" d="M-15 2.5 0-10.5 15 2.5" />
+      <path strokeWidth="0" d="M0-15c-6.1 0-10.5 4.4-10.5 10 0 3.7 2 6.2 4 8.3 1 1.1 1.6 2.3 1.8 3.7h9.4c.2-1.4.8-2.6 1.8-3.7 2-2.1 4-4.6 4-8.3 0-5.6-4.4-10-10.5-10Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.32" d="M-4.7 9.5h9.4v2.2c0 1.4-1 2.3-2.4 2.3h-4.6c-1.4 0-2.4-.9-2.4-2.3Z" />
+      <path fill="none" strokeWidth="1.6" strokeOpacity="0.9" d="M-14.5-5h3M11.5-5h3M-10-13l2 2M10-13l-2 2" />
+      <path fill="none" strokeWidth="1.5" strokeOpacity="0.45" stroke="#000" d="M-2.5 7c-.2-3.5-1.5-5.5-3.5-7.5M2.5 7c.2-3.5 1.5-5.5 3.5-7.5" />
     </g>
   ),
-  prayer: (
+  // 오류 탐정: 돋보기 (안에 작은 벌레 점)
+  detective: (
     <g>
-      <circle cx="0" cy="-3.5" r="9.5" fill="none" strokeWidth="2.6" strokeDasharray="0.1 3.3" />
-      <circle cx="0" cy="-3.5" r="9.5" fill="none" strokeWidth="0.9" strokeOpacity="0.5" />
-      <path fill="none" strokeWidth="2.6" strokeDasharray="0.1 3.3" d="M3.5 5.3c1.8 1.6 3.3 3.2 4.6 4.9" />
-      <circle cx="9.6" cy="12.2" r="2" strokeWidth="0" />
-      <path fill="none" strokeWidth="2.2" d="M9.6 10.2v-0M9.6 12.5v5.5M7.2 14.6h4.8" />
-      <circle cx="0" cy="-3.5" r="3.4" strokeWidth="0" fillOpacity="0.55" />
+      <circle cx="-3" cy="-3" r="9.5" fill="none" strokeWidth="3.2" />
+      <path fill="none" strokeWidth="4" d="M4 4l8.5 8.5" />
+      <circle cx="-3" cy="-3" r="7.4" fill="#000" fillOpacity="0.18" strokeWidth="0" />
+      <ellipse cx="-3" cy="-2.5" rx="2.6" ry="3.4" strokeWidth="0" />
+      <path fill="none" strokeWidth="1.3" d="M-6.5-5l-2-1.5M.5-5l2-1.5M-6.8-1h-2.2M.8-1h2.2M-6.5 2l-2 1.5M.5 2l2 1.5" />
     </g>
   ),
-  writer: (
-    <g>
-      <path strokeWidth="0" d="M11.5-12.5C1.5-11-5.5-5-8.3 6.5c3.6-.6 6.5-1.9 9-3.9C3.6.5 6.4-5.5 11.5-12.5Z" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M8-9C2.5-5-1.5 0-5 5.5" />
-      <path fill="none" strokeWidth="2.4" d="M-8.3 6.5-11.5 13" />
-      <path fill="none" strokeWidth="1.8" strokeOpacity="0.85" d="M-2 14.5h13" />
-    </g>
-  ),
-  peacemaker: (
-    <g>
-      {/* 올리브 가지 두 줄기(평화) + 가운데 작은 하트 */}
-      {([-1, 1] as const).map(d => (
-        <g key={d} transform={`scale(${d} 1)`}>
-          <path fill="none" strokeWidth="1.8" d="M-3 14C-12 10-16 2-14-9" />
-          <ellipse cx="-7.3" cy="8.5" rx="1.7" ry="3.6" transform="rotate(2 -7.3 8.5)" strokeWidth="0" />
-          <ellipse cx="-13.4" cy="8.8" rx="1.7" ry="3.6" transform="rotate(-95 -13.4 8.8)" strokeWidth="0" />
-          <ellipse cx="-11.2" cy="2.5" rx="1.7" ry="3.6" transform="rotate(29 -11.2 2.5)" strokeWidth="0" />
-          <ellipse cx="-16.8" cy="-0.0" rx="1.7" ry="3.6" transform="rotate(-68 -16.8 -0.0)" strokeWidth="0" />
-          <ellipse cx="-12.1" cy="-5.1" rx="1.7" ry="3.6" transform="rotate(54 -12.1 -5.1)" strokeWidth="0" />
-          <ellipse cx="-16.4" cy="-9.7" rx="1.7" ry="3.6" transform="rotate(-47 -16.4 -9.7)" strokeWidth="0" />
-        </g>
-      ))}
-      <path strokeWidth="0" d="M0 4.5C-5.6.3-6.4-5.2-3.1-6.5-1.3-7.2-.3-5.9 0-5 .3-5.9 1.3-7.2 3.1-6.5 6.4-5.2 5.6.3 0 4.5Z" />
-    </g>
-  ),
+  // 첫 열매: 새싹
   firstfruit: (
     <g>
       <path fill="none" strokeWidth="2.4" d="M0 14V-2" />
@@ -170,13 +176,6 @@ const EMBLEMS: Record<string, ReactNode> = {
       <path strokeWidth="0" d="M0 5C1.6-1.6 6.3-4.8 12.8-4.5c-.7 6.2-4.7 10.2-12.8 9.5Z" />
       <path fill="none" strokeWidth="1.2" strokeOpacity="0.5" stroke="#000" d="M-10-9.5C-6-7-3-4.5-.8-2.3M10-2.5C6.5-.5 3.5 1.8 1.2 4.5" />
       <path fill="none" strokeWidth="2" d="M-7 15.5h14" />
-    </g>
-  ),
-  newborn: (
-    <g>
-      <path strokeWidth="0" d="M0 12.5-12.3-1.6C-9.4-8.4-5.2-11.8 0-11.8S9.4-8.4 12.3-1.6Z" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M0 11.5-8.4-2.7M0 11.5-4.6-6.5M0 11.5l0-19M0 11.5 4.6-6.5M0 11.5 8.4-2.7" />
-      <path strokeWidth="0" d="M-7-15.5c-1.2 1.5-1.8 2.5-1.8 3.4a1.8 1.8 0 0 0 3.6 0c0-.9-.6-1.9-1.8-3.4ZM7-15.5c-1.2 1.5-1.8 2.5-1.8 3.4a1.8 1.8 0 0 0 3.6 0c0-.9-.6-1.9-1.8-3.4Z" />
     </g>
   ),
 };
