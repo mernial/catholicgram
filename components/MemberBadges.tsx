@@ -120,8 +120,8 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
       ) : (
         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] -mx-4 px-4 pb-1">
           {rows.map(r => { const def = badgeOf(r.badge_key)!; return (
-            <button key={r.id} onClick={() => setOpen(r)} className="shrink-0 w-[4.25rem] flex flex-col items-center gap-1" aria-label={`${def.label} 뱃지 보기`}>
-              <BadgeIcon badge={def} size={48} />
+            <button key={r.id} onClick={() => setOpen(r)} className="shrink-0 w-[4.5rem] flex flex-col items-center gap-1" aria-label={`${def.label} 뱃지 보기`}>
+              <BadgeIcon badge={def} size={58} />
               <span className="text-[0.6875rem] font-bold text-stone-700 leading-tight text-center">{def.label}</span>
             </button>
           ); })}
