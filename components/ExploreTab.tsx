@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
+import { NameBadges } from '@/components/MemberBadges';
 import HashtagText from '@/components/HashtagText';
 import { extractHashtags, popularHashtags } from '@/lib/hashtags';
 import { postPlainText, splitPostStickers } from '@/lib/stickers';
@@ -336,7 +337,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
         <div className="flex items-center gap-2 min-w-0">
           <Avatar p={post} uid={post.user_id} size="w-7 h-7" />
           <span className="text-xs font-bold text-stone-800 truncate">{post.author_name}</span>
-          <RoleBadge type={post.badge_type} size="xs" showLabel={false} />
+          <RoleBadge type={post.badge_type} size="xs" showLabel={false} /><NameBadges userId={post.user_id} size={16} max={2} />
           <span className="text-[0.75rem] text-stone-400 shrink-0">· {timeAgo(post.created_at)}</span>
         </div>
         <p className="text-sm text-stone-800 line-clamp-3 leading-relaxed"><HashtagText text={postPlainText(post.content)} onTag={openTag} /></p>
@@ -355,7 +356,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</span>
-          <RoleBadge type={p.badge_type} size="xs" />
+          <RoleBadge type={p.badge_type} size="xs" /><NameBadges userId={p.id} size={16} max={2} />
         </div>
         <p className="text-xs text-stone-500 truncate">@{p.handle || 'user'}</p>
       </div>
@@ -445,7 +446,7 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
                         <Avatar p={p} uid={p.id} fit size="w-14 h-14" />
                         <span className="flex items-center gap-1 max-w-full">
                           <span className="text-sm font-bold text-stone-800 truncate">{p.baptismal_name}</span>
-                          <RoleBadge type={p.badge_type} size="xs" showLabel={false} />
+                          <RoleBadge type={p.badge_type} size="xs" showLabel={false} /><NameBadges userId={p.id} size={16} max={2} />
                         </span>
                         <span className="text-[0.75rem] text-stone-500 line-clamp-2 leading-snug">{p.reason}</span>
                         <span className="mt-1 text-xs font-bold text-blue-600">프로필 보기</span>

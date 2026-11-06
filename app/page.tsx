@@ -8,7 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
-import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard } from '@/components/MemberBadges';
+import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard, NameBadges } from '@/components/MemberBadges';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
 import GroupChat from '@/components/GroupChat';
@@ -4732,7 +4732,7 @@ export default function Home() {
               <div className="min-w-0">
                 <div className="flex items-center gap-1 min-w-0">
                   <h1 className="font-bold text-stone-900 text-sm truncate">{currentChatUser?.baptismal_name}</h1>
-                  <RoleBadge type={currentChatUser?.badge_type} />
+                  <RoleBadge type={currentChatUser?.badge_type} /><NameBadges userId={currentChatUser?.id} size={20} />
                   {dmMuted && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-4 h-4 text-stone-400" /></span>}
                 </div>
                 <p className="text-[0.75rem] text-stone-400 truncate">@{currentChatUser?.handle}</p>
@@ -5247,7 +5247,7 @@ export default function Home() {
                         : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}</CelebrateBand>
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
-                      <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /></button>
+                      <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /><NameBadges userId={post.user_id} /></button>
                       {/* 음악: 누르면 크게 보기에서 재생 */}
                       {parsePostMusic(post.music) && (
                         <button onClick={() => openPostViewer(post)} className="max-w-full flex items-center gap-1 text-[0.75rem] text-stone-500"><Icon name="music" className="w-3 h-3 shrink-0" /><span className="truncate">{post.music_title || '음악'}</span></button>
@@ -5859,7 +5859,7 @@ export default function Home() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
                   <h3 className="font-bold text-stone-800 text-sm">{partner.baptismal_name}</h3>
-                  <RoleBadge type={partner.badge_type} />
+                  <RoleBadge type={partner.badge_type} /><NameBadges userId={partner.id} size={16} max={2} />
                   {chatMutes.rooms.has(dmMuteRoom(partner.id)) && <span role="img" aria-label="알림 꺼짐" className="shrink-0"><Icon name="bellSlash" className="w-3.5 h-3.5 text-stone-400" /></span>}
                   {partner.isRequest && <span className="shrink-0 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">요청</span>}
                 </div>
@@ -6458,7 +6458,7 @@ export default function Home() {
                   const nameLine = (
                     <p className="text-[0.8125rem] flex items-center gap-1 flex-wrap">
                       <b className="text-stone-900">{authorName(c)}</b>
-                      {c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" showLabel={false} />}
+                      {c.user_id && <RoleBadge type={badgeByUser[c.user_id] ?? (c.user_id === user?.id ? profile?.badge_type : undefined)} size="xs" showLabel={false} />}{c.user_id && <NameBadges userId={c.user_id} size={16} max={2} />}
                       <span className="text-stone-400">{timeAgo(c.created_at)}{c.edited_at && ' · 수정됨'}</span>
                     </p>
                   );
@@ -6684,7 +6684,7 @@ export default function Home() {
                     ? <img loading="lazy" src={p.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border border-stone-200" />
                     : <span className="w-11 h-11 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center font-serif font-bold">{initial(p.baptismal_name)}</span>}</CelebrateBand>
                   <span className="min-w-0">
-                    <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /></span>
+                    <span className="flex items-center gap-1 font-bold text-stone-800 text-sm">{p.baptismal_name}<RoleBadge type={p.badge_type} size="xs" /><NameBadges userId={p.id} size={16} max={2} /></span>
                     <span className="block text-xs text-stone-400">@{p.handle}</span>
                   </span>
                 </button>
@@ -7292,7 +7292,7 @@ export default function Home() {
                   <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{initial(selectedPostDetail.author_name, '교')}</div>
                 )}</CelebrateBand>
                 <div>
-                  <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /></span>
+                  <span className="text-xs font-bold text-stone-800 inline-flex items-center gap-1">{selectedPostDetail.author_name}<RoleBadge type={selectedPostDetail.badge_type} size="xs" /><NameBadges userId={selectedPostDetail.user_id} /></span>
                   <span className="text-[0.75rem] text-stone-400 block">@{selectedPostDetail.handle || 'user'}</span>
                 </div>
               </button>

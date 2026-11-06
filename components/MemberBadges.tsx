@@ -11,6 +11,7 @@ import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
 import Switch from '@/components/Switch';
 import { toast } from '@/lib/chat-actions';
+import { useBadgeMap } from '@/lib/badge-map';
 
 // --- 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지) ---
 // 표 member_badges (supabase/member-badges.sql). 공간 머리에 '뱃지 선반'(BadgeShelf), 프로필 카드에 작은 줄(BadgeRow),
@@ -147,6 +148,24 @@ export function BadgeRow({ userId, size = 22, max = 6, className = '' }: { userI
       ))}
       {rows.length > max && <span className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - max}</span>}
       {open && <BadgeDetail row={open} admin={false} onClose={() => setOpen(null)} />}
+    </span>
+  );
+}
+
+// 이름 옆 작은 활동 뱃지 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 누르면 무슨 뱃지인지
+export function NameBadges({ userId, size = 18, max = 3, className = '' }: { userId?: string | null; size?: number; max?: number; className?: string }) {
+  const map = useBadgeMap();
+  const keys = userId ? map[userId] : undefined;
+  if (!keys || keys.length === 0) return null;
+  const shown = keys.slice(0, max);
+  return (
+    <span className={`inline-flex items-center gap-0.5 shrink-0 ${className}`} aria-label={`뱃지 ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
+      {shown.map(k => { const def = badgeOf(k)!; return (
+        <button key={k} type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); showAlert(`${def.label} 뱃지\n${def.desc}${def.auto ? ' — 활동 1등에게 저절로 달려요' : ''}`); }} className="rounded-full" aria-label={`${def.label} 뱃지`}>
+          <BadgeIcon badge={def} size={size} />
+        </button>
+      ); })}
+      {keys.length > max && <span className="text-[0.6875rem] text-stone-500 font-bold">+{keys.length - max}</span>}
     </span>
   );
 }
