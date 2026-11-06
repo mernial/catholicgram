@@ -340,25 +340,26 @@ export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' 
       <ellipse cx="0" cy="-3.5" rx="6" ry="7.4" fill="#f4efe4" />
     </g>
   ) },
-  // 수사님: 두건 달린 갈색 수도복과 매듭 허리끈(얼굴 자리는 비움)
+  // 수사님: 두건 달린 갈색 수도복과 매듭 허리끈(얼굴 자리는 비움) — 높이는 수녀님 베일과 같게(-15.5~18)
   brother: { colors: ['#5d9fd8', '#2a62a4'], rim: 'gold', emblem: (
     <g>
-      <path fill="#8a5a2b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18 18c0-6 3-9.5 8-11.5 0-10.5 4-17 10-17s10 6.5 10 17c5 2 8 5.5 8 11.5Z" />
-      <path fill="#6e4520" fillOpacity="0.7" d="M0-10.5c6 0 10 6.5 10 17 5 2 8 5.5 8 11.5H0Z" />
-      <path fill="#5a3717" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-7.5-.5C-7.5-7.5-4-12 0-12s7.5 4.5 7.5 11.5v8h-15Z" />
-      <path fill="#f4efe4" d="M-5-.5C-5-5.5-2.5-9 0-9s5 3.5 5 8.5v6H-5Z" />
+      <path fill="#8a5a2b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18 18c0-6 3-9.5 8-11.5C-10-6-6-15.5 0-15.5S10-6 10 6.5c5 2 8 5.5 8 11.5Z" />
+      <path fill="#6e4520" fillOpacity="0.7" d="M0-15.5c6 0 10 9.5 10 22 5 2 8 5.5 8 11.5H0Z" />
+      <path fill="#5a3717" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-7.5 1C-7.5-7.5-4-13.5 0-13.5s7.5 6 7.5 14.5v6.5h-15Z" />
+      <path fill="#f4efe4" d="M-5 1C-5-5-2.5-9.5 0-9.5s5 4.5 5 10.5v4H-5Z" />
       <path fill="none" stroke="#efe6d2" strokeWidth="2" d="M-12.5 12h25M6.5 12c0 2.5-.5 4.5-1.5 6" />
       <circle cx="5.6" cy="14.8" r="1.3" fill="#efe6d2" /><circle cx="5" cy="17.6" r="1.3" fill="#efe6d2" />
     </g>
   ) },
-  // 신학생: 검은 수단과 흰 칼라, 앞 단추 줄(얼굴 없음)
+  // 신학생: 펼친 성경(짙은 표지·크림 책장·빨간 책갈피 끈)과 위의 금 십자가 — 공부하는 신학생
   seminarian: { colors: ['#9aa5b4', '#5c6673'], rim: 'silver', emblem: (
     <g>
-      <path fill="#262626" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18 18c0-6 3-9.5 8-11.5l5-1.5V-9h10v14l5 1.5c5 2 8 5.5 8 11.5Z" />
-      <path fill="#000" fillOpacity="0.35" d="M0 5h5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
-      <path fill="#ffffff" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-6.5-9.5h13v3.2c0 1.2-.8 2-2 2h-9c-1.2 0-2-.8-2-2Z" />
-      <path fill="none" stroke="#f4efe4" strokeWidth="1" strokeOpacity="0.9" d="M0 5v13" />
-      <circle cx="0" cy="8" r=".9" fill="#f4efe4" /><circle cx="0" cy="11.5" r=".9" fill="#f4efe4" /><circle cx="0" cy="15" r=".9" fill="#f4efe4" />
+      <path fill="#e3c15b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-1.6-18h3.2v4.4h4.4v3.2H1.6v6.6h-3.2v-6.6H-6v-3.2h4.4Z" />
+      <path fill="#3b3a4a" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-17.5 2c6-2.4 11.8-2.4 17.5 0 5.7-2.4 11.5-2.4 17.5 0v15.5c-6-2.4-11.8-2.4-17.5 0-5.7-2.4-11.5-2.4-17.5 0Z" />
+      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-15.5.5C-10.5-1.5-5.5-1.3-.8.9V14.9C-5.5 12.7-10.5 12.5-15.5 14.5Z" />
+      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M15.5.5C10.5-1.5 5.5-1.3.8.9V14.9C5.5 12.7 10.5 12.5 15.5 14.5Z" />
+      <path fill="none" stroke="#9a9484" strokeWidth="1" d="M-12.5 4.3c3-1 6-1 8.5 0M-12.5 7.6c3-1 6-1 8.5 0M-12.5 10.9c3-1 6-1 8.5 0M4 4.3c3-1 6-1 8.5 0M4 7.6c3-1 6-1 8.5 0M4 10.9c3-1 6-1 8.5 0" />
+      <path fill="#c0392b" d="M-.9.9h1.8V13l-.9-1.2-.9 1.2Z" />
     </g>
   ) },
 };
