@@ -249,6 +249,7 @@
 - 신학생 상징 바꿈 + 수사님 높이(운영자 2026-11-06: '신학생 상징이 이상하다, 수사님 높이를 수녀님과 맞춰'): 신학생 = 펼친 성경(짙은 표지·크림 책장·줄·빨간 책갈피 끈) 위에 금 십자가(검은 수단은 폐기), 수사님 두건 수도복을 수녀님 베일과 같은 높이(-15.5~18)로. `CLERGY_ART`
 - 관리자 뱃지 창에 1등 이름(운영자 2026-11-06: '관리자 공간의 뱃지 창에서 누가 어떤 뱃지 1등인지'): `BadgeGrantSheet`가 열릴 때 `member_badges`(auto)와 프로필 이름을 받아 자동 뱃지 칸마다 '🏆 이름(동점이면 쉼표)' 또는 '🏆 아직 없음', '지금 다시 계산' 뒤 다시 읽음(`holdersTick`). '뱃지 1등 현황' 창은 그대로
 - 활동 뱃지를 이름 옆 어디서나(운영자 2026-11-06: '소통왕·공감왕 같은 뱃지도 모든 프로필·게시글에 붙는 프로필에 보이게'): `lib/badge-map.ts` — 앱이 열릴 때 `member_badges`(user_id·badge_key, 1등마다 한 줄이라 작음)와 숨긴 교우(`profiles.hide_badges`)를 한 번에 받아 두는 전역 표(`useBadgeMap`, 1분 안 재사용, `member-badges-changed`면 다시) + `components/MemberBadges` `NameBadges({ userId, size, max })`(작은 메달, 누르면 이름·뜻 안내, 넘치면 +N). 넣은 곳: 홈 글 머리(18px·3개)·글 크게 보기·댓글(16·2)·1:1 대화방 머리(20)·메시지 목록·팔로워 목록·탐색(글·사람·추천)·단체방 말풍선(14)·단체방 참여자·사랑방 말풍선(14)·새 채팅 찾기. 공간 머리는 선반(`BadgeShelf`)이 있어 그대로. Playwright 댓글·메시지 목록 확인
+- 인증 뱃지 옆 호칭 글자 없앰(운영자 2026-11-06: '뱃지 옆에 신부님·수녀님 글자 붙이지 말고 뱃지만'): `RoleBadge` `showLabel` 기본값 true → false(쓰는 곳이 모두 기본값이라 어디서나 메달만). 무슨 뱃지인지는 카드에서 누르면 안내. `BADGES` 의 label 은 관리자 고르기·안내 글에만
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
