@@ -8,6 +8,7 @@ import { mediaMenuActions } from '@/lib/save-media';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
+import { NameBadges } from '@/components/MemberBadges';
 import type { ReportTarget } from '@/components/ReportDialog';
 import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@/components/NewChat';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
@@ -769,7 +770,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                   <div className={`min-w-0 max-w-[78%] flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                     {!mine && !grouped && (
                       <span className="flex items-center gap-1 text-[0.8125rem] font-bold text-stone-700 mb-0.5 ml-1">
-                        {a?.baptismal_name || '교우'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
+                        {a?.baptismal_name || '교우'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /><NameBadges userId={m.user_id} size={14} max={2} />
                       </span>
                     )}
                     <div className={`flex items-end gap-1.5 ${mine ? 'flex-row-reverse' : ''} ${counts.length ? 'mb-4' : ''}`}>
@@ -991,7 +992,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           : <span className="w-10 h-10 rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center">{initial(p?.baptismal_name, '교')}</span>}</CelebrateBand>
                         <span className="flex-1 min-w-0">
                           <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900">
-                            <span className="truncate">{p?.baptismal_name || '교우'}</span>{m.user_id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} />
+                            <span className="truncate">{p?.baptismal_name || '교우'}</span>{m.user_id === user.id && <span className="font-normal text-stone-400">(나)</span>}<RoleBadge type={p?.badge_type} size="xs" showLabel={false} /><NameBadges userId={m.user_id} size={16} max={2} />
                             {owner && <span className="shrink-0 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">👑 방장</span>}
                           </span>
                           {p?.handle && <span className="block text-[0.8125rem] text-stone-500">@{p.handle}</span>}

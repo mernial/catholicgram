@@ -5,6 +5,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
 import RoleBadge from '@/components/RoleBadge';
+import { NameBadges } from '@/components/MemberBadges';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
 import { clipText } from '@/lib/clip-text';
@@ -165,7 +166,7 @@ export default function NewChat({ user, mode, kind: startKind = 'dm', chatId, ex
                 aria-pressed={kind === 'group' ? on : undefined}>
                 <Avatar p={p} />
                 <span className="flex-1 min-w-0">
-                  <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900"><span className="truncate">{p.baptismal_name}</span><RoleBadge type={p.badge_type} size="xs" showLabel={false} /></span>
+                  <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-stone-900"><span className="truncate">{p.baptismal_name}</span><RoleBadge type={p.badge_type} size="xs" showLabel={false} /><NameBadges userId={p.id} size={16} max={2} /></span>
                   {p.handle && <span className="block text-[0.8125rem] text-stone-500 truncate">@{p.handle}</span>}
                 </span>
                 {kind === 'dm'

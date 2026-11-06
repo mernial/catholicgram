@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { mediaMenuActions } from '@/lib/save-media';
 import Icon from '@/components/Icon';
 import RoleBadge from '@/components/RoleBadge';
+import { NameBadges } from '@/components/MemberBadges';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
 import type { ReportTarget } from '@/components/ReportDialog';
 import MentionSuggest from '@/components/MentionSuggest';
@@ -848,7 +849,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                       {isAdmin
                         ? <button onClick={e => { e.stopPropagation(); openBadgeEdit(m.user_id); }} className="underline decoration-dotted decoration-stone-400 underline-offset-2" aria-label={`${a?.baptismal_name || '교우'}님 뱃지 ${badges[m.user_id] ? '바꾸기' : '달기'}`}>{a?.baptismal_name || '교우'}</button>
                         : (a?.baptismal_name || '교우')}
-                      <RoleBadge type={a?.badge_type} size="xs" showLabel={false} />
+                      <RoleBadge type={a?.badge_type} size="xs" showLabel={false} /><NameBadges userId={m.user_id} size={14} max={2} />
                       {badges[m.user_id] && <span className="text-[0.6875rem] font-bold text-amber-800 bg-amber-100 border border-amber-200 rounded-full px-1.5 py-px">{badges[m.user_id]}</span>}
                       {isAdmin && !badges[m.user_id] && <button onClick={e => { e.stopPropagation(); openBadgeEdit(m.user_id); }} className="text-[0.6875rem] font-normal text-amber-700 border border-dashed border-amber-300 rounded-full px-1.5 py-px" aria-hidden="true" tabIndex={-1}>🏅+</button>}
                       {isAdmin && banned.has(m.user_id) && <span className="text-[0.6875rem] text-red-500 font-normal">(대화 금지)</span>}
