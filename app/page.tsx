@@ -5574,7 +5574,7 @@ export default function Home() {
           blockedIds={blockedIds}
           initialQuery={exploreQuery}
           onOpenProfile={id => openProfileCard({ id })}
-          onOpenPost={(id, queue) => { const p = posts.find(x => x.id === id); if (p) { openPostViewer(p); setViewerQueue(queue); } }}
+          onOpenPost={async (id, queue) => { const p = posts.find(x => x.id === id) || await ensurePost(id); if (p) { openPostViewer(p); setViewerQueue(queue); } }}
           onRequireLogin={() => setShowAuthModal(true)}
         />
       )}
