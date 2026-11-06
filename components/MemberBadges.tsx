@@ -6,8 +6,11 @@ import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
 import { BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type MemberBadgeRow, type StatKey } from '@/lib/badges';
+type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
+import Switch from '@/components/Switch';
+import { toast } from '@/lib/chat-actions';
 
 // --- 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지) ---
 // 표 member_badges (supabase/member-badges.sql). 공간 머리에 '뱃지 선반'(BadgeShelf), 프로필 카드에 작은 줄(BadgeRow),
@@ -16,29 +19,42 @@ import { clipText, charCount } from '@/lib/clip-text';
 const fmtDate = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`; };
 
 export function useMemberBadges(userId: string | null | undefined) {
-  const [rows, setRows] = useState<MemberBadgeRow[]>([]);
+  const [rows, setRows] = useState<Row[]>([]);
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState(false); // 표가 아직 없음 (SQL 전)
+  const [hidden, setHidden] = useState(false);   // 본인이 숨김 (profiles.hide_badges)
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick(t => t + 1), []);
   useEffect(() => {
     if (!userId) return;
     let alive = true;
     (async () => {
-      const { data, error } = await supabase.from('member_badges').select('id, user_id, badge_key, note, created_at').eq('user_id', userId).order('created_at', { ascending: true });
+      const [{ data, error }, prof] = await Promise.all([
+        supabase.from('member_badges').select('id, user_id, badge_key, note, created_at, auto').eq('user_id', userId).order('created_at', { ascending: true }),
+        supabase.from('profiles').select('hide_badges').eq('id', userId).maybeSingle(),
+      ]);
       if (!alive) return;
-      if (error) { setMissing(/member_badges/.test(error.message) || error.code === '42P01'); setRows([]); setReady(true); return; }
+      setHidden(!!(prof.data as { hide_badges?: boolean } | null)?.hide_badges);
+      if (error) {
+        // 예전 판(auto 칸 없음)이면 auto 없이 한 번 더
+        if (/auto/.test(error.message)) {
+          const again = await supabase.from('member_badges').select('id, user_id, badge_key, note, created_at').eq('user_id', userId).order('created_at', { ascending: true });
+          if (!alive) return;
+          if (!again.error) { setMissing(false); setRows(((again.data || []) as Row[]).filter(r => badgeOf(r.badge_key))); setReady(true); return; }
+        }
+        setMissing(/member_badges/.test(error.message) || error.code === '42P01'); setRows([]); setReady(true); return;
+      }
       setMissing(false);
-      setRows(((data || []) as MemberBadgeRow[]).filter(r => badgeOf(r.badge_key)));
+      setRows(((data || []) as Row[]).filter(r => badgeOf(r.badge_key)));
       setReady(true);
     })();
     return () => { alive = false; };
   }, [userId, tick]);
-  return { rows, ready, missing, reload };
+  return { rows, ready, missing, hidden, setHidden, reload };
 }
 
 // 뱃지 하나를 크게: 이름·뜻·받은 날 (관리자는 떼기)
-function BadgeDetail({ row, admin, onClose, onRevoke }: { row: MemberBadgeRow; admin: boolean; onClose: () => void; onRevoke?: (row: MemberBadgeRow) => void }) {
+function BadgeDetail({ row, admin, onClose, onRevoke }: { row: Row; admin: boolean; onClose: () => void; onRevoke?: (row: MemberBadgeRow) => void }) {
   useBackLayer(true, onClose);
   const def = badgeOf(row.badge_key)!;
   return (
@@ -49,9 +65,9 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: MemberBadgeRow; a
         <h3 className="mt-0.5 text-[1.25rem] font-bold text-stone-900">{def.label}</h3>
         <p className="mt-1.5 text-[0.9375rem] text-stone-600 leading-relaxed">{def.desc}</p>
         {row.note && <p className="mt-2 text-[0.875rem] text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2">“{row.note}”</p>}
-        <p className="mt-3 text-[0.75rem] text-stone-400">{fmtDate(row.created_at)} 받음</p>
+        <p className="mt-3 text-[0.75rem] text-stone-400">{fmtDate(row.created_at)} 받음{row.auto && ' · 활동 1등에게 저절로 달려요 (1등이 바뀌면 옮겨 가요)'}</p>
         <div className="mt-4 flex gap-2 w-full">
-          {admin && onRevoke && <button onClick={() => onRevoke(row)} className="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-[0.9375rem] font-bold">떼기</button>}
+          {admin && onRevoke && !row.auto && <button onClick={() => onRevoke(row)} className="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-[0.9375rem] font-bold">떼기</button>}
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">닫기</button>
         </div>
       </div>
@@ -61,29 +77,46 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: MemberBadgeRow; a
 
 // 공간 머리의 뱃지 선반
 export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; admin: boolean; mine: boolean; onGrant?: () => void }) {
-  const { rows, missing, reload } = useMemberBadges(userId);
-  const [open, setOpen] = useState<MemberBadgeRow | null>(null);
+  const { rows, missing, hidden, setHidden, reload } = useMemberBadges(userId);
+  const [open, setOpen] = useState<Row | null>(null);
+  const [saving, setSaving] = useState(false);
+  // 본인: 다른 교우에게 보일지 (기본 보임). 끄면 다른 교우의 화면(공간·프로필 카드)에서 안 보임
+  const toggleHidden = async (show: boolean) => {
+    setSaving(true);
+    const { error } = await supabase.from('profiles').update({ hide_badges: !show }).eq('id', userId);
+    setSaving(false);
+    if (error) { showAlert(`저장하지 못했어요\n${/hide_badges/.test(error.message) ? '뱃지 표(SQL)를 먼저 실행해야 해요.' : error.message}`); return; }
+    setHidden(!show); toast(show ? '뱃지를 다른 교우에게 보여요' : '뱃지를 숨겼어요 · 나만 볼 수 있어요');
+  };
   useEffect(() => {
     const h = (e: Event) => { if ((e as CustomEvent<string>).detail === userId) reload(); };
     window.addEventListener('member-badges-changed', h);
     return () => window.removeEventListener('member-badges-changed', h);
   }, [userId, reload]);
-  const revoke = async (row: MemberBadgeRow) => {
+  const revoke = async (row: Row) => {
     const def = badgeOf(row.badge_key)!;
     if (!(await askConfirm(`'${def.label}' 뱃지를 뗄까요?\n이 교우의 공간에서 사라져요.`))) return;
     const { error } = await supabase.from('member_badges').delete().eq('id', row.id);
     if (error) { showAlert(`뱃지를 떼지 못했어요\n${error.message}`); return; }
     setOpen(null); reload();
   };
-  if (rows.length === 0 && !(admin && !missing)) return null;
+  if (hidden && !mine && !admin) return null;
+  if (rows.length === 0 && !(admin && !missing) && !mine) return null;
+  if (rows.length === 0 && mine && missing) return null;
   return (
     <div className="mt-3">
-      <div className="flex items-center gap-2 mb-1.5">
-        <p className="text-[0.75rem] font-bold text-stone-500">{mine ? '내 뱃지' : '뱃지'}{rows.length > 0 ? ` ${rows.length}` : ''}</p>
-        {admin && !missing && <button onClick={onGrant} className="text-[0.75rem] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">＋ 뱃지 달기</button>}
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+        <p className="text-[0.75rem] font-bold text-stone-500">{mine ? '내 뱃지' : '뱃지'}{rows.length > 0 ? ` ${rows.length}` : ''}{hidden && !mine && <span className="ml-1 font-normal text-stone-400">(본인이 숨김)</span>}</p>
+        {admin && !missing && <button onClick={onGrant} className="text-[0.75rem] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">{admin && mine ? '뱃지 관리' : '＋ 뱃지 달기'}</button>}
+        {mine && rows.length > 0 && (
+          <span className="ml-auto inline-flex items-center gap-1.5 text-[0.75rem] text-stone-600">
+            {hidden ? '나만 보기' : '다른 교우에게 보이기'}
+            <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
+          </span>
+        )}
       </div>
       {rows.length === 0 ? (
-        <p className="text-[0.8125rem] text-stone-400">아직 달아 준 뱃지가 없어요.</p>
+        <p className="text-[0.8125rem] text-stone-400">{mine ? '아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등이 되면 저절로 달려요' : '아직 받은 뱃지가 없어요.'}</p>
       ) : (
         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] -mx-4 px-4 pb-1">
           {rows.map(r => { const def = badgeOf(r.badge_key)!; return (
@@ -101,8 +134,8 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
 
 // 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 이름만 안내)
 export function BadgeRow({ userId, size = 22, max = 6, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
-  const { rows } = useMemberBadges(userId);
-  if (rows.length === 0) return null;
+  const { rows, hidden } = useMemberBadges(userId);
+  if (rows.length === 0 || hidden) return null;
   const shown = rows.slice(0, max);
   return (
     <span className={`inline-flex items-center gap-1 ${className}`} aria-label={`뱃지 ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
@@ -132,9 +165,25 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
     return () => { alive = false; };
   }, [user.id]);
   const notify = () => window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: user.id }));
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshAuto = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/admin/refresh-badges', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { showAlert(`다시 계산하지 못했어요\n${json.error || res.status}`); return; }
+      const n = (json.awarded || []).length;
+      toast(n > 0 ? `1등 뱃지 ${n}개를 새로 달았어요` : '바뀐 1등이 없어요');
+      reload(); notify();
+    } finally { setRefreshing(false); }
+  };
   const toggle = async (key: string) => {
     if (busy) return;
     const def = badgeOf(key)!;
+    if (def.auto) { showAlert(`'${def.label}'은 저절로 달리는 뱃지예요\n${STAT_LABELS[def.stat!]} 1등인 교우에게 매일 아침 저절로 달리고, 1등이 바뀌면 옮겨 가요. 아래 '지금 다시 계산'으로 바로 맞출 수 있어요.`); return; }
     const row = have.get(key);
     setBusy(key);
     try {
@@ -159,7 +208,8 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <h2 className="font-bold text-[1.125rem] text-stone-900 truncate">🏅 {user.name}님 뱃지</h2>
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
-          <p className="text-[0.8125rem] text-stone-500 mt-0.5">누르면 달고, 다시 누르면 떼요. 달면 교우에게 휴대폰 알림이 가요.</p>
+          <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침). 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
+          <button onClick={refreshAuto} disabled={refreshing || missing} className="mt-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold disabled:opacity-50">{refreshing ? '계산하는 중…' : '🔄 1등 뱃지 지금 다시 계산'}</button>
           {stats && (
             <div className="mt-2 flex flex-wrap gap-1" aria-label="이 교우의 활동">
               {(Object.keys(STAT_LABELS) as StatKey[]).map(k => (
@@ -187,6 +237,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
                     <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight">{b.label}</span>
                     <span className="text-[0.6875rem] text-stone-500 leading-snug">{b.desc}</span>
                     {b.stat && stats && <span className="text-[0.6875rem] font-bold text-amber-700">{STAT_LABELS[b.stat]} {stats[b.stat] ?? 0}</span>}
+                    {b.auto && <span className="absolute top-1.5 left-1.5 text-[0.625rem] font-bold text-stone-500 bg-stone-100 rounded-full px-1.5 py-px">🏆 1등 자동</span>}
                     {on && <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[0.75rem] font-bold flex items-center justify-center" aria-hidden>✓</span>}
                   </button>
                 ); })}
