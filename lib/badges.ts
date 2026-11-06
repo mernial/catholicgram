@@ -1,8 +1,9 @@
-// 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지)
+// 교우 뱃지 (관리자가 교우에게 달아 주는 뱃지 — 앱 안에서 한 활동을 기리는 것)
 // 그림은 components/BadgeIcon.tsx 가 키마다 SVG 로 그린다. 표: supabase/member-badges.sql (member_badges)
 // 새 뱃지를 더하려면 여기 한 줄 + BadgeIcon 의 EMBLEMS 에 그림 하나.
+// (2026-11-06 운영자: 단체 봉사자 뱃지보다 '공감 많이 받은 사람·건의 많이 한 사람' 같은 앱 활동 위주로, 그림은 바로 알아볼 수 있게)
 
-export type BadgeGroup = 'service' | 'community' | 'honor';
+export type BadgeGroup = 'love' | 'activity' | 'help' | 'honor';
 
 export interface MemberBadgeDef {
   key: string;
@@ -11,32 +12,41 @@ export interface MemberBadgeDef {
   group: BadgeGroup;
   colors: [string, string]; // 안쪽 원 그라데이션 (위·아래)
   rim?: 'gold' | 'silver' | 'rose';
+  stat?: StatKey;       // 달기 창에서 보여 줄 그 교우의 활동 숫자
 }
 
+export type StatKey = 'likes' | 'prays' | 'comments' | 'posts' | 'photos' | 'feedback' | 'bugs' | 'intentions' | 'lounge' | 'days';
+
 export const BADGE_GROUPS: Record<BadgeGroup, string> = {
-  service: '본당 봉사',
-  community: '가톨릭그램 활동',
+  love: '받은 마음',
+  activity: '활동',
+  help: '도움',
   honor: '기념',
 };
 
 export const MEMBER_BADGES: MemberBadgeDef[] = [
-  // --- 본당 봉사 ---
-  { key: 'volunteer', label: '봉사의 손', desc: '본당과 이웃을 위해 꾸준히 봉사하는 교우', group: 'service', colors: ['#f08c6a', '#c84f3a'], rim: 'gold' },
-  { key: 'choir', label: '성가대', desc: '성가로 하느님을 찬미하는 교우', group: 'service', colors: ['#8b6cf0', '#5b3fc4'], rim: 'gold' },
-  { key: 'catechist', label: '교리교사', desc: '아이들과 교우들에게 교리를 가르치는 교우', group: 'service', colors: ['#4c8fe0', '#2b5fb3'], rim: 'gold' },
-  { key: 'liturgy', label: '전례 봉사', desc: '독서·해설·복사 등 전례를 섬기는 교우', group: 'service', colors: ['#e9b94a', '#c0862a'], rim: 'gold' },
-  { key: 'legio', label: '레지오 마리애', desc: '성모님과 함께 기도하고 활동하는 레지오 단원', group: 'service', colors: ['#3f8f6a', '#246b4b'], rim: 'gold' },
-  { key: 'youth', label: '청년회', desc: '본당 청년회에서 함께 걷는 교우', group: 'service', colors: ['#f0803f', '#d04a22'], rim: 'gold' },
-  { key: 'leader', label: '구역·반 봉사', desc: '구역장·반장으로 이웃 교우를 돌보는 교우', group: 'service', colors: ['#5c8ad0', '#2f5a9c'], rim: 'gold' },
-  // --- 가톨릭그램 활동 ---
-  { key: 'prayer', label: '기도 동반자', desc: '교우들의 기도지향에 함께 기도하는 교우', group: 'community', colors: ['#7c6cd9', '#4f3fa8'], rim: 'gold' },
-  { key: 'writer', label: '글벗', desc: '신앙 이야기와 소식을 정성껏 나누는 교우', group: 'community', colors: ['#5fa3a8', '#2f6f78'], rim: 'gold' },
-  { key: 'peacemaker', label: '평화의 사도', desc: '따뜻한 댓글과 격려로 공동체를 밝히는 교우', group: 'community', colors: ['#6fb0e8', '#3878c0'], rim: 'gold' },
+  // --- 받은 마음 ---
+  { key: 'hearts', label: '공감왕', desc: '글에 공감(❤️)을 많이 받은 교우', group: 'love', colors: ['#f2748c', '#c8304f'], rim: 'gold', stat: 'likes' },
+  { key: 'prayers', label: '기도의 손', desc: '글에 기도(🙏)를 많이 받은 교우', group: 'love', colors: ['#e9b94a', '#bf8220'], rim: 'gold', stat: 'prays' },
+  { key: 'trophy', label: '인기 글', desc: '많은 교우가 함께한 인기 글을 쓴 교우', group: 'love', colors: ['#f0a23a', '#c9701a'], rim: 'gold', stat: 'likes' },
+  // --- 활동 ---
+  { key: 'talker', label: '소통왕', desc: '댓글로 교우들과 많이 이야기 나눈 교우', group: 'activity', colors: ['#5fa8e8', '#2b6fc0'], rim: 'gold', stat: 'comments' },
+  { key: 'writer', label: '이야기꾼', desc: '신앙 이야기와 소식을 많이 올린 교우', group: 'activity', colors: ['#7c6cd9', '#4f3fa8'], rim: 'gold', stat: 'posts' },
+  { key: 'photo', label: '사진작가', desc: '사진으로 성당과 일상을 많이 나눈 교우', group: 'activity', colors: ['#5c6b80', '#2f3a4c'], rim: 'gold', stat: 'photos' },
+  { key: 'intention', label: '기도지향', desc: '오늘의 기도지향을 많이 올린 교우', group: 'activity', colors: ['#e07a3f', '#b24a1e'], rim: 'gold', stat: 'intentions' },
+  { key: 'lounge', label: '사랑방 단골', desc: '모두의 사랑방에서 많이 이야기 나눈 교우', group: 'activity', colors: ['#c48a5a', '#8a5330'], rim: 'gold', stat: 'lounge' },
+  { key: 'daily', label: '매일 출석', desc: '가톨릭그램에 꾸준히 매일 들르는 교우', group: 'activity', colors: ['#3fa86f', '#217a4a'], rim: 'gold', stat: 'days' },
+  // --- 도움 ---
+  { key: 'idea', label: '아이디어 천사', desc: '건의함에 좋은 의견을 많이 낸 교우', group: 'help', colors: ['#f5c242', '#d18f12'], rim: 'gold', stat: 'feedback' },
+  { key: 'detective', label: '오류 탐정', desc: '오류를 찾아 알려 주어 앱을 좋게 만든 교우', group: 'help', colors: ['#6b7fd6', '#3a4cab'], rim: 'gold', stat: 'bugs' },
   // --- 기념 ---
   { key: 'firstfruit', label: '첫 열매', desc: '가톨릭그램의 처음을 함께한 교우', group: 'honor', colors: ['#7bbf5a', '#3f8a33'], rim: 'gold' },
-  { key: 'newborn', label: '새 신자', desc: '새로 세례를 받은 교우 — 환영해요!', group: 'honor', colors: ['#62b7e6', '#2f7fb8'], rim: 'silver' },
 ];
 
 export const badgeOf = (key: string): MemberBadgeDef | undefined => MEMBER_BADGES.find(b => b.key === key);
+
+export const STAT_LABELS: Record<StatKey, string> = {
+  likes: '받은 공감', prays: '받은 기도', comments: '쓴 댓글', posts: '쓴 글', photos: '사진 글', feedback: '건의', bugs: '오류 신고', intentions: '기도지향', lounge: '사랑방 대화', days: '들른 날',
+};
 
 export interface MemberBadgeRow { id: string; user_id: string; badge_key: string; note?: string | null; created_at: string }
