@@ -1,7 +1,7 @@
 -- 교우 뱃지 (lib/badges.ts — 공감왕·기도의 손·인기 글·소통왕·… + 기념 '첫 열매')
 -- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전, 예전 판 위에 다시 실행해도 됨)
 --
---  * 활동 뱃지(auto)는 1등에게만 저절로 달린다(관리자 계정은 뺌): refresh_auto_badges() 가 활동을 세어 1등에게 달고, 1등이 바뀌면 옮긴다
+--  * 활동 뱃지(auto)는 1등에게만 저절로 달린다(관리자 계정은 뺌, 활동 숫자 5 이상일 때만): refresh_auto_badges() 가 활동을 세어 1등에게 달고, 1등이 바뀌면 옮긴다
 --    (앱을 열 때마다 /api/badges/refresh 가 5분에 한 번 부름 + 아침 cron /api/cron/feast-day + 관리자 '지금 다시 계산')
 --  * 기념 뱃지(첫 열매)는 관리자가 교우 공간의 '뱃지 달기'에서 달고 뗀다 (is_app_admin)
 --  * 누구나(로그인한 교우) 모든 교우의 뱃지를 볼 수 있다. 본인이 숨기면(profiles.hide_badges) 앱이 다른 교우에게 보이지 않게 한다
@@ -121,8 +121,8 @@ begin
     insert into badge_stats select 'detective', f.user_id, count(*) from feedback f where f.category = 'bug' group by f.user_id;
   end if;
 
-  -- 관리자는 1등에서 뺌, 0 은 없음. 뱃지마다 최댓값인 교우(동점이면 모두)
-  delete from badge_stats bs where bs.s is null or bs.s <= 0 or bs.user_id is null or bs.user_id in (select user_id from badge_admins);
+  -- 관리자는 1등에서 뺌, 최소 기준 5 미만은 없음(운영자 2026-11-06: '최소 기준 5개 이상'). 뱃지마다 최댓값인 교우(동점이면 모두)
+  delete from badge_stats bs where bs.s is null or bs.s < 5 or bs.user_id is null or bs.user_id in (select user_id from badge_admins);
   create temp table badge_winners (user_id uuid, badge_key text) on commit drop;
   insert into badge_winners
   select bs.user_id, bs.badge_key from badge_stats bs

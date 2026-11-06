@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
-import { BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type MemberBadgeRow, type StatKey } from '@/lib/badges';
+import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type MemberBadgeRow, type StatKey } from '@/lib/badges';
 type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
@@ -160,7 +160,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="text-[0.8125rem] text-stone-400">{mine ? '아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등이 되면 저절로 달려요' : '아직 받은 뱃지가 없어요.'}</p>
+        <p className="text-[0.8125rem] text-stone-400">{mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되면 저절로 달려요` : '아직 받은 뱃지가 없어요.'}</p>
       ) : (
         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] -mx-4 px-4 pb-1">
           {rows.map(r => { const def = badgeOf(r.badge_key)!; return (
@@ -244,7 +244,7 @@ export function BadgeLeaderboard({ onClose, onOpenProfile }: { onClose: () => vo
         <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
           <div>
             <h2 className="font-bold text-[1.125rem] text-stone-900">🏆 뱃지 1등 현황</h2>
-            <p className="text-[0.8125rem] text-stone-500 mt-0.5">뱃지마다 지금 달고 있는 교우 · 매일 아침 다시 계산해요 (관리자는 1등에서 뺌)</p>
+            <p className="text-[0.8125rem] text-stone-500 mt-0.5">뱃지마다 지금 달고 있는 교우 · 매일 아침·앱을 열 때 다시 계산해요 (관리자는 1등에서 뺌, {AUTO_BADGE_MIN} 이상일 때만)</p>
           </div>
           <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none shrink-0" aria-label="닫기">×</button>
         </div>
@@ -363,7 +363,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <h2 className="font-bold text-[1.125rem] text-stone-900 truncate">🏅 {user.name}님 뱃지</h2>
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
-          <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침). 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
+          <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침·앱을 열 때, {AUTO_BADGE_MIN} 이상일 때만). 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
           <button onClick={refreshAuto} disabled={refreshing || missing} className="mt-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold disabled:opacity-50">{refreshing ? '계산하는 중…' : '🔄 1등 뱃지 지금 다시 계산'}</button>
           {stats && (
             <div className="mt-2 flex flex-wrap gap-1" aria-label="이 교우의 활동">
