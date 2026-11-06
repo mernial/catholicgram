@@ -8,7 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
-import { BadgeShelf, BadgeRow, BadgeGrantSheet } from '@/components/MemberBadges';
+import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard } from '@/components/MemberBadges';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
 import GroupChat from '@/components/GroupChat';
@@ -644,6 +644,8 @@ export default function Home() {
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [badgeGrantFor, setBadgeGrantFor] = useState<{ id: string; name: string } | null>(null); // 관리자: 교우 뱃지 달기 창 (components/MemberBadges)
   useBackLayer(!!badgeGrantFor, () => setBadgeGrantFor(null));
+  const [showBadgeBoard, setShowBadgeBoard] = useState(false); // 관리자: 뱃지 1등 현황
+  useBackLayer(showBadgeBoard, () => setShowBadgeBoard(false));
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
@@ -5459,6 +5461,7 @@ export default function Home() {
                 { key: 'sponsor', icon: 'storefront', tone: 'gold', label: '광고 관리', onClick: () => setShowSponsorAdmin(true) },
                 { key: 'deleted', icon: 'trash', tone: 'stone', label: '삭제된 메시지', onClick: () => setShowDeletedMessages(true) },
                 { key: 'media', icon: 'image', tone: 'green', label: '사진 저장소', onClick: () => setShowMediaStorage(true) },
+                { key: 'badges', icon: 'crown', tone: 'gold', label: '뱃지 1등 현황', onClick: () => setShowBadgeBoard(true) },
               ];
               return viewingUserId === user?.id ? (
                 <>
@@ -6144,7 +6147,7 @@ export default function Home() {
                 </CelebrateAvatar>
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
-                  <RoleBadge type={u.badge_type} />
+                  <RoleBadge type={u.badge_type} onClick={() => showAlert(`인증된 ${BADGES[u.badge_type || '']?.label || '성직자·수도자'}예요\n관리자가 직접 확인하고 달아 드린 인증 뱃지예요.`)} />
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 <BadgeRow userId={u.id} size={24} className="mt-2" />
@@ -6193,6 +6196,7 @@ export default function Home() {
           onUseMusic={async trackId => { const g = myMusicGifts.find(x => x.track.id === trackId); return g ? saveProfileMusic(g.track) : false; }} />
       )}
       {/* 관리자: 교우 뱃지 달기 (components/MemberBadges) */}
+      {showBadgeBoard && isAdmin && <BadgeLeaderboard onClose={() => setShowBadgeBoard(false)} onOpenProfile={id => openProfileCard({ id })} />}
       {badgeGrantFor && isAdmin && <BadgeGrantSheet user={badgeGrantFor} onClose={() => setBadgeGrantFor(null)} onGranted={id => sendPush('badge', id)} />}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
       {memberMusicGift && isAdmin && (
