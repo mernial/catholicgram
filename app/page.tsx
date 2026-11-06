@@ -541,7 +541,7 @@ export default function Home() {
   const [groupChats, setGroupChats] = useState<GroupChatRow[]>([]);  // 내 단체 채팅방 (안 읽은 수 포함)
   const [groupAvatars, setGroupAvatars] = useState<Record<string, string>>({}); // 단체방 사진 (방장이 바꾼 것)
   const [openGroup, setOpenGroup] = useState<{ id: string; adminView: boolean } | null>(null); // 열려 있는 단체 채팅방 (관리자는 몰래 읽기)
-  const [showNewChat, setShowNewChat] = useState(false);              // 새 채팅: 교우 찾아 1:1 · 단체방 만들기
+  const [showNewChat, setShowNewChat] = useState<false | 'dm' | 'group'>(false); // 새 1:1 메시지('dm') · 단체 채팅방 만들기('group') 창 — 개인/단체 탭의 단추로 따로 엶 (건의 2026-11-06)
   const [switchingAccount, setSwitchingAccount] = useState(false);    // '다른 계정으로 로그인': 로그인 창에서 계정을 새로 고르게
   const [messagesView, setMessagesView] = useState<'dm' | 'group' | 'allGroups'>('dm'); // 메시지 목록: 개인 / 단체 (관리자: 모든 단체방)
   const [adminGroups, setAdminGroups] = useState<AdminGroupRow[] | null>(null);
@@ -5683,7 +5683,7 @@ export default function Home() {
           onChanged={() => { fetchGroupChats(); if (openGroup.adminView) fetchAdminGroups(); }} />
       )}
       {showNewChat && user && (
-        <NewChat user={user} mode="start" blockedIds={blockedIds}
+        <NewChat user={user} mode="start" kind={showNewChat} blockedIds={blockedIds}
           suggestions={chatPartners.map(p => ({ id: p.id, baptismal_name: p.baptismal_name, handle: p.handle, avatar_url: p.avatar_url, badge_type: p.badge_type }))}
           onClose={() => setShowNewChat(false)}
           onOpenDM={p => openChatRoom({ id: p.id, baptismal_name: p.baptismal_name, handle: p.handle || undefined, avatar_url: p.avatar_url || undefined, badge_type: p.badge_type || undefined })}
@@ -5696,11 +5696,7 @@ export default function Home() {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
             <h2 className="font-bold text-lg text-stone-900">메시지</h2>
-            {/* 새 채팅: @아이디·이름으로 찾아 1:1 메시지, 또는 여러 교우와 단체 채팅방 */}
-            <button onClick={() => { if (!user) { setShowAuthModal(true); return; } if (!requireProfile()) return; setShowNewChat(true); }}
-              className="ml-auto inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-stone-900 text-white text-[0.875rem] font-bold" aria-label="새 채팅">
-              <Icon name="pencil" className="w-4 h-4" />새 채팅
-            </button>
+            {/* 예전 머리줄 '새 채팅' 단추는 없앰 — 개인 탭 '새 1:1 메시지'·단체 탭 '단체 채팅방 만들기' 단추로 (건의 2026-11-06) */}
           </div>
           {/* 개인 / 단체(사랑방·단체 채팅방) 나눠 보기 (관리자는 모든 단체방도): 흰 칸이 미끄러지는 한 줄 칸 */}
           {(() => {
@@ -5763,6 +5759,18 @@ export default function Home() {
                 ? <span className="min-w-[20px] h-5 px-1.5 bg-red-500 text-white text-[0.8125rem] font-bold rounded-full flex items-center justify-center shrink-0">{loungeNew > 99 ? '99+' : loungeNew}</span>
                 : <span className="text-stone-400 text-xl shrink-0">›</span>}
             </button>}
+            {messagesView !== 'allGroups' && (
+              <button onClick={() => { if (!user) { setShowAuthModal(true); return; } if (!requireProfile()) return; setShowNewChat(messagesView === 'group' ? 'group' : 'dm'); }}
+                className="w-full px-4 py-3 flex items-center gap-3 border-b border-stone-100 hover:bg-stone-50 text-left"
+                aria-label={messagesView === 'group' ? '단체 채팅방 만들기' : '새 1:1 메시지'}>
+                <span className="w-12 h-12 rounded-full bg-stone-900 text-white flex items-center justify-center shrink-0"><Icon name="pencil" className="w-5 h-5" /></span>
+                <span className="flex-1 min-w-0">
+                  <span className="block font-bold text-stone-800 text-sm">{messagesView === 'group' ? '단체 채팅방 만들기' : '새 1:1 메시지'}</span>
+                  <span className="block text-xs text-stone-500 mt-0.5">{messagesView === 'group' ? '교우를 여러 명 골라 방을 만들어요' : '@아이디나 이름으로 교우를 찾아 메시지를 보내요'}</span>
+                </span>
+                <span className="text-stone-400 text-xl shrink-0">›</span>
+              </button>
+            )}
             {(() => {
               // 개인: 1:1 대화 / 단체: 단체 채팅방 — 최근 대화 순
               const items = messagesView === 'group'
@@ -5773,8 +5781,7 @@ export default function Home() {
               const requestCount = items.filter(x => x.partner?.isRequest).length;
               if (items.length === 0) return (
                 <div className="p-10 text-center text-stone-400 text-sm leading-relaxed">
-                  {messagesView === 'group' ? '아직 들어가 있는 단체 채팅방이 없어요.' : '아직 주고받은 1:1 메시지가 없어요.'}<br />
-                  <button onClick={() => { if (!requireProfile()) return; setShowNewChat(true); }} className="mt-3 px-4 py-2 rounded-full border border-stone-300 text-stone-700 text-[0.875rem] font-bold">✏️ {messagesView === 'group' ? '단체 채팅방 만들기' : '새 채팅 시작하기'}</button>
+                  {messagesView === 'group' ? <>아직 들어가 있는 단체 채팅방이 없어요.<br />위의 <b>단체 채팅방 만들기</b>를 눌러 보세요.</> : <>아직 주고받은 1:1 메시지가 없어요.<br />위의 <b>새 1:1 메시지</b>를 눌러 보세요.</>}
                 </div>
               );
               // 왼쪽으로 밀면 빨간 '나가기' (components/SwipeRow)

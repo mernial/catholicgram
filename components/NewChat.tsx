@@ -46,9 +46,10 @@ const Avatar = ({ p, size = 'w-11 h-11' }: { p: ChatPerson; size?: string }) => 
   ? <img loading="lazy" src={p.avatar_url} alt="" className={`${size} rounded-full object-cover border border-stone-200 shrink-0`} />
   : <span className={`${size} rounded-full bg-stone-200 text-stone-700 font-serif font-bold flex items-center justify-center shrink-0`}>{initial(p.baptismal_name, '교')}</span>}</CelebrateBand>;
 
-export default function NewChat({ user, mode, chatId, excludeIds = [], blockedIds, suggestions = [], onClose, onOpenDM, onCreated, onInvited }: {
+export default function NewChat({ user, mode, kind: startKind = 'dm', chatId, excludeIds = [], blockedIds, suggestions = [], onClose, onOpenDM, onCreated, onInvited }: {
   user: User;
-  mode: 'start' | 'invite';             // start: 새 채팅(1:1 또는 단체 만들기) · invite: 이 단체방에 초대
+  mode: 'start' | 'invite';             // start: 새 1:1 메시지 또는 단체방 만들기 · invite: 이 단체방에 초대
+  kind?: 'dm' | 'group';                // start 일 때 무엇을 만드는 창인지 (화면마다 하나만 — 예전엔 창 안에서 고르는 탭이 있었음, 건의 2026-11-06)
   chatId?: string;                      // invite 일 때 그 방
   excludeIds?: string[];                // invite 일 때 이미 들어와 있는 교우
   blockedIds: Set<string>;
@@ -58,7 +59,7 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
   onCreated?: (chatId: string) => void;
   onInvited?: (count: number) => void;
 }) {
-  const [kind, setKind] = useState<'dm' | 'group'>(mode === 'invite' ? 'group' : 'dm');
+  const kind: 'dm' | 'group' = mode === 'invite' ? 'group' : startKind;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ChatPerson[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -112,7 +113,7 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
     onInvited?.(n);
   };
 
-  const title = mode === 'invite' ? '교우 초대하기' : '새 채팅';
+  const title = mode === 'invite' ? '교우 초대하기' : kind === 'group' ? '단체 채팅방 만들기' : '새 1:1 메시지';
   return (
     <BottomSheet bare label={title} onClose={onClose} z="z-[86]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
@@ -131,15 +132,6 @@ export default function NewChat({ user, mode, chatId, excludeIds = [], blockedId
               <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
             </span>
           </div>
-          {/* 찾는 중엔 1:1·단체 칸을 접어 찾은 교우 자리를 넓힘 (자판이 올라온 태블릿 가로 화면 — 루비로사) */}
-          {mode === 'start' && !typing && (
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-stone-100" role="tablist">
-              {([['dm', '✉️ 1:1 메시지'], ['group', '👥 단체 채팅방 만들기']] as const).map(([k, label]) => (
-                <button key={k} role="tab" aria-selected={kind === k} onClick={() => setKind(k)}
-                  className={`py-2.5 rounded-xl text-[0.9375rem] font-bold ${kind === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>{label}</button>
-              ))}
-            </div>
-          )}
           <input ref={inputRef} value={query} onChange={e => setQuery(e.target.value)} type="search" inputMode="search" autoComplete="off"
             placeholder="@아이디 또는 이름으로 찾기" aria-label="교우 찾기"
             className="w-full px-4 py-3 rounded-2xl border border-stone-300 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-500" />
