@@ -252,6 +252,7 @@
 - 인증 뱃지 옆 호칭 글자 없앰(운영자 2026-11-06: '뱃지 옆에 신부님·수녀님 글자 붙이지 말고 뱃지만'): `RoleBadge` `showLabel` 기본값 true → false(쓰는 곳이 모두 기본값이라 어디서나 메달만). 무슨 뱃지인지는 카드에서 누르면 안내. `BADGES` 의 label 은 관리자 고르기·안내 글에만
 - 뱃지를 누르면 그 교우의 뱃지 모두(운영자 2026-11-06: '여러 개 달린 사람의 뱃지를 누르면 어떤 뱃지인지 설명과 함께'): `components/MemberBadges` `BadgeListDialog({ userId, name, highlight })` — 아래에서 올라오는 창에 인증 뱃지(ClergyIcon 48px, '인증된 신부님' + 설명)와 활동 뱃지(메달 48px, 이름·뜻·종류·받은 날·자동/남긴 말)를 한 줄씩, 누른 뱃지는 노란 바탕 + '눌렀어요', 뒤로가기는 그 창만. 이름 옆 `NameBadges`·카드 `BadgeRow`(+N 도)·카드 인증 메달(`badgeListFor`)이 모두 이 창을 엶. 공간 선반은 예전 `BadgeDetail`(관리자 떼기) 그대로. Playwright 메시지 목록·카드 확인
 - 자동 뱃지 최소 기준 5(운영자 2026-11-06: 양양님이 8개 받아 '최소 기준 5개 이상으로'): `refresh_auto_badges()`가 활동 숫자 5 미만은 1등에서 뺌(`bs.s < 5`), `lib/badges.ts` `AUTO_BADGE_MIN = 5`(안내 글에 씀, SQL 과 같은 값으로 유지). member-badges.sql 다시 실행 필요. 로컬 Postgres: 시험 자료에서 17개 → 2개(공감 5·인기 글 7)만
+- member-badges.sql 실행 실패 대응(운영자 2026-11-06 '실행 실패했어', 오류 글은 못 받음): 글 통계 부분을 동적 SQL 로 — `posts.is_story`·`video_url`·`music` 칸이 없으면 건너뛰거나 조건을 빼고(`information_schema.columns`), 사진 칸은 text[]·jsonb 어느 쪽이든 `p.images::text`에서 괄호·공백을 지운 길이로 봄(`v_img`). 로컬 Postgres 두 판(text[]+모든 칸 / jsonb+칸 없음) 모두 통과. 그래도 실패하면 운영자에게 오류 문장을 받아 볼 것
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
