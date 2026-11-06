@@ -645,6 +645,26 @@ export default function Home() {
   const [badgeGrantFor, setBadgeGrantFor] = useState<{ id: string; name: string } | null>(null); // 관리자: 교우 뱃지 달기 창 (components/MemberBadges)
   useBackLayer(!!badgeGrantFor, () => setBadgeGrantFor(null));
   const [showBadgeBoard, setShowBadgeBoard] = useState(false); // 관리자: 뱃지 1등 현황
+  // 앱을 열 때·뒤에 있다 돌아올 때 활동 1등 뱃지를 다시 계산해 달라고 서버에 부탁 (서버가 5분에 한 번만 실제로 계산, /api/badges/refresh)
+  const badgeRefreshAtRef = useRef(0);
+  const askBadgeRefresh = useCallback(async () => {
+    if (Date.now() - badgeRefreshAtRef.current < 2 * 60 * 1000) return;
+    badgeRefreshAtRef.current = Date.now();
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/badges/refresh', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(json.awarded) && json.awarded.length > 0) window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: '*' }));
+    } catch { /* 네트워크 오류는 조용히 */ }
+  }, []);
+  useEffect(() => {
+    if (!user) return;
+    askBadgeRefresh();
+    const onVis = () => { if (document.visibilityState === 'visible') askBadgeRefresh(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, [user?.id, askBadgeRefresh]);
   useBackLayer(showBadgeBoard, () => setShowBadgeBoard(false));
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창

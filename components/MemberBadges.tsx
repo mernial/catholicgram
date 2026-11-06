@@ -89,7 +89,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
     setHidden(!show); toast(show ? '뱃지를 다른 교우에게 보여요' : '뱃지를 숨겼어요 · 나만 볼 수 있어요');
   };
   useEffect(() => {
-    const h = (e: Event) => { if ((e as CustomEvent<string>).detail === userId) reload(); };
+    const h = (e: Event) => { const d = (e as CustomEvent<string>).detail; if (d === userId || d === '*') reload(); };
     window.addEventListener('member-badges-changed', h);
     return () => window.removeEventListener('member-badges-changed', h);
   }, [userId, reload]);

@@ -2,7 +2,7 @@
 -- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전, 예전 판 위에 다시 실행해도 됨)
 --
 --  * 활동 뱃지(auto)는 1등에게만 저절로 달린다(관리자 계정은 뺌): refresh_auto_badges() 가 활동을 세어 1등에게 달고, 1등이 바뀌면 옮긴다
---    (아침 cron /api/cron/feast-day 이 매일 부름, 관리자는 뱃지 달기 창 '지금 다시 계산'으로도)
+--    (앱을 열 때마다 /api/badges/refresh 가 5분에 한 번 부름 + 아침 cron /api/cron/feast-day + 관리자 '지금 다시 계산')
 --  * 기념 뱃지(첫 열매)는 관리자가 교우 공간의 '뱃지 달기'에서 달고 뗀다 (is_app_admin)
 --  * 누구나(로그인한 교우) 모든 교우의 뱃지를 볼 수 있다. 본인이 숨기면(profiles.hide_badges) 앱이 다른 교우에게 보이지 않게 한다
 create or replace function public.is_app_admin()
@@ -139,6 +139,16 @@ end;
 $$;
 revoke all on function public.refresh_auto_badges() from public, anon;
 grant execute on function public.refresh_auto_badges() to authenticated, service_role;
+
+-- 앱을 열 때마다 1등을 다시 계산하는 기록 (/api/badges/refresh — 5분에 한 번만, 앱은 직접 못 읽고 못 씀)
+create table if not exists public.badge_refresh_log (
+  id bigserial primary key,
+  ran_at timestamptz not null default now(),
+  awarded int not null default 0,
+  by_user uuid
+);
+alter table public.badge_refresh_log enable row level security;
+create index if not exists badge_refresh_log_ran_idx on public.badge_refresh_log (ran_at desc);
 
 -- 확인: 아래가 1 이면 됨
 select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'member_badges' and column_name = 'auto';
