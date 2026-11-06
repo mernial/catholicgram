@@ -65,19 +65,29 @@ begin
   create temp table badge_admins (user_id uuid) on commit drop;
   insert into badge_admins select id from auth.users where email in ('yunho-jo@casuwon.or.kr');
 
-  -- 글 (스토리 빼고)
-  insert into badge_stats select 'hearts', p.user_id, sum(p.like_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
-  insert into badge_stats select 'prayers', p.user_id, sum(p.pray_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
-  insert into badge_stats select 'writer', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
-  insert into badge_stats select 'photo', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and coalesce(array_length(p.images, 1), 0) > 0 group by p.user_id;
-  insert into badge_stats select 'video', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and p.video_url is not null group by p.user_id;
-  insert into badge_stats select 'story', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = true group by p.user_id;
-  insert into badge_stats select 'trophy', p.user_id, max(p.like_count + p.pray_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
-  insert into badge_stats select 'earlybird', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and extract(hour from p.created_at at time zone v_kst) between 4 and 6 group by p.user_id;
-  insert into badge_stats select 'nightowl', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and (extract(hour from p.created_at at time zone v_kst) >= 22 or extract(hour from p.created_at at time zone v_kst) < 3) group by p.user_id;
-  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'music') then
-    insert into badge_stats select 'dj', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and p.music is not null and p.music <> '' group by p.user_id;
-  end if;
+  -- 글 (스토리 빼고). is_story·video_url·music 칸이 없을 수도 있어 동적으로, 사진 칸은 text[]·jsonb 어느 쪽이든 글자로 비교
+  declare
+    v_story text := case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'is_story') then 'coalesce(p.is_story, false) = false' else 'true' end;
+    v_story_only text := case when exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'is_story') then 'coalesce(p.is_story, false) = true' else 'false' end;
+    v_has_video boolean := exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'video_url');
+    v_has_music boolean := exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'music');
+    v_img text := $x$length(regexp_replace(coalesce(p.images::text, ''), '[\[\]{}\s]', '', 'g')) > 0$x$;
+  begin
+    execute format('insert into badge_stats select ''hearts'', p.user_id, sum(p.like_count) from posts p where %s group by p.user_id', v_story);
+    execute format('insert into badge_stats select ''prayers'', p.user_id, sum(p.pray_count) from posts p where %s group by p.user_id', v_story);
+    execute format('insert into badge_stats select ''writer'', p.user_id, count(*) from posts p where %s group by p.user_id', v_story);
+    execute format('insert into badge_stats select ''photo'', p.user_id, count(*) from posts p where %s and %s group by p.user_id', v_story, v_img);
+    if v_has_video then
+      execute format('insert into badge_stats select ''video'', p.user_id, count(*) from posts p where %s and p.video_url is not null group by p.user_id', v_story);
+    end if;
+    execute format('insert into badge_stats select ''story'', p.user_id, count(*) from posts p where %s group by p.user_id', v_story_only);
+    execute format('insert into badge_stats select ''trophy'', p.user_id, max(p.like_count + p.pray_count) from posts p where %s group by p.user_id', v_story);
+    execute format('insert into badge_stats select ''earlybird'', p.user_id, count(*) from posts p where %s and extract(hour from p.created_at at time zone %L) between 4 and 6 group by p.user_id', v_story, v_kst);
+    execute format('insert into badge_stats select ''nightowl'', p.user_id, count(*) from posts p where %s and (extract(hour from p.created_at at time zone %L) >= 22 or extract(hour from p.created_at at time zone %L) < 3) group by p.user_id', v_story, v_kst, v_kst);
+    if v_has_music then
+      execute format('insert into badge_stats select ''dj'', p.user_id, count(*) from posts p where %s and p.music is not null and p.music <> '''' group by p.user_id', v_story);
+    end if;
+  end;
   -- 댓글
   insert into badge_stats select 'talker', c.user_id, count(*) from comments c where c.user_id is not null group by c.user_id;
   if to_regclass('public.comment_reactions') is not null then
