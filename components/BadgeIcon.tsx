@@ -311,36 +311,28 @@ export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' 
       <rect x="-14" y="8.8" width="28" height="2.4" fill="#000" fillOpacity="0.32" strokeWidth="0" />
     </g>
   ) },
-  // 신부님: 로만 칼라 — 검은 사제복 어깨, 목의 흰 칼라, 앞 단추 줄
+  // 신부님: 흰 장백의 위에 양 어깨로 똑바로 내려 맨 영대(끝에 십자가)
   priest: { colors: ['#e4b955', '#a86f1a'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-9-2.5c1.5 2 4.5 3.5 9 3.5s7.5-1.5 9-3.5l-2-3.5H-7Z" />
-      {/* 칼라: 목을 두른 흰 띠 */}
-      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-8-6C-6-9.5-3.5-11 0-11s6 1.5 8 5c-1.5 3-4 4.6-8 4.6S-6.5-3-8-6Z" />
-      <path fill="none" strokeWidth="3.6" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
-      <path fill="none" strokeWidth="3" strokeOpacity="0.9" d="M-9.5-3.5C-9.5-8.5-5.5-11.5 0-11.5s9.5 3 9.5 8" />
-      {/* 탭(흰 네모) 와 옷깃 */}
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-6.5 0.5 0 4.2 6.5 0.5V-1L0 2.6-6.5-1Z" />
-      <rect x="-2.6" y="-1.4" width="5.2" height="4.4" rx=".6" strokeWidth="0" />
-      <path fill="none" strokeWidth="1" strokeOpacity="0.5" d="M0 5.5v11" />
-      <circle cx="0" cy="9" r=".9" strokeWidth="0" fillOpacity="0.9" /><circle cx="0" cy="13" r=".9" strokeWidth="0" fillOpacity="0.9" />
+      <path strokeWidth="0" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.12" d="M0 3h7l4 1.5c5.5 2 8 5.5 8 12.5H0Z" />
+      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-7-6C-5.5-9.5-3-11 0-11s5.5 1.5 7 5c-1.5 3-4 4.6-7 4.6S-5.5-3-7-6Z" />
+      <path fill="none" strokeWidth="2.2" strokeOpacity="0.95" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
+      {/* 영대 두 줄 (어둡게) + 끝 십자가 */}
+      <path strokeWidth="0" fill="#2e7d4f" d="M-12 3.5l5.5-1.5 .5 15h-5.5ZM12 3.5l-5.5-1.5-.5 15h5.5Z" />
+      <path fill="none" strokeWidth="1.2" d="M-9 10.5v4M-10.8 12.5h3.6M9 10.5v4M7.2 12.5h3.6" />
+      <path fill="none" strokeWidth="1" strokeOpacity="0.4" stroke="#000" d="M-6.5 2l6.5 3 6.5-3" />
     </g>
   ) },
-  // 부제님: 로만 칼라 + 왼 어깨에서 오른 허리로 비스듬히 두른 영대
+  // 부제님: 흰 장백의 위에 왼 어깨에서 오른 허리로 대각선으로 맨 영대
   deacon: { colors: ['#e0a94e', '#9c5f18'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-9-2.5c1.5 2 4.5 3.5 9 3.5s7.5-1.5 9-3.5l-2-3.5H-7Z" />
-      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-8-6C-6-9.5-3.5-11 0-11s6 1.5 8 5c-1.5 3-4 4.6-8 4.6S-6.5-3-8-6Z" />
-      <path fill="none" strokeWidth="3.6" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
-      <path fill="none" strokeWidth="3" strokeOpacity="0.9" d="M-9.5-3.5C-9.5-8.5-5.5-11.5 0-11.5s9.5 3 9.5 8" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-6.5 0.5 0 4.2 6.5 0.5V-1L0 2.6-6.5-1Z" />
-      <rect x="-2.6" y="-1.4" width="5.2" height="4.4" rx=".6" strokeWidth="0" />
-      {/* 영대 */}
-      <path strokeWidth="0" fillOpacity="0.95" d="M-13.5 2.5 -8.5 0.5 10.5 17H3.5Z" />
-      <path fill="none" strokeWidth="1.1" strokeOpacity="0.45" stroke="#000" d="M-10.5 1.6 6.5 17" />
-      <path fill="none" strokeWidth="1.4" strokeOpacity="0.55" stroke="#000" d="M-3.5 8.5l2.4-1.1M-2.3 9.9l2.4-1.1" />
+      <path strokeWidth="0" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.12" d="M0 3h7l4 1.5c5.5 2 8 5.5 8 12.5H0Z" />
+      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-7-6C-5.5-9.5-3-11 0-11s5.5 1.5 7 5c-1.5 3-4 4.6-7 4.6S-5.5-3-7-6Z" />
+      <path fill="none" strokeWidth="2.2" strokeOpacity="0.95" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
+      <path strokeWidth="0" fill="#2e7d4f" d="M-13.5 3 -8 1 12 17H5Z" />
+      <path fill="none" strokeWidth="1.2" d="M-2.5 8.2l2.6-1.2M-1.3 9.7l2.6-1.2" />
     </g>
   ) },
   // 수녀님: 베일 — 검은 베일과 얼굴을 두른 흰 코이프
@@ -354,17 +346,17 @@ export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' 
       <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2 0.5c.7-.9 1.7-.9 2.4 0M.8 0.5c.7-.9 1.7-.9 2.4 0M-1.8 5.5c1.1.9 2.5.9 3.6 0" />
     </g>
   ) },
-  // 수사님: 두건을 쓴 수사복과 매듭 허리끈
+  // 수사님: 갈색 수도복(두건)과 흰 매듭 허리끈
   brother: { colors: ['#5d9fd8', '#2a62a4'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" d="M-18 17c0-6 3-10 8-12.5 1-4.5 5-9 10-9s9 4.5 10 9c5 2.5 8 6.5 8 12.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.2" d="M-18 17c0-6 3-10 8-12.5l1.5 .5C-14 7.5-15 12-15 17Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.55" d="M-6 4C-6-4-3.5-9 0-9s6 5 6 13Z" />
-      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-4.5 4C-4.5-2-2.5-6.5 0-6.5s4.5 4.5 4.5 10.5Z" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M-8 4C-8-5-4.5-11 0-11s8 6 8 15" />
-      <path fill="none" strokeWidth="1.9" strokeOpacity="0.6" stroke="#000" d="M-12 10.5h24" />
-      <path fill="none" strokeWidth="1.9" strokeOpacity="0.6" stroke="#000" d="M6 10.5c0 2.5-.5 4.5-1.5 6.5" />
-      <circle cx="5.2" cy="13.5" r="1.3" fill="#000" fillOpacity="0.6" strokeWidth="0" /><circle cx="4.6" cy="16.5" r="1.3" fill="#000" fillOpacity="0.6" strokeWidth="0" />
+      <path strokeWidth="0" fill="#8a5a2b" d="M-18 17c0-6 3-10 8-12.5 1-4.5 5-9 10-9s9 4.5 10 9c5 2.5 8 6.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.18" d="M0-4.5c5 0 9 4.5 10 9 5 2.5 8 6.5 8 12.5H0Z" />
+      <path strokeWidth="0" fill="#5a3717" d="M-6 4C-6-4-3.5-9 0-9s6 5 6 13Z" />
+      <path strokeWidth="0" fill="#e9b89c" d="M-4.5 4C-4.5-2-2.5-6.5 0-6.5s4.5 4.5 4.5 10.5Z" />
+      <path fill="none" strokeWidth="1.2" strokeOpacity="0.5" stroke="#000" d="M-2.2 0c.5-.6 1.2-.6 1.7 0M.5 0c.5-.6 1.2-.6 1.7 0M-1.3 3c.8.6 1.8.6 2.6 0" />
+      <path fill="none" strokeWidth="1.2" strokeOpacity="0.35" stroke="#000" d="M-8 4C-8-5-4.5-11 0-11s8 6 8 15" />
+      <path fill="none" strokeWidth="2" strokeOpacity="0.95" d="M-13 10.5h26M6.5 10.5c0 2.5-.5 4.5-1.5 6.5" />
+      <circle cx="5.6" cy="13.5" r="1.3" strokeWidth="0" /><circle cx="5" cy="16.5" r="1.3" strokeWidth="0" />
     </g>
   ) },
   // 신학생: 검은 수단(장백의 없이) + 로만 칼라 없이 — 공부하는 신학생: 펼친 성경과 십자가, 책갈피 끈
