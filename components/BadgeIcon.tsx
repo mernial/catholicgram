@@ -290,90 +290,94 @@ export function BadgeIcon({ badge, size = 40, className = '' }: { badge: MemberB
   return <Medal colors={def.colors} rim={def.rim} size={size} title={`${def.label} 뱃지`} className={className}>{EMBLEMS[def.key]}</Medal>;
 }
 
-// 성직자·수도자 인증 뱃지 문양 (RoleBadge)
+// 성직자·수도자 인증 뱃지 그림 (RoleBadge) — 바탕 없이 그림만 크게 보이므로 색과 가는 테두리 선을 넣어 그린다
+// (운영자 2026-11-06: 원·네모 없이 그림 자체를 크게, 고급스럽고 단순하게)
 export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' | 'silver'; emblem: ReactNode }> = {
-  // 주교님: 주교관(미트라) — 앞판(뾰족한 아치)과 뒤판, 세로·가로 금띠, 뒤로 늘어진 끈 둘(술 달림)
+  // 주교님: 주교관(미트라) — 상아색 관, 금색 띠, 뒤로 늘어진 끈
   bishop: { colors: ['#9b6fd6', '#5c2f9e'], rim: 'gold', emblem: (
     <g>
-      {/* 끈 */}
-      <path strokeWidth="0" fillOpacity="0.85" d="M-9.5 9.5h4.6l-.9 8.5h-4.6ZM4.9 9.5h4.6l.9 8.5H5.8Z" />
-      <path fill="none" strokeWidth="1" strokeOpacity="0.5" stroke="#000" d="M-9.6 15.5h4M5.6 15.5h4" />
-      {/* 뒤판 (살짝 어둡게) */}
-      <path strokeWidth="0" fillOpacity="0.55" d="M-14.5 8C-14.5-3-9-12.5 0-18.5 9-12.5 14.5-3 14.5 8Z" />
-      {/* 앞판 */}
-      <path strokeWidth="0" d="M-13 9C-13-1-8-9 0-15.5 8-9 13-1 13 9Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.14" d="M0-15.5C8-9 13-1 13 9H0Z" />
-      {/* 세로·가로 띠 */}
-      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-2-13.2h4V9h-4Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-13 1h26v3.6h-26Z" />
-      {/* 아래 테 */}
-      <rect x="-14" y="8" width="28" height="4" rx="1" strokeWidth="0" />
-      <rect x="-14" y="8.8" width="28" height="2.4" fill="#000" fillOpacity="0.32" strokeWidth="0" />
+      <path fill="#d9c9a8" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-9.5 9.5h4.6l-.9 8.5h-4.6ZM4.9 9.5h4.6l.9 8.5H5.8Z" />
+      <path fill="none" strokeWidth="1" stroke="#b08a3e" d="M-9.6 15.5h4M5.6 15.5h4" />
+      <path fill="#e9dfc8" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-14.5 8C-14.5-3-9-12.5 0-18.5 9-12.5 14.5-3 14.5 8Z" />
+      <path fill="#f7f1e3" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-13 9C-13-1-8-9 0-15.5 8-9 13-1 13 9Z" />
+      <path fill="#d9cfb8" fillOpacity="0.7" d="M0-15.5C8-9 13-1 13 9H0Z" />
+      <path fill="#d4a94a" d="M-2-13.2h4V9h-4Z" />
+      <path fill="#d4a94a" d="M-13 1h26v3.6h-26Z" />
+      <path fill="#b8893a" fillOpacity="0.5" d="M0-13.2h2V9H0ZM0 1h13v3.6H0Z" />
+      <rect x="-14" y="8" width="28" height="4.2" rx="1" fill="#d4a94a" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="#b8893a" fillOpacity="0.5" d="M0 8h14v4.2H0Z" />
     </g>
   ) },
-  // (신부님·부제님·수녀님·수사님은 같은 얼굴 크기, 옷으로 구분 — 운영자 2026-11-06)
-  // 신부님: 흰 장백의 + 양 어깨로 똑바로 내려 맨 초록 영대(끝에 십자가)
+  // 신부님: 흰 장백의 + 양 어깨로 똑바로 내린 초록 영대(금색 테·십자가)
   priest: { colors: ['#e4b955', '#a86f1a'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" d="M-18.5 17.5c0-6 3-9.5 8-11.5l5-1.5h11l5 1.5c5 2 8 5.5 8 11.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.12" d="M0 4.5h5.5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
-      <path strokeWidth="0" fill="#2e7d4f" d="M-12.5 5l5.5-1.5 .5 14h-5.5ZM12.5 5l-5.5-1.5-.5 14h5.5Z" />
-      <path fill="none" strokeWidth="1.2" d="M-9.5 11.5v4M-11.3 13.5h3.6M9.5 11.5v4M7.7 13.5h3.6" />
-      <path strokeWidth="0" fill="#e9b89c" d="M-3 2.5h6v3h-6Z" />
-      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#e9b89c" strokeWidth="0" />
-      <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
-      <path strokeWidth="0" fill="#3b2a1e" d="M-6.4-5.5C-6.6-9.5-3.8-11.6 0-11.6s6.6 2.1 6.4 6.1c-1.6-1.7-3.8-2.5-6.4-2.5s-4.8.8-6.4 2.5Z" />
+      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18.5 17.5c0-6 3-9.5 8-11.5l5-1.5h11l5 1.5c5 2 8 5.5 8 11.5Z" />
+      <path fill="#cfc4ad" fillOpacity="0.6" d="M0 4.5h5.5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
+      <path fill="#f1cdae" d="M-3 2.5h6v3h-6Z" />
+      <path fill="#2f7d4f" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-12.5 5l5.5-1.5 .5 14h-5.5ZM12.5 5l-5.5-1.5-.5 14h5.5Z" />
+      <path fill="none" stroke="#e3c15b" strokeWidth="1.3" d="M-9.5 11.5v4M-11.3 13.5h3.6M9.5 11.5v4M7.7 13.5h3.6" />
+      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#f1cdae" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.6" stroke="#5a3b2e" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <ellipse cx="-3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" /><ellipse cx="3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" />
+      <path fill="#3b2a1e" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-6.4-5.5C-6.6-9.5-3.8-11.6 0-11.6s6.6 2.1 6.4 6.1c-1.6-1.7-3.8-2.5-6.4-2.5s-4.8.8-6.4 2.5Z" />
     </g>
   ) },
-  // 부제님: 흰 장백의 + 왼 어깨에서 오른 허리로 대각선으로 맨 초록 영대
+  // 부제님: 흰 장백의 + 왼 어깨에서 오른 허리로 대각선 초록 영대
   deacon: { colors: ['#e0a94e', '#9c5f18'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" d="M-18.5 17.5c0-6 3-9.5 8-11.5l5-1.5h11l5 1.5c5 2 8 5.5 8 11.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.12" d="M0 4.5h5.5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
-      <path strokeWidth="0" fill="#2e7d4f" d="M-14 5.5 -8.5 3.5 12.5 17.5H5.5Z" />
-      <path fill="none" strokeWidth="1.2" d="M-3 9.4l2.6-1.2M-1.8 10.9l2.6-1.2" />
-      <path strokeWidth="0" fill="#e9b89c" d="M-3 2.5h6v3h-6Z" />
-      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#e9b89c" strokeWidth="0" />
-      <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
-      <path strokeWidth="0" fill="#3b2a1e" d="M-6.4-5.5C-6.6-9.5-3.8-11.6 0-11.6s6.6 2.1 6.4 6.1c-1.6-1.7-3.8-2.5-6.4-2.5s-4.8.8-6.4 2.5Z" />
+      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18.5 17.5c0-6 3-9.5 8-11.5l5-1.5h11l5 1.5c5 2 8 5.5 8 11.5Z" />
+      <path fill="#cfc4ad" fillOpacity="0.6" d="M0 4.5h5.5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
+      <path fill="#f1cdae" d="M-3 2.5h6v3h-6Z" />
+      <path fill="#2f7d4f" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-14 5.5 -8.5 3.5 12.5 17.5H5.5Z" />
+      <path fill="none" stroke="#e3c15b" strokeWidth="1.3" d="M-3 9.4l2.6-1.2M-1.8 10.9l2.6-1.2" />
+      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#f1cdae" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.6" stroke="#5a3b2e" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <ellipse cx="-3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" /><ellipse cx="3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" />
+      <path fill="#3b2a1e" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-6.4-5.5C-6.6-9.5-3.8-11.6 0-11.6s6.6 2.1 6.4 6.1c-1.6-1.7-3.8-2.5-6.4-2.5s-4.8.8-6.4 2.5Z" />
     </g>
   ) },
-  // 수녀님: 검은 베일과 얼굴을 두른 흰 코이프
+  // 수녀님: 검은 베일과 흰 코이프
   sister: { colors: ['#63a9e6', '#2b6fb3'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-18.5 17.5C-18.5 1-11-13 0-13s18.5 14 18.5 30.5Z" />
-      <path strokeWidth="0" d="M-11 17.5C-11 5-7-4 0-4s11 9 11 21.5Z" fillOpacity="0.95" />
-      <ellipse cx="0" cy="-3" rx="8.3" ry="9.6" strokeWidth="0" />
-      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#e9b89c" strokeWidth="0" />
-      <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <path fill="#262b38" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18.5 17.5C-18.5 1-11-13 0-13s18.5 14 18.5 30.5Z" />
+      <path fill="#3b4254" fillOpacity="0.6" d="M-18.5 17.5C-18.5 1-11-13 0-13v30.5Z" />
+      <path fill="#ffffff" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-11 17.5C-11 5-7-4 0-4s11 9 11 21.5Z" />
+      <ellipse cx="0" cy="-3" rx="8.3" ry="9.6" fill="#ffffff" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#f1cdae" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.6" stroke="#5a3b2e" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <ellipse cx="-3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" /><ellipse cx="3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" />
     </g>
   ) },
-  // 수사님: 갈색 수도복(두건)과 흰 매듭 허리끈
+  // 수사님: 갈색 수도복(두건)과 매듭 허리끈
   brother: { colors: ['#5d9fd8', '#2a62a4'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#8a5a2b" d="M-18.5 17.5c0-6 3-9.5 8-11.5 0-10 4-16 10.5-16s10.5 6 10.5 16c5 2 8 5.5 8 11.5Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.18" d="M0-10c6.5 0 10.5 6 10.5 16 5 2 8 5.5 8 11.5H0Z" />
-      <path strokeWidth="0" fill="#5a3717" d="M-8-1C-8-8-4.5-12.5 0-12.5s8 4.5 8 11.5v8H-8Z" />
-      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#e9b89c" strokeWidth="0" />
-      <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
-      <path fill="none" strokeWidth="2" strokeOpacity="0.95" d="M-13 11.5h26M6.5 11.5c0 2.5-.5 4.5-1.5 6" />
-      <circle cx="5.6" cy="14.3" r="1.3" strokeWidth="0" /><circle cx="5" cy="17.2" r="1.3" strokeWidth="0" />
+      <path fill="#8a5a2b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18.5 17.5c0-6 3-9.5 8-11.5 0-10 4-16 10.5-16s10.5 6 10.5 16c5 2 8 5.5 8 11.5Z" />
+      <path fill="#6e4520" fillOpacity="0.7" d="M0-10c6.5 0 10.5 6 10.5 16 5 2 8 5.5 8 11.5H0Z" />
+      <path fill="#5a3717" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-8-1C-8-8-4.5-12.5 0-12.5s8 4.5 8 11.5v8H-8Z" />
+      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#f1cdae" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.6" stroke="#5a3b2e" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <ellipse cx="-3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" /><ellipse cx="3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" />
+      <path fill="none" stroke="#efe6d2" strokeWidth="2" d="M-13 11.5h26M6.5 11.5c0 2.5-.5 4.5-1.5 6" />
+      <circle cx="5.6" cy="14.3" r="1.3" fill="#efe6d2" /><circle cx="5" cy="17.2" r="1.3" fill="#efe6d2" />
     </g>
   ) },
-  // 신학생: 검은 수단(장백의 없이) + 로만 칼라 없이 — 공부하는 신학생: 펼친 성경과 십자가, 책갈피 끈
+  // 신학생: 검은 수단에 흰 칼라 (영대 없음)
   seminarian: { colors: ['#9aa5b4', '#5c6673'], rim: 'silver', emblem: (
     <g>
-      <path strokeWidth="0" fillOpacity="0.55" d="M-15 12c5-1.5 10-1.5 15 0 5-1.5 10-1.5 15 0v2c-5-1.5-10-1.5-15 0-5-1.5-10-1.5-15 0Z" />
-      <path strokeWidth="1" d="M-14-4C-9.5-6.3-4.5-6-.5-3.5V10.5C-4.5 8-9.5 7.7-14 10Z" />
-      <path strokeWidth="1" d="M14-4C9.5-6.3 4.5-6 .5-3.5V10.5C4.5 8 9.5 7.7 14 10Z" />
-      <path fill="none" strokeWidth="1.1" strokeOpacity="0.45" stroke="#000" d="M-11-.5c2.8-1 5.5-1 8 0M-11 3c2.8-1 5.5-1 8 0M-11 6.5c2.8-1 5.5-1 8 0M3-.5c2.8-1 5.5-1 8 0M3 3c2.8-1 5.5-1 8 0M3 6.5c2.8-1 5.5-1 8 0" />
-      <path strokeWidth="0" fill="#c0392b" fillOpacity="0.9" d="M.5-3.5h1.6v9.5l-.8-1-.8 1Z" />
-      <path fill="none" strokeWidth="2.8" d="M0-16.5v8.5M-3.8-13h7.6" />
+      <path fill="#262626" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18.5 17.5c0-6 3-9.5 8-11.5l5-1.5h11l5 1.5c5 2 8 5.5 8 11.5Z" />
+      <path fill="#000" fillOpacity="0.35" d="M0 4.5h5.5l5 1.5c5 2 8 5.5 8 11.5H0Z" />
+      <path fill="none" stroke="#ffffff" strokeWidth="2.2" d="M-6.5 4.5C-5 6.8-2.8 8 0 8s5-1.2 6.5-3.5" />
+      <path fill="#f1cdae" d="M-3 2.5h6v3h-6Z" />
+      <path fill="none" stroke="#3a3a3a" strokeWidth="1" d="M0 8.5v9" />
+      <ellipse cx="0" cy="-3" rx="6.2" ry="7.4" fill="#f1cdae" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.6" stroke="#5a3b2e" d="M-3.2-3.6c.7-.9 1.7-.9 2.4 0M.8-3.6c.7-.9 1.7-.9 2.4 0M-1.8 1.2c1.1.9 2.5.9 3.6 0" />
+      <ellipse cx="-3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" /><ellipse cx="3.6" cy="-.6" rx="1.3" ry=".8" fill="#e59a85" fillOpacity="0.45" />
+      <path fill="#3b2a1e" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-6.4-5.5C-6.6-9.5-3.8-11.6 0-11.6s6.6 2.1 6.4 6.1c-1.6-1.7-3.8-2.5-6.4-2.5s-4.8.8-6.4 2.5Z" />
     </g>
   ) },
 };
 
-// 인증 뱃지 그림: 금테 메달 없이 둥근 네모 색 바탕에 사람·주교관을 크게 (운영자 2026-11-06: '원 말고 안의 그림이 더 크게')
+// 인증 뱃지 그림: 바탕(원·네모) 없이 그림 자체만 크게 (운영자 2026-11-06)
 export function ClergyIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
   const id = `cg${useId().replace(/[^\w-]/g, '')}`;
   const art = CLERGY_ART[type];
@@ -383,18 +387,12 @@ export function ClergyIcon({ type, size = 24, title, className = '' }: { type: s
     <svg viewBox="0 0 64 64" width={px} height={px} className={`shrink-0 ${className}`} role="img" aria-label={title} style={{ width: px, height: px }}>
       {title && <title>{title}</title>}
       <defs>
-        <linearGradient id={`${id}-bg`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={art.colors[0]} /><stop offset="1" stopColor={art.colors[1]} />
-        </linearGradient>
-        <clipPath id={`${id}-clip`}><rect x="2" y="2" width="60" height="60" rx="14" /></clipPath>
         <filter id={`${id}-sh`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="0.8" stdDeviation="0.7" floodColor="#000" floodOpacity="0.35" />
+          <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#000" floodOpacity="0.22" />
         </filter>
       </defs>
-      <rect x="2" y="2" width="60" height="60" rx="14" fill={`url(#${id}-bg)`} />
-      <rect x="2.8" y="2.8" width="58.4" height="58.4" rx="13.4" fill="none" stroke="#fff" strokeOpacity="0.35" strokeWidth="1.2" />
-      <g clipPath={`url(#${id}-clip)`} filter={`url(#${id}-sh)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
-        <g transform={type === 'bishop' ? 'translate(32 33) scale(1.42)' : 'translate(32 36) scale(1.55)'}>{art.emblem}</g>
+      <g filter={`url(#${id}-sh)`} strokeLinecap="round" strokeLinejoin="round">
+        <g transform={type === 'bishop' ? 'translate(32 33) scale(1.6)' : 'translate(32 35) scale(1.72)'}>{art.emblem}</g>
       </g>
     </svg>
   );
