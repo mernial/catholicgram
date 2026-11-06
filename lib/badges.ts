@@ -1,7 +1,7 @@
 // 교우 뱃지 (관리자가 교우에게 달아 주는 뱃지 — 앱 안에서 한 활동을 기리는 것)
 // 그림은 components/BadgeIcon.tsx 가 키마다 SVG 로 그린다. 표: supabase/member-badges.sql (member_badges)
 // 새 뱃지를 더하려면 여기 한 줄 + BadgeIcon 의 EMBLEMS 에 그림 하나.
-// 활동 뱃지는 그 활동 1등에게만 저절로(auto, 매일 아침 cron + 관리자 '지금 다시 계산', 관리자 계정은 뺌), 첫 열매만 관리자가 직접. 본인이 내 공간에서 숨길 수 있음(profiles.hide_badges, 기본은 보임)
+// 활동 뱃지는 그 활동 1등에게만 저절로(auto, 매일 아침 cron + 관리자 '지금 다시 계산', 관리자 계정은 뺌, 숫자 5 이상일 때만 — AUTO_BADGE_MIN), 첫 열매만 관리자가 직접. 본인이 내 공간에서 숨길 수 있음(profiles.hide_badges, 기본은 보임)
 // (2026-11-06 운영자: 단체 봉사자 뱃지보다 '공감 많이 받은 사람·건의 많이 한 사람' 같은 앱 활동 위주로, 그림은 바로 알아볼 수 있게)
 
 export type BadgeGroup = 'love' | 'giving' | 'activity' | 'help' | 'honor';
@@ -60,6 +60,8 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
   // --- 기념 ---
   { key: 'firstfruit', label: '첫 열매', desc: '가톨릭그램의 처음을 함께한 교우', group: 'honor', colors: ['#7bbf5a', '#3f8a33'], rim: 'gold' },
 ];
+
+export const AUTO_BADGE_MIN = 5; // 자동 뱃지 최소 기준 (supabase/member-badges.sql refresh_auto_badges 의 `bs.s < 5` 와 같아야 함)
 
 export const badgeOf = (key: string): MemberBadgeDef | undefined => MEMBER_BADGES.find(b => b.key === key);
 
