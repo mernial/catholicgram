@@ -132,6 +132,9 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   const isTagSearch = term.startsWith('#');
   const tagTerm = term.replace(/^#/, '').toLowerCase();
 
+  // 서버에서 찾은 게시물 (홈에 불러온 최근 글만 뒤지면 오래된 글이 빠짐 — 루비로사 오류 신고 2026-11-06)
+  const [serverPosts, setServerPosts] = useState<{ term: string; posts: ExplorePost[] }>({ term: '', posts: [] });
+
   useEffect(() => {
     if (!term || isTagSearch) { setPeople([]); return; }
     const t = setTimeout(async () => {
@@ -139,7 +142,32 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       if (!q) return;
       const { data } = await supabase.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type')
         .or(`baptismal_name.ilike.%${q}%,handle.ilike.%${q}%`).limit(20);
-      setPeople(((data || []) as Person[]).filter(p => !blockedIds.has(p.id)));
+      const found = ((data || []) as Person[]).filter(p => !blockedIds.has(p.id));
+      setPeople(found);
+      // 글 내용·글쓴이 이름에 그 말이 든 글 + 찾은 교우가 쓴 글 (볼 수 있는 글만 서버가 줌)
+      const cols = 'id, content, images, video_url, video_poster, pray_count, like_count, author_name, user_id, created_at, is_story';
+      const [byText, byAuthor] = await Promise.all([
+        supabase.from('posts').select(cols).or(`content.ilike.%${q}%,author_name.ilike.%${q}%`).order('created_at', { ascending: false }).limit(60),
+        found.length > 0 ? supabase.from('posts').select(cols).in('user_id', found.map(p => p.id)).order('created_at', { ascending: false }).limit(60) : Promise.resolve({ data: [] as unknown[] }),
+      ]);
+      type Row = { id: string; content: string; images: string[] | null; video_url?: string | null; video_poster?: string | null; pray_count: number; like_count: number; author_name: string; user_id: string; created_at: string; is_story?: boolean };
+      const rows = new Map<string, Row>();
+      ([...(byText.data || []), ...(byAuthor.data || [])] as Row[]).forEach(r => { if (!r.is_story && !blockedIds.has(r.user_id)) rows.set(r.id, r); });
+      const ids = Array.from(new Set(Array.from(rows.values()).map(r => r.user_id)));
+      const profiles = new Map<string, Person>();
+      found.forEach(p => profiles.set(p.id, p));
+      const missing = ids.filter(id => !profiles.has(id));
+      if (missing.length > 0) {
+        const { data: more } = await supabase.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type').in('id', missing);
+        ((more || []) as Person[]).forEach(p => profiles.set(p.id, p));
+      }
+      setServerPosts({ term, posts: Array.from(rows.values()).map(r => {
+        const pr = profiles.get(r.user_id);
+        const video = !!r.video_url && !(r.images && r.images.length);
+        return { id: r.id, content: r.content, images: video ? (r.video_poster ? [r.video_poster] : []) : (r.images || []), is_video: video || undefined,
+          pray_count: r.pray_count || 0, like_count: r.like_count || 0, author_name: r.author_name, user_id: r.user_id, created_at: r.created_at,
+          avatar_url: pr?.avatar_url, handle: pr?.handle, badge_type: pr?.badge_type };
+      }) });
     }, 300);
     return () => clearTimeout(t);
   }, [term, isTagSearch, blockedIds]);
@@ -150,8 +178,11 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       return visiblePosts.filter(p => extractHashtags(p.content).some(t => t === tagTerm || t.startsWith(tagTerm)));
     }
     const q = term.toLowerCase();
-    return visiblePosts.filter(p => p.content?.toLowerCase().includes(q) || p.author_name?.toLowerCase().includes(q));
-  }, [term, isTagSearch, tagTerm, visiblePosts]);
+    const local = visiblePosts.filter(p => p.content?.toLowerCase().includes(q) || p.author_name?.toLowerCase().includes(q));
+    const seen = new Set(local.map(p => p.id));
+    const extra = serverPosts.term === term ? serverPosts.posts.filter(p => !seen.has(p.id)) : [];
+    return [...local, ...extra].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [term, isTagSearch, tagTerm, visiblePosts, serverPosts]);
 
   const allTags = useMemo(() => popularHashtags(visiblePosts.map(p => p.content), 200), [visiblePosts]);
   const matchedTags = useMemo(() => tagTerm ? allTags.filter(t => t.tag.includes(tagTerm)).slice(0, 20) : [], [allTags, tagTerm]);
