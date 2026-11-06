@@ -8,6 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
+import { BadgeShelf, BadgeRow, BadgeGrantSheet } from '@/components/MemberBadges';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
 import GroupChat from '@/components/GroupChat';
@@ -641,6 +642,8 @@ export default function Home() {
   const [followData, setFollowData] = useState<{ followers: number; following: number; status: FollowStatus }>({ followers: 0, following: 0, status: 'none' });
 
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
+  const [badgeGrantFor, setBadgeGrantFor] = useState<{ id: string; name: string } | null>(null); // 관리자: 교우 뱃지 달기 창 (components/MemberBadges)
+  useBackLayer(!!badgeGrantFor, () => setBadgeGrantFor(null));
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
@@ -3324,7 +3327,7 @@ export default function Home() {
 
   // --- 휴대폰 푸시 알림 ---
   // 방금 작성한 댓글/메시지를 받는 사람에게 알림 발송 요청 (실패해도 무시)
-  const sendPush = async (type: 'sticker_gift' | 'music_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
+  const sendPush = async (type: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'tester_added' | 'letter_gift' | 'letter_reply' | 'lounge_call' | 'lounge_mention' | 'comment' | 'post' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply', id: string) => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) return;
     // keepalive: 메시지 알림은 서버가 아이폰·아이패드에 보내기 전 몇 초 기다리므로(읽었는지 보려고) 보낸 뒤 바로 앱을 나가도 끝까지 가게
@@ -5350,6 +5353,8 @@ export default function Home() {
                 <RoleBadge type={viewingProfile?.badge_type} size="md" />
               </div>
               <p className="text-[0.8125rem] text-stone-400">@{viewingProfile?.handle || 'user'}</p>
+              {/* 교우 뱃지 선반 (관리자가 달아 준 뱃지, components/MemberBadges) */}
+              {viewingUserId && <BadgeShelf key={viewingUserId} userId={viewingUserId} admin={isAdmin} mine={viewingUserId === user?.id} onGrant={() => setBadgeGrantFor({ id: viewingUserId, name: viewingProfile?.baptismal_name || '교우' })} />}
               {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
               {bioDraft !== null ? (
                 <div className="mt-2 flex flex-col gap-1.5">
@@ -5511,6 +5516,7 @@ export default function Home() {
                   <option value="">없음</option>
                   {Object.entries(BADGES).map(([key, b]) => <option key={key} value={key}>{b.label}</option>)}
                 </select>
+                <button onClick={() => setBadgeGrantFor({ id: viewingProfile.id, name: viewingProfile.baptismal_name || '교우' })} className="ml-auto shrink-0 px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold">🏅 뱃지 달기</button>
               </div>
             )}
           </div>
@@ -6141,6 +6147,7 @@ export default function Home() {
                   <RoleBadge type={u.badge_type} />
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
+                <BadgeRow userId={u.id} size={24} className="mt-2" />
                 {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
                 <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
                   🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기
@@ -6185,6 +6192,8 @@ export default function Home() {
           onShowLetters={() => { closeGift(shownGift); setLettersStart('mine'); setShowLetters(true); }}
           onUseMusic={async trackId => { const g = myMusicGifts.find(x => x.track.id === trackId); return g ? saveProfileMusic(g.track) : false; }} />
       )}
+      {/* 관리자: 교우 뱃지 달기 (components/MemberBadges) */}
+      {badgeGrantFor && isAdmin && <BadgeGrantSheet user={badgeGrantFor} onClose={() => setBadgeGrantFor(null)} onGranted={id => sendPush('badge', id)} />}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
       {memberMusicGift && isAdmin && (
         <MemberMusicGift user={memberMusicGift} onClose={() => setMemberMusicGift(null)} onGifted={id => sendPush('music_gift', id)}
