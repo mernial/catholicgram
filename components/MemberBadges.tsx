@@ -199,7 +199,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
       reload(); notify();
     } finally { setBusy(null); }
   };
-  const groups: BadgeGroup[] = ['love', 'activity', 'help', 'honor'];
+  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'honor'];
   return (
     <BottomSheet bare label="뱃지 달기" onClose={onClose} z="z-[94]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>

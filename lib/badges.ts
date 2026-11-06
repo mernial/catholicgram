@@ -1,10 +1,10 @@
 // 교우 뱃지 (관리자가 교우에게 달아 주는 뱃지 — 앱 안에서 한 활동을 기리는 것)
 // 그림은 components/BadgeIcon.tsx 가 키마다 SVG 로 그린다. 표: supabase/member-badges.sql (member_badges)
 // 새 뱃지를 더하려면 여기 한 줄 + BadgeIcon 의 EMBLEMS 에 그림 하나.
-// 활동 뱃지는 그 활동 1등에게만 저절로(auto, 매일 아침 cron + 관리자 '지금 다시 계산'), 첫 열매만 관리자가 직접. 본인이 내 공간에서 숨길 수 있음(profiles.hide_badges, 기본은 보임)
+// 활동 뱃지는 그 활동 1등에게만 저절로(auto, 매일 아침 cron + 관리자 '지금 다시 계산', 관리자 계정은 뺌), 첫 열매만 관리자가 직접. 본인이 내 공간에서 숨길 수 있음(profiles.hide_badges, 기본은 보임)
 // (2026-11-06 운영자: 단체 봉사자 뱃지보다 '공감 많이 받은 사람·건의 많이 한 사람' 같은 앱 활동 위주로, 그림은 바로 알아볼 수 있게)
 
-export type BadgeGroup = 'love' | 'activity' | 'help' | 'honor';
+export type BadgeGroup = 'love' | 'giving' | 'activity' | 'help' | 'honor';
 
 export interface MemberBadgeDef {
   key: string;
@@ -17,10 +17,12 @@ export interface MemberBadgeDef {
   auto?: boolean;       // 활동 1등에게 저절로 달리는 뱃지 (refresh_auto_badges, 관리자가 직접 달지 않음)
 }
 
-export type StatKey = 'likes' | 'prays' | 'comments' | 'posts' | 'photos' | 'feedback' | 'bugs' | 'intentions' | 'lounge' | 'days';
+export type StatKey = 'likes' | 'prays' | 'comments' | 'posts' | 'photos' | 'feedback' | 'bugs' | 'intentions' | 'lounge' | 'days'
+  | 'likesGiven' | 'praysGiven' | 'commentLikes' | 'videos' | 'stories' | 'followers' | 'following' | 'dms' | 'groupMsgs' | 'anonReplies' | 'dawn' | 'night' | 'music';
 
 export const BADGE_GROUPS: Record<BadgeGroup, string> = {
   love: '받은 마음',
+  giving: '나눈 마음',
   activity: '활동',
   help: '도움',
   honor: '기념',
@@ -31,12 +33,26 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
   { key: 'hearts', label: '공감왕', desc: '글에 공감(❤️)을 많이 받은 교우', group: 'love', colors: ['#f2748c', '#c8304f'], rim: 'gold', stat: 'likes', auto: true },
   { key: 'prayers', label: '기도의 손', desc: '글에 기도(🙏)를 많이 받은 교우', group: 'love', colors: ['#e9b94a', '#bf8220'], rim: 'gold', stat: 'prays', auto: true },
   { key: 'trophy', label: '인기 글', desc: '많은 교우가 함께한 인기 글을 쓴 교우', group: 'love', colors: ['#f0a23a', '#c9701a'], rim: 'gold', stat: 'likes', auto: true },
+  { key: 'comment_loved', label: '댓글 인기', desc: '쓴 댓글에 공감·기도를 많이 받은 교우', group: 'love', colors: ['#e88aa8', '#b8456e'], rim: 'gold', stat: 'commentLikes', auto: true },
+  { key: 'popular', label: '인기인', desc: '팔로워가 가장 많은 교우', group: 'love', colors: ['#f2b23a', '#c7791a'], rim: 'gold', stat: 'followers', auto: true },
+  // --- 내가 준 마음 ---
+  { key: 'cheer', label: '응원왕', desc: '교우들의 글에 공감(❤️)을 가장 많이 보낸 교우', group: 'giving', colors: ['#ef7f6a', '#c23f2e'], rim: 'gold', stat: 'likesGiven', auto: true },
+  { key: 'intercessor', label: '함께 기도', desc: '교우들의 글과 기도지향에 기도(🙏)를 가장 많이 보탠 교우', group: 'giving', colors: ['#8e7bd8', '#5a44ad'], rim: 'gold', stat: 'praysGiven', auto: true },
+  { key: 'comforter', label: '위로 천사', desc: '익명 고민상담에 위로의 답글을 가장 많이 남긴 교우', group: 'giving', colors: ['#6cc1d8', '#2f88a8'], rim: 'gold', stat: 'anonReplies', auto: true },
+  { key: 'friendly', label: '마당발', desc: '교우들을 가장 많이 팔로우하며 이어진 교우', group: 'giving', colors: ['#5fb08a', '#2c7d5a'], rim: 'gold', stat: 'following', auto: true },
   // --- 활동 ---
   { key: 'talker', label: '소통왕', desc: '댓글로 교우들과 많이 이야기 나눈 교우', group: 'activity', colors: ['#5fa8e8', '#2b6fc0'], rim: 'gold', stat: 'comments', auto: true },
   { key: 'writer', label: '이야기꾼', desc: '신앙 이야기와 소식을 많이 올린 교우', group: 'activity', colors: ['#7c6cd9', '#4f3fa8'], rim: 'gold', stat: 'posts', auto: true },
   { key: 'photo', label: '사진작가', desc: '사진으로 성당과 일상을 많이 나눈 교우', group: 'activity', colors: ['#5c6b80', '#2f3a4c'], rim: 'gold', stat: 'photos', auto: true },
   { key: 'intention', label: '기도지향', desc: '오늘의 기도지향을 많이 올린 교우', group: 'activity', colors: ['#e07a3f', '#b24a1e'], rim: 'gold', stat: 'intentions', auto: true },
   { key: 'lounge', label: '사랑방 단골', desc: '모두의 사랑방에서 많이 이야기 나눈 교우', group: 'activity', colors: ['#c48a5a', '#8a5330'], rim: 'gold', stat: 'lounge', auto: true },
+  { key: 'video', label: '영상 작가', desc: '영상을 가장 많이 올린 교우', group: 'activity', colors: ['#d85a7a', '#9e2f4e'], rim: 'gold', stat: 'videos', auto: true },
+  { key: 'story', label: '스토리 작가', desc: '스토리를 가장 많이 올린 교우', group: 'activity', colors: ['#f08c4a', '#c45a1e'], rim: 'gold', stat: 'stories', auto: true },
+  { key: 'dj', label: '음악 애호가', desc: '글에 배경음악을 가장 많이 넣은 교우', group: 'activity', colors: ['#7c6cd9', '#4f3fa8'], rim: 'gold', stat: 'music', auto: true },
+  { key: 'messenger', label: '메시지왕', desc: '1:1 메시지를 가장 많이 보낸 교우', group: 'activity', colors: ['#4fa3e0', '#2466a8'], rim: 'gold', stat: 'dms', auto: true },
+  { key: 'groupchat', label: '단체방 단골', desc: '단체 채팅방에서 가장 많이 이야기한 교우', group: 'activity', colors: ['#5f9f6a', '#2f6f3f'], rim: 'gold', stat: 'groupMsgs', auto: true },
+  { key: 'earlybird', label: '새벽 기도', desc: '새벽(4~7시)에 글을 가장 많이 올린 교우', group: 'activity', colors: ['#f6b26b', '#d9772a'], rim: 'gold', stat: 'dawn', auto: true },
+  { key: 'nightowl', label: '밤 기도', desc: '밤(22~3시)에 글을 가장 많이 올린 교우', group: 'activity', colors: ['#5c6bc0', '#2c3680'], rim: 'gold', stat: 'night', auto: true },
   { key: 'daily', label: '매일 출석', desc: '가톨릭그램에 꾸준히 매일 들르는 교우', group: 'activity', colors: ['#3fa86f', '#217a4a'], rim: 'gold', stat: 'days', auto: true },
   // --- 도움 ---
   { key: 'idea', label: '아이디어 천사', desc: '건의함에 좋은 의견을 많이 낸 교우', group: 'help', colors: ['#f5c242', '#d18f12'], rim: 'gold', stat: 'feedback', auto: true },
@@ -48,7 +64,8 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
 export const badgeOf = (key: string): MemberBadgeDef | undefined => MEMBER_BADGES.find(b => b.key === key);
 
 export const STAT_LABELS: Record<StatKey, string> = {
-  likes: '받은 공감', prays: '받은 기도', comments: '쓴 댓글', posts: '쓴 글', photos: '사진 글', feedback: '건의', bugs: '오류 신고', intentions: '기도지향', lounge: '사랑방 대화', days: '들른 날',
+  likes: '받은 공감', prays: '받은 기도', commentLikes: '댓글에 받은 공감', followers: '팔로워', likesGiven: '보낸 공감', praysGiven: '보낸 기도', anonReplies: '고민 답글', following: '팔로잉',
+  comments: '쓴 댓글', posts: '쓴 글', photos: '사진 글', videos: '영상', stories: '스토리', music: '음악 넣은 글', dms: '보낸 메시지', groupMsgs: '단체방 대화', dawn: '새벽 글', night: '밤 글', intentions: '기도지향', lounge: '사랑방 대화', days: '들른 날', feedback: '건의', bugs: '오류 신고',
 };
 
 export interface MemberBadgeRow { id: string; user_id: string; badge_key: string; note?: string | null; created_at: string }

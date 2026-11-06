@@ -1,7 +1,7 @@
 -- 교우 뱃지 (lib/badges.ts — 공감왕·기도의 손·인기 글·소통왕·… + 기념 '첫 열매')
 -- Supabase 대시보드 → SQL Editor 에서 한 번 실행하세요. (여러 번 실행해도 안전, 예전 판 위에 다시 실행해도 됨)
 --
---  * 활동 뱃지(auto)는 1등에게만 저절로 달린다: refresh_auto_badges() 가 활동을 세어 1등에게 달고, 1등이 바뀌면 옮긴다
+--  * 활동 뱃지(auto)는 1등에게만 저절로 달린다(관리자 계정은 뺌): refresh_auto_badges() 가 활동을 세어 1등에게 달고, 1등이 바뀌면 옮긴다
 --    (아침 cron /api/cron/feast-day 이 매일 부름, 관리자는 뱃지 달기 창 '지금 다시 계산'으로도)
 --  * 기념 뱃지(첫 열매)는 관리자가 교우 공간의 '뱃지 달기'에서 달고 뗀다 (is_app_admin)
 --  * 누구나(로그인한 교우) 모든 교우의 뱃지를 볼 수 있다. 본인이 숨기면(profiles.hide_badges) 앱이 다른 교우에게 보이지 않게 한다
@@ -48,67 +48,85 @@ grant select (hide_badges) on public.profiles to anon, authenticated;
 grant update (hide_badges) on public.profiles to authenticated;
 
 -- 1등 자동 뱃지 계산 (service role·관리자만). 돌려주는 줄 = 이번에 새로 받은 교우 (앱이 알림을 보냄)
+-- 관리자 계정(ADMIN_EMAILS)은 1등에서 뺀다 (운영자 2026-11-06)
 create or replace function public.refresh_auto_badges()
 returns table (user_id uuid, badge_key text)
 language plpgsql security definer set search_path = public as $$
 #variable_conflict use_column
 declare
-  has_sessions boolean := to_regclass('public.app_sessions') is not null;
-  has_lounge boolean := to_regclass('public.lounge_messages') is not null;
-  has_feedback boolean := to_regclass('public.feedback') is not null;
-  has_intentions boolean := to_regclass('public.prayer_intentions') is not null;
+  v_kst text := 'Asia/Seoul';
 begin
   if not (auth.role() = 'service_role' or public.is_app_admin() or session_user in ('postgres', 'supabase_admin')) then
     raise exception '관리자만 할 수 있습니다';
   end if;
 
+  -- 교우마다 활동 숫자 (뱃지 키, 교우, 숫자)
+  create temp table badge_stats (badge_key text, user_id uuid, s bigint) on commit drop;
+  create temp table badge_admins (user_id uuid) on commit drop;
+  insert into badge_admins select id from auth.users where email in ('yunho-jo@casuwon.or.kr');
+
+  -- 글 (스토리 빼고)
+  insert into badge_stats select 'hearts', p.user_id, sum(p.like_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
+  insert into badge_stats select 'prayers', p.user_id, sum(p.pray_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
+  insert into badge_stats select 'writer', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
+  insert into badge_stats select 'photo', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and coalesce(array_length(p.images, 1), 0) > 0 group by p.user_id;
+  insert into badge_stats select 'video', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and p.video_url is not null group by p.user_id;
+  insert into badge_stats select 'story', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = true group by p.user_id;
+  insert into badge_stats select 'trophy', p.user_id, max(p.like_count + p.pray_count) from posts p where coalesce(p.is_story, false) = false group by p.user_id;
+  insert into badge_stats select 'earlybird', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and extract(hour from p.created_at at time zone v_kst) between 4 and 6 group by p.user_id;
+  insert into badge_stats select 'nightowl', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and (extract(hour from p.created_at at time zone v_kst) >= 22 or extract(hour from p.created_at at time zone v_kst) < 3) group by p.user_id;
+  if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'posts' and column_name = 'music') then
+    insert into badge_stats select 'dj', p.user_id, count(*) from posts p where coalesce(p.is_story, false) = false and p.music is not null and p.music <> '' group by p.user_id;
+  end if;
+  -- 댓글
+  insert into badge_stats select 'talker', c.user_id, count(*) from comments c where c.user_id is not null group by c.user_id;
+  if to_regclass('public.comment_reactions') is not null then
+    insert into badge_stats select 'comment_loved', c.user_id, count(*) from comment_reactions r join comments c on c.id::text = r.comment_id where c.user_id is not null and c.user_id <> r.user_id group by c.user_id;
+  end if;
+  -- 내가 준 마음
+  if to_regclass('public.post_reactions') is not null then
+    insert into badge_stats select 'cheer', r.user_id, count(*) from post_reactions r where r.reaction_type = 'like' group by r.user_id;
+    insert into badge_stats select 'intercessor', x.user_id, sum(x.n) from (
+      select r.user_id, count(*) n from post_reactions r where r.reaction_type = 'pray' group by r.user_id
+      union all
+      select i.user_id, count(*) from intention_prayers i group by i.user_id
+    ) x group by x.user_id;
+  end if;
+  -- 기도지향·사랑방·단체방·메시지·익명 답글·팔로우
+  if to_regclass('public.prayer_intentions') is not null then
+    insert into badge_stats select 'intention', i.user_id, count(*) from prayer_intentions i group by i.user_id;
+  end if;
+  if to_regclass('public.lounge_messages') is not null then
+    insert into badge_stats select 'lounge', l.user_id, count(*) from lounge_messages l where l.content not like '%들어왔어요%' group by l.user_id;
+  end if;
+  if to_regclass('public.group_chat_messages') is not null then
+    insert into badge_stats select 'groupchat', g.user_id, count(*) from group_chat_messages g where g.kind = 'text' and g.user_id is not null group by g.user_id;
+  end if;
+  if to_regclass('public.messages') is not null then
+    insert into badge_stats select 'messenger', m.sender_id, count(*) from messages m where m.sender_id is not null group by m.sender_id;
+  end if;
+  if to_regclass('public.anon_replies') is not null then
+    insert into badge_stats select 'comforter', a.user_id, count(*) from anon_replies a where coalesce(a.is_post_author, false) = false group by a.user_id;
+  end if;
+  if to_regclass('public.follows') is not null then
+    insert into badge_stats select 'popular', f.following_id, count(*) from follows f where coalesce(f.status, 'accepted') = 'accepted' group by f.following_id;
+    insert into badge_stats select 'friendly', f.follower_id, count(*) from follows f where coalesce(f.status, 'accepted') = 'accepted' group by f.follower_id;
+  end if;
+  -- 들른 날·건의
+  if to_regclass('public.app_sessions') is not null then
+    insert into badge_stats select 'daily', a.user_id, count(distinct (a.started_at at time zone v_kst)::date) from app_sessions a where a.user_id is not null group by a.user_id;
+  end if;
+  if to_regclass('public.feedback') is not null then
+    insert into badge_stats select 'idea', f.user_id, count(*) from feedback f where f.category = 'suggestion' group by f.user_id;
+    insert into badge_stats select 'detective', f.user_id, count(*) from feedback f where f.category = 'bug' group by f.user_id;
+  end if;
+
+  -- 관리자는 1등에서 뺌, 0 은 없음. 뱃지마다 최댓값인 교우(동점이면 모두)
+  delete from badge_stats bs where bs.s is null or bs.s <= 0 or bs.user_id is null or bs.user_id in (select user_id from badge_admins);
   create temp table badge_winners (user_id uuid, badge_key text) on commit drop;
-
-  -- 받은 공감 / 받은 기도 / 쓴 글 / 사진 글 (스토리 빼고)
   insert into badge_winners
-  select t.user_id, 'hearts' from (select p.user_id, sum(p.like_count) s from posts p where coalesce(p.is_story, false) = false group by p.user_id) t
-  where t.s > 0 and t.s = (select max(s) from (select sum(like_count) s from posts where coalesce(is_story, false) = false group by user_id) m);
-  insert into badge_winners
-  select t.user_id, 'prayers' from (select p.user_id, sum(p.pray_count) s from posts p where coalesce(p.is_story, false) = false group by p.user_id) t
-  where t.s > 0 and t.s = (select max(s) from (select sum(pray_count) s from posts where coalesce(is_story, false) = false group by user_id) m);
-  insert into badge_winners
-  select t.user_id, 'writer' from (select p.user_id, count(*) s from posts p where coalesce(p.is_story, false) = false group by p.user_id) t
-  where t.s = (select max(s) from (select count(*) s from posts where coalesce(is_story, false) = false group by user_id) m);
-  insert into badge_winners
-  select t.user_id, 'photo' from (select p.user_id, count(*) s from posts p where coalesce(p.is_story, false) = false and (coalesce(array_length(p.images, 1), 0) > 0 or p.video_url is not null) group by p.user_id) t
-  where t.s = (select max(s) from (select count(*) s from posts where coalesce(is_story, false) = false and (coalesce(array_length(images, 1), 0) > 0 or video_url is not null) group by user_id) m);
-  -- 인기 글: 공감+기도가 가장 많은 글 한 편의 글쓴이
-  insert into badge_winners
-  select p.user_id, 'trophy' from posts p where coalesce(p.is_story, false) = false and (p.like_count + p.pray_count) > 0
-    and (p.like_count + p.pray_count) = (select max(like_count + pray_count) from posts where coalesce(is_story, false) = false);
-  -- 쓴 댓글
-  insert into badge_winners
-  select t.user_id, 'talker' from (select c.user_id, count(*) s from comments c where c.user_id is not null group by c.user_id) t
-  where t.s = (select max(s) from (select count(*) s from comments where user_id is not null group by user_id) m);
-
-  if has_intentions then
-    insert into badge_winners
-    select t.user_id, 'intention' from (select i.user_id, count(*) s from prayer_intentions i group by i.user_id) t
-    where t.s = (select max(s) from (select count(*) s from prayer_intentions group by user_id) m);
-  end if;
-  if has_lounge then
-    insert into badge_winners
-    select t.user_id, 'lounge' from (select l.user_id, count(*) s from lounge_messages l where l.content not like '%들어왔어요%' group by l.user_id) t
-    where t.s = (select max(s) from (select count(*) s from lounge_messages where content not like '%들어왔어요%' group by user_id) m);
-  end if;
-  if has_sessions then
-    insert into badge_winners
-    select t.user_id, 'daily' from (select a.user_id, count(distinct (a.started_at at time zone 'Asia/Seoul')::date) s from app_sessions a where a.user_id is not null group by a.user_id) t
-    where t.s = (select max(s) from (select count(distinct (started_at at time zone 'Asia/Seoul')::date) s from app_sessions where user_id is not null group by user_id) m);
-  end if;
-  if has_feedback then
-    insert into badge_winners
-    select t.user_id, 'idea' from (select f.user_id, count(*) s from feedback f where f.category = 'suggestion' group by f.user_id) t
-    where t.s = (select max(s) from (select count(*) s from feedback where category = 'suggestion' group by user_id) m);
-    insert into badge_winners
-    select t.user_id, 'detective' from (select f.user_id, count(*) s from feedback f where f.category = 'bug' group by f.user_id) t
-    where t.s = (select max(s) from (select count(*) s from feedback where category = 'bug' group by user_id) m);
-  end if;
+  select bs.user_id, bs.badge_key from badge_stats bs
+  where bs.s = (select max(b2.s) from badge_stats b2 where b2.badge_key = bs.badge_key);
 
   -- 더는 1등이 아닌 자동 뱃지는 떼고(관리자가 직접 단 것은 그대로), 새 1등에게 달기
   delete from member_badges mb where mb.auto and not exists (select 1 from badge_winners w where w.user_id = mb.user_id and w.badge_key = mb.badge_key);

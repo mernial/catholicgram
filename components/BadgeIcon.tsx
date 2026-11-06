@@ -168,6 +168,110 @@ const EMBLEMS: Record<string, ReactNode> = {
       <path fill="none" strokeWidth="1.3" d="M-6.5-5l-2-1.5M.5-5l2-1.5M-6.8-1h-2.2M.8-1h2.2M-6.5 2l-2 1.5M.5 2l2 1.5" />
     </g>
   ),
+  // 댓글 인기: 말풍선 속 하트
+  comment_loved: (
+    <g>
+      <path strokeWidth="0" d="M-14-12h28c1.7 0 3 1.3 3 3v15c0 1.7-1.3 3-3 3H-2l-6 5.5V9h-6c-1.7 0-3-1.3-3-3V-9c0-1.7 1.3-3 3-3Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M0 5.2C-5.6 1.5-6.4-3.4-3.1-4.6-1.3-5.2-.3-4 0-3.2.3-4 1.3-5.2 3.1-4.6 6.4-3.4 5.6 1.5 0 5.2Z" />
+    </g>
+  ),
+  // 인기인: 별
+  popular: (
+    <g>
+      <path strokeWidth="1.5" d="M0-14.5l4.2 8.8 9.6 1.3-7 6.7 1.8 9.6L0 7.3l-8.6 4.6 1.8-9.6-7-6.7 9.6-1.3Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.18" d="M0-14.5l4.2 8.8 9.6 1.3-7 6.7 1.8 9.6L0 7.3Z" />
+    </g>
+  ),
+  // 응원왕: 손 위의 하트
+  cheer: (
+    <g>
+      <path strokeWidth="0" d="M0 0C-5.2-3.4-5.9-8.2-2.9-9.3-1.3-9.9-.3-8.8 0-8 .3-8.8 1.3-9.9 2.9-9.3 5.9-8.2 5.2-3.4 0 0Z" />
+      <path strokeWidth="0" d="M-13.5 4.5c3-2.3 6.3-2.6 9.8-1.3l5.6 1.9c1.6.6 2.4 1.9 2.1 3.2l-8.6-1.4-.4 2 9.3 1.7c1.4.3 2.6-.2 3.6-1.2l5-4.6c1.2-1.1 2.8-1.1 3.7 0 .9 1.1.6 2.6-.5 3.7l-7.2 7c-1.8 1.7-4 2.3-6.5 1.9l-8.3-1.4c-2.7-.5-5.2.1-7.6 1.6Z" />
+    </g>
+  ),
+  // 함께 기도: 묵주
+  intercessor: (
+    <g>
+      <circle cx="0" cy="-3.5" r="9.5" fill="none" strokeWidth="2.6" strokeDasharray="0.1 3.3" />
+      <circle cx="0" cy="-3.5" r="9.5" fill="none" strokeWidth="0.9" strokeOpacity="0.5" />
+      <path fill="none" strokeWidth="2.6" strokeDasharray="0.1 3.3" d="M3.5 5.3c1.8 1.6 3.3 3.2 4.6 4.9" />
+      <circle cx="9.6" cy="12.2" r="2" strokeWidth="0" />
+      <path fill="none" strokeWidth="2.2" d="M9.6 12.5v5.5M7.2 14.6h4.8" />
+      <circle cx="0" cy="-3.5" r="3.4" strokeWidth="0" fillOpacity="0.55" />
+    </g>
+  ),
+  // 위로 천사: 구름 뒤 해
+  comforter: (
+    <g>
+      <circle cx="4" cy="-4" r="7" strokeWidth="0" fillOpacity="0.95" />
+      <path fill="none" strokeWidth="1.8" strokeOpacity="0.9" d="M4-15.5v3M15.5-4h-3M12.1-12.1l-2.1 2.1M-4.1-12.1l2.1 2.1" />
+      <path strokeWidth="1.2" stroke="#000" strokeOpacity="0.15" d="M-11 11.5c-3.3 0-5.5-2.2-5.5-5s2.2-5 5-5c.5-3.6 3.5-6 7-6 3.1 0 5.7 1.9 6.6 4.6 3.5-.6 6.4 1.8 6.4 5.2 0 3.4-2.6 6.2-6 6.2Z" />
+    </g>
+  ),
+  // 마당발: 사람 셋
+  friendly: (
+    <g>
+      <circle cx="-9" cy="-3" r="4" strokeWidth="0" fillOpacity="0.85" /><path strokeWidth="0" fillOpacity="0.85" d="M-16 11c0-4.5 3-7.5 7-7.5s7 3 7 7.5Z" />
+      <circle cx="9" cy="-3" r="4" strokeWidth="0" fillOpacity="0.85" /><path strokeWidth="0" fillOpacity="0.85" d="M2 11c0-4.5 3-7.5 7-7.5s7 3 7 7.5Z" />
+      <circle cx="0" cy="-7" r="4.8" strokeWidth="0" /><path strokeWidth="0" d="M-8.5 13c0-5.5 3.6-9 8.5-9s8.5 3.5 8.5 9Z" />
+    </g>
+  ),
+  // 영상 작가: 재생 단추
+  video: (
+    <g>
+      <rect x="-14" y="-10.5" width="28" height="21" rx="4.5" strokeWidth="0" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-4-6.5 7 0-4 6.5Z" />
+    </g>
+  ),
+  // 스토리 작가: 스토리 동그라미 + 번개
+  story: (
+    <g>
+      <circle r="12.5" fill="none" strokeWidth="2.8" strokeDasharray="6 3" />
+      <path strokeWidth="0" d="M1.5-9-6 2h5l-2 7L5-2H0Z" />
+    </g>
+  ),
+  // 음악 애호가: 음표
+  dj: (
+    <g>
+      <ellipse cx="-7" cy="9" rx="4.4" ry="3.2" transform="rotate(-18 -7 9)" strokeWidth="0" />
+      <ellipse cx="6" cy="6.5" rx="4.4" ry="3.2" transform="rotate(-18 6 6.5)" strokeWidth="0" />
+      <path fill="none" strokeWidth="2.4" d="M-3.4 8.2V-9.5M9.6 5.7V-12" />
+      <path strokeWidth="0" d="M-3.4-9.5 9.6-12v5.2L-3.4-4.3Z" />
+    </g>
+  ),
+  // 메시지왕: 종이비행기
+  messenger: (
+    <g>
+      <path strokeWidth="0" d="M-15-6 15-13 6 14l-6.5-8.5L-2 0Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.3" d="M-.5 5.5 15-13-2 0Z" />
+    </g>
+  ),
+  // 단체방 단골: 말풍선 속 사람 셋
+  groupchat: (
+    <g>
+      <path strokeWidth="0" d="M-15-11h30c1.7 0 3 1.3 3 3v14c0 1.7-1.3 3-3 3H-1l-6 5.5V9h-8c-1.7 0-3-1.3-3-3V-8c0-1.7 1.3-3 3-3Z" />
+      <g fill="#000" fillOpacity="0.4" strokeWidth="0">
+        <circle cx="-7" cy="-4" r="2.4" /><path d="M-11 4c0-2.6 1.8-4.4 4-4.4s4 1.8 4 4.4Z" />
+        <circle cx="0" cy="-4.5" r="2.6" /><path d="M-4.4 4c0-2.9 2-4.8 4.4-4.8s4.4 1.9 4.4 4.8Z" />
+        <circle cx="7" cy="-4" r="2.4" /><path d="M3 4c0-2.6 1.8-4.4 4-4.4s4 1.8 4 4.4Z" />
+      </g>
+    </g>
+  ),
+  // 새벽 기도: 해돋이
+  earlybird: (
+    <g>
+      <path strokeWidth="0" d="M-10 6a10 10 0 0 1 20 0Z" />
+      <path fill="none" strokeWidth="1.8" d="M0-11v-4M-9.5-7.5l-2.8-2.8M9.5-7.5l2.8-2.8M-14 3h-3M14 3h3" />
+      <path fill="none" strokeWidth="2.4" d="M-16 10h32M-11 14.5h22" />
+    </g>
+  ),
+  // 밤 기도: 달과 별
+  nightowl: (
+    <g>
+      <path strokeWidth="0" d="M3-13c-6.8 0-12.3 5.5-12.3 12.3S-3.8 11.6 3 11.6c3.5 0 6.7-1.5 8.9-3.9-7.5.9-13.3-5-11.3-12.2.5-1.8 1.4-3.3 2.4-4.4C3 -12.9 3-13 3-13Z" />
+      <path strokeWidth="0" d="M9.5-12l1.3 2.9 3 .4-2.2 2.1.5 3-2.6-1.5-2.6 1.5.5-3-2.2-2.1 3-.4Z" />
+    </g>
+  ),
   // 첫 열매: 새싹
   firstfruit: (
     <g>
