@@ -282,7 +282,99 @@ const EMBLEMS: Record<string, ReactNode> = {
       <path fill="none" strokeWidth="2" d="M-7 15.5h14" />
     </g>
   ),
+  // 연속 출석: 불꽃 (매일 이어진 열정)
+  streak: (
+    <g>
+      <path strokeWidth="0" d="M1-15c1 5-2.5 7-4.5 10C-6 -1.5-7.5 2-6.5 6.2-5.3 11.4-1 14 3 13.8c6-.3 9.5-5 8.6-10.4-.6-3.6-2.8-6-5.2-8.2.2 2.6-.4 4.4-2 5.4.6-5.5-1.2-8.4-3.4-10.6Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.22" d="M1.5 2c1.2 2.2.4 3.8-.7 5.3-1.2 1.5-1.6 3-.7 4.6 2.6.6 5.3-1.2 5.3-4 0-2.4-1.8-4.2-3.9-5.9Z" />
+    </g>
+  ),
+  // 답글 요정: 말풍선 안 답장 화살표
+  replier: (
+    <g>
+      <path strokeWidth="0" d="M-14-12h28c1.7 0 3 1.3 3 3V5c0 1.7-1.3 3-3 3H-1l-6 6V8h-7c-1.7 0-3-1.3-3-3V-9c0-1.7 1.3-3 3-3Z" />
+      <path fill="none" stroke="#000" strokeOpacity="0.4" strokeWidth="2.4" d="M-5-6l-4.5 4L-5 2M-9.5-2H3c3 0 5 2 5 4.5V5" />
+    </g>
+  ),
+  // 리액션왕: 웃는 얼굴 + 하트·손 모양 표시
+  reactor: (
+    <g>
+      <circle r="10.5" cx="-2" cy="2" strokeWidth="0" />
+      <circle cx="-5.5" cy="-1" r="1.5" fill="#000" fillOpacity="0.4" strokeWidth="0" /><circle cx="1.5" cy="-1" r="1.5" fill="#000" fillOpacity="0.4" strokeWidth="0" />
+      <path fill="none" stroke="#000" strokeOpacity="0.4" strokeWidth="1.8" d="M-6.5 4.5c2.2 3 6.8 3 9 0" />
+      <path strokeWidth="0" d="M11-14c-3 2-5 4.5-4.2 7.2.3 1 1.2 1.6 2.2 1.6s1.8-.6 2.2-1.6c.8-2.7-1.2-5.2-.2-7.2Z" transform="translate(0 2)" />
+      <path strokeWidth="0" d="M10.5-5C7.2-2.8 6.5-.2 8.3 1.2c.8.6 1.8.6 2.6 0 1.8-1.4 1.1-4-.4-6.2Z" transform="translate(2.5 7)" />
+    </g>
+  ),
+  // 이모티콘 애호가: 모서리가 접힌 이모티콘(스티커) 네모 + 웃는 얼굴
+  sticker: (
+    <g>
+      <path strokeWidth="0" d="M-13-13h26v16l-10 10h-16Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.25" d="M13 3L3 13V5c0-1.1.9-2 2-2Z" />
+      <circle cx="-5.5" cy="-5" r="1.7" fill="#000" fillOpacity="0.4" strokeWidth="0" /><circle cx="3.5" cy="-5" r="1.7" fill="#000" fillOpacity="0.4" strokeWidth="0" />
+      <path fill="none" stroke="#000" strokeOpacity="0.4" strokeWidth="2" d="M-6.5 1c2.5 3.5 7.5 3.5 10 0" />
+    </g>
+  ),
+  // 주일 지킴이: 성당 (종탑·십자가)
+  sunday: (
+    <g>
+      <path strokeWidth="0" d="M-14 14V2l6-5v17ZM14 14V2l-6-5v17Z" fillOpacity="0.6" />
+      <path strokeWidth="0" d="M-8 14V-3L0-9l8 6v17Z" />
+      <path fill="none" strokeWidth="2.2" d="M0-16v6M-2.6-13.2h5.2" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-2.6 14V6c0-1.6 1.1-2.7 2.6-2.7S2.6 4.4 2.6 6v8Z" />
+    </g>
+  ),
+  // 묵상가: 펼친 두루마리에 글줄
+  longform: (
+    <g>
+      <path strokeWidth="0" d="M-12-12h24c1.7 0 3 1.3 3 3v18c0 1.7-1.3 3-3 3h-24c-1.7 0-3-1.3-3-3V-9c0-1.7 1.3-3 3-3Z" fillOpacity="0.92" />
+      <path fill="none" stroke="#000" strokeOpacity="0.45" strokeWidth="1.8" d="M-9-6h18M-9-1.5h18M-9 3h18M-9 7.5h10" />
+    </g>
+  ),
+  // 해시태그 장인: #
+  hashtag: (
+    <g>
+      <path fill="none" strokeWidth="3.6" d="M-5-13l-3 26M8-13l-3 26M-13-5h26M-14 5h26" />
+    </g>
+  ),
+  // 환영 천사: 인사하는 손 + 하트
+  welcomer: (
+    <g>
+      <path strokeWidth="0" d="M-6 14c-5 0-8.5-3.5-8.5-8.5V-4c0-1.4 1.1-2.5 2.5-2.5S-9.5-5.4-9.5-4v4.5h1V-10c0-1.4 1.1-2.5 2.5-2.5S-3.5-11.4-3.5-10v10h1V-13c0-1.4 1.1-2.5 2.5-2.5S2.5-14.4 2.5-13v13h1V-9c0-1.4 1.1-2.5 2.5-2.5S8.5-10.4 8.5-9v12c0 6-4 11-10 11Z" />
+      <path strokeWidth="0" d="M13.5-3.5C10.4-5.6 7.6-2.4 8.7.2 9.5 2 11.5 3.8 13.5 5.3 15.5 3.8 17.5 2 18.3.2 19.4-2.4 16.6-5.6 13.5-3.5Z" transform="translate(-2 2) scale(0.85)" />
+    </g>
+  ),
+  // 사연 작가: 하트 봉인 편지
+  letter: (
+    <g>
+      <path strokeWidth="0" d="M-15-9h30v18h-30Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.28" d="M-15-9h30L0 3Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.14" d="M-15 9L-4 0l4 3 4-3 11 9Z" />
+      <path strokeWidth="0" fill="#fff" d="M0 8.5C-3.8 5.9-4.6 2.5-2.4 1.3-1.2.6-.2 1.3 0 2.1.2 1.3 1.2.6 2.4 1.3 4.6 2.5 3.8 5.9 0 8.5Z" transform="translate(0 -1)" />
+    </g>
+  ),
+  // --- 달성 도장: 작은 그림 + 숫자 ---
+  m_posts10: <Numbered n="10"><path strokeWidth="0" d="M-6-14h8l3 3v8H-6Z" fillOpacity="0.9" /><path fill="none" stroke="#000" strokeOpacity="0.35" strokeWidth="1.1" d="M-4-9h5M-4-6.5h4" /></Numbered>,
+  m_posts50: <Numbered n="50"><path strokeWidth="0" d="M-6-14h8l3 3v8H-6Z" fillOpacity="0.9" /><path fill="none" stroke="#000" strokeOpacity="0.35" strokeWidth="1.1" d="M-4-9h5M-4-6.5h4" /></Numbered>,
+  m_comments100: <Numbered n="100"><path strokeWidth="0" d="M-7-14h14c1.1 0 2 .9 2 2v6c0 1.1-.9 2-2 2H-2l-3 3v-3h-2c-1.1 0-2-.9-2-2v-6c0-1.1.9-2 2-2Z" fillOpacity="0.9" /></Numbered>,
+  m_hearts100: <Numbered n="100"><path strokeWidth="0" d="M0-3C-6.4-7.4-7.8-13.3-4.1-15.5-2-16.7-.5-15.5 0-14.3.5-15.5 2-16.7 4.1-15.5 7.8-13.3 6.4-7.4 0-3Z" fillOpacity="0.9" /></Numbered>,
+  m_prays100: <Numbered n="100"><g transform="translate(-6.5 -16) scale(0.0508)"><path fillRule="evenodd" strokeWidth="0" d="M235.32,180l-36.24-36.25L162.62,23.46A21.76,21.76,0,0,0,128,12.93,21.76,21.76,0,0,0,93.38,23.46L56.92,143.76,20.68,180a16,16,0,0,0,0,22.62l32.69,32.69a16,16,0,0,0,22.63,0L124.28,187a40.68,40.68,0,0,0,3.72-4.29,40.68,40.68,0,0,0,3.72,4.29L180,235.32a16,16,0,0,0,22.63,0l32.69-32.69A16,16,0,0,0,235.32,180ZM122.50,24.00 L122.50,178.00 L133.50,178.00 L133.50,24.00ZM46.11,164.89 L91.11,209.89 L98.89,202.11 L53.89,157.11ZM202.11,157.11 L157.11,202.11 L164.89,209.89 L209.89,164.89Z" /></g></Numbered>,
+  m_days30: <Numbered n="30"><path strokeWidth="0" d="M-7-13h14c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H-7c-1.1 0-2-.9-2-2v-9c0-1.1.9-2 2-2Z" fillOpacity="0.9" /><path fill="none" stroke="#000" strokeOpacity="0.4" strokeWidth="1.3" d="M-9-9h18M-4-15v3M4-15v3" /><path fill="none" stroke="#000" strokeOpacity="0.45" strokeWidth="1.6" d="M-3-4l2 2 4-4" /></Numbered>,
+  m_days100: <Numbered n="100"><path strokeWidth="0" d="M-7-13h14c1.1 0 2 .9 2 2v9c0 1.1-.9 2-2 2H-7c-1.1 0-2-.9-2-2v-9c0-1.1.9-2 2-2Z" fillOpacity="0.9" /><path fill="none" stroke="#000" strokeOpacity="0.4" strokeWidth="1.3" d="M-9-9h18M-4-15v3M4-15v3" /><path fill="none" stroke="#000" strokeOpacity="0.45" strokeWidth="1.6" d="M-3-4l2 2 4-4" /></Numbered>,
+  m_streak7: <Numbered n="7일"><path strokeWidth="0" d="M.5-16c.6 3-1.5 4.2-2.7 6C-3.6-8-4.5-6-3.9-3.5-3.2-.4-.6 1.2 1.8 1.1c3.6-.2 5.7-3 5.2-6.3-.4-2.1-1.7-3.6-3.1-4.9.1 1.6-.2 2.6-1.2 3.2.4-3.3-.7-5-2.2-6.3Z" fillOpacity="0.95" transform="translate(0 1)" /></Numbered>,
+  m_year1: <Numbered n="1년"><path strokeWidth="0" d="M0-16l1.9 4 4.4.6-3.2 3.1.8 4.4L0-6l-3.9 2.1.8-4.4-3.2-3.1 4.4-.6Z" fillOpacity="0.95" /></Numbered>,
 };
+
+// 달성 도장 문양: 위에 작은 그림, 아래에 큰 숫자
+function Numbered({ n, children }: { n: string; children: ReactNode }) {
+  const size = n.length >= 3 ? 13 : 15.5;
+  return (
+    <g>
+      {children}
+      <text y="12.5" textAnchor="middle" fontSize={size} fontWeight="900" fontFamily="inherit" strokeWidth="0" style={{ letterSpacing: '-0.03em' }}>{n}</text>
+    </g>
+  );
+}
 
 export function BadgeIcon({ badge, size = 40, className = '' }: { badge: MemberBadgeDef | string; size?: number | string; className?: string }) {
   const def = typeof badge === 'string' ? badgeOf(badge) : badge;

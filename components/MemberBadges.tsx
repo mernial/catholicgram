@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
-import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type MemberBadgeRow, type StatKey } from '@/lib/badges';
+import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type BadgeStamp, type MemberBadgeRow, type StatKey } from '@/lib/badges';
 type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
@@ -20,6 +20,106 @@ import { BADGES } from '@/components/RoleBadge';
 // 관리자는 '뱃지 달기' 창(BadgeGrantSheet)에서 달고 뗀다. 표가 없으면(SQL 전) 조용히 빈 채로.
 
 const fmtDate = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`; };
+// 저절로 달리는 뱃지의 설명: 1등 뱃지 / 달성 도장
+const autoNote = (key: string) => { const d = badgeOf(key); return !d?.auto ? '' : d.permanent ? ' · 기준을 넘으면 저절로 받고 계속 남아요' : ' · 활동 1등에게 저절로 달려요 (1등이 바뀌면 옮겨 가요)'; };
+
+// 받은 기록(도장): 뱃지를 받을 때마다 남는 줄 (badge_stamps — 뱃지가 떨어져도 남음)
+export function useBadgeStamps(userId: string | null | undefined, enabled = true) {
+  const [stamps, setStamps] = useState<BadgeStamp[]>([]);
+  const [ready, setReady] = useState(false);
+  const [missing, setMissing] = useState(false);
+  const [tick, setTick] = useState(0);
+  const reload = useCallback(() => setTick(t => t + 1), []);
+  useEffect(() => {
+    if (!userId || !enabled) return;
+    let alive = true;
+    supabase.from('badge_stamps').select('id, user_id, badge_key, earned_at, auto, note').eq('user_id', userId).order('earned_at', { ascending: false }).limit(500).then(({ data, error }) => {
+      if (!alive) return;
+      if (error) { setMissing(true); setStamps([]); setReady(true); return; }
+      setMissing(false); setStamps(((data || []) as BadgeStamp[]).filter(r => badgeOf(r.badge_key))); setReady(true);
+    });
+    return () => { alive = false; };
+  }, [userId, enabled, tick]);
+  useEffect(() => {
+    const h = (e: Event) => { const d = (e as CustomEvent<string>).detail; if (d === userId || d === '*') reload(); };
+    window.addEventListener('member-badges-changed', h);
+    return () => window.removeEventListener('member-badges-changed', h);
+  }, [userId, reload]);
+  return { stamps, ready, missing, reload };
+}
+
+// 도장 모음: 받은 날짜가 찍힌 도장을 달마다 모아 보여 줌 (운영자 2026-11-06 '스탬프 모으듯 몇 월 며칠 받았다')
+export function StampBook({ userId, name, mine, onClose }: { userId: string; name?: string; mine: boolean; onClose: () => void }) {
+  const { stamps, ready, missing } = useBadgeStamps(userId);
+  const { rows } = useMemberBadges(userId);
+  const holding = new Set(rows.map(r => r.badge_key));
+  const [open, setOpen] = useState<BadgeStamp | null>(null);
+  const who = mine ? '내' : `${name || '교우'}님의`;
+  // 달마다 묶기 (최근 달 먼저)
+  const months: { key: string; label: string; items: BadgeStamp[] }[] = [];
+  stamps.forEach(st => {
+    const d = new Date(st.earned_at); const key = `${d.getFullYear()}-${d.getMonth() + 1}`;
+    let m = months.find(x => x.key === key);
+    if (!m) { m = { key, label: `${d.getFullYear()}년 ${d.getMonth() + 1}월`, items: [] }; months.push(m); }
+    m.items.push(st);
+  });
+  const kinds = new Set(stamps.map(s => s.badge_key)).size;
+  return (
+    <BottomSheet bare label="도장 모음" onClose={onClose} z="z-[86]" tone="bg-white">
+      <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="shrink-0 px-4 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="font-bold text-[1.125rem] text-stone-900 truncate">📖 {who} 뱃지 도장{stamps.length > 0 ? ` ${stamps.length}개` : ''}</h2>
+            <p className="text-[0.8125rem] text-stone-500 mt-0.5">뱃지를 받은 날마다 도장이 찍혀요 · 1등이 바뀌어 뱃지가 넘어가도 도장은 그대로 남아요{kinds > 0 ? ` · ${kinds}종류` : ''}</p>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none shrink-0" aria-label="닫기">×</button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          {!ready ? <p className="p-6 text-center text-sm text-stone-400">불러오는 중…</p> : missing ? (
+            <div className="mt-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-[0.875rem] text-amber-900">아직 도장 표가 없어요. 관리자가 <b>supabase/member-badges.sql</b> 을 다시 실행하면 보여요.</div>
+          ) : stamps.length === 0 ? (
+            <p className="p-8 text-center text-[0.9375rem] text-stone-400 leading-relaxed">아직 찍힌 도장이 없어요.<br />{mine ? '활동 1등이 되거나 글 10편·출석 30일 같은 기준을 넘으면 그날 날짜로 도장이 찍혀요.' : ''}</p>
+          ) : months.map(m => (
+            <div key={m.key} className="mt-4">
+              <p className="text-[0.8125rem] font-bold text-stone-500 mb-2 flex items-center gap-2">{m.label}<span className="font-normal text-stone-400">{m.items.length}개</span></p>
+              <div className="grid grid-cols-4 gap-2">
+                {m.items.map(st => { const def = badgeOf(st.badge_key)!; const d = new Date(st.earned_at); const held = holding.has(st.badge_key); return (
+                  <button key={st.id} onClick={() => setOpen(st)} className="relative flex flex-col items-center gap-1 pt-2.5 pb-2 px-1 rounded-2xl border border-dashed border-amber-300/80 bg-[#fffaf0] text-center" aria-label={`${def.label} 도장 ${fmtDate(st.earned_at)}`}>
+                    <BadgeIcon badge={def} size={46} />
+                    <span className="text-[0.6875rem] font-bold text-stone-800 leading-tight line-clamp-1">{def.label}</span>
+                    <span className="text-[0.625rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 leading-4" style={{ transform: 'rotate(-6deg)' }}>{d.getMonth() + 1}.{d.getDate()}</span>
+                    {held && !def.permanent && <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-amber-500" title="지금 달고 있어요" aria-hidden />}
+                  </button>
+                ); })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+      {open && (() => { const def = badgeOf(open.badge_key)!; const held = holding.has(open.badge_key); return (
+        <StampDetail def={def} stamp={open} held={held} onClose={() => setOpen(null)} />
+      ); })()}
+    </BottomSheet>
+  );
+}
+
+function StampDetail({ def, stamp, held, onClose }: { def: NonNullable<ReturnType<typeof badgeOf>>; stamp: BadgeStamp; held: boolean; onClose: () => void }) {
+  useBackLayer(true, onClose);
+  return (
+    <div className="fixed inset-0 z-[96] bg-black/60 flex items-center justify-center p-6 animate-fade-in" onClick={onClose} role="dialog" aria-label={`${def.label} 도장`}>
+      <div className="bg-white rounded-3xl w-full max-w-xs p-6 flex flex-col items-center text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+        <BadgeIcon badge={def} size={112} />
+        <p className="mt-3 text-[0.75rem] font-bold text-amber-700 tracking-wide">{BADGE_GROUPS[def.group]}</p>
+        <h3 className="mt-0.5 text-[1.25rem] font-bold text-stone-900">{def.label}</h3>
+        <p className="mt-1.5 text-[0.9375rem] text-stone-600 leading-relaxed">{def.desc}</p>
+        {stamp.note && <p className="mt-2 text-[0.875rem] text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2">“{stamp.note}”</p>}
+        <p className="mt-3 text-[0.8125rem] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-full px-3 py-1">📅 {fmtDate(stamp.earned_at)} 받음</p>
+        <p className="mt-2 text-[0.75rem] text-stone-400">{def.permanent ? '한 번 받으면 계속 남는 달성 도장이에요' : held ? '지금도 달고 있어요' : '지금은 다른 교우가 1등이지만 받은 기록은 남아요'}</p>
+        <button onClick={onClose} className="mt-4 w-full py-2.5 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">닫기</button>
+      </div>
+    </div>
+  );
+}
 
 export function useMemberBadges(userId: string | null | undefined) {
   const [rows, setRows] = useState<Row[]>([]);
@@ -68,7 +168,7 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: Row; admin: boole
         <h3 className="mt-0.5 text-[1.25rem] font-bold text-stone-900">{def.label}</h3>
         <p className="mt-1.5 text-[0.9375rem] text-stone-600 leading-relaxed">{def.desc}</p>
         {row.note && <p className="mt-2 text-[0.875rem] text-stone-700 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2">“{row.note}”</p>}
-        <p className="mt-3 text-[0.75rem] text-stone-400">{fmtDate(row.created_at)} 받음{row.auto && ' · 활동 1등에게 저절로 달려요 (1등이 바뀌면 옮겨 가요)'}</p>
+        <p className="mt-3 text-[0.75rem] text-stone-400">{fmtDate(row.created_at)} 받음{row.auto && autoNote(row.badge_key)}</p>
         <div className="mt-4 flex gap-2 w-full">
           {admin && onRevoke && !row.auto && <button onClick={() => onRevoke(row)} className="flex-1 py-2.5 rounded-xl border border-red-200 text-red-600 text-[0.9375rem] font-bold">떼기</button>}
           <button onClick={onClose} className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">닫기</button>
@@ -89,6 +189,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
     return () => { alive = false; };
   }, [userId]);
   const who = name || prof?.baptismal_name || '교우';
+  const [book, setBook] = useState(false);
   const clergy = prof?.badge_type && BADGES[prof.badge_type] ? prof.badge_type : null;
   const total = (clergy ? 1 : 0) + (hidden ? 0 : rows.length);
   const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string) => (
@@ -110,11 +211,15 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
           {clergy && item(`role:${clergy}`, <ClergyIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, '관리자가 직접 확인하고 달아 드린 성직자·수도자 인증 뱃지예요.')}
-          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? ' · 활동 1등에게 저절로 달려요' : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
+          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400">아직 받은 뱃지가 없어요.</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
+          {!hidden && ready && (
+            <button onClick={() => setBook(true)} className="w-full px-4 py-3 text-left text-[0.9375rem] font-bold text-amber-800 bg-[#fffaf0] flex items-center gap-2">📖 받은 뱃지 도장 모두 보기<span className="text-[0.75rem] font-normal text-stone-500">받은 날짜 · 예전에 받았던 뱃지도</span></button>
+          )}
         </div>
       </div>
+      {book && <StampBook userId={userId} name={who} mine={false} onClose={() => setBook(false)} />}
     </div>
   );
 }
@@ -122,7 +227,9 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
 // 공간 머리의 뱃지 선반
 export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; admin: boolean; mine: boolean; onGrant?: () => void }) {
   const { rows, missing, hidden, setHidden, reload } = useMemberBadges(userId);
+  const { stamps } = useBadgeStamps(userId, !missing);
   const [open, setOpen] = useState<Row | null>(null);
+  const [book, setBook] = useState(false);
   const [saving, setSaving] = useState(false);
   // 본인: 다른 교우에게 보일지 (기본 보임). 끄면 다른 교우의 화면(공간·프로필 카드)에서 안 보임
   const toggleHidden = async (show: boolean) => {
@@ -145,13 +252,17 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
     setOpen(null); reload();
   };
   if (hidden && !mine && !admin) return null;
-  if (rows.length === 0 && !(admin && !missing) && !mine) return null;
+  if (rows.length === 0 && stamps.length === 0 && !(admin && !missing) && !mine) return null;
   if (rows.length === 0 && mine && missing) return null;
+  const bookBtn = (stamps.length > 0 || mine) && !missing && (
+    <button onClick={() => setBook(true)} className="text-[0.75rem] font-bold text-amber-800 bg-[#fffaf0] border border-dashed border-amber-300 rounded-full px-2 py-0.5" aria-label="받은 뱃지 도장 모음 보기">📖 도장 {stamps.length > 0 ? stamps.length : '모음'}</button>
+  );
   return (
     <div className="mt-3">
       <div className="flex items-center gap-2 mb-1.5 flex-wrap">
         <p className="text-[0.75rem] font-bold text-stone-500">{mine ? '내 뱃지' : '뱃지'}{rows.length > 0 ? ` ${rows.length}` : ''}{hidden && !mine && <span className="ml-1 font-normal text-stone-400">(본인이 숨김)</span>}</p>
         {admin && !missing && <button onClick={onGrant} className="text-[0.75rem] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">{admin && mine ? '뱃지 관리' : '＋ 뱃지 달기'}</button>}
+        {bookBtn}
         {mine && rows.length > 0 && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-[0.75rem] text-stone-600">
             {hidden ? '나만 보기' : '다른 교우에게 보이기'}
@@ -160,7 +271,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
         )}
       </div>
       {rows.length === 0 ? (
-        <p className="text-[0.8125rem] text-stone-400">{mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되면 저절로 달려요` : '아직 받은 뱃지가 없어요.'}</p>
+        <p className="text-[0.8125rem] text-stone-400">{mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : '아직 받은 뱃지가 없어요.'}</p>
       ) : (
         <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] -mx-4 px-4 pb-1">
           {rows.map(r => { const def = badgeOf(r.badge_key)!; return (
@@ -172,6 +283,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
         </div>
       )}
       {open && <BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />}
+      {book && <StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />}
     </div>
   );
 }
@@ -237,7 +349,7 @@ export function BadgeLeaderboard({ onClose, onOpenProfile }: { onClose: () => vo
     })();
     return () => { alive = false; };
   }, []);
-  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'honor'];
+  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'milestone', 'honor'];
   return (
     <BottomSheet bare label="뱃지 1등 현황" onClose={onClose} z="z-[86]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
@@ -259,7 +371,7 @@ export function BadgeLeaderboard({ onClose, onOpenProfile }: { onClose: () => vo
                   <div key={b.key} className="flex items-center gap-3 px-3 py-2.5">
                     <BadgeIcon badge={b} size={40} className={holders.length ? '' : 'opacity-40 grayscale'} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-[0.9375rem] font-bold text-stone-900">{b.label}{b.stat && <span className="ml-1 text-[0.75rem] font-normal text-stone-400">{STAT_LABELS[b.stat]} 1등</span>}</p>
+                      <p className="text-[0.9375rem] font-bold text-stone-900">{b.label}{b.stat && <span className="ml-1 text-[0.75rem] font-normal text-stone-400">{b.permanent ? `${STAT_LABELS[b.stat]} ${b.threshold} 이상 · 달성 ${holders.length}명` : `${STAT_LABELS[b.stat]} 1등`}</span>}</p>
                       {holders.length === 0 ? <p className="text-[0.8125rem] text-stone-400">아직 아무도 없어요</p> : (
                         <div className="flex flex-wrap gap-1.5 mt-0.5">
                           {holders.map(h => (
@@ -338,6 +450,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
   const toggle = async (key: string) => {
     if (busy) return;
     const def = badgeOf(key)!;
+    if (def.permanent) { showAlert(`'${def.label}'은 달성 도장이에요\n${STAT_LABELS[def.stat!]}이(가) ${def.threshold} 이상인 교우 모두에게 저절로 달리고, 한 번 받으면 떼지 않아요. 아래 '지금 다시 계산'으로 바로 맞출 수 있어요.`); return; }
     if (def.auto) { showAlert(`'${def.label}'은 저절로 달리는 뱃지예요\n${STAT_LABELS[def.stat!]} 1등인 교우에게 매일 아침 저절로 달리고, 1등이 바뀌면 옮겨 가요. 아래 '지금 다시 계산'으로 바로 맞출 수 있어요.`); return; }
     const row = have.get(key);
     setBusy(key);
@@ -354,7 +467,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
       reload(); notify();
     } finally { setBusy(null); }
   };
-  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'honor'];
+  const groups: BadgeGroup[] = ['love', 'giving', 'activity', 'help', 'milestone', 'honor'];
   return (
     <BottomSheet bare label="뱃지 달기" onClose={onClose} z="z-[94]" tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col" onClick={e => e.stopPropagation()}>
@@ -363,7 +476,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <h2 className="font-bold text-[1.125rem] text-stone-900 truncate">🏅 {user.name}님 뱃지</h2>
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
-          <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침·앱을 열 때, {AUTO_BADGE_MIN} 이상일 때만). 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
+          <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침·앱을 열 때, {AUTO_BADGE_MIN} 이상일 때만). 달성 도장(📖)은 기준을 넘은 교우 모두에게 저절로, 떼지 않아요. 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
           <button onClick={refreshAuto} disabled={refreshing || missing} className="mt-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold disabled:opacity-50">{refreshing ? '계산하는 중…' : '🔄 1등 뱃지 지금 다시 계산'}</button>
           {stats && (
             <div className="mt-2 flex flex-wrap gap-1" aria-label="이 교우의 활동">
@@ -392,10 +505,13 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
                     <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight">{b.label}</span>
                     <span className="text-[0.6875rem] text-stone-500 leading-snug">{b.desc}</span>
                     {b.stat && stats && <span className="text-[0.6875rem] font-bold text-amber-700">{STAT_LABELS[b.stat]} {stats[b.stat] ?? 0}</span>}
-                    {b.auto && (holders[b.key]?.length
+                    {b.permanent ? (holders[b.key]?.length
+                      ? <span className="text-[0.6875rem] font-bold text-stone-700 bg-stone-100 rounded-xl px-1.5 py-px">📖 {holders[b.key].length}명 달성</span>
+                      : <span className="text-[0.6875rem] text-stone-400">📖 아직 없음</span>)
+                    : b.auto && (holders[b.key]?.length
                       ? <span className="text-[0.6875rem] font-bold text-stone-700 bg-stone-100 rounded-xl px-1.5 py-px max-w-full text-center leading-snug">🏆 {holders[b.key].map(h => h.name).join(', ')}</span>
                       : <span className="text-[0.6875rem] text-stone-400">🏆 아직 없음</span>)}
-                    {b.auto && <span className="absolute top-1.5 left-1.5 text-[0.625rem] font-bold text-stone-500 bg-stone-100 rounded-full px-1.5 py-px">🏆 1등 자동</span>}
+                    {b.auto && <span className="absolute top-1.5 left-1.5 text-[0.625rem] font-bold text-stone-500 bg-stone-100 rounded-full px-1.5 py-px">{b.permanent ? `📖 ${STAT_LABELS[b.stat!]} ${b.threshold}` : '🏆 1등 자동'}</span>}
                     {on && <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[0.75rem] font-bold flex items-center justify-center" aria-hidden>✓</span>}
                   </button>
                 ); })}

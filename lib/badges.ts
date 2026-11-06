@@ -4,7 +4,7 @@
 // 활동 뱃지는 그 활동 1등에게만 저절로(auto, 매일 아침 cron + 관리자 '지금 다시 계산', 관리자 계정은 뺌, 숫자 5 이상일 때만 — AUTO_BADGE_MIN), 첫 열매만 관리자가 직접. 본인이 내 공간에서 숨길 수 있음(profiles.hide_badges, 기본은 보임)
 // (2026-11-06 운영자: 단체 봉사자 뱃지보다 '공감 많이 받은 사람·건의 많이 한 사람' 같은 앱 활동 위주로, 그림은 바로 알아볼 수 있게)
 
-export type BadgeGroup = 'love' | 'giving' | 'activity' | 'help' | 'honor';
+export type BadgeGroup = 'love' | 'giving' | 'activity' | 'help' | 'milestone' | 'honor';
 
 export interface MemberBadgeDef {
   key: string;
@@ -15,16 +15,20 @@ export interface MemberBadgeDef {
   rim?: 'gold' | 'silver' | 'rose';
   stat?: StatKey;       // 달기 창에서 보여 줄 그 교우의 활동 숫자
   auto?: boolean;       // 활동 1등에게 저절로 달리는 뱃지 (refresh_auto_badges, 관리자가 직접 달지 않음)
+  permanent?: boolean;  // 달성 도장: 기준(threshold)을 넘은 교우 모두에게 저절로, 한 번 받으면 떼지 않음 (1등이 아니어도)
+  threshold?: number;   // 달성 도장의 기준 숫자 (stat 이 이 이상이면)
 }
 
 export type StatKey = 'likes' | 'prays' | 'comments' | 'posts' | 'photos' | 'feedback' | 'bugs' | 'intentions' | 'lounge' | 'days'
-  | 'likesGiven' | 'praysGiven' | 'commentLikes' | 'videos' | 'stories' | 'followers' | 'following' | 'dms' | 'groupMsgs' | 'anonReplies' | 'dawn' | 'night' | 'music';
+  | 'likesGiven' | 'praysGiven' | 'commentLikes' | 'videos' | 'stories' | 'followers' | 'following' | 'dms' | 'groupMsgs' | 'anonReplies' | 'dawn' | 'night' | 'music'
+  | 'replies' | 'reactions' | 'stickers' | 'sunday' | 'longform' | 'welcomes' | 'hashtags' | 'streak' | 'letters' | 'years';
 
 export const BADGE_GROUPS: Record<BadgeGroup, string> = {
   love: '받은 마음',
   giving: '나눈 마음',
   activity: '활동',
   help: '도움',
+  milestone: '달성 도장',
   honor: '기념',
 };
 
@@ -54,9 +58,28 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
   { key: 'earlybird', label: '새벽 기도', desc: '새벽(4~7시)에 글을 가장 많이 올린 교우', group: 'activity', colors: ['#f6b26b', '#d9772a'], rim: 'gold', stat: 'dawn', auto: true },
   { key: 'nightowl', label: '밤 기도', desc: '밤(22~3시)에 글을 가장 많이 올린 교우', group: 'activity', colors: ['#5c6bc0', '#2c3680'], rim: 'gold', stat: 'night', auto: true },
   { key: 'daily', label: '매일 출석', desc: '가톨릭그램에 꾸준히 매일 들르는 교우', group: 'activity', colors: ['#3fa86f', '#217a4a'], rim: 'gold', stat: 'days', auto: true },
+  { key: 'streak', label: '연속 출석', desc: '하루도 빠지지 않고 가장 오래 연속으로 들른 교우', group: 'activity', colors: ['#f0783c', '#c2451c'], rim: 'gold', stat: 'streak', auto: true },
+  { key: 'replier', label: '답글 요정', desc: '교우들의 댓글에 답글을 가장 많이 달아 준 교우', group: 'activity', colors: ['#56b3c9', '#2b7d93'], rim: 'gold', stat: 'replies', auto: true },
+  { key: 'reactor', label: '리액션왕', desc: '대화·댓글에 ❤️🙏😊 감정 표시를 가장 많이 남긴 교우', group: 'giving', colors: ['#f29a4a', '#c86a1c'], rim: 'gold', stat: 'reactions', auto: true },
+  { key: 'sticker', label: '이모티콘 애호가', desc: '대화에서 이모티콘을 가장 많이 보낸 교우', group: 'activity', colors: ['#e6a23c', '#b8761a'], rim: 'gold', stat: 'stickers', auto: true },
+  { key: 'sunday', label: '주일 지킴이', desc: '주일(일요일)에 글을 가장 많이 올린 교우', group: 'activity', colors: ['#6c8ed6', '#3756a8'], rim: 'gold', stat: 'sunday', auto: true },
+  { key: 'longform', label: '묵상가', desc: '긴 글(300자 이상)로 깊은 묵상을 가장 많이 나눈 교우', group: 'activity', colors: ['#8a6ad0', '#5a3ea0'], rim: 'gold', stat: 'longform', auto: true },
+  { key: 'hashtag', label: '해시태그 장인', desc: '#해시태그를 붙인 글을 가장 많이 올린 교우', group: 'activity', colors: ['#4fb0a0', '#237a6c'], rim: 'gold', stat: 'hashtags', auto: true },
+  { key: 'welcomer', label: '환영 천사', desc: '새로 온 교우(가입 2주 안)의 글에 댓글로 가장 많이 반겨 준 교우', group: 'giving', colors: ['#f0a0b4', '#c45a7a'], rim: 'gold', stat: 'welcomes', auto: true },
+  { key: 'letter', label: '사연 작가', desc: '사연함에 사연을 가장 많이 보낸 교우', group: 'activity', colors: ['#e07a8a', '#a8405a'], rim: 'gold', stat: 'letters', auto: true },
   // --- 도움 ---
   { key: 'idea', label: '아이디어 천사', desc: '건의함에 좋은 의견을 많이 낸 교우', group: 'help', colors: ['#f5c242', '#d18f12'], rim: 'gold', stat: 'feedback', auto: true },
   { key: 'detective', label: '오류 탐정', desc: '오류를 찾아 알려 주어 앱을 좋게 만든 교우', group: 'help', colors: ['#6b7fd6', '#3a4cab'], rim: 'gold', stat: 'bugs', auto: true },
+  // --- 달성 도장 (기준을 넘으면 누구나, 한 번 받으면 계속 남음 — 운영자 2026-11-06 '스탬프 모으듯') ---
+  { key: 'm_posts10', label: '글 10편', desc: '글을 10편 올렸어요', group: 'milestone', colors: ['#7c6cd9', '#4f3fa8'], rim: 'silver', stat: 'posts', auto: true, permanent: true, threshold: 10 },
+  { key: 'm_posts50', label: '글 50편', desc: '글을 50편 올렸어요', group: 'milestone', colors: ['#7c6cd9', '#4f3fa8'], rim: 'gold', stat: 'posts', auto: true, permanent: true, threshold: 50 },
+  { key: 'm_comments100', label: '댓글 100개', desc: '댓글을 100개 남겼어요', group: 'milestone', colors: ['#5fa8e8', '#2b6fc0'], rim: 'gold', stat: 'comments', auto: true, permanent: true, threshold: 100 },
+  { key: 'm_hearts100', label: '공감 100', desc: '글에 공감(❤️)을 100번 받았어요', group: 'milestone', colors: ['#f2748c', '#c8304f'], rim: 'gold', stat: 'likes', auto: true, permanent: true, threshold: 100 },
+  { key: 'm_prays100', label: '기도 100번', desc: '교우들의 글과 기도지향에 기도(🙏)를 100번 보탰어요', group: 'milestone', colors: ['#8e7bd8', '#5a44ad'], rim: 'gold', stat: 'praysGiven', auto: true, permanent: true, threshold: 100 },
+  { key: 'm_days30', label: '출석 30일', desc: '가톨릭그램에 30일 들렀어요', group: 'milestone', colors: ['#3fa86f', '#217a4a'], rim: 'silver', stat: 'days', auto: true, permanent: true, threshold: 30 },
+  { key: 'm_days100', label: '출석 100일', desc: '가톨릭그램에 100일 들렀어요', group: 'milestone', colors: ['#3fa86f', '#217a4a'], rim: 'gold', stat: 'days', auto: true, permanent: true, threshold: 100 },
+  { key: 'm_streak7', label: '7일 연속', desc: '일주일 동안 하루도 빠지지 않고 들렀어요', group: 'milestone', colors: ['#f0783c', '#c2451c'], rim: 'gold', stat: 'streak', auto: true, permanent: true, threshold: 7 },
+  { key: 'm_year1', label: '함께 1년', desc: '가톨릭그램과 함께한 지 1년이 되었어요', group: 'milestone', colors: ['#d4a94a', '#9a6a13'], rim: 'gold', stat: 'years', auto: true, permanent: true, threshold: 1 },
   // --- 기념 ---
   { key: 'firstfruit', label: '첫 열매', desc: '가톨릭그램의 처음을 함께한 교우', group: 'honor', colors: ['#7bbf5a', '#3f8a33'], rim: 'gold' },
 ];
@@ -68,6 +91,10 @@ export const badgeOf = (key: string): MemberBadgeDef | undefined => MEMBER_BADGE
 export const STAT_LABELS: Record<StatKey, string> = {
   likes: '받은 공감', prays: '받은 기도', commentLikes: '댓글에 받은 공감', followers: '팔로워', likesGiven: '보낸 공감', praysGiven: '보낸 기도', anonReplies: '고민 답글', following: '팔로잉',
   comments: '쓴 댓글', posts: '쓴 글', photos: '사진 글', videos: '영상', stories: '스토리', music: '음악 넣은 글', dms: '보낸 메시지', groupMsgs: '단체방 대화', dawn: '새벽 글', night: '밤 글', intentions: '기도지향', lounge: '사랑방 대화', days: '들른 날', feedback: '건의', bugs: '오류 신고',
+  replies: '답글', reactions: '감정 표시', stickers: '보낸 이모티콘', sunday: '주일 글', longform: '긴 글', welcomes: '새 교우 환영 댓글', hashtags: '해시태그 글', streak: '최장 연속 출석', letters: '사연', years: '함께한 햇수',
 };
+
+// 받은 기록(도장): 뱃지를 받을 때마다 한 줄 (member_badges 에서 떼어져도 남음 — supabase/member-badges.sql badge_stamps)
+export interface BadgeStamp { id: string; user_id: string; badge_key: string; earned_at: string; auto?: boolean; note?: string | null }
 
 export interface MemberBadgeRow { id: string; user_id: string; badge_key: string; note?: string | null; created_at: string }
