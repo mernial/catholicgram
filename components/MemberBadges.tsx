@@ -238,6 +238,24 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
     return () => { alive = false; };
   }, [user.id]);
   const notify = () => window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: user.id }));
+  // 뱃지마다 지금 1등(달고 있는 교우) 이름 — 운영자 2026-11-06: 관리자 뱃지 창에서 누가 1등인지 보이게
+  const [holders, setHolders] = useState<Record<string, { id: string; name: string }[]>>({});
+  const [holdersTick, setHoldersTick] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.from('member_badges').select('user_id, badge_key').eq('auto', true);
+      if (!alive || !data) return;
+      const ids = Array.from(new Set((data as { user_id: string }[]).map(r => r.user_id)));
+      const { data: profiles } = ids.length > 0 ? await supabase.from('profiles').select('id, baptismal_name').in('id', ids) : { data: [] };
+      if (!alive) return;
+      const names = new Map(((profiles || []) as { id: string; baptismal_name: string }[]).map(p => [p.id, p.baptismal_name]));
+      const map: Record<string, { id: string; name: string }[]> = {};
+      (data as { user_id: string; badge_key: string }[]).forEach(r => { (map[r.badge_key] ||= []).push({ id: r.user_id, name: names.get(r.user_id) || '교우' }); });
+      setHolders(map);
+    })();
+    return () => { alive = false; };
+  }, [holdersTick]);
   const [refreshing, setRefreshing] = useState(false);
   const refreshAuto = async () => {
     if (refreshing) return;
@@ -250,7 +268,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
       if (!res.ok) { showAlert(`다시 계산하지 못했어요\n${json.error || res.status}`); return; }
       const n = (json.awarded || []).length;
       toast(n > 0 ? `1등 뱃지 ${n}개를 새로 달았어요` : '바뀐 1등이 없어요');
-      reload(); notify();
+      reload(); notify(); setHoldersTick(t => t + 1);
     } finally { setRefreshing(false); }
   };
   const toggle = async (key: string) => {
@@ -310,6 +328,9 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
                     <span className="text-[0.8125rem] font-bold text-stone-800 leading-tight">{b.label}</span>
                     <span className="text-[0.6875rem] text-stone-500 leading-snug">{b.desc}</span>
                     {b.stat && stats && <span className="text-[0.6875rem] font-bold text-amber-700">{STAT_LABELS[b.stat]} {stats[b.stat] ?? 0}</span>}
+                    {b.auto && (holders[b.key]?.length
+                      ? <span className="text-[0.6875rem] font-bold text-stone-700 bg-stone-100 rounded-xl px-1.5 py-px max-w-full text-center leading-snug">🏆 {holders[b.key].map(h => h.name).join(', ')}</span>
+                      : <span className="text-[0.6875rem] text-stone-400">🏆 아직 없음</span>)}
                     {b.auto && <span className="absolute top-1.5 left-1.5 text-[0.625rem] font-bold text-stone-500 bg-stone-100 rounded-full px-1.5 py-px">🏆 1등 자동</span>}
                     {on && <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[0.75rem] font-bold flex items-center justify-center" aria-hidden>✓</span>}
                   </button>
