@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
@@ -12,6 +12,8 @@ import { clipText, charCount } from '@/lib/clip-text';
 import Switch from '@/components/Switch';
 import { toast } from '@/lib/chat-actions';
 import { useBadgeMap } from '@/lib/badge-map';
+import { ClergyIcon } from '@/components/BadgeIcon';
+import { BADGES } from '@/components/RoleBadge';
 
 // --- 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지) ---
 // 표 member_badges (supabase/member-badges.sql). 공간 머리에 '뱃지 선반'(BadgeShelf), 프로필 카드에 작은 줄(BadgeRow),
@@ -76,6 +78,47 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: Row; admin: boole
   );
 }
 
+// 한 교우의 뱃지 모두 보기 (뱃지를 누르면 — 인증 뱃지 + 활동 뱃지, 설명과 받은 날, 누른 것은 테두리) — 운영자 2026-11-06
+export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: string; name?: string; highlight?: string; onClose: () => void }) {
+  useBackLayer(true, onClose);
+  const { rows, ready, hidden } = useMemberBadges(userId);
+  const [prof, setProf] = useState<{ baptismal_name?: string; badge_type?: string | null } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    supabase.from('profiles').select('baptismal_name, badge_type').eq('id', userId).maybeSingle().then(({ data }) => { if (alive) setProf((data as { baptismal_name?: string; badge_type?: string | null } | null) || {}); });
+    return () => { alive = false; };
+  }, [userId]);
+  const who = name || prof?.baptismal_name || '교우';
+  const clergy = prof?.badge_type && BADGES[prof.badge_type] ? prof.badge_type : null;
+  const total = (clergy ? 1 : 0) + (hidden ? 0 : rows.length);
+  const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string) => (
+    <div key={key} className={`flex items-start gap-3 px-3 py-3 ${highlight === key ? 'bg-amber-50' : ''}`}>
+      <div className="shrink-0 w-14 flex justify-center">{icon}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-[0.9375rem] font-bold text-stone-900">{label}{highlight === key && <span className="ml-1.5 text-[0.6875rem] font-bold text-amber-700">눌렀어요</span>}</p>
+        <p className="text-[0.875rem] text-stone-600 leading-snug mt-0.5">{desc}</p>
+        {sub && <p className="text-[0.75rem] text-stone-400 mt-0.5">{sub}</p>}
+      </div>
+    </div>
+  );
+  return (
+    <div className="fixed inset-0 z-[96] bg-black/60 flex items-end sm:items-center justify-center animate-fade-in" onClick={onClose} role="dialog" aria-label={`${who}님의 뱃지`}>
+      <div className="bg-white w-full sm:w-96 max-h-[80dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="shrink-0 px-5 pt-4 pb-3 border-b border-stone-100 flex items-center justify-between">
+          <h3 className="text-[1.0625rem] font-bold text-stone-900">🏅 {who}님의 뱃지{total > 0 ? ` ${total}` : ''}</h3>
+          <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
+          {clergy && item(`role:${clergy}`, <ClergyIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, '관리자가 직접 확인하고 달아 드린 성직자·수도자 인증 뱃지예요.')}
+          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? ' · 활동 1등에게 저절로 달려요' : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
+          {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400">아직 받은 뱃지가 없어요.</p>}
+          {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // 공간 머리의 뱃지 선반
 export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; admin: boolean; mine: boolean; onGrant?: () => void }) {
   const { rows, missing, hidden, setHidden, reload } = useMemberBadges(userId);
@@ -133,39 +176,41 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   );
 }
 
-// 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 무슨 뱃지인지 크게 — 누구나)
+// 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 그 교우의 뱃지 모두 — 누구나)
 export function BadgeRow({ userId, size = 22, max = 6, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
   const { rows, hidden } = useMemberBadges(userId);
-  const [open, setOpen] = useState<Row | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   if (rows.length === 0 || hidden) return null;
   const shown = rows.slice(0, max);
   return (
     <span className={`inline-flex items-center gap-1 ${className}`} aria-label={`뱃지 ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
       {shown.map(r => (
-        <button key={r.id} type="button" onClick={e => { e.stopPropagation(); setOpen(r); }} className="rounded-full" aria-label={`${badgeOf(r.badge_key)!.label} 뱃지 보기`}>
+        <button key={r.id} type="button" onClick={e => { e.stopPropagation(); setOpen(r.badge_key); }} className="rounded-full" aria-label={`${badgeOf(r.badge_key)!.label} 뱃지 보기`}>
           <BadgeIcon badge={r.badge_key} size={size} />
         </button>
       ))}
-      {rows.length > max && <span className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - max}</span>}
-      {open && <BadgeDetail row={open} admin={false} onClose={() => setOpen(null)} />}
+      {rows.length > max && <button type="button" onClick={e => { e.stopPropagation(); setOpen(rows[max].badge_key); }} className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - max}</button>}
+      {open && <BadgeListDialog userId={userId} highlight={open} onClose={() => setOpen(null)} />}
     </span>
   );
 }
 
-// 이름 옆 작은 활동 뱃지 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 누르면 무슨 뱃지인지
+// 이름 옆 작은 활동 뱃지 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 누르면 그 교우의 뱃지 모두
 export function NameBadges({ userId, size = 18, max = 3, className = '' }: { userId?: string | null; size?: number; max?: number; className?: string }) {
   const map = useBadgeMap();
+  const [open, setOpen] = useState<string | null>(null);
   const keys = userId ? map[userId] : undefined;
-  if (!keys || keys.length === 0) return null;
+  if (!userId || !keys || keys.length === 0) return null;
   const shown = keys.slice(0, max);
   return (
     <span className={`inline-flex items-center gap-0.5 shrink-0 ${className}`} aria-label={`뱃지 ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
-      {shown.map(k => { const def = badgeOf(k)!; return (
-        <button key={k} type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); showAlert(`${def.label} 뱃지\n${def.desc}${def.auto ? ' — 활동 1등에게 저절로 달려요' : ''}`); }} className="rounded-full" aria-label={`${def.label} 뱃지`}>
-          <BadgeIcon badge={def} size={size} />
+      {shown.map(k => (
+        <button key={k} type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(k); }} className="rounded-full" aria-label={`${badgeOf(k)!.label} 뱃지`}>
+          <BadgeIcon badge={k} size={size} />
         </button>
-      ); })}
-      {keys.length > max && <span className="text-[0.6875rem] text-stone-500 font-bold">+{keys.length - max}</span>}
+      ))}
+      {keys.length > max && <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(keys[max]); }} className="text-[0.6875rem] text-stone-500 font-bold">+{keys.length - max}</button>}
+      {open && <BadgeListDialog userId={userId} highlight={open} onClose={() => setOpen(null)} />}
     </span>
   );
 }

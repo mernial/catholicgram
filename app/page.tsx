@@ -8,7 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
-import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard, NameBadges } from '@/components/MemberBadges';
+import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
 import GroupChat from '@/components/GroupChat';
@@ -645,6 +645,7 @@ export default function Home() {
   const [badgeGrantFor, setBadgeGrantFor] = useState<{ id: string; name: string } | null>(null); // 관리자: 교우 뱃지 달기 창 (components/MemberBadges)
   useBackLayer(!!badgeGrantFor, () => setBadgeGrantFor(null));
   const [showBadgeBoard, setShowBadgeBoard] = useState(false); // 관리자: 뱃지 1등 현황
+  const [badgeListFor, setBadgeListFor] = useState<{ id: string; name?: string; highlight?: string } | null>(null); // 프로필 카드 인증 메달을 누르면 그 교우의 뱃지 모두
   // 앱을 열 때·뒤에 있다 돌아올 때 활동 1등 뱃지를 다시 계산해 달라고 서버에 부탁 (서버가 5분에 한 번만 실제로 계산, /api/badges/refresh)
   const badgeRefreshAtRef = useRef(0);
   const askBadgeRefresh = useCallback(async () => {
@@ -6167,7 +6168,7 @@ export default function Home() {
                 </CelebrateAvatar>
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
-                  <RoleBadge type={u.badge_type} onClick={() => showAlert(`인증된 ${BADGES[u.badge_type || '']?.label || '성직자·수도자'}예요\n관리자가 직접 확인하고 달아 드린 인증 뱃지예요.`)} />
+                  <RoleBadge type={u.badge_type} onClick={() => setBadgeListFor({ id: u.id, name: u.baptismal_name, highlight: `role:${u.badge_type}` })} />
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 <BadgeRow userId={u.id} size={34} className="mt-2" />
@@ -6216,6 +6217,7 @@ export default function Home() {
           onUseMusic={async trackId => { const g = myMusicGifts.find(x => x.track.id === trackId); return g ? saveProfileMusic(g.track) : false; }} />
       )}
       {/* 관리자: 교우 뱃지 달기 (components/MemberBadges) */}
+      {badgeListFor && <BadgeListDialog userId={badgeListFor.id} name={badgeListFor.name} highlight={badgeListFor.highlight} onClose={() => setBadgeListFor(null)} />}
       {showBadgeBoard && isAdmin && <BadgeLeaderboard onClose={() => setShowBadgeBoard(false)} onOpenProfile={id => openProfileCard({ id })} />}
       {badgeGrantFor && isAdmin && <BadgeGrantSheet user={badgeGrantFor} onClose={() => setBadgeGrantFor(null)} onGranted={id => sendPush('badge', id)} />}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
