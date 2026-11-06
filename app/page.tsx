@@ -6150,7 +6150,7 @@ export default function Home() {
                   <RoleBadge type={u.badge_type} onClick={() => showAlert(`인증된 ${BADGES[u.badge_type || '']?.label || '성직자·수도자'}예요\n관리자가 직접 확인하고 달아 드린 인증 뱃지예요.`)} />
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
-                <BadgeRow userId={u.id} size={24} className="mt-2" />
+                <BadgeRow userId={u.id} size={34} className="mt-2" />
                 {actionUserBio && <p className="mt-2 text-[0.9375rem] text-stone-600 leading-relaxed whitespace-pre-wrap break-words max-w-full">{actionUserBio}</p>}
                 <button onClick={() => { closeOverlaysForLink(); goToProfile(u.id); }} className="mt-5 w-full py-3.5 rounded-2xl bg-blue-600 text-white text-[1.0625rem] font-bold shadow-sm active:brightness-95">
                   🏠 {u.baptismal_name ? `${u.baptismal_name}님 공간 ` : ''}방문하기

@@ -19,7 +19,7 @@ export default function RoleBadge({ type, size = 'sm', showLabel = true, onClick
   const badge = type ? BADGES[type] : undefined;
   const art = type ? CLERGY_ART[type] : undefined;
   if (!badge || !art) return null;
-  const icon = size === 'md' ? 22 : size === 'sm' ? 18 : 15;
+  const icon = size === 'md' ? 30 : size === 'sm' ? 24 : 20; // 운영자 2026-11-06: 작아서 티가 안 남 → 키움 (글줄 높이 안에서)
   const text = size === 'md' ? 'text-xs px-2 py-0.5' : size === 'sm' ? 'text-[0.75rem] px-1.5 py-px' : 'text-[0.6875rem] px-1 py-px';
   const Tag = onClick ? 'button' : 'span';
   return (
