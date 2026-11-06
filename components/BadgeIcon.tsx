@@ -292,62 +292,90 @@ export function BadgeIcon({ badge, size = 40, className = '' }: { badge: MemberB
 
 // 성직자·수도자 인증 뱃지 문양 (RoleBadge)
 export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' | 'silver'; emblem: ReactNode }> = {
-  // 주교님: 주교관(미트라) — 뾰족한 관 + 가로·세로 띠 + 뒤로 늘어진 두 끈
+  // 주교님: 주교관(미트라) — 앞판(뾰족한 아치)과 뒤판, 세로·가로 금띠, 뒤로 늘어진 끈 둘(술 달림)
   bishop: { colors: ['#9b6fd6', '#5c2f9e'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fillOpacity="0.85" d="M-9 7h5l-2 10h-4ZM4 7h5l1 10h-4Z" />
-      <path strokeWidth="0" d="M-13.5 9C-13.5-2-8.5-11 0-16.5 8.5-11 13.5-2 13.5 9Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.3" d="M0-16.5C8.5-11 13.5-2 13.5 9H0Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.42" d="M-1.9-13.5h3.8V9h-3.8Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.42" d="M-13.2 0.5h26.4v3.4h-26.4Z" />
-      <rect x="-14.5" y="8" width="29" height="4.5" rx="1.2" strokeWidth="0" />
-      <path fill="none" strokeWidth="1" strokeOpacity="0.5" stroke="#000" d="M-14.5 12.5h29" />
+      {/* 끈 */}
+      <path strokeWidth="0" fillOpacity="0.85" d="M-9.5 9.5h4.6l-.9 8.5h-4.6ZM4.9 9.5h4.6l.9 8.5H5.8Z" />
+      <path fill="none" strokeWidth="1" strokeOpacity="0.5" stroke="#000" d="M-9.6 15.5h4M5.6 15.5h4" />
+      {/* 뒤판 (살짝 어둡게) */}
+      <path strokeWidth="0" fillOpacity="0.55" d="M-14.5 8C-14.5-3-9-12.5 0-18.5 9-12.5 14.5-3 14.5 8Z" />
+      {/* 앞판 */}
+      <path strokeWidth="0" d="M-13 9C-13-1-8-9 0-15.5 8-9 13-1 13 9Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.14" d="M0-15.5C8-9 13-1 13 9H0Z" />
+      {/* 세로·가로 띠 */}
+      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-2-13.2h4V9h-4Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.4" d="M-13 1h26v3.6h-26Z" />
+      {/* 아래 테 */}
+      <rect x="-14" y="8" width="28" height="4" rx="1" strokeWidth="0" />
+      <rect x="-14" y="8.8" width="28" height="2.4" fill="#000" fillOpacity="0.32" strokeWidth="0" />
     </g>
   ) },
-  // 신부님: 로만 칼라
+  // 신부님: 로만 칼라 — 검은 사제복 어깨, 목의 흰 칼라, 앞 단추 줄
   priest: { colors: ['#e4b955', '#a86f1a'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#000" fillOpacity="0.5" d="M-17 15C-17 1-9-7 0-7s17 8 17 22Z" />
-      <path fill="none" strokeWidth="4.2" d="M-11.5 1.5C-9-5 -4.5-8.5 0-8.5s9 3.5 11.5 10" />
-      <path fill="none" strokeWidth="2.4" strokeOpacity="0.55" stroke="#000" d="M-9.5 1.8C-7.5-3.2-4-6 0-6s7.5 2.8 9.5 7.8" />
-      <rect x="-3" y="-9.6" width="6" height="5.6" rx="1" strokeWidth="0" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-9-2.5c1.5 2 4.5 3.5 9 3.5s7.5-1.5 9-3.5l-2-3.5H-7Z" />
+      {/* 칼라: 목을 두른 흰 띠 */}
+      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-8-6C-6-9.5-3.5-11 0-11s6 1.5 8 5c-1.5 3-4 4.6-8 4.6S-6.5-3-8-6Z" />
+      <path fill="none" strokeWidth="3.6" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
+      <path fill="none" strokeWidth="3" strokeOpacity="0.9" d="M-9.5-3.5C-9.5-8.5-5.5-11.5 0-11.5s9.5 3 9.5 8" />
+      {/* 탭(흰 네모) 와 옷깃 */}
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-6.5 0.5 0 4.2 6.5 0.5V-1L0 2.6-6.5-1Z" />
+      <rect x="-2.6" y="-1.4" width="5.2" height="4.4" rx=".6" strokeWidth="0" />
+      <path fill="none" strokeWidth="1" strokeOpacity="0.5" d="M0 5.5v11" />
+      <circle cx="0" cy="9" r=".9" strokeWidth="0" fillOpacity="0.9" /><circle cx="0" cy="13" r=".9" strokeWidth="0" fillOpacity="0.9" />
     </g>
   ) },
-  // 부제님: 로만 칼라 + 어깨에 비스듬한 영대
+  // 부제님: 로만 칼라 + 왼 어깨에서 오른 허리로 비스듬히 두른 영대
   deacon: { colors: ['#e0a94e', '#9c5f18'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" fill="#000" fillOpacity="0.5" d="M-17 15C-17 1-9-7 0-7s17 8 17 22Z" />
-      <path strokeWidth="0" fillOpacity="0.9" d="M-13.5 0.5 -8-2.5 11 15h-7Z" />
-      <path fill="none" strokeWidth="4.2" d="M-11.5 1.5C-9-5 -4.5-8.5 0-8.5s9 3.5 11.5 10" />
-      <path fill="none" strokeWidth="2.4" strokeOpacity="0.55" stroke="#000" d="M-9.5 1.8C-7.5-3.2-4-6 0-6s7.5 2.8 9.5 7.8" />
-      <rect x="-3" y="-9.6" width="6" height="5.6" rx="1" strokeWidth="0" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-19 17c0-7 2.5-10.5 8-12.5l4-1.5h14l4 1.5c5.5 2 8 5.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-9-2.5c1.5 2 4.5 3.5 9 3.5s7.5-1.5 9-3.5l-2-3.5H-7Z" />
+      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-8-6C-6-9.5-3.5-11 0-11s6 1.5 8 5c-1.5 3-4 4.6-8 4.6S-6.5-3-8-6Z" />
+      <path fill="none" strokeWidth="3.6" d="M-9.5-3.5C-8-0.5-4.5 1.8 0 1.8s8-2.3 9.5-5.3" />
+      <path fill="none" strokeWidth="3" strokeOpacity="0.9" d="M-9.5-3.5C-9.5-8.5-5.5-11.5 0-11.5s9.5 3 9.5 8" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-6.5 0.5 0 4.2 6.5 0.5V-1L0 2.6-6.5-1Z" />
+      <rect x="-2.6" y="-1.4" width="5.2" height="4.4" rx=".6" strokeWidth="0" />
+      {/* 영대 */}
+      <path strokeWidth="0" fillOpacity="0.95" d="M-13.5 2.5 -8.5 0.5 10.5 17H3.5Z" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.45" stroke="#000" d="M-10.5 1.6 6.5 17" />
+      <path fill="none" strokeWidth="1.4" strokeOpacity="0.55" stroke="#000" d="M-3.5 8.5l2.4-1.1M-2.3 9.9l2.4-1.1" />
     </g>
   ) },
-  // 수녀님: 베일
+  // 수녀님: 베일 — 검은 베일과 얼굴을 두른 흰 코이프
   sister: { colors: ['#63a9e6', '#2b6fb3'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" d="M-14 15C-14-3-8-15 0-15s14 12 14 30Z" />
-      <ellipse cx="0" cy="-1.5" rx="6.6" ry="8.2" fill="#000" fillOpacity="0.5" strokeWidth="0" />
-      <ellipse cx="0" cy="-1.5" rx="7.8" ry="9.4" fill="none" strokeWidth="1.3" strokeOpacity="0.55" stroke="#000" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.4" stroke="#000" d="M-8 8c-1.5 2.5-2.5 5-3 7M8 8c1.5 2.5 2.5 5 3 7" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.62" d="M-15.5 17C-15.5-1-9-14.5 0-14.5S15.5-1 15.5 17Z" />
+      <path strokeWidth="0" d="M-11 17C-11 4-7-5 0-5s11 9 11 22Z" fillOpacity="0.95" />
+      <ellipse cx="0" cy="0.5" rx="8.6" ry="10.2" strokeWidth="0" />
+      <ellipse cx="0" cy="1" rx="6.6" ry="8.2" fill="#000" fillOpacity="0.22" strokeWidth="0" />
+      <ellipse cx="0" cy="1" rx="6.6" ry="8.2" fill="#e9b89c" fillOpacity="0.9" strokeWidth="0" />
+      <path fill="none" strokeWidth="1.2" strokeOpacity="0.45" stroke="#000" d="M-3.2 0.5c.7-.9 1.7-.9 2.4 0M.8 0.5c.7-.9 1.7-.9 2.4 0M-1.8 5.5c1.1.9 2.5.9 3.6 0" />
     </g>
   ) },
-  // 수사님: 수사복 두건(후드)과 허리끈
+  // 수사님: 두건을 쓴 수사복과 매듭 허리끈
   brother: { colors: ['#5d9fd8', '#2a62a4'], rim: 'gold', emblem: (
     <g>
-      <path strokeWidth="0" d="M-15 15C-15 1-9-9-4-13c1.2-1 2.6-1.5 4-1.5s2.8.5 4 1.5c5 4 11 14 11 28Z" />
-      <path strokeWidth="0" fill="#000" fillOpacity="0.5" d="M-6.5 3C-6.5-5-3.5-10 0-10s6.5 5 6.5 13Z" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M-8.5 4C-8.5-6-4.5-12 0-12s8.5 6 8.5 16" />
-      <path fill="none" strokeWidth="1.8" strokeOpacity="0.55" stroke="#000" strokeDasharray="2.6 1.6" d="M-11.5 9.5h23" />
+      <path strokeWidth="0" d="M-18 17c0-6 3-10 8-12.5 1-4.5 5-9 10-9s9 4.5 10 9c5 2.5 8 6.5 8 12.5Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.2" d="M-18 17c0-6 3-10 8-12.5l1.5 .5C-14 7.5-15 12-15 17Z" />
+      <path strokeWidth="0" fill="#000" fillOpacity="0.55" d="M-6 4C-6-4-3.5-9 0-9s6 5 6 13Z" />
+      <path strokeWidth="0" fill="#e9b89c" fillOpacity="0.9" d="M-4.5 4C-4.5-2-2.5-6.5 0-6.5s4.5 4.5 4.5 10.5Z" />
+      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M-8 4C-8-5-4.5-11 0-11s8 6 8 15" />
+      <path fill="none" strokeWidth="1.9" strokeOpacity="0.6" stroke="#000" d="M-12 10.5h24" />
+      <path fill="none" strokeWidth="1.9" strokeOpacity="0.6" stroke="#000" d="M6 10.5c0 2.5-.5 4.5-1.5 6.5" />
+      <circle cx="5.2" cy="13.5" r="1.3" fill="#000" fillOpacity="0.6" strokeWidth="0" /><circle cx="4.6" cy="16.5" r="1.3" fill="#000" fillOpacity="0.6" strokeWidth="0" />
     </g>
   ) },
-  // 신학생: 책(공부)과 십자가
+  // 신학생: 검은 수단(장백의 없이) + 로만 칼라 없이 — 공부하는 신학생: 펼친 성경과 십자가, 책갈피 끈
   seminarian: { colors: ['#9aa5b4', '#5c6673'], rim: 'silver', emblem: (
     <g>
-      <path strokeWidth="1.2" d="M-13-3C-9-5.3-4-5.1-.4-2.7V11.3C-4 8.9-9 8.7-13 11Z" />
-      <path strokeWidth="1.2" d="M13-3C9-5.3 4-5.1.4-2.7V11.3C4 8.9 9 8.7 13 11Z" />
-      <path fill="none" strokeWidth="1.3" strokeOpacity="0.5" stroke="#000" d="M-9.5 1c2.6-.9 5-.9 7.2 0M-9.5 4.7c2.6-.9 5-.9 7.2 0M2.3 1c2.6-.9 5-.9 7.2 0M2.3 4.7c2.6-.9 5-.9 7.2 0" />
-      <path fill="none" strokeWidth="2.6" d="M0-14.5v8M-3.5-11.5h7" />
+      <path strokeWidth="0" fillOpacity="0.55" d="M-15 12c5-1.5 10-1.5 15 0 5-1.5 10-1.5 15 0v2c-5-1.5-10-1.5-15 0-5-1.5-10-1.5-15 0Z" />
+      <path strokeWidth="1" d="M-14-4C-9.5-6.3-4.5-6-.5-3.5V10.5C-4.5 8-9.5 7.7-14 10Z" />
+      <path strokeWidth="1" d="M14-4C9.5-6.3 4.5-6 .5-3.5V10.5C4.5 8 9.5 7.7 14 10Z" />
+      <path fill="none" strokeWidth="1.1" strokeOpacity="0.45" stroke="#000" d="M-11-.5c2.8-1 5.5-1 8 0M-11 3c2.8-1 5.5-1 8 0M-11 6.5c2.8-1 5.5-1 8 0M3-.5c2.8-1 5.5-1 8 0M3 3c2.8-1 5.5-1 8 0M3 6.5c2.8-1 5.5-1 8 0" />
+      <path strokeWidth="0" fill="#c0392b" fillOpacity="0.9" d="M.5-3.5h1.6v9.5l-.8-1-.8 1Z" />
+      <path fill="none" strokeWidth="2.8" d="M0-16.5v8.5M-3.8-13h7.6" />
     </g>
   ) },
 };
