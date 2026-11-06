@@ -329,7 +329,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
                     <span className="text-[0.6875rem] text-stone-500 leading-snug">{b.desc}</span>
                     {b.stat && stats && <span className="text-[0.6875rem] font-bold text-amber-700">{STAT_LABELS[b.stat]} {stats[b.stat] ?? 0}</span>}
                     {b.auto && (holders[b.key]?.length
-                      ? <span className="text-[0.6875rem] font-bold text-stone-700 bg-stone-100 rounded-full px-1.5 py-px max-w-full truncate">🏆 {holders[b.key].map(h => h.name).join(', ')}</span>
+                      ? <span className="text-[0.6875rem] font-bold text-stone-700 bg-stone-100 rounded-xl px-1.5 py-px max-w-full text-center leading-snug">🏆 {holders[b.key].map(h => h.name).join(', ')}</span>
                       : <span className="text-[0.6875rem] text-stone-400">🏆 아직 없음</span>)}
                     {b.auto && <span className="absolute top-1.5 left-1.5 text-[0.625rem] font-bold text-stone-500 bg-stone-100 rounded-full px-1.5 py-px">🏆 1등 자동</span>}
                     {on && <span className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-white text-[0.75rem] font-bold flex items-center justify-center" aria-hidden>✓</span>}
