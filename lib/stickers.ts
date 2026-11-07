@@ -107,6 +107,11 @@ const FATHER2 = [
   '따뜻한 시간 되세요', '잘 될거에요!', '음...', '헉!', '한번 해볼까요?', '하느님께 맡길게요',
   '연락 드릴게요!', '조금만 기다려주세요!', '늘 감사합니다', '괜찮아요? 힘드셨죠?', '모든 것이 주님의 뜻 안에', '또 만나요!',
 ];
+// 신부님 애니(움직이는 WebP, 운영자가 AI 로 만든 GIF 24개 → scripts/stickers/animate/convert.py) — 파일 이름 순서
+const FATHER_ANIM = [
+  '안녕하세요!', '감사합니다', '사랑해요', '최고!', '화이팅!', '기도할게요', '아멘!', '축복합니다', '깜짝!', '하하하', '속상해요', '화났어요',
+  '졸려요', '부끄러워요', '삐졌어요', '고민중', '괜찮아요', '미안해요', '고마워요', '좋아요', '축하해요', '잘자요', '기다릴게요', '행복해요',
+];
 const FATHER3 = [
   '안녕하세요!', '좋아요!', '화이팅!', '감사합니다', '사랑합니다', '기도할게요',
   '주님과 함께', '아멘!', '죄송합니다', '어?!', 'ㅎㅎㅎ', '축하해요!',
@@ -131,6 +136,7 @@ const PACK_DEFS: { id: string; name: string; dir: string; labels: string[]; lega
   { id: 'father', name: '신부님', dir: 'priest', labels: PERSON, access: 'admin' },              // 관리자 전용
   { id: 'father2', name: '신부님2', dir: 'priest2', labels: FATHER2, access: 'admin' },           // 관리자 전용
   { id: 'father3', name: '신부님3', dir: 'priest3', labels: FATHER3, access: 'admin' },           // 관리자 전용
+  { id: 'fatheranim', name: '신부님 애니', dir: 'priest-anim', labels: FATHER_ANIM, access: 'admin' }, // 관리자 전용, 움직이는 이모티콘
   { id: 'ruby', name: '루비로사', dir: 'ruby', labels: PERSON, access: 'gift', giftHandles: ['rubyrosa'] }, // 루비로사 선물
   // 엘리스텔라 선물: @아이디 'elisabeth stella oh' (사연함 화면에서 확인, 띄어쓰기·_·. 은 빼고 비교)
   { id: 'stella', name: '엘리스텔라', dir: 'stella', labels: GREETINGS, access: 'gift', giftHandles: ['elisabeth stella oh'] },
@@ -211,6 +217,9 @@ export const giftablePacks = () => STICKER_PACKS.filter(p => !!p.access);
 
 // 글을 치면 비슷한 뜻의 이모티콘을 추천: 이모티콘 이름마다 떠올릴 만한 말 (띄어쓰기 없이 비교)
 const KEYWORDS: Record<string, string[]> = {
+  // 신부님 애니 새 말
+  '하하하': ['하하', '웃겨', '웃기', 'ㅋㅋ', 'ㅎㅎ', '재밌'],
+  '기다릴게요': ['기다릴', '기다려', '기다리', '천천히'],
   // 실비아2 새 말
   '고민중': ['고민', '생각', '글쎄', '어떡하지', '어쩌지'],
   '졸려요': ['졸려', '졸리', '피곤', '하품', '잘자', '자러', '잠와'],
