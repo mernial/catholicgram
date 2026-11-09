@@ -111,6 +111,8 @@ import { SamsungGuidePopup, isSamsungInternet, samsungGuideKey } from '@/compone
 import { presenceRoom, useChatPresence } from '@/lib/chat-presence';
 import { QUIET_MARK, useQuietSend } from '@/components/QuietSend';
 import LegalSheet, { type LegalDoc } from '@/components/LegalSheet';
+import { TermsCheck, TermsConsentDialog, TermsLinks } from '@/components/TermsConsent';
+import { needsTermsConsent, saveTermsAccepted } from '@/lib/terms-consent';
 import { setBackLayerHost, hasBackLayer, popBackLayer, useBackLayer } from '@/lib/back-layers';
 import { useSelectScope } from '@/lib/select-scope';
 import { exposeNativeHooks, isNativeApp, nativeLogin, nativeShare } from '@/lib/native-app';
@@ -304,7 +306,7 @@ const DM_REQUEST_HINT = '메시지 요청·대화방 나가기를 준비 중이�
 const MESSAGE_EXTRAS_HINT = '메시지 답장·감정 표시·고치기를 준비 중이에요. (관리자: supabase/message-extras.sql 실행 필요)';
 // baptismal_name: 화면에 보이는 '닉네임' (실명인 이름+세례명은 profile_private.real_name 에 비공개로 보관)
 // birthday: 'MM-DD' (supabase/birthday.sql — 실행 전이면 없음(undefined), 실행했는데 안 적었으면 null)
-interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; birthday?: string | null; nickname_set?: boolean; }
+interface UserProfile { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string; feast_day?: string | null; birthday?: string | null; nickname_set?: boolean; terms_accepted_at?: string | null; }
 // 생일·축일 리본에 쓰는 그 교우의 날 (내 공간·교우 공간 머리, 프로필 카드)
 type MemberDays = { id: string; birthday?: string | null; feast_day?: string | null };
 const fetchMemberDays = async (id: string): Promise<MemberDays> => {
@@ -459,6 +461,9 @@ export default function Home() {
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
+  const [termsChecked, setTermsChecked] = useState(false); // 가입 화면 약관 동의 체크 (구글 플레이 UGC 정책)
+  const [showTermsConsent, setShowTermsConsent] = useState(false); // 이미 가입한 교우의 동의 창 (글을 쓰려 할 때 한 번)
+  const [termsSaving, setTermsSaving] = useState(false);
   const [baptismalName, setBaptismalName] = useState('');
   const [handleInput, setHandleInput] = useState('');
   const [setupError, setSetupError] = useState('');
@@ -1155,8 +1160,11 @@ export default function Home() {
   };
 
   const fetchProfile = async (userId: string) => {
-    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set, birthday').eq('id', userId).single();
+    let { data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set, birthday, terms_accepted_at').eq('id', userId).single();
     // 새 칼럼이 아직 없는 경우(SQL 실행 전)에도 동작하도록
+    if (error && error.code !== 'PGRST116') {
+      ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set, birthday').eq('id', userId).single());
+    }
     if (error && error.code !== 'PGRST116') {
       ({ data, error } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type, feast_day, nickname_set').eq('id', userId).single());
     }
@@ -1271,7 +1279,19 @@ export default function Home() {
   const requireProfile = () => {
     if (!user) { setShowAuthModal(true); return false; }
     if (needsProfileSetup) { setSetupDismissed(false); return false; }
+    // 약관·커뮤니티 규칙에 아직 동의하지 않은 교우(가입 화면에 체크가 생기기 전 가입)는 동의 창 먼저 (구글 플레이 UGC 정책: 올리기 전에 동의)
+    if (needsTermsConsent(user.id, profile?.terms_accepted_at)) { setShowTermsConsent(true); return false; }
     return true;
+  };
+  const acceptTerms = async () => {
+    if (!user) return;
+    setTermsSaving(true);
+    const r = await saveTermsAccepted(supabase, user.id);
+    setTermsSaving(false);
+    if (r === 'error') { showAlert('동의를 저장하지 못했어요.\n잠시 후 다시 해 주세요.'); return; }
+    setProfile(prev => (prev ? { ...prev, terms_accepted_at: new Date().toISOString() } : prev));
+    setShowTermsConsent(false);
+    setToast({ key: 'terms-ok', icon: '✅', title: '동의했어요', body: '이제 글·댓글·메시지를 올릴 수 있어요', action: () => {}, stay: true });
   };
   // 새 게시물 (인스타그램처럼 사진 고르기부터)
   const openComposer = () => {
@@ -2020,6 +2040,7 @@ export default function Home() {
       setSetupError('닉네임, 고유 핸들, 이름+세례명을 모두 입력해주세요.');
       return;
     }
+    if (!profileEditMode && !termsChecked) { setSetupError('이용약관과 커뮤니티 규칙에 동의해 주세요.'); return; }
 
     const cleanHandle = handleInput.trim().replace(/^@/, '').toLowerCase();
     const nickname = nicknameInput.trim();
@@ -2030,8 +2051,10 @@ export default function Home() {
     const birthday = isValidFeastDay(birthdayInput) ? birthdayInput : null;
     // 이메일은 보내지 않는다: 서버가 로그인 정보에서 채우고, 앱에서는 읽을 수 없다 (supabase/profiles-email-private.sql)
     const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle };
-    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true, birthday }]);
-    // 새 칼럼이 아직 없는 경우(SQL 실행 전)에는 있는 칼럼만 저장
+    const termsAt = profileEditMode ? undefined : new Date().toISOString(); // 가입 때 약관 동의(필수 체크) 시각
+    let { error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true, birthday, ...(termsAt ? { terms_accepted_at: termsAt } : {}) }]);
+    // 새 칼럼이 아직 없는 경우(SQL 실행 전)에는 있는 칼럼만 저장 (약관 동의는 이 기기에만 적어 둠)
+    if (termsAt && (error?.code === 'PGRST204' || error?.code === '42703')) { ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true, birthday }])); try { localStorage.setItem(`termsAccepted:${user.id}`, termsAt); } catch {} }
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay, nickname_set: true }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([{ ...row, feast_day: feastDay }]));
     if (error?.code === 'PGRST204' || error?.code === '42703') ({ error } = await supabase.from('profiles').upsert([row]));
@@ -2047,7 +2070,7 @@ export default function Home() {
       await supabase.from('profile_private').upsert({ id: user.id, real_name: baptismalName.trim(), updated_at: new Date().toISOString() });
       await supabase.rpc('sync_my_author_name');
       setMyRealName(baptismalName.trim());
-      setProfile(prev => ({ ...(prev || {}), id: user.id, baptismal_name: nickname, handle: cleanHandle, feast_day: feastDay, nickname_set: true, ...(prev?.birthday !== undefined || birthday ? { birthday } : {}) }));
+      setProfile(prev => ({ ...(prev || {}), id: user.id, baptismal_name: nickname, handle: cleanHandle, feast_day: feastDay, nickname_set: true, ...(termsAt ? { terms_accepted_at: termsAt } : {}), ...(prev?.birthday !== undefined || birthday ? { birthday } : {}) }));
       setNeedsProfileSetup(false);
       setProfileEditMode(false);
       fetchPosts();
@@ -5686,6 +5709,7 @@ export default function Home() {
 
       {showShareApp && <ShareApp onClose={() => setShowShareApp(false)} />}
       {legalDoc && <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />}
+      {showTermsConsent && user && <TermsConsentDialog onAccept={acceptTerms} onClose={() => setShowTermsConsent(false)} onOpenLegal={setLegalDoc} saving={termsSaving} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
       {showMyComments && user && (
         <BottomSheet label="내 댓글" title="내 댓글" subtitle="내가 단 댓글을 모아 봤어요 · 나만 볼 수 있어요" onClose={() => setShowMyComments(false)} tone="bg-white">
@@ -7241,6 +7265,7 @@ export default function Home() {
               </a>
             </div>
 
+            <p className="text-[0.75rem] text-stone-500 text-center leading-relaxed mt-3">시작하면 <TermsLinks onOpenLegal={setLegalDoc} className="text-stone-600" />을 확인한 것으로 봐요.<br />가입 화면에서 동의 체크를 한 번 해요.</p>
             <div className="flex justify-center pt-2">
               <button onClick={() => setShowAuthModal(false)} className="text-xs text-stone-400 hover:text-stone-600">닫기</button>
             </div>
@@ -7532,11 +7557,12 @@ export default function Home() {
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">축일에 축하 인사를 받고, 프로필 사진 아래에 &lsquo;오늘 축일이에요&rsquo; 비둘기가 날아와요. 잘 모르시면 비워두고 나중에 ⚙️ 설정에서 입력할 수 있어요.</p>
               </div>
 
+              {!profileEditMode && <TermsCheck checked={termsChecked} onChange={setTermsChecked} onOpenLegal={setLegalDoc} />}
               {setupError && <p className="text-red-500 text-xs text-center whitespace-pre-line break-words">{setupError}</p>}
               
               <button 
                 type="submit" 
-                disabled={loading || !nicknameInput.trim() || !baptismalName.trim() || !handleInput.trim()}
+                disabled={loading || !nicknameInput.trim() || !baptismalName.trim() || !handleInput.trim() || (!profileEditMode && !termsChecked)}
                 className="w-full bg-stone-900 text-white py-3 rounded-xl text-sm font-bold hover:bg-stone-800 disabled:opacity-50 transition-colors mt-2"
               >
                 {loading ? '저장 중...' : profileEditMode ? '저장' : '가톨릭그램 시작하기'}
