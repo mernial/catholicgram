@@ -119,6 +119,7 @@ import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 import { PERSONAL_NOTICES, myPersonalNotices, personalHiddenKey } from '@/lib/personal-notices';
 import { PersonalNoticePopup } from '@/components/PersonalNotice';
+import { LetterReplyPopup, letterReplyKey, type LetterReply } from '@/components/LetterReplyPopup';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
 // Safari에서 '모든 쿠키 차단'이나 일부 개인정보 보호 설정이 켜져 있으면
@@ -672,6 +673,7 @@ export default function Home() {
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
   // 관리자의 선물 상자: 선물받은 사연(letters.gift), 본 선물(열었거나 × 로 닫은 것 — localStorage giftsOpened:아이디, 다른 기기·앱과 서버로 합침), 알림으로 연 선물
   const [giftLetters, setGiftLetters] = useState<string[]>([]);
+  const [replyLetters, setReplyLetters] = useState<LetterReply[]>([]); // 운영자가 답장한 내 사연 (최근 14일) — 홈에 공지처럼 띄움
   const [openedGifts, setOpenedGifts] = useState<string[] | null>(null);
   const [forcedGift, setForcedGift] = useState<string | null>(null);
   const [activeGift, setActiveGift] = useState<string | null>(null); // 지금 열어 본 선물 ('확인'을 누를 때까지 그대로 보임)
@@ -3057,6 +3059,11 @@ export default function Home() {
     const { data, error } = await supabase.from('letters').select('id').eq('user_id', userId).eq('gift', true);
     const next = error ? [] : (data || []).map(r => r.id as string).sort();
     setGiftLetters(prev => (prev.join() === next.join() ? prev : next));
+    // 운영자 답장(supabase/letters-reply.sql 전이면 칸이 없어 조용히 비움): 최근 14일 것만 홈에 공지처럼
+    const since = new Date(Date.now() - 14 * 86400e3).toISOString();
+    const r = await supabase.from('letters').select('id, content, reply, replied_at, created_at').eq('user_id', userId).not('reply', 'is', null).gte('replied_at', since).order('replied_at', { ascending: false }).limit(5);
+    const rows = r.error ? [] : ((r.data || []) as LetterReply[]).filter(l => l.reply && l.replied_at);
+    setReplyLetters(prev => (prev.map(letterReplyKey).join() === rows.map(letterReplyKey).join() ? prev : rows));
   };
   const refreshAlerts = (userId: string, force = false) => {
     fetchStickerGrants(userId);
@@ -3771,6 +3778,7 @@ export default function Home() {
     } else if (deepLink.letters) {
       setLettersStart('mine');
       setShowLetters(true);
+      replyLetters.forEach(l => rememberGift(letterReplyKey(l))); // 알림을 눌러 사연함을 열었으면 답장 창은 다시 안 띄움
     } else if (deepLink.story) {
       // 홈으로 가서 스토리를 새로 불러온 뒤 그 교우의 스토리를 연다
       if (currentScreenRef.current.tab !== 'home') goToHome();
@@ -4238,7 +4246,11 @@ export default function Home() {
   // 개인 안내: 받는 교우에게만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (업데이트 소식보다 먼저)
   const personalToShow = personalPreview ? PERSONAL_NOTICES
     : user && updateNotesReady ? myPersonalNotices({ handle: profile?.handle, hidden: personalHidden, closed: personalClosed }) : [];
-  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice);
+  // 운영자 답장(사연함): 아직 안 본 것만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (개인 안내보다 먼저). 본 것은 giftsOpened 와 같은 길로 기억(다른 기기에도)
+  const replyToShow = user && openedGifts ? replyLetters.filter(l => !openedGifts.includes(letterReplyKey(l))) : [];
+  const showLetterReply = replyToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice;
+  const closeLetterReply = () => replyToShow.forEach(l => rememberGift(letterReplyKey(l)));
+  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
   const closePersonal = () => {
     if (personalPreview) { setPersonalPreview(false); return; }
     setPersonalClosed(prev => [...prev, ...personalToShow.map(n => n.id)]);
@@ -4253,7 +4265,7 @@ export default function Home() {
   const updateNotesToShow = user && updateNotesHidden && updateNotesReady
     ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
     : [];
-  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showPersonal;
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal;
   const hideUpdateNotes = () => {
     if (!user) return;
     const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
@@ -4263,10 +4275,10 @@ export default function Home() {
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
   // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
   const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
-    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showPersonal && !showUpdateNotes);
+    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showUpdateNotes);
   const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
   const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showPersonal || showUpdateNotes || showSamsungGuide;
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showUpdateNotes || showSamsungGuide;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -4328,6 +4340,7 @@ export default function Home() {
     if (showPopupNotice && popupNotice) closePopup(popupNotice.id);
     if (showUpdateNotes) closeUpdateNotes();
     if (showSamsungGuide) closeSamsungGuide();
+    if (showLetterReply) closeLetterReply();
     if (showPersonal) closePersonal();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
@@ -6605,6 +6618,11 @@ export default function Home() {
         </div>
       )}
 
+      {/* 운영자 답장 (사연함): 받는 교우의 홈에 공지처럼 */}
+      {showLetterReply && (
+        <LetterReplyPopup letters={replyToShow} name={profile?.baptismal_name || '교우'} onClose={closeLetterReply}
+          onOpen={() => { closeLetterReply(); setLettersStart('mine'); setShowLetters(true); }} />
+      )}
       {/* 개인 안내 (lib/personal-notices): 받는 교우에게만 */}
       {showPersonal && (
         <PersonalNoticePopup notices={personalToShow} preview={personalPreview} onClose={closePersonal} onHide={personalPreview ? undefined : hidePersonal}

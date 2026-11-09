@@ -223,9 +223,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
             {replyBox(reading, true)}
           </div>
           <div className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-stone-200 flex gap-2 flex-wrap">
-            <button onClick={() => startReply(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-sky-600 text-white">💬 {reading.reply ? '답장 고치기' : '답장하기'}</button>
+            <button onClick={() => startReply(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-sky-600 text-white">💬 {reading.reply ? '답장 고치기' : '답장하기'}<span className="block text-[0.6875rem] font-normal opacity-90">교우 화면에 공지처럼 떠요</span></button>
             <button onClick={() => setGiftFor(reading)} className="flex-1 py-3 rounded-2xl font-bold bg-amber-500 text-white">🎁 선물하기</button>
-            {onMessage && reading.name_display === 'name' && <button onClick={() => onMessage(reading.user_id)} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-800 font-bold">✉️ 메시지 보내기</button>}
             {reading.status !== 'aired'
               ? <button onClick={() => setStatus(reading, 'aired')} className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white font-bold">방송에서 소개했어요</button>
               : <button onClick={() => setStatus(reading, 'read')} className="flex-1 py-3 rounded-2xl border border-stone-300 text-stone-700 font-bold">소개 표시 취소</button>}
