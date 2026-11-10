@@ -137,9 +137,10 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   const [serverPosts, setServerPosts] = useState<{ term: string; posts: ExplorePost[] }>({ term: '', posts: [] });
 
   useEffect(() => {
-    if (!term || isTagSearch) { setPeople([]); return; }
+    if (!term) { setPeople([]); return; }
     const t = setTimeout(async () => {
-      const q = safeForFilter(term.replace(/^@/, ''));
+      // #태그로 찾아도 그 말이 이름·@아이디에 든 교우는 보여 줌 (운영자 2026-11-10: '#베드로책방'을 찾으니 교우 '베드로책방'이 안 나옴)
+      const q = safeForFilter(term.replace(/^[@#]/, ''));
       if (!q) return;
       const { data } = await supabase.from('profiles').select('id, baptismal_name, handle, avatar_url, badge_type')
         .or(`baptismal_name.ilike.%${q}%,handle.ilike.%${q}%`).limit(20);
@@ -148,8 +149,8 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
       // 글 내용·글쓴이 이름에 그 말이 든 글 + 찾은 교우가 쓴 글 (볼 수 있는 글만 서버가 줌)
       const cols = 'id, content, images, video_url, video_poster, pray_count, like_count, author_name, user_id, created_at, is_story';
       const [byText, byAuthor] = await Promise.all([
-        supabase.from('posts').select(cols).or(`content.ilike.%${q}%,author_name.ilike.%${q}%`).order('created_at', { ascending: false }).limit(60),
-        found.length > 0 ? supabase.from('posts').select(cols).in('user_id', found.map(p => p.id)).order('created_at', { ascending: false }).limit(60) : Promise.resolve({ data: [] as unknown[] }),
+        supabase.from('posts').select(cols).or(isTagSearch ? `content.ilike.%#${q}%` : `content.ilike.%${q}%,author_name.ilike.%${q}%`).order('created_at', { ascending: false }).limit(60),
+        found.length > 0 && !isTagSearch ? supabase.from('posts').select(cols).in('user_id', found.map(p => p.id)).order('created_at', { ascending: false }).limit(60) : Promise.resolve({ data: [] as unknown[] }),
       ]);
       type Row = { id: string; content: string; images: string[] | null; video_url?: string | null; video_poster?: string | null; pray_count: number; like_count: number; author_name: string; user_id: string; created_at: string; is_story?: boolean };
       const rows = new Map<string, Row>();
@@ -176,7 +177,12 @@ export default function ExploreTab({ user, posts, blockedIds, initialQuery, onOp
   const matchedPosts = useMemo(() => {
     if (!term) return [];
     if (isTagSearch) {
-      return visiblePosts.filter(p => extractHashtags(p.content).some(t => t === tagTerm || t.startsWith(tagTerm)));
+      // 홈에 불러온 글 + 서버에서 그 태그가 든 글(오래된 글도)
+      const hit = (p: ExplorePost) => extractHashtags(p.content).some(t => t === tagTerm || t.startsWith(tagTerm));
+      const local = visiblePosts.filter(hit);
+      const seen = new Set(local.map(p => p.id));
+      const extra = serverPosts.term === term ? serverPosts.posts.filter(p => !seen.has(p.id) && hit(p)) : [];
+      return [...local, ...extra].sort((a, b) => b.created_at.localeCompare(a.created_at));
     }
     const q = term.toLowerCase();
     const local = visiblePosts.filter(p => p.content?.toLowerCase().includes(q) || p.author_name?.toLowerCase().includes(q));
