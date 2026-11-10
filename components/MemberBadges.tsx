@@ -13,7 +13,7 @@ import { clipText, charCount } from '@/lib/clip-text';
 import Switch from '@/components/Switch';
 import { toast } from '@/lib/chat-actions';
 import { useBadgeMap } from '@/lib/badge-map';
-import { ClergyIcon } from '@/components/BadgeIcon';
+import { RoleIcon, roleOf } from '@/components/BadgeIcon';
 import { BADGES } from '@/components/RoleBadge';
 
 // --- 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지) ---
@@ -193,7 +193,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
   }, [userId]);
   const who = name || prof?.baptismal_name || '교우';
   const [book, setBook] = useState(false);
-  const clergy = prof?.badge_type && BADGES[prof.badge_type] ? prof.badge_type : null;
+  const clergy = roleOf(prof?.badge_type);
   const total = (clergy ? 1 : 0) + (hidden ? 0 : rows.length);
   const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string) => (
     <div key={key} className={`flex items-start gap-3 px-3 py-3 ${highlight === key ? 'bg-amber-50' : ''}`}>
@@ -215,7 +215,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
           <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
-          {clergy && item(`role:${clergy}`, <ClergyIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, '관리자가 직접 확인하고 달아 드린 성직자·수도자 인증 뱃지예요.')}
+          {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
           {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400">아직 받은 뱃지가 없어요.</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}

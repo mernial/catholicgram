@@ -5,7 +5,7 @@ import { MEMBER_BADGES, badgeOf, type MemberBadgeDef } from '@/lib/badges';
 
 // --- 메달 모양 뱃지 그림 ---
 // 금테(물결 테두리) + 색 원판 + 흰 문양. 작게(13px)도 크게(96px)도 또렷하게 보이도록 SVG 로 그린다.
-// 교우 뱃지(BadgeIcon)와 성직자·수도자 인증 뱃지(RoleBadge)가 같은 메달(Medal)을 쓴다.
+// 교우 뱃지(BadgeIcon)는 Medal, 역할 뱃지(관리자·성직자·수도자, RoleBadge)는 RoleIcon.
 
 const RIMS = {
   gold: ['#fff2c4', '#e2b94e', '#9a6a13', '#f6d98a'],
@@ -384,95 +384,83 @@ export function BadgeIcon({ badge, size = 40, className = '' }: { badge: MemberB
 
 // 성직자·수도자 인증 뱃지 그림 (RoleBadge) — 바탕 없이 그림만 크게 보이므로 색과 가는 테두리 선을 넣어 그린다
 // (운영자 2026-11-06: 원·네모 없이 그림 자체를 크게, 고급스럽고 단순하게)
-export const CLERGY_ART: Record<string, { colors: [string, string]; rim: 'gold' | 'silver'; emblem: ReactNode }> = {
-  // 주교님: 주교관(미트라) — 상아색 관, 금색 띠, 뒤로 늘어진 끈
-  bishop: { colors: ['#9b6fd6', '#5c2f9e'], rim: 'gold', emblem: (
+// --- 역할 뱃지(관리자·성직자·수도자) — 운영자 시안 C (2026-11-10) ---
+// 물결 테두리 안 색 바탕 + 상징: 관리자 = 톱니바퀴 위 파란 방패·체크·십자가(금), 성직자 = 보라 제의·로만 칼라·금 십자가, 수도자 = 회색 베일 아치 안 올리브 가지 문 비둘기(파랑)
+export const ROLE_ART: Record<string, { ring: [string, string]; fill: [string, string]; emblem: ReactNode }> = {
+  admin: { ring: ['#ffd978', '#f0a62a'], fill: ['#fff2bf', '#ffd45c'], emblem: (
     <g>
-      <path fill="#d9c9a8" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-9.5 9.5h4.6l-.9 8.5h-4.6ZM4.9 9.5h4.6l.9 8.5H5.8Z" />
-      <path fill="none" strokeWidth="1" stroke="#b08a3e" d="M-9.6 15.5h4M5.6 15.5h4" />
-      <path fill="#e9dfc8" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-14.5 8C-14.5-3-9-12.5 0-18.5 9-12.5 14.5-3 14.5 8Z" />
-      <path fill="#f7f1e3" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-13 9C-13-1-8-9 0-15.5 8-9 13-1 13 9Z" />
-      <path fill="#d9cfb8" fillOpacity="0.7" d="M0-15.5C8-9 13-1 13 9H0Z" />
-      <path fill="#d4a94a" d="M-2-13.2h4V9h-4Z" />
-      <path fill="#d4a94a" d="M-13 1h26v3.6h-26Z" />
-      <path fill="#b8893a" fillOpacity="0.5" d="M0-13.2h2V9H0ZM0 1h13v3.6H0Z" />
-      <rect x="-14" y="8" width="28" height="4.2" rx="1" fill="#d4a94a" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
-      <path fill="#b8893a" fillOpacity="0.5" d="M0 8h14v4.2H0Z" />
+      {/* 톱니바퀴 */}
+      <g fill="#f7c24a" stroke="#c98a12" strokeWidth="0.9" strokeLinejoin="round">
+        {Array.from({ length: 10 }, (_, i) => <rect key={i} x="-3.2" y="-23" width="6.4" height="7" rx="1.6" transform={`rotate(${i * 36})`} />)}
+        <circle r="19" />
+      </g>
+      <circle r="15.5" fill="#fbe08a" stroke="#c98a12" strokeWidth="0.8" />
+      {/* 십자가 */}
+      <path d="M0-22.5v8M-3.4-18.5h6.8" stroke="#e39a1c" strokeWidth="2.6" strokeLinecap="round" />
+      {/* 방패 + 체크 */}
+      <path d="M0-12 11-8v8c0 7-4.5 12-11 15C-6.5 12-11 7-11 0v-8Z" fill="#2f7be6" stroke="#1d57ad" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M0-12 11-8v8c0 7-4.5 12-11 15Z" fill="#fff" fillOpacity="0.14" />
+      <path d="M-5.5 1 -1.5 5 6-4" fill="none" stroke="#fff" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round" />
+      {/* 월계수 */}
+      <path d="M-17 4c-3-3-3-8-1-11M-14 9c-4-1-7-4-8-8M17 4c3-3 3-8 1-11M14 9c4-1 7-4 8-8" fill="none" stroke="#d8a428" strokeWidth="1.6" strokeLinecap="round" />
     </g>
   ) },
-  // 신부님: 영대 — 목에 두르고 양쪽으로 똑바로 늘어뜨린 초록 영대(금 테·십자가·술)
-  priest: { colors: ['#e4b955', '#a86f1a'], rim: 'gold', emblem: (
+  clergy: { ring: ['#d7a8f0', '#a45cd6'], fill: ['#f3e2fb', '#dcb3f0'], emblem: (
     <g>
-      <path fill="#2f7d4f" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-12.5-6C-12.5-13-7-17.5 0-17.5s12.5 4.5 12.5 11.5v22.5h-7.5V-5c0-3-2-5-5-5s-5 2-5 5v22.5h-7.5Z" />
-      <path fill="#245f3c" fillOpacity="0.55" d="M0-17.5c7 0 12.5 4.5 12.5 11.5v22.5H5V-5c0-3-2-5-5-5Z" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1.1" d="M-11.2-5.5v21.5M-6.3-5.5v21.5M6.3-5.5v21.5M11.2-5.5v21.5" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1.5" d="M-8.8 6v6M-11 9h4.4M8.8 6v6M6.6 9h4.4" />
-      <path fill="#e3c15b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-12.5 16.5h7.5v2h-7.5ZM5 16.5h7.5v2H5Z" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1" d="M-11.5 18.5v2.5M-9.5 18.5v2.5M-7.5 18.5v2.5M-5.8 18.5v2.5M5.8 18.5v2.5M7.5 18.5v2.5M9.5 18.5v2.5M11.5 18.5v2.5" />
+      {/* 제의(카주블) */}
+      <path d="M-14-11 -7-18h14l7 7v26c-3 1.5-11 2.5-14 2.5S-11 15.5-14 14Z" fill="#8c3fc2" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M-5-18v33M5-18v33" stroke="#b36be0" strokeWidth="2.2" />
+      <path d="M-21 2-14-11V14l-7 1Z" fill="#7a33ad" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M21 2 14-11V14l7 1Z" fill="#7a33ad" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
+      {/* 로만 칼라 */}
+      <path d="M-7-18c2 3 4.5 4 7 4s5-1 7-4" fill="none" stroke="#2e2e38" strokeWidth="3.6" strokeLinecap="round" />
+      <rect x="-2.2" y="-19.2" width="4.4" height="4" fill="#fff" rx="0.6" />
+      {/* 금 십자가 둘 */}
+      <path d="M-11 0v8M-14 3h6M11 0v8M8 3h6" stroke="#f4cf5a" strokeWidth="1.8" strokeLinecap="round" />
     </g>
   ) },
-  // 부제님: 영대 — 왼 어깨에서 오른 허리로 비스듬히 두른 초록 영대
-  deacon: { colors: ['#e0a94e', '#9c5f18'], rim: 'gold', emblem: (
+  religious: { ring: ['#9ec8ff', '#4d8fe8'], fill: ['#e6f0ff', '#bfd8fb'], emblem: (
     <g>
-      <path fill="#2f7d4f" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-17-9.5 -11.5-15 17 7.5 11.5 13Z" />
-      <path fill="#245f3c" fillOpacity="0.5" d="M-14.3-12.3 -11.5-15 17 7.5l-2.8 2.7Z" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1.1" d="M-15.8-10.7 12.7 11.8M-12.7-13.8 15.8 8.7" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1.5" d="M-2.8 2.8l4.4-4.4M-2.4-1.2l3.6 3.6" />
-      <path fill="#e3c15b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M11.5 13 17 7.5l1.5 1.5-5.5 5.5Z" />
-      <path fill="none" stroke="#e3c15b" strokeWidth="1" d="M13.5 15l1.8 1.8M15 13.5l1.8 1.8M16.5 12l1.8 1.8" />
-    </g>
-  ) },
-  // 수녀님: 베일 — 검은 베일과 흰 코이프(얼굴 자리는 비움)
-  sister: { colors: ['#63a9e6', '#2b6fb3'], rim: 'gold', emblem: (
-    <g>
-      <path fill="#262b38" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-17.5 18C-17.5 0-10-15.5 0-15.5S17.5 0 17.5 18Z" />
-      <path fill="#3b4254" fillOpacity="0.6" d="M-17.5 18C-17.5 0-10-15.5 0-15.5V18Z" />
-      <path fill="#ffffff" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-10.5 18C-10.5 5-6.5-5 0-5s10.5 10 10.5 23Z" />
-      <ellipse cx="0" cy="-3.5" rx="8" ry="9.4" fill="#ffffff" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" />
-      <ellipse cx="0" cy="-3.5" rx="6" ry="7.4" fill="#f4efe4" />
-    </g>
-  ) },
-  // 수사님: 두건 달린 갈색 수도복과 매듭 허리끈(얼굴 자리는 비움) — 높이는 수녀님 베일과 같게(-15.5~18)
-  brother: { colors: ['#5d9fd8', '#2a62a4'], rim: 'gold', emblem: (
-    <g>
-      <path fill="#8a5a2b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-18 18c0-6 3-9.5 8-11.5C-10-6-6-15.5 0-15.5S10-6 10 6.5c5 2 8 5.5 8 11.5Z" />
-      <path fill="#6e4520" fillOpacity="0.7" d="M0-15.5c6 0 10 9.5 10 22 5 2 8 5.5 8 11.5H0Z" />
-      <path fill="#5a3717" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-7.5 1C-7.5-7.5-4-13.5 0-13.5s7.5 6 7.5 14.5v6.5h-15Z" />
-      <path fill="#f4efe4" d="M-5 1C-5-5-2.5-9.5 0-9.5s5 4.5 5 10.5v4H-5Z" />
-      <path fill="none" stroke="#efe6d2" strokeWidth="2" d="M-12.5 12h25M6.5 12c0 2.5-.5 4.5-1.5 6" />
-      <circle cx="5.6" cy="14.8" r="1.3" fill="#efe6d2" /><circle cx="5" cy="17.6" r="1.3" fill="#efe6d2" />
-    </g>
-  ) },
-  // 신학생: 펼친 성경(짙은 표지·크림 책장·빨간 책갈피 끈)과 위의 금 십자가 — 공부하는 신학생
-  seminarian: { colors: ['#9aa5b4', '#5c6673'], rim: 'silver', emblem: (
-    <g>
-      <path fill="#e3c15b" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-1.6-18h3.2v4.4h4.4v3.2H1.6v6.6h-3.2v-6.6H-6v-3.2h4.4Z" />
-      <path fill="#3b3a4a" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-17.5 2c6-2.4 11.8-2.4 17.5 0 5.7-2.4 11.5-2.4 17.5 0v15.5c-6-2.4-11.8-2.4-17.5 0-5.7-2.4-11.5-2.4-17.5 0Z" />
-      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M-15.5.5C-10.5-1.5-5.5-1.3-.8.9V14.9C-5.5 12.7-10.5 12.5-15.5 14.5Z" />
-      <path fill="#f4efe4" stroke="#3a2d26" strokeOpacity="0.38" strokeWidth="0.8" d="M15.5.5C10.5-1.5 5.5-1.3.8.9V14.9C5.5 12.7 10.5 12.5 15.5 14.5Z" />
-      <path fill="none" stroke="#9a9484" strokeWidth="1" d="M-12.5 4.3c3-1 6-1 8.5 0M-12.5 7.6c3-1 6-1 8.5 0M-12.5 10.9c3-1 6-1 8.5 0M4 4.3c3-1 6-1 8.5 0M4 7.6c3-1 6-1 8.5 0M4 10.9c3-1 6-1 8.5 0" />
-      <path fill="#c0392b" d="M-.9.9h1.8V13l-.9-1.2-.9 1.2Z" />
+      {/* 베일 아치 (바깥 밝은 회색 → 안쪽 어두운 남회색) */}
+      <path d="M-17 20C-17-6-10-18 0-22c10 4 17 16 17 42Z" fill="#e8ebf1" stroke="#8b94a3" strokeWidth="1" strokeLinejoin="round" />
+      <path d="M-12.5 20C-12.5-2-7-13 0-17c7 4 12.5 15 12.5 37Z" fill="#5b6679" />
+      <path d="M-9 20c0-17 4-26 9-30 5 4 9 13 9 30Z" fill="#303a4d" />
+      {/* 비둘기 (크게) + 올리브 가지 */}
+      <path d="M-8.5 5.5c.5-5 4-8.5 9-8 1.5-3 5.5-3.5 8-1.5L4.5-2l1.2 2.6c-1.5 5-6.5 7.5-11.5 6.5L-9 11l.5-4.2c-.8-.4-1.2-.8 0-1.3Z" fill="#fff" stroke="#c4ccd8" strokeWidth="0.5" strokeLinejoin="round" />
+      <path d="M-2 10c2-1 4-3 5-5" fill="none" stroke="#fff" strokeWidth="2.6" strokeLinecap="round" />
+      <path d="M5.5-1.5c3.5-3 7.5-3 10.5-1.5M8-2.6c0-1.6 1.2-2.6 2.5-2.6M11-2.4c.3-1.6 1.6-2.4 3-2.1M13.5-1.6c.6-1.3 1.9-1.9 3.2-1.4" fill="none" stroke="#8bbf5a" strokeWidth="1.2" strokeLinecap="round" />
+      <circle cx="2.2" cy="-3.6" r="0.75" fill="#303a4d" />
     </g>
   ) },
 };
+/** 예전 badge_type(주교·신부·부제·신학생·수녀·수사)을 세 역할로 */
+export const roleOf = (type?: string | null): 'admin' | 'clergy' | 'religious' | null => {
+  if (!type) return null;
+  if (type === 'admin' || type === 'clergy' || type === 'religious') return type;
+  if (['bishop', 'priest', 'deacon', 'seminarian'].includes(type)) return 'clergy';
+  if (['sister', 'nun', 'brother', 'monk'].includes(type)) return 'religious';
+  return null;
+};
 
-// 인증 뱃지 그림: 바탕(원·네모) 없이 그림 자체만 크게 (운영자 2026-11-06)
-export function ClergyIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
-  const id = `cg${useId().replace(/[^\w-]/g, '')}`;
-  const art = CLERGY_ART[type];
+export function RoleIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
+  const id = `rl${useId().replace(/[^\w-]/g, '')}`;
+  const role = roleOf(type);
+  const art = role ? ROLE_ART[role] : undefined;
   if (!art) return null;
   const px = typeof size === 'number' ? `${size}px` : size;
   return (
     <svg viewBox="0 0 64 64" width={px} height={px} className={`shrink-0 ${className}`} role="img" aria-label={title} style={{ width: px, height: px }}>
       {title && <title>{title}</title>}
       <defs>
-        <filter id={`${id}-sh`} x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="1" stdDeviation="1" floodColor="#000" floodOpacity="0.22" />
-        </filter>
+        <linearGradient id={`${id}-ring`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor={art.ring[0]} /><stop offset="1" stopColor={art.ring[1]} /></linearGradient>
+        <radialGradient id={`${id}-fill`} cx="0.5" cy="0.35" r="0.7"><stop offset="0" stopColor={art.fill[0]} /><stop offset="1" stopColor={art.fill[1]} /></radialGradient>
+        <filter id={`${id}-sh`} x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0.8" stdDeviation="0.8" floodColor="#000" floodOpacity="0.22" /></filter>
       </defs>
-      <g filter={`url(#${id}-sh)`} strokeLinecap="round" strokeLinejoin="round">
-        <g transform={type === 'bishop' ? 'translate(32 33) scale(1.6)' : 'translate(32 35) scale(1.72)'}>{art.emblem}</g>
-      </g>
+      <circle cx="32" cy="33" r="30.5" fill="#000" fillOpacity="0.12" />
+      <path d={SCALLOP} fill={`url(#${id}-ring)`} />
+      <circle cx="32" cy="32" r="25.5" fill={`url(#${id}-fill)`} />
+      <circle cx="32" cy="32" r="25.5" fill="none" stroke="#fff" strokeOpacity="0.55" strokeWidth="1.2" />
+      <g filter={`url(#${id}-sh)`} transform="translate(32 33) scale(0.88)" strokeLinecap="round" strokeLinejoin="round">{art.emblem}</g>
     </svg>
   );
 }

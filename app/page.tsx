@@ -8,6 +8,7 @@ import Cropper from 'react-easy-crop';
 import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
+import { roleOf } from '@/components/BadgeIcon';
 import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
@@ -1329,6 +1330,14 @@ export default function Home() {
   };
   useEffect(() => { if (user) loadFollowing(user.id); else setFollowingIds(new Set()); }, [user?.id]);
   useEffect(() => { refreshCelebrations(); }, [user?.id]); // 생일·축일 리본 (로그인하면 생일 칸도 읽힘)
+  // 관리자 계정에는 '관리자' 역할 뱃지를 저절로 (운영자 시안 C 2026-11-10 — protect_badge_type 트리거가 관리자의 변경은 허락함)
+  useEffect(() => {
+    const admin = !!(user?.email && ADMIN_EMAILS.includes(user.email));
+    if (!admin || !user || !profile || !profile.handle || roleOf(profile.badge_type) === 'admin') return;
+    supabase.from('profiles').update({ badge_type: 'admin' }).eq('id', user.id).select('id').then(({ data }) => {
+      if (data && data.length) setProfile(prev => (prev ? { ...prev, badge_type: 'admin' } : prev));
+    });
+  }, [user?.id, user?.email, profile?.handle, profile?.badge_type]);
 
   const toggleFollow = async (targetId: string, currentStatus: FollowStatus) => {
     if (!user) { setShowAuthModal(true); return; }
@@ -5284,7 +5293,7 @@ export default function Home() {
                         : <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-600 text-sm font-serif font-bold flex items-center justify-center">{initial(post.author_name, '교')}</span>}</CelebrateBand>
                     </button>
                     <div className="min-w-0 flex-1 flex flex-col items-start">
-                      <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" showLabel={false} /><NameBadges userId={post.user_id} /></button>
+                      <button onClick={() => openProfileCard({ id: post.user_id, name: post.author_name, avatar_url: post.avatar_url, handle: post.handle, badge_type: post.badge_type })} className="max-w-full flex items-center gap-1 text-[0.9375rem] font-bold text-stone-900 text-left"><span className="truncate">{post.author_name}</span><RoleBadge type={post.badge_type} size="xs" /><NameBadges userId={post.user_id} /></button>
                       {/* 음악: 누르면 크게 보기에서 재생 */}
                       {parsePostMusic(post.music) && (
                         <button onClick={() => openPostViewer(post)} className="max-w-full flex items-center gap-1 text-[0.75rem] text-stone-500"><Icon name="music" className="w-3 h-3 shrink-0" /><span className="truncate">{post.music_title || '음악'}</span></button>
@@ -5569,7 +5578,7 @@ export default function Home() {
               <div className="mt-3 flex items-center gap-2 text-xs bg-white border border-stone-200 rounded-xl px-3 py-2">
                 <span className="font-bold text-stone-600"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-amber-600" />관리자 · 인증 뱃지</span>
                 <select
-                  value={viewingProfile.badge_type || ''}
+                  value={roleOf(viewingProfile.badge_type) || ''}
                   onChange={(e) => handleSetBadge(viewingProfile.id, e.target.value)}
                   className="border border-stone-300 rounded-lg px-2 py-1 bg-white focus:outline-none"
                 >
@@ -6205,7 +6214,7 @@ export default function Home() {
                 </CelebrateAvatar>
                 <div className="mt-4 flex items-center gap-1.5 max-w-full">
                   <h3 className="text-[1.375rem] font-bold text-stone-900 truncate">{u.baptismal_name || '…'}</h3>
-                  <RoleBadge type={u.badge_type} onClick={() => setBadgeListFor({ id: u.id, name: u.baptismal_name, highlight: `role:${u.badge_type}` })} />
+                  <RoleBadge type={u.badge_type} onClick={() => setBadgeListFor({ id: u.id, name: u.baptismal_name, highlight: `role:${roleOf(u.badge_type)}` })} />
                 </div>
                 {u.handle && <p className="text-[0.875rem] text-stone-400">@{u.handle}</p>}
                 <BadgeRow userId={u.id} size={34} className="mt-2" />
