@@ -405,18 +405,18 @@ export const ROLE_ART: Record<string, { ring: [string, string]; fill: [string, s
       <path d="M-17 4c-3-3-3-8-1-11M-14 9c-4-1-7-4-8-8M17 4c3-3 3-8 1-11M14 9c4-1 7-4 8-8" fill="none" stroke="#d8a428" strokeWidth="1.6" strokeLinecap="round" />
     </g>
   ) },
-  clergy: { ring: ['#d7a8f0', '#a45cd6'], fill: ['#f3e2fb', '#dcb3f0'], emblem: (
+  clergy: { ring: ['#f7f1e3', '#c5b48c'], fill: ['#ffffff', '#f3eee2'], emblem: (
     <g>
-      {/* 제의(카주블) */}
-      <path d="M-14-11 -7-18h14l7 7v26c-3 1.5-11 2.5-14 2.5S-11 15.5-14 14Z" fill="#8c3fc2" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
-      <path d="M-5-18v33M5-18v33" stroke="#b36be0" strokeWidth="2.2" />
-      <path d="M-21 2-14-11V14l-7 1Z" fill="#7a33ad" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
-      <path d="M21 2 14-11V14l7 1Z" fill="#7a33ad" stroke="#5f2390" strokeWidth="1" strokeLinejoin="round" />
+      {/* 흰 제의(카주블) + 금 테 (운영자 2026-11-10: 보라 대신 하얀색) */}
+      <path d="M-14-11 -7-18h14l7 7v26c-3 1.5-11 2.5-14 2.5S-11 15.5-14 14Z" fill="#fbf8f1" stroke="#8a7c5e" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M-5-18v33M5-18v33" stroke="#d9b64a" strokeWidth="2.2" />
+      <path d="M-21 2-14-11V14l-7 1Z" fill="#efe9db" stroke="#8a7c5e" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M21 2 14-11V14l7 1Z" fill="#efe9db" stroke="#8a7c5e" strokeWidth="1.3" strokeLinejoin="round" />
       {/* 로만 칼라 */}
       <path d="M-7-18c2 3 4.5 4 7 4s5-1 7-4" fill="none" stroke="#2e2e38" strokeWidth="3.6" strokeLinecap="round" />
       <rect x="-2.2" y="-19.2" width="4.4" height="4" fill="#fff" rx="0.6" />
       {/* 금 십자가 둘 */}
-      <path d="M-11 0v8M-14 3h6M11 0v8M8 3h6" stroke="#f4cf5a" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M-11 0v8M-14 3h6M11 0v8M8 3h6" stroke="#d4a94a" strokeWidth="2" strokeLinecap="round" />
     </g>
   ) },
   religious: { ring: ['#9ec8ff', '#4d8fe8'], fill: ['#e6f0ff', '#bfd8fb'], emblem: (
@@ -433,11 +433,11 @@ export const ROLE_ART: Record<string, { ring: [string, string]; fill: [string, s
     </g>
   ) },
 };
-/** 예전 badge_type(주교·신부·부제·신학생·수녀·수사)을 세 역할로 */
+/** 예전 badge_type(주교·신부·부제·수녀·수사)을 세 역할로 — 신학생은 뱃지 없음 */
 export const roleOf = (type?: string | null): 'admin' | 'clergy' | 'religious' | null => {
   if (!type) return null;
   if (type === 'admin' || type === 'clergy' || type === 'religious') return type;
-  if (['bishop', 'priest', 'deacon', 'seminarian'].includes(type)) return 'clergy';
+  if (['bishop', 'priest', 'deacon'].includes(type)) return 'clergy'; // 신학생(seminarian)은 뱃지 없음 (운영자 2026-11-10)
   if (['sister', 'nun', 'brother', 'monk'].includes(type)) return 'religious';
   return null;
 };
