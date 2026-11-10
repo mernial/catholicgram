@@ -839,10 +839,14 @@ export default function Home() {
       try {
         const had = sessionStorage.getItem('appOpened') === '1';
         sessionStorage.setItem('appOpened', '1');
+        // 앱이 새로 떴으면(최근 앱 ||| 에서 닫았다 엶·휴대폰이 정리했다 다시 띄움) 홈부터.
+        // 예전엔 1분 안이면 보던 화면을 이어 열었는데, 이렇게 새로 뜬 앱은 화면을 한 번 누르기 전에는 뒤로가기 기록을 쌓을 수 없어
+        // (크롬·삼성 인터넷이 누르기 전에 쌓은 기록을 건너뜀) 이어 연 화면에서 뒤로가기를 누르면 앱이 바로 꺼졌음 (루비로사 오류 신고 2026-11-10)
+        if (!had) return false;
         const hiddenAt = Number(storageGet('appHiddenAt') || 0);
         const away = hiddenAt ? Date.now() - hiddenAt : 0;
         if (hiddenAt && away >= 0 && away < RESUME_HOME_AFTER) return true;
-        return had && !hiddenAt;
+        return !hiddenAt;
       } catch { return false; }
     })();
     // 단체 채팅방·사랑방(화면 위에 뜨는 창)도 그대로 다시 연다 — 로그인 정보가 온 뒤에 (아래 효과)
