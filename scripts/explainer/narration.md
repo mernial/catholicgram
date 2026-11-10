@@ -233,7 +233,7 @@ Play 스토어에서 '가톨릭그램'을 찾아 주세요. 기다리고 있겠�
 - 여는 곳: 내 공간의 관리자 아이콘 '녹음실' 또는 주소 `/studio` (관리자만). 화면 `components/NarrationStudio.tsx`, 대본 `lib/explainer-script.ts`(자기소개의 이름 자리는 관리자 닉네임으로 채움).
 - 쓰는 법: 장을 고르고 '녹음 시작' → 대본을 보며 읽기 → '녹음 끝' → 저절로 저장. 이어 읽으려면 녹음 중에 '다음 장 이어 읽기'(넘긴 때가 기록됨). 같은 장을 다시 녹음하면 가장 나중 녹음을 쓴다. 들어 보기·지우기, 글씨 크기, 소리 크기 막대.
 - 저장: `app/api/studio` → Supabase 저장소의 비공개 칸 `narration`(처음 올릴 때 만듦). 3MB 조각 `t<시각>_c<시작 장>-<끝 장>_d<초>_p<몇>of<모두>.webm` + `t<시각>.json`(`marksMs` = 장을 넘긴 때, `durationMs`, `mime`, `peak`, `script`).
-- **가져오기(클라우드 세션)**: 목록 `curl -H "x-studio-key: <열쇠>" https://catholicgram-dey7.vercel.app/api/studio`, 조각 `…/api/studio?name=<이름>` → 조각을 차례로 이어 붙이면 webm(opus). 열쇠는 세션 scratchpad 의 `studio.key`에만 있고 코드에는 지문(`PULL_KEY_SHA256`)만 있다. 열쇠를 잃으면 새로 만들어 지문을 바꿔 배포한다. 세션 환경에 `catholicgram-dey7.vercel.app` 을 허용해야 한다(운영자 승인).
+- **가져오기(클라우드 세션)**: 목록 `curl -H "x-studio-key: <열쇠>" https://catholicgram-dey7.vercel.app/api/studio`, 조각 `…/api/studio?name=<이름>` → 조각을 차례로 이어 붙이면 webm(opus). 열쇠는 세션 scratchpad 의 `studio.key`에만 있고 코드에는 지문(`PULL_KEY_SHA256`)만 있다. 열쇠를 잃으면 새로 만들어 지문을 바꿔 배포한다. 세션 환경 '기본'에 `catholicgram-dey7.vercel.app` 을 허용해 두었다(2026-11-10 운영자 승인). 배포 뒤 실제 사이트에서 열쇠 없음·틀린 열쇠는 403, 열쇠로는 빈 목록 200 을 확인했다. 실제 올리기(저장 칸 만들기 포함)는 운영자 첫 녹음으로 확인한다.
 - 장 나누기: 한 녹음이 여러 장이면 `marksMs` 로 자르고, 장 안의 문단은 쉼(무음)으로 찾는다.
 - 시험: 가짜 Supabase 서버와 가짜 마이크로 녹음 → 저장 → 열쇠로 받기 → 다시 녹음 → 지우기 → 두 조각 녹음까지 확인. 실제 휴대폰과 실제 저장소는 운영자 첫 녹음으로 확인한다.
 - Claude 쪽 '설명 영상 녹음실' 화면은 파일을 넣는 예비 길로 남겨 둔다.
