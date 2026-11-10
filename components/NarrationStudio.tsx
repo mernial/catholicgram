@@ -56,6 +56,13 @@ export default function NarrationStudio() {
   const [recording, setRecording] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [notice, setNotice] = useState('');
+  const [mics, setMics] = useState<{ id: string; label: string }[]>([]);
+  const [micId, setMicId] = useState('');                 // 고른 마이크 (컴퓨터에 여럿일 때)
+  const [clean, setClean] = useState(true);               // 브라우저의 잡음 줄이기·소리 크기 맞추기
+  const [testing, setTesting] = useState(false);          // 마이크 시험 (녹음하지 않고 소리 막대만)
+  const testRef = useRef<MediaStream | null>(null);
+  const cleanRef = useRef(true);
+  const micLabelRef = useRef('');
   const [play, setPlay] = useState<{ id: string; url: string } | null>(null);
   const [busyId, setBusyId] = useState('');
   const [quiet, setQuiet] = useState<string[]>([]);   // 소리가 작게 녹음된 녹음들
@@ -98,6 +105,8 @@ export default function NarrationStudio() {
       if (Number.isInteger(at) && at >= 0 && at <= LAST) { chRef.current = at; setCh(at); }
       if (Number.isInteger(sz) && sz >= 0 && sz < SIZES.length && recall('studioSize') !== null) setSize(sz);
       setName((p as { baptismal_name?: string } | null)?.baptismal_name || '');
+      setMicId(recall('studioMic') || '');
+      setClean(recall('studioClean') !== '0'); cleanRef.current = recall('studioClean') !== '0';
       setGate('ok');
       refresh();
     })();
@@ -144,8 +153,7 @@ export default function NarrationStudio() {
   const cleanup = useCallback(() => {
     const r = rec.current; rec.current = null;
     r?.stream.getTracks().forEach(t => t.stop());
-    const m = meter.current; meter.current = null;
-    if (m) { cancelAnimationFrame(m.raf); m.ac.close().catch(() => {}); }
+    stopMeter();
     window.clearInterval(tick.current);
     wake.current?.release().catch(() => {}); wake.current = null;
     setRecording(false);
@@ -161,6 +169,7 @@ export default function NarrationStudio() {
     const meta = JSON.stringify({
       id, from, to, marksMs: marks.current, durationMs: Math.round(ms), mime: type, bytes: blob.size, parts,
       peak: Math.round(peak.current * 1000) / 1000, script: SCRIPT_VERSION, ua: navigator.userAgent.slice(0, 200),
+      mic: micLabelRef.current, clean: cleanRef.current,
     });
     localUrls.current.set(id, URL.createObjectURL(blob));
     if (peak.current < 0.02) setQuiet(q => [...q, id]);
@@ -169,36 +178,41 @@ export default function NarrationStudio() {
     send(p);
   }, [send]);
 
-  const start = async () => {
-    setNotice(''); setPlay(null);
-    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') { setNotice('이 브라우저에서는 녹음할 수 없어요. 크롬으로 열어 주세요.'); return; }
-    let stream: MediaStream;
+  // 마이크 목록 (허용한 뒤에야 이름이 보임)
+  const listMics = useCallback(async () => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 1 } });
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setMics(all.filter(d => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'communications')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `마이크 ${i + 1}` })));
+    } catch { /* 목록 없음 */ }
+  }, []);
+  useEffect(() => { if (gate === 'ok' && typeof navigator.mediaDevices?.enumerateDevices === 'function') listMics(); }, [gate, listMics]);
+
+  const openMic = async (): Promise<MediaStream | null> => {
+    if (!navigator.mediaDevices?.getUserMedia) { setNotice('이 브라우저에서는 녹음할 수 없어요. 크롬으로 열어 주세요.'); return null; }
+    const audio: MediaTrackConstraints = { echoCancellation: false, noiseSuppression: clean, autoGainControl: clean, channelCount: 1 };
+    if (micId) audio.deviceId = { exact: micId };
+    try {
+      let stream: MediaStream;
+      try { stream = await navigator.mediaDevices.getUserMedia({ audio }); }
+      catch (e) {
+        if ((e as { name?: string } | null)?.name !== 'OverconstrainedError') throw e;
+        delete audio.deviceId; setMicId(''); remember('studioMic', '');   // 고른 마이크가 빠졌으면 기본 마이크로
+        stream = await navigator.mediaDevices.getUserMedia({ audio });
+      }
+      listMics();
+      return stream;
     } catch (e) {
       const n = (e as { name?: string } | null)?.name;
-      setNotice(n === 'NotAllowedError' ? '마이크를 쓸 수 없어요. 주소창 옆 자물쇠나 휴대폰 설정에서 마이크를 허용해 주세요.'
-        : n === 'NotFoundError' ? '마이크를 찾지 못했어요.' : '마이크를 켜지 못했어요. 다시 눌러 주세요.');
-      return;
+      setNotice(n === 'NotAllowedError' ? '마이크를 쓸 수 없어요. 주소창 옆 자물쇠 → 마이크 → 허용으로 바꿔 주세요.'
+        : n === 'NotFoundError' ? '마이크를 찾지 못했어요. 마이크가 꽂혀 있는지 봐 주세요.' : '마이크를 켜지 못했어요. 다시 눌러 주세요.');
+      return null;
     }
-    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)) || '';
-    let mr: MediaRecorder;
-    try { mr = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 128000 } : undefined); }
-    catch { stream.getTracks().forEach(t => t.stop()); setNotice('녹음을 시작하지 못했어요. 다시 눌러 주세요.'); return; }
-    const chunks: Blob[] = [];
-    const began = performance.now();
-    const first = chRef.current;
-    marks.current = []; peak.current = 0;
-    mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
-    mr.onstop = () => {
-      const ms = performance.now() - began;
-      cleanup();
-      const blob = new Blob(chunks, { type: mr.mimeType || type });
-      if (!blob.size || ms < 800) { setNotice('녹음이 너무 짧아요. 다시 눌러 주세요.'); return; }
-      finish(blob, first, chRef.current, ms);
-    };
-    rec.current = { mr, stream, began };
-    try {   // 소리 크기 막대
+  };
+
+  // 소리 크기 막대 (녹음·시험 공통)
+  const startMeter = (stream: MediaStream) => {
+    try {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ac = new AC(); const an = ac.createAnalyser(); an.fftSize = 1024;
       ac.createMediaStreamSource(stream).connect(an);
@@ -215,6 +229,46 @@ export default function NarrationStudio() {
       };
       loop();
     } catch { /* 막대만 없음 */ }
+  };
+  const stopMeter = () => {
+    const m = meter.current; meter.current = null;
+    if (m) { cancelAnimationFrame(m.raf); m.ac.close().catch(() => {}); }
+  };
+  const stopTest = () => { testRef.current?.getTracks().forEach(t => t.stop()); testRef.current = null; stopMeter(); setTesting(false); };
+  const startTest = async () => {
+    setNotice(''); peak.current = 0;
+    const stream = await openMic();
+    if (!stream) return;
+    testRef.current = stream; setTesting(true);
+    startMeter(stream);
+  };
+
+  const start = async () => {
+    setNotice(''); setPlay(null);
+    if (testRef.current) stopTest();
+    if (typeof MediaRecorder === 'undefined') { setNotice('이 브라우저에서는 녹음할 수 없어요. 크롬으로 열어 주세요.'); return; }
+    const stream = await openMic();
+    if (!stream) return;
+    micLabelRef.current = (stream.getAudioTracks()[0]?.label || '').slice(0, 80);
+    cleanRef.current = clean;
+    const type = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus'].find(t => MediaRecorder.isTypeSupported(t)) || '';
+    let mr: MediaRecorder;
+    try { mr = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 160000 } : undefined); }
+    catch { stream.getTracks().forEach(t => t.stop()); setNotice('녹음을 시작하지 못했어요. 다시 눌러 주세요.'); return; }
+    const chunks: Blob[] = [];
+    const began = performance.now();
+    const first = chRef.current;
+    marks.current = []; peak.current = 0;
+    mr.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+    mr.onstop = () => {
+      const ms = performance.now() - began;
+      cleanup();
+      const blob = new Blob(chunks, { type: mr.mimeType || type });
+      if (!blob.size || ms < 800) { setNotice('녹음이 너무 짧아요. 다시 눌러 주세요.'); return; }
+      finish(blob, first, chRef.current, ms);
+    };
+    rec.current = { mr, stream, began };
+    startMeter(stream);
     try { wake.current = (await (navigator as unknown as { wakeLock?: { request(t: 'screen'): Promise<WakeLock> } }).wakeLock?.request('screen')) || null; } catch { /* 없어도 됨 */ }
     mr.start(1000);   // 1초마다 조각을 받아 둠
     setElapsed(0); setRecording(true);
@@ -227,6 +281,30 @@ export default function NarrationStudio() {
     go(ch + 1);
   };
 
+  // 컴퓨터 자판: 스페이스 = 녹음 시작/끝, → = (녹음 중) 다음 장 이어 읽기 / (아닐 때) 다음 장, ← = 앞 장
+  const keys = useRef({ start, stop, advance, go, ch, recording, busy: false });
+  keys.current = { start, stop, advance, go, ch, recording, busy: keys.current.busy };
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      if (t && (t.closest('input, textarea, select, [contenteditable="true"]') || t.closest('[role="dialog"]'))) return;
+      const k = keys.current;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        if (k.recording) k.stop();
+        else if (!k.busy) { k.busy = true; Promise.resolve(k.start()).finally(() => { keys.current.busy = false; }); }
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        if (k.recording) k.advance(); else k.go(k.ch + 1);
+      } else if (e.key === 'ArrowLeft' && !k.recording) {
+        e.preventDefault(); k.go(k.ch - 1);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // 화면을 떠나면 마이크를 끈다
   useEffect(() => {
     const urls = localUrls.current;
@@ -234,6 +312,7 @@ export default function NarrationStudio() {
       const r = rec.current;
       if (r) { r.mr.onstop = null; try { r.mr.stop(); } catch { /* 이미 멈춤 */ } r.stream.getTracks().forEach(t => t.stop()); }
       if (meter.current) { cancelAnimationFrame(meter.current.raf); meter.current.ac.close().catch(() => {}); }
+      testRef.current?.getTracks().forEach(t => t.stop());
       window.clearInterval(tick.current);
       urls.forEach(u => URL.revokeObjectURL(u));
     };
@@ -375,13 +454,39 @@ export default function NarrationStudio() {
               </div>
             </>
           ) : (
+            <>
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              {mics.length > 1 && (
+                <label className="flex-1 min-w-[12rem]">
+                  <span className="sr-only">마이크 고르기</span>
+                  <select id="studio-mic" value={micId} onChange={e => { setMicId(e.target.value); remember('studioMic', e.target.value); if (testRef.current) stopTest(); }}
+                    className="w-full h-10 px-2 rounded-lg border border-stone-200 bg-white text-stone-800">
+                    <option value="">기본 마이크</option>
+                    {mics.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="flex items-center gap-2 h-10 px-3 rounded-lg border border-stone-200 bg-white text-stone-800 cursor-pointer">
+                <input id="studio-clean" type="checkbox" checked={clean} onChange={e => { setClean(e.target.checked); cleanRef.current = e.target.checked; remember('studioClean', e.target.checked ? '1' : '0'); if (testRef.current) stopTest(); }} className="w-4 h-4" />
+                잡음 줄이기
+              </label>
+              <button type="button" onClick={testing ? stopTest : startTest} className="h-10 px-3 rounded-lg border border-stone-300 bg-white font-bold text-stone-700">{testing ? '시험 끝' : '마이크 시험'}</button>
+            </div>
+            {testing && (
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-bold text-stone-700 shrink-0">말해 보세요</span>
+                <span className="flex-1 h-2 rounded-full bg-stone-200 overflow-hidden" aria-hidden="true"><span ref={bar} className="block h-full bg-green-600" style={{ width: '0%' }} /></span>
+              </div>
+            )}
             <button type="button" onClick={start} className="h-14 rounded-2xl bg-red-600 text-white font-bold text-[1.125rem] flex items-center justify-center gap-2.5">
               <span className="w-3.5 h-3.5 rounded-full bg-white" aria-hidden="true" />{current ? '이 장 다시 녹음' : '녹음 시작'}
             </button>
+            </>
           )}
           <p className="text-[0.8125rem] leading-snug text-stone-500">
             {recording ? '다 읽었으면 녹음 끝을 누르세요. 저절로 저장됩니다.' : '틀리면 녹음을 끝내고 다시 녹음하세요. 가장 나중 녹음을 씁니다.'}
           </p>
+          <p className="hidden [@media(hover:hover)_and_(pointer:fine)]:block text-[0.8125rem] text-stone-500">자판: 스페이스 = 녹음 시작·끝 · → = 다음 장 이어 읽기 · ← → = 장 넘기기</p>
         </div>
       </footer>
     </div>
