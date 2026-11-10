@@ -5532,6 +5532,7 @@ export default function Home() {
                 { key: 'deleted', icon: 'trash', tone: 'stone', label: '삭제된 메시지', onClick: () => setShowDeletedMessages(true) },
                 { key: 'media', icon: 'image', tone: 'green', label: '사진 저장소', onClick: () => setShowMediaStorage(true) },
                 { key: 'badges', icon: 'crown', tone: 'gold', label: '뱃지 1등 현황', onClick: () => setShowBadgeBoard(true) },
+                { key: 'studio', icon: 'mic', tone: 'red', label: '녹음실', onClick: () => { window.location.href = '/studio'; } }, // 설명 영상 내레이션 녹음 (app/studio)
               ];
               return viewingUserId === user?.id ? (
                 <>
