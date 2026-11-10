@@ -1,0 +1,476 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face{font-family:NSR;font-weight:800;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundEB.woff2)}
+@font-face{font-family:NSR;font-weight:700;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundB.woff2)}
+@font-face{font-family:NSR;font-weight:400;src:url(file:///home/user/catholicgram/app/fonts/NanumSquareRoundR.woff2)}
+html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:#f6f1e7}
+body{font-family:NSR,'Noto Color Emoji',sans-serif;-webkit-font-smoothing:antialiased;color:#2b2420}
+#stage{position:relative;width:1920px;height:1080px;overflow:hidden}
+.abs{position:absolute}
+#bg{position:absolute;inset:0}
+.orb{position:absolute;border-radius:50%;filter:blur(60px)}
+#prog{position:absolute;left:120px;top:54px;display:flex;gap:8px;z-index:5}
+#prog i{display:block;width:52px;height:6px;border-radius:3px;background:rgba(80,60,40,.15);overflow:hidden;position:relative}
+#prog i b{position:absolute;left:0;top:0;bottom:0;background:#b08a3e;border-radius:3px}
+#left{position:absolute;left:120px;top:110px;width:860px;z-index:4}
+#tag{display:inline-flex;align-items:center;gap:14px;padding:10px 22px 10px 12px;border-radius:999px;background:rgba(255,255,255,.75);box-shadow:0 6px 18px rgba(80,60,30,.08);font-weight:800;font-size:26px;color:#7a5a24}
+#tag .num{display:inline-flex;width:44px;height:44px;border-radius:50%;background:#b08a3e;color:#fff;align-items:center;justify-content:center;font-size:22px}
+#head{margin-top:34px;font-weight:800;font-size:72px;line-height:1.18;letter-spacing:-1.5px;color:#2b2420}
+#head .hl{background:linear-gradient(transparent 60%, rgba(230,190,90,.55) 60%);border-radius:6px;padding:0 4px}
+#pts{margin-top:40px;display:flex;flex-direction:column;gap:18px}
+.pt{display:flex;align-items:center;gap:18px;font-weight:700;font-size:34px;color:#4a3e33}
+.pt .ic{width:58px;height:58px;border-radius:18px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 6px 16px rgba(80,60,30,.10)}
+#subs{position:absolute;left:120px;width:880px;top:858px;height:160px;z-index:6;display:flex;align-items:flex-end}
+#subs .box{background:rgba(32,26,22,.82);color:#fff;font-weight:700;font-size:34px;line-height:1.42;padding:16px 28px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+#phone{position:absolute;left:1180px;top:40px;width:476px;height:1000px;z-index:3;transform-origin:50% 50%}
+#bezel{position:absolute;inset:0;border-radius:64px;background:#15161b;box-shadow:0 40px 90px rgba(60,40,20,.30),0 8px 24px rgba(0,0,0,.25),inset 0 0 0 3px #2c2e36}
+#screen{position:absolute;left:14px;top:14px;width:448px;height:972px;overflow:hidden;border-radius:52px;background:#fff}
+#cam{position:absolute;left:50%;top:26px;width:22px;height:22px;margin-left:-11px;border-radius:50%;background:#0b0c10;box-shadow:0 0 0 3px #1c1d24;z-index:9}
+.layer{position:absolute;left:0;top:0;width:448px;height:972px;overflow:hidden;background:#fff}
+.layer img.sh{position:absolute;left:0;top:0;width:448px;display:block}
+#inscreen{position:absolute;inset:0;z-index:5;pointer-events:none}
+#fx{position:absolute;inset:0;pointer-events:none;z-index:7}
+#full{position:absolute;inset:0;z-index:8;pointer-events:none}
+.tap{position:absolute;border-radius:50%;border:6px solid rgba(255,255,255,.95);box-shadow:0 0 0 3px rgba(176,138,62,.45),0 6px 18px rgba(0,0,0,.25)}
+.tapdot{position:absolute;border-radius:50%;background:rgba(255,255,255,.88);box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.emo{position:absolute;font-size:54px;line-height:1}
+.chip{position:absolute;padding:16px 26px;border-radius:999px;background:#fff;font-weight:800;font-size:30px;color:#2b2420;box-shadow:0 12px 30px rgba(80,60,30,.18);white-space:nowrap}
+.card{position:absolute;border-radius:22px;background:#fff;box-shadow:0 12px 30px rgba(0,0,0,.14);padding:18px 22px;box-sizing:border-box}
+.stk{position:absolute;filter:drop-shadow(0 10px 18px rgba(0,0,0,.18))}
+.stk img{width:100%;height:100%;object-fit:contain}
+.dio{position:absolute;padding:12px 22px;border-radius:999px;background:#fff;font-weight:800;font-size:28px;color:#4a3e33;box-shadow:0 8px 20px rgba(80,60,30,.14);white-space:nowrap}
+#flash{position:absolute;inset:0;background:#fff;pointer-events:none;z-index:20;opacity:0}
+#fade{position:absolute;inset:0;background:#000;pointer-events:none;z-index:21;opacity:0}
+</style></head>
+<body><div id="stage">
+  <div id="bg"></div><div id="orbs"></div>
+  <div id="prog"></div>
+  <div id="left"><div id="tag"><span class="num"></span><span class="tt"></span></div><div id="head"></div><div id="pts"></div></div>
+  <div id="phone"><div id="bezel"></div><div id="screen"><div id="layers"></div><div id="inscreen"></div></div><div id="cam"></div></div>
+  <div id="fx"></div>
+  <div id="subs"><div class="box"></div></div>
+  <div id="full"></div>
+  <div id="flash"></div><div id="fade"></div>
+</div>
+<script src="file:///tmp/cgexp/timing.js"></script>
+<script>
+const SH = 'file:///tmp/cgexp/shots/', APP = 'file:///home/user/catholicgram/public/';
+const W = 448, K = 448 / 390; // css px in 390-wide shots -> screen px
+const PAR = TM.paras;
+const P = i => PAR[i].t0, E = i => PAR[i].t1;
+const S = (i, s) => { const ss = PAR[i].subs; return s < ss.length ? ss[s].t0 : PAR[i].t0 + (PAR[i].t1 - PAR[i].t0) * s / ss.length; };
+const DUR = TM.dur + 3.2;
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => { x = clamp(x); return 1 - Math.pow(1 - x, 3); };
+const back = x => { x = clamp(x); const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+const win = (t, a, b, f = .4) => clamp(Math.min((t - a) / f, (b - t) / f)); // fade in/out window
+const $ = id => document.getElementById(id);
+// ---------- chapters ----------
+const CH = [
+  { n: 0, title: '여는 인사', bg: ['#f7efe0', '#efe2c8'] },
+  { n: 1, title: '이 앱을 만든 이유', bg: ['#f6f0e6', '#ead9c0'] },
+  { n: 2, title: '시작하기', bg: ['#eef3ec', '#d9e6d3'] },
+  { n: 3, title: '홈, 글과 기도', bg: ['#f6efe4', '#ecdcc4'] },
+  { n: 4, title: '사진, 음악, 영상', bg: ['#f3eef6', '#e2d8ec'] },
+  { n: 5, title: '함께 기도하기', bg: ['#eef0f7', '#d8dcec'] },
+  { n: 6, title: '메시지와 사랑방', bg: ['#eef5f6', '#d5e8ea'] },
+  { n: 7, title: '고민상담과 사연', bg: ['#f7eeee', '#ecd8d6'] },
+  { n: 8, title: '내 공간', bg: ['#f2f3ea', '#e1e4cf'] },
+  { n: 9, title: '알림과 설정', bg: ['#f7f1e6', '#eedfc6'] },
+  { n: 10, title: '안심하고 쓰도록', bg: ['#edf2f6', '#d6e1ea'] },
+  { n: 11, title: '맺음 인사', bg: ['#f7efe0', '#efe2c8'] },
+];
+const chStart = c => P(PAR.findIndex(p => p.ch === c)) - (c === 0 ? .7 : .5);
+const chAt = t => { let c = 0; for (let i = 0; i < 12; i++) if (t >= chStart(i)) c = i; return c; };
+// ---------- left panel content per paragraph ----------
+// head: text with [hl], pts: [[subIndex, icon, text]]
+const LP = {
+  0: { head: '가톨릭그램을<br>소개합니다', pts: [] },
+  1: { head: '가톨릭그램,<br><span class="hl">신자들이 함께</span><br>만드는 공간', pts: [] },
+  2: { head: '휴대폰 속<br>세상 소식', pts: [[1, '😥', '마음을 어지럽히는 이야기'], [2, '🤐', '조심스러운 신앙 이야기']] },
+  3: { head: '마음 놓고<br><span class="hl">모일 수 있는 곳</span>', pts: [] },
+  4: { head: '천주교 신자들을<br>위한 <span class="hl">공간</span>', pts: [[3, '⛪', '강론 한마디 · 오늘의 묵상'], [3, '📢', '우리 본당 소식'], [3, '🙏', '기도를 청하는 글']] },
+  5: { head: '교구도 본당도<br><span class="hl">넘어서</span>', pts: [[1, '🇰🇷', '전국의 신자들이 한곳에']] },
+  6: { head: '함께 나누고 싶은<br><span class="hl">마음 하나로</span>', pts: [] },
+  7: { head: '설치하기', pts: [[0, '🤖', 'Play 스토어 → ‘가톨릭그램’'], [1, '🍎', '아이폰: 사파리 → 홈 화면에 추가']] },
+  8: { head: '간편한<br><span class="hl">로그인</span>', pts: [[0, '💬', '카카오 · 네이버 · 구글'], [1, '✏️', '닉네임 · 이름 · 세례명'], [2, '🔒', '이름과 세례명은 운영자만']] },
+  9: { head: '축일도<br><span class="hl">적어 두세요</span>', pts: [[0, '🕊️', '교우들이 함께 축하해요']] },
+  10: { head: '홈', pts: [[1, '🕘', '최근 글부터 차례로']] },
+  11: { head: '단추 셋', pts: [[1, '🙏', '기도 — 기도합니다'], [1, '❤️', '공감 — 함께 기뻐해요'], [1, '💬', '댓글 — 묻고 답해요']] },
+  12: { head: '내 이야기<br><span class="hl">올리기</span>', pts: [[0, '➕', '왼쪽 위 더하기 단추'], [1, '🖼️', '사진 10장까지 · 영상도'], [2, '👥', '전체 공개 · 팔로워만']] },
+  13: { head: '스토리', pts: [[1, '⏳', '하루 뒤에 저절로 사라져요']] },
+  14: { head: '사진 효과', pts: [[1, '✂️', '자르기'], [1, '😊', '이모티콘 붙이기'], [1, '🟤', '얼굴 모자이크'], [2, '🧩', '콜라주']] },
+  15: { head: '글에<br><span class="hl">음악</span>을', pts: [[1, '🎵', '고요 · 희망 · 위로 · 기쁨 · 성가'], [2, '▶️', '글을 열면 음악이 흘러요']] },
+  16: { head: '영상', pts: [[0, '↕️', '위아래로 넘기며 보기']] },
+  17: { head: '오늘의<br><span class="hl">기도지향</span>', pts: [[2, '✍️', '기도가 필요한 일을 짧게'], [2, '⏰', '홈 맨 위에 하루 동안']] },
+  18: { head: '함께<br><span class="hl">기도합니다</span>', pts: [[1, '🤫', '누가 올렸는지 보이지 않아요'], [3, '🙏', '혼자에서 함께로']] },
+  19: { head: '축일과 생일', pts: [[1, '🕊️', '축일 — 비둘기'], [1, '🎀', '생일 — 리본'], [2, '🔔', '축일 아침 알림'], [3, '💌', '바로 축하 인사']] },
+  20: { head: '1:1 메시지', pts: [[1, '🖼️', '사진 · 영상 보내기'], [1, '↩️', '답장 · 마음 표시'], [2, '🔕', '조용히 보내기']] },
+  21: { head: '가톨릭그램<br><span class="hl">이모티콘</span>', pts: [] },
+  22: { head: '단체<br><span class="hl">채팅방</span>', pts: [[1, '🏘️', '구역 모임'], [1, '🎶', '성가대'], [1, '📿', '레지오']] },
+  23: { head: '모두의<br><span class="hl">사랑방</span>', pts: [[1, '🚪', '모든 교우의 열린 대화방'], [3, '🌅', '대화는 날마다 새로']] },
+  24: { head: '익명<br><span class="hl">고민상담</span>', pts: [[2, '🤫', '누가 썼는지 보이지 않아요'], [3, '🤝', '따뜻한 답글로 위로']] },
+  25: { head: '사연<br><span class="hl">보내기</span>', pts: [[1, '💌', '감사 · 기도 부탁 · 신앙의 고민'], [2, '✉️', '운영자가 직접 읽고 답장']] },
+  26: { head: '내 공간', pts: [[1, '🖼️', '내가 올린 글과 사진'], [1, '🎵', '배경음악'], [2, '🏅', '뱃지와 도장']] },
+  27: { head: '탐색', pts: [[0, '🔍', '이름 · 낱말로 찾기'], [1, '➕', '팔로우하고 소식 받기']] },
+  28: { head: '가톨릭<br><span class="hl">바로가기</span>', pts: [[0, '📖', '매일미사 · 성경 · cpbc']] },
+  29: { head: '알림', pts: [[1, '🔔', '알림 소리 고르기'], [2, '🔔', '성당 종소리 · ‘찬미예수님’']] },
+  30: { head: '편하게<br><span class="hl">보이도록</span>', pts: [[0, '🔠', '글씨 크기'], [1, '🎨', '화면 색 다섯 가지']] },
+  31: { head: '서로<br><span class="hl">지켜 주세요</span>', pts: [[1, '🚩', '어울리지 않는 글은 신고'], [2, '🚫', '불편한 사람은 차단']] },
+  32: { head: '마음 놓고<br><span class="hl">머무는 곳</span>', pts: [[1, '🛡️', '서로 존중하는 말로']] },
+  33: { head: '우리가 함께<br><span class="hl">만들어 가는 공간</span>', pts: [[1, '✨', '한 줄의 묵상, 한 번의 기도']] },
+  34: { head: '친구 초대', pts: [[1, '📲', '주소와 큐알 그림 바로 보내기']] },
+  35: { head: '기다리고<br><span class="hl">있겠습니다</span>', pts: [] },
+};
+// ---------- screen timeline ----------
+// [time, shot, opts] opts: {pan:[y0,y1,dur], tr:'slide'|'fade'|'up'}
+const SCR = [];
+const scr = (t, img, o = {}) => SCR.push({ t, img, ...o });
+const TAP = []; const tap = (t, x, y, r = 34) => TAP.push({ t, x, y, r });
+const ZM = []; const zoom = (t0, t1, cx, cy, s) => ZM.push({ t0, t1, cx, cy, s });
+const FX = []; const fx = (t0, t1, type, o = {}) => FX.push({ t0, t1, type, ...o });
+const bx = {}; // filled from json
+function B(name, key) { const b = bx[name] && bx[name][key]; return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : null; }
+function build() {
+  // ch0 intro: full illustration until P(1)+.4, then app home
+  fx(0, P(1) + 1.0, 'intro');
+  scr(0, 'home');
+  // ch1
+  fx(P(2) - .3, E(2) + .6, 'chaos');
+  fx(P(3) - .4, E(3) + .5, 'candle');
+  scr(P(4), 'home-tall', { tr: 'fade', pan: [0, 1300, (E(4) - P(4)) * .9] });
+  fx(S(4, 3), E(4), 'tagsfloat', { items: ['강론 한마디', '오늘의 묵상', '본당 소식', '기도 부탁'] });
+  fx(P(5) - .2, E(5) + .4, 'dioceses');
+  scr(P(6), 'react-both', { tr: 'fade' });
+  fx(P(6) + 1, E(6), 'spread');
+  // ch2
+  fx(P(7) - .2, S(7, 1) - .2, 'store');
+  fx(S(7, 1) - .2, E(7) + .5, 'safari');
+  scr(P(8), 'login', { tr: 'slide' });
+  tap(P(8) + 1.2, 195, 570); tap(P(8) + 2.0, 195, 693); tap(P(8) + 2.8, 195, 633);
+  scr(S(8, 1), 'welcome-filled', { tr: 'slide' });
+  fx(S(8, 2), E(8) + .3, 'lockchip');
+  scr(P(9), 'welcome-feast', { tr: 'up' });
+  fx(P(9) + .8, E(9) + .5, 'dove');
+  // ch3
+  scr(P(10) - .3, 'home', { tr: 'fade' });
+  scr(S(10, 1), 'home-tall', { tr: 'fade', pan: [0, 900, 5] });
+  scr(P(11), 'react-before', { tr: 'fade' });
+  { const a = B('react', 'pray'), b2 = B('react', 'like'); if (a) tap(S(11, 2) + 1.0, a.x, a.y); if (b2) tap(S(11, 4) + .6, b2.x, b2.y); }
+  scr(S(11, 2) + 1.2, 'react-pray', { tr: 'none' });
+  fx(S(11, 2) + 1.2, S(11, 3) + 2, 'pray');
+  scr(S(11, 4) + .8, 'react-both', { tr: 'none' });
+  fx(S(11, 4) + .8, S(11, 4) + 3, 'hearts');
+  scr(S(11, 4) + 3.6, 'comments', { tr: 'up' });
+  scr(P(12) - .4, 'home', { tr: 'fade' });
+  { const pl = B('home', 'plus'); if (pl) tap(P(12) + 1.0, pl.x, pl.y); }
+  scr(P(12) + 1.5, 'compose-blank', { tr: 'up' });
+  scr(S(12, 1), 'compose-pick', { tr: 'fade' });
+  scr(S(12, 2), 'write-bottom', { tr: 'slide' });
+  scr(P(13) - .3, 'home', { tr: 'fade' });
+  scr(S(13, 1) + .5, 'story', { tr: 'zoom' });
+  // ch4
+  scr(P(14), 'compose-pick', { tr: 'fade' });
+  scr(S(14, 1) - .2, 'effect-crop', { tr: 'slide' });
+  scr(S(14, 1) + 1.8, 'effect-sticker', { tr: 'fade' });
+  scr(S(14, 1) + 4.0, 'effect-mosaic', { tr: 'fade' });
+  scr(S(14, 2), 'collage', { tr: 'slide' });
+  scr(P(15), 'write', { tr: 'fade' });
+  scr(S(15, 1) - .3, 'music', { tr: 'up' });
+  fx(S(15, 2), E(15) + .6, 'notes');
+  scr(P(16) - .2, 'reels', { tr: 'fade' });
+  fx(P(16), E(16) + .5, 'reelswipe');
+  // ch5
+  scr(P(17) - .2, 'home', { tr: 'fade' });
+  scr(S(17, 2) + 3.5, 'intentions', { tr: 'up' });
+  scr(P(18), 'intentions', { tr: 'none' });
+  fx(P(18) + 2.5, S(18, 1), 'pray');
+  fx(S(18, 3), E(18) + .3, 'prayrain');
+  scr(P(19), 'celebrate', { tr: 'fade' });
+  fx(S(19, 2), S(19, 3) + 1, 'notif', { title1: '🕊️ 오늘은 모니카님의 축일입니다', title2: '축하해 주세요!' });
+  // ch6
+  scr(P(20) - .3, 'msglist', { tr: 'fade' });
+  scr(P(20) + 2.5, 'dm', { tr: 'slide' });
+  scr(S(20, 2), 'dm-quiet', { tr: 'none' });
+  scr(P(21), 'dm-stickers', { tr: 'up' });
+  fx(S(21, 1), E(21) + .5, 'stickers4');
+  scr(P(22), 'newgroup-picked', { tr: 'up' });
+  scr(S(22, 1), 'msglist-group', { tr: 'fade' });
+  scr(P(23), 'lounge', { tr: 'slide' });
+  // ch7
+  scr(P(24) - .3, 'anon', { tr: 'up' });
+  scr(P(25) - .2, 'letters', { tr: 'up' });
+  fx(S(25, 2), E(25) + .5, 'reply');
+  // ch8
+  scr(P(26) - .3, 'me', { tr: 'fade' });
+  scr(S(26, 2), 'stamps', { tr: 'up' });
+  scr(P(27), 'explore', { tr: 'fade' });
+  tap(P(27) + 1.4, 195, 70);
+  scr(P(27) + 2.4, 'explore-search', { tr: 'none' });
+  scr(P(28), 'me-scroll', { tr: 'fade' });
+  // ch9
+  scr(P(29) - .3, 'alerts', { tr: 'up' });
+  fx(P(29) + .3, P(29) + 4, 'notif', { title1: '💬 모니카님이 댓글을 남겼어요', title2: '“꽃이 정말 예뻐요! 축하해요 💐”' });
+  scr(S(29, 1), 'sound', { tr: 'slide' });
+  fx(S(29, 2) + 2.6, E(29) + .2, 'soundwave');
+  scr(P(30), 'settings', { tr: 'up' });
+  scr(P(30) + 2.6, 'settings-big', { tr: 'none' });
+  const th = ['theme-ivory', 'theme-navy', 'home', 'theme-burgundy', 'theme-charcoal'];
+  th.forEach((n, i) => scr(S(30, 1) + i * 0.9, n, { tr: 'fade' }));
+  scr(S(30, 2) + .3, 'home', { tr: 'fade' });
+  // ch10
+  scr(P(31) - .3, 'home', { tr: 'fade' });
+  scr(S(31, 1), 'postmenu', { tr: 'up' });
+  tap(S(31, 1) + 2.2, 170, 741);
+  scr(S(31, 2), 'profilecard', { tr: 'up' });
+  tap(S(31, 2) + 1.6, 223, 786);
+  fx(P(32), E(32) + .3, 'shield');
+  // ch11
+  fx(P(33) - .3, E(33) + .3, 'wall');
+  scr(P(34), 'shareapp', { tr: 'up' });
+  fx(P(35) - .3, DUR, 'end');
+}
+// ---------- images ----------
+const imgs = {};
+function load(k, src) { return new Promise(r => { const i = new Image(); i.onload = () => r(); i.onerror = () => { console.log('missing ' + src); r(); }; i.src = src; imgs[k] = i; }); }
+async function loadJson(n) { try { const r = await fetch(SH + n + '.json'); bx[n] = await r.json(); } catch { } }
+window.ready = (async () => {
+  build();
+  const names = new Set(SCR.map(s => s.img).concat(['home', 'home-tall', 'theme-ivory', 'theme-navy', 'theme-burgundy', 'theme-charcoal', 'me', 'dm', 'lounge', 'anon', 'intentions', 'react-both', 'collage', 'music', 'reels', 'comments', 'celebrate', 'effect-sticker', 'explore', 'alerts', 'letters', 'stamps']));
+  const jobs = [...names].map(n => load(n, SH + n + '.png'));
+  jobs.push(load('icon', APP + 'icon-v2-512.png'), load('qr', APP + 'qr-catholicgram.png'), load('missa', APP + 'apps/missa.png'), load('bible', APP + 'apps/bible.png'), load('pbc', APP + 'apps/pbc.png'));
+  for (const [k, d] of Object.entries({ sheep: 'sheep', cloud: 'cloud', bell: 'bell', candle: 'candle' })) for (const n of ['01', '05', '09', '12']) jobs.push(load(k + n, APP + 'stickers/' + d + '/' + n + '.webp'));
+  await Promise.all(jobs);
+  await document.fonts.ready;
+  // progress bar
+  $('prog').innerHTML = CH.map(() => '<i><b></b></i>').join('');
+  return true;
+})();
+// ---------- helpers ----------
+function el(parent, tag, cls, style, html) { const e = document.createElement(tag); if (cls) e.className = cls; if (style) e.style.cssText = style; if (html != null) e.innerHTML = html; parent.appendChild(e); return e; }
+function imgEl(parent, key, style, cls) { const i = imgs[key]; const e = document.createElement('img'); e.src = i ? i.src : ''; if (cls) e.className = cls; e.style.cssText = style || ''; parent.appendChild(e); return e; }
+function paraAt(t) { let k = 0; for (let i = 0; i < PAR.length; i++) if (t >= PAR[i].t0 - .5) k = i; return k; }
+function subAt(t) { for (const p of PAR) for (const s of p.subs) if (t >= s.t0 - .15 && t <= s.t1 + .5) return s; return null; }
+// ---------- render ----------
+let lastLeft = '';
+window.render = t => {
+  const c = chAt(t), ch = CH[c];
+  // background
+  const bg = $('bg'); bg.style.background = `radial-gradient(1200px 900px at 20% 20%, ${ch.bg[0]}, ${ch.bg[1]})`;
+  const orbs = $('orbs'); orbs.innerHTML = '';
+  for (let i = 0; i < 4; i++) { const a = t * .05 + i * 1.7; el(orbs, 'div', 'orb', `left:${200 + 400 * i + 80 * Math.sin(a)}px;top:${150 + 500 * (i % 2) + 60 * Math.cos(a * 1.3)}px;width:${380 + 60 * i}px;height:${380 + 60 * i}px;background:${['rgba(255,255,255,.55)', 'rgba(230,200,140,.25)', 'rgba(255,255,255,.4)', 'rgba(200,170,120,.18)'][i]}`); }
+  // progress
+  [...$('prog').children].forEach((e, i) => { const a = chStart(i), b = i < 11 ? chStart(i + 1) : TM.dur; e.firstChild.style.width = (100 * clamp((t - a) / (b - a))) + '%'; });
+  // left panel
+  const pi = paraAt(t), lp = LP[pi];
+  const leftKey = c + '|' + pi;
+  const L = $('left');
+  if (leftKey !== lastLeft) {
+    $('tag').querySelector('.num').textContent = String(c).padStart(2, '0');
+    $('tag').querySelector('.tt').textContent = ch.title;
+    $('head').innerHTML = lp.head;
+    $('pts').innerHTML = lp.pts.map(([s, ic, tx]) => `<div class="pt" data-s="${s}"><span class="ic">${ic}</span><span>${tx}</span></div>`).join('');
+    lastLeft = leftKey;
+  }
+  const pt0 = PAR[pi].t0;
+  const hIn = eout((t - (pt0 - .5)) / .6);
+  const hOut = pi < PAR.length - 1 ? 1 - eout((t - (PAR[pi + 1].t0 - .5 - .35)) / .35) : 1;
+  const hk = Math.min(hIn, hOut);
+  $('head').style.opacity = hk; $('head').style.transform = `translateY(${(1 - hIn) * 30}px)`;
+  const tagIn = eout((t - chStart(c)) / .6); $('tag').style.opacity = tagIn; $('tag').style.transform = `translateX(${(1 - tagIn) * -40}px)`;
+  [...$('pts').children].forEach((e, k) => { const s = +e.dataset.s; const ti = S(pi, s) + k * .25 + .2; const x = eout((t - ti) / .5); e.style.opacity = Math.min(x, hOut); e.style.transform = `translateX(${(1 - x) * 40}px)`; });
+  // left panel hidden during full-screen moments
+  const fullHide = FX.some(f => ['intro', 'end', 'wall', 'dioceses', 'chaos', 'candle'].includes(f.type) && t > f.t0 && t < f.t1) ? 1 : 0;
+  L.style.visibility = (pi < 1 || fullHide) ? 'hidden' : 'visible';
+  $('prog').style.opacity = (t < P(1) + 1 || t > P(35) - .3) ? 0 : 1;
+  // subtitles
+  const s = subAt(t); const sb = $('subs').firstChild;
+  if (s) { sb.textContent = s.text; const k2 = Math.min(eout((t - s.t0 + .15) / .2), clamp((s.t1 + .5 - t) / .2)); sb.style.opacity = k2; $('subs').style.visibility = 'visible'; } else $('subs').style.visibility = 'hidden';
+  // phone layers
+  renderPhone(t);
+  renderFx(t);
+};
+function shotH(name) { const i = imgs[name]; return i && i.naturalWidth ? i.naturalHeight / i.naturalWidth * W : 972; }
+function renderPhone(t) {
+  const lay = $('layers'); lay.innerHTML = '';
+  let cur = -1; for (let i = 0; i < SCR.length; i++) if (SCR[i].t <= t) cur = i;
+  const draw = (sd, x, y, op, sc = 1) => {
+    if (!sd) return; const d = el(lay, 'div', 'layer', `transform:translate(${x}px,${y}px) scale(${sc});opacity:${op};transform-origin:50% 50%`);
+    let py = 0; if (sd.pan) { const [a, b, du] = sd.pan; const h = shotH(sd.img); py = -Math.min(lerp(a, b, ease((t - sd.t) / du)), Math.max(0, h - 972)); }
+    imgEl(d, sd.img, `top:${py}px`, 'sh');
+  };
+  if (cur < 0) { draw(SCR[0], 0, 0, 1); }
+  else {
+    const sd = SCR[cur], prev = SCR[cur - 1]; const k = clamp((t - sd.t) / .5), e = ease(k);
+    if (k < 1 && prev && sd.tr !== 'none') {
+      if (sd.tr === 'slide') { draw(prev, -W * .3 * e, 0, 1); draw(sd, W * (1 - e), 0, 1); }
+      else if (sd.tr === 'up') { draw(prev, 0, 0, 1); draw(sd, 0, 972 * (1 - e), 1); }
+      else if (sd.tr === 'zoom') { draw(prev, 0, 0, 1); draw(sd, 0, 0, e, .6 + .4 * e); }
+      else { draw(prev, 0, 0, 1); draw(sd, 0, 0, e); }
+    } else draw(sd, 0, 0, 1);
+  }
+  // phone placement: slight float + zoom
+  let sc = 1, tx = 0, ty = 0;
+  for (const z of ZM) { const k = Math.min(ease((t - z.t0) / .7), ease((z.t1 - t) / .7)); if (k > 0) { sc = lerp(1, z.s, k); tx = lerp(0, (238 - z.cx * K) * (z.s - 1), k); ty = lerp(0, (500 - z.cy * K) * (z.s - 1), k); } }
+  const float = Math.sin(t * .6) * 4;
+  // phone offscreen during some full scenes
+  let off = 0; for (const f of FX) if (['intro', 'end', 'wall', 'dioceses', 'chaos', 'candle'].includes(f.type)) { const k = Math.min(ease((t - f.t0) / .7), ease((f.t1 - t) / .7)); off = Math.max(off, k); }
+  if (['chaos'].some(ty2 => FX.some(f => f.type === ty2 && t > f.t0 && t < f.t1))) off = 0; // chaos uses phone
+  const ph = $('phone'); ph.style.transform = `translate(${tx + off * 900}px,${ty + float}px) scale(${sc})`;
+  ph.style.opacity = 1;
+}
+// ---------- effects ----------
+function renderFx(t) {
+  const fxl = $('fx'), ins = $('inscreen'), full = $('full'); fxl.innerHTML = ''; ins.innerHTML = ''; full.innerHTML = '';
+  // taps
+  for (const tp of TAP) { const k = (t - tp.t) / .6; if (k < 0 || k > 1) continue; const r = tp.r * (1 + k * .8); el(ins, 'div', 'tap', `left:${tp.x * K - r}px;top:${tp.y * K - r}px;width:${2 * r}px;height:${2 * r}px;opacity:${1 - k}`); el(ins, 'div', 'tapdot', `left:${tp.x * K - 20}px;top:${tp.y * K - 20}px;width:40px;height:40px;opacity:${clamp(1 - k * 1.5)}`); }
+  for (const f of FX) { if (t < f.t0 - .1 || t > f.t1 + .1) continue; const fn = FXF[f.type]; if (fn) fn(t, f, { fxl, ins, full }); }
+  $('flash').style.opacity = 0;
+  $('fade').style.opacity = clamp((t - (DUR - 1.2)) / 1.0);
+}
+const PHX = 1180, PHY = 40; // phone origin on stage (screen at +14)
+const FXF = {
+  intro(t, f, { full }) {
+    const k = win(t, f.t0 - 1, f.t1, .9);
+    const dawn = clamp((t - .2) / 4);
+    const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:linear-gradient(180deg, ${mix('#1d2340', '#f3d9a8', dawn)} 0%, ${mix('#3a3456', '#fbefd8', dawn)} 70%, ${mix('#4b3f50', '#f7efe0', dawn)} 100%)`);
+    // sun glow
+    el(d, 'div', 'abs', `left:960px;top:${720 - 260 * dawn}px;width:900px;height:900px;margin:-450px;border-radius:50%;background:radial-gradient(circle, rgba(255,226,160,${.85 * dawn}), rgba(255,226,160,0) 60%)`);
+    // church silhouette svg
+    const cs = `<svg width="760" height="420" viewBox="0 0 760 420" style="position:absolute;left:580px;top:${600 - 20 * dawn}px"><g fill="${mix('#141829', '#c9a774', dawn)}" opacity="${.9 - .35 * dawn}"><rect x="300" y="120" width="160" height="300"/><polygon points="300,120 380,20 460,120"/><rect x="372" y="-30" width="16" height="60"/><rect x="352" y="-12" width="56" height="14"/><rect x="120" y="220" width="180" height="200"/><polygon points="110,225 210,150 310,225"/><rect x="460" y="220" width="180" height="200"/><polygon points="450,225 550,150 650,225"/><rect x="0" y="380" width="760" height="40"/></g><g fill="${mix('#f7d38a', '#fff6dc', dawn)}" opacity="${.9 - .5 * dawn}"><path d="M362 200a18 18 0 0 1 36 0v60h-36z"/><rect x="190" y="290" width="40" height="60" rx="18"/><rect x="530" y="290" width="40" height="60" rx="18"/></g></svg>`;
+    d.insertAdjacentHTML('beforeend', cs);
+    // icon rise
+    const ir = back((t - 1.6) / 1.1); const io = clamp((t - 1.6) / .5);
+    const ic = imgEl(d, 'icon', `position:absolute;left:${960 - 110}px;top:${200 + (1 - ir) * 80}px;width:220px;height:220px;border-radius:52px;opacity:${io};box-shadow:0 30px 70px rgba(40,30,10,.35)`);
+    const tt = clamp((t - 2.4) / .8);
+    el(d, 'div', 'abs', `left:0;right:0;top:450px;text-align:center;font-weight:800;font-size:96px;letter-spacing:-2px;color:${mix('#fff', '#2b2420', dawn)};opacity:${tt};transform:translateY(${(1 - tt) * 20}px)`, '가톨릭그램');
+    const st = clamp((t - 3.0) / .8);
+    el(d, 'div', 'abs', `left:0;right:0;top:575px;text-align:center;font-weight:700;font-size:40px;color:${mix('#eee', '#6b5536', dawn)};opacity:${st}`, '신자들이 함께 만드는 공간');
+    // lower third name
+    const nt = Math.min(eout((t - 2.0) / .6), clamp((P(1) + .2 - t) / .5));
+    const lt = el(d, 'div', 'abs', `left:120px;top:880px;opacity:${nt};transform:translateX(${(1 - nt) * -40}px);display:flex;align-items:center;gap:20px`);
+    el(lt, 'div', '', 'width:8px;height:86px;border-radius:4px;background:#b08a3e');
+    el(lt, 'div', '', `font-weight:800;font-size:44px;color:${mix('#fff', '#2b2420', dawn)}`, '윤호요셉 신부<div style="font-weight:700;font-size:26px;opacity:.75;margin-top:6px">가톨릭그램을 만든 사람</div>');
+  },
+  chaos(t, f, { full }) {
+    const k = win(t, f.t0, f.t1, .6);
+    const calm = clamp((t - (S(2, 2) - .5)) / 1.5);
+    const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:${mix('#2a2a33', '#e9e2d6', calm)}`);
+    const words = ['속보', '충격!', '논란', '광고', '댓글 1,024', '실시간', '단독', '긴급', '…?!', '알림 99+', '구독', '좋아요 0'];
+    for (let i = 0; i < 26; i++) {
+      const sp = 60 + (i * 37) % 90; const y = ((i * 97) % 1100) - 60; const x = ((i * 211 + t * sp * (1.2 - calm)) % 2300) - 300;
+      const hue = (i * 47) % 360; const w = words[i % words.length];
+      el(d, 'div', 'abs', `left:${x}px;top:${y + 20 * Math.sin(t * 3 + i)}px;padding:18px 28px;border-radius:18px;background:hsla(${hue},70%,${55 + 10 * calm}%,${.85 - .6 * calm});color:#fff;font-weight:800;font-size:${30 + (i % 4) * 8}px;transform:rotate(${(i % 7 - 3) * 3}deg);filter:blur(${calm * 4}px)`, w);
+    }
+    // small phone silhouette with flicker
+    el(d, 'div', 'abs', `left:760px;top:240px;width:400px;height:600px;border-radius:50px;background:rgba(15,15,20,${.9 - .5 * calm});box-shadow:0 0 0 10px rgba(255,255,255,.08);opacity:${1 - calm}`);
+  },
+  candle(t, f, { full }) {
+    const k = win(t, f.t0, f.t1, .7);
+    const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:radial-gradient(900px 700px at 50% 55%, #3a2d22, #120e0b)`);
+    const lit = eout((t - f.t0 - .4) / 1.2);
+    const fl = 1 + .05 * Math.sin(t * 13) + .04 * Math.sin(t * 7.3);
+    el(d, 'div', 'abs', `left:960px;top:430px;width:800px;height:800px;margin:-400px;border-radius:50%;background:radial-gradient(circle, rgba(255,200,110,${.55 * lit}), rgba(255,200,110,0) 60%);transform:scale(${fl})`);
+    el(d, 'div', 'abs', `left:910px;top:520px;width:100px;height:320px;border-radius:14px;background:linear-gradient(90deg,#efe3cc,#fffaf0 45%,#e2d2b5);box-shadow:0 20px 40px rgba(0,0,0,.4)`);
+    el(d, 'div', 'abs', `left:958px;top:496px;width:4px;height:28px;background:#3a2a1a;border-radius:2px`);
+    el(d, 'div', 'abs', `left:${960 - 22}px;top:${420 - 10 * (fl - 1)}px;width:44px;height:96px;border-radius:50% 50% 45% 45%/70% 70% 30% 30%;background:radial-gradient(ellipse at 50% 75%, #fff8e0 0 25%, #ffd36a 45%, rgba(255,140,40,.85) 75%, rgba(255,120,30,0) 100%);opacity:${lit};transform:scale(${fl * lit}) rotate(${2 * Math.sin(t * 5)}deg);transform-origin:50% 100%`);
+    const tx = clamp((t - f.t0 - 1.4) / 1);
+    el(d, 'div', 'abs', `left:0;right:0;top:880px;text-align:center;font-weight:800;font-size:56px;color:#f6e6c8;opacity:${tx}`, '마음 놓고 모일 수 있는 곳');
+  },
+  tagsfloat(t, f, { fxl }) {
+    f.items.forEach((s, i) => { const ti = f.t0 + .3 + i * .55; const k = back((t - ti) / .6); const o = Math.min(clamp((t - ti) / .3), clamp((f.t1 - t) / .4)); const pos = [[1040, 230], [1650, 360], [1010, 640], [1640, 760]][i]; el(fxl, 'div', 'chip', `left:${pos[0]}px;top:${pos[1] + 8 * Math.sin(t * 1.5 + i)}px;opacity:${o};transform:scale(${k})`, ['⛪ ', '📖 ', '📢 ', '🙏 '][i] + s); });
+  },
+  dioceses(t, f, { full }) {
+    const k = win(t, f.t0, f.t1, .7);
+    const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:radial-gradient(1100px 800px at 50% 50%, #fbf6ec, #ead9bd)`);
+    const names = ['서울', '춘천', '대전', '대구', '부산', '청주', '마산', '인천', '수원', '원주', '의정부', '안동', '광주', '전주', '제주', '군종'];
+    const gather = ease((t - (S(5, 1) - .2)) / 2.2);
+    const icS = back((t - f.t0 - .3) / .8);
+    imgEl(d, 'icon', `position:absolute;left:${960 - 100}px;top:${470 - 100}px;width:200px;height:200px;border-radius:46px;transform:scale(${icS});box-shadow:0 26px 60px rgba(60,40,10,.3)`);
+    names.forEach((n, i) => {
+      const a = i / 16 * Math.PI * 2 + t * .08; const R0 = 980, R1 = 330;
+      const ti = f.t0 + .2 + i * .12; const ap = eout((t - ti) / .9);
+      const R = lerp(R0, lerp(560, R1, gather), ap);
+      const x = 960 + R * Math.cos(a) * 1.25, y = 470 + R * Math.sin(a) * .78;
+      el(d, 'div', 'dio', `left:${x}px;top:${y}px;transform:translate(-50%,-50%);opacity:${clamp(ap * 1.4)}`, n + '교구');
+    });
+    const tx = clamp((t - (S(5, 1) + .8)) / .8);
+    el(d, 'div', 'abs', `left:0;right:0;top:880px;text-align:center;font-weight:800;font-size:54px;color:#4a3a22;opacity:${tx}`, '전국의 신자들이 한곳에');
+  },
+  spread(t, f, { fxl }) {
+    const avs = 7; for (let i = 0; i < avs; i++) { const a = -Math.PI / 2 + (i - 3) * .42; const R = 560; const x = PHX + 238 + R * Math.cos(a) * 1.1 - 520, y = 500 + R * Math.sin(a) * .9 + 120; }
+    for (let i = 0; i < 14; i++) { const ti = f.t0 + i * .55; const k = (t - ti) / 2.2; if (k < 0 || k > 1) continue; const ang = Math.PI + (i % 7 - 3) * .32; const x = PHX + 230 + Math.cos(ang) * 640 * eout(k); const y = 480 + Math.sin(ang) * 420 * eout(k) - 80 * k; el(fxl, 'div', 'emo', `left:${x}px;top:${y}px;opacity:${1 - k};transform:scale(${.8 + k * .6})`, i % 2 ? '❤️' : '🙏'); }
+  },
+  store(t, f, { ins }) {
+    const k = win(t, f.t0, f.t1, .4);
+    const d = el(ins, 'div', 'abs', `inset:0;background:#fff;opacity:${k};font-family:NSR`);
+    el(d, 'div', 'abs', 'left:0;right:0;top:0;height:90px;background:#fff');
+    const q = '가톨릭그램'; const n = Math.floor(clamp((t - f.t0 - .4) / 1.4) * q.length);
+    el(d, 'div', 'abs', `left:22px;right:22px;top:70px;height:62px;border-radius:31px;background:#eef1f4;display:flex;align-items:center;gap:12px;padding:0 22px;font-size:24px;font-weight:700;color:#222`, '🔍 ' + q.slice(0, n) + (n < q.length && Math.floor(t * 3) % 2 ? '|' : ''));
+    const rs = clamp((t - f.t0 - 2.0) / .5);
+    const row = el(d, 'div', 'abs', `left:22px;right:22px;top:170px;opacity:${rs};display:flex;gap:18px;align-items:center`);
+    imgEl(row, 'icon', 'width:110px;height:110px;border-radius:26px;box-shadow:0 4px 12px rgba(0,0,0,.15)');
+    el(row, 'div', '', 'font-size:28px;font-weight:800;color:#111', '가톨릭그램<div style="font-size:19px;font-weight:700;color:#1a7f5a;margin-top:6px">가톨릭 신자들의 SNS</div><div style="font-size:18px;color:#666;margin-top:4px">★ 4.9 · 무료</div>');
+    const pressed = t > f.t0 + 3.4; const done = t > f.t0 + 4.4;
+    el(d, 'div', 'abs', `left:22px;right:22px;top:310px;height:64px;border-radius:32px;background:${done ? '#fff' : '#1a7f5a'};border:2px solid #1a7f5a;color:${done ? '#1a7f5a' : '#fff'};display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:800;opacity:${rs};transform:scale(${pressed && !done ? .96 : 1})`, done ? '열기' : '설치');
+    if (t > f.t0 + 3.3 && t < f.t0 + 4.0) { const kk = (t - f.t0 - 3.3) / .7; el(d, 'div', 'tap', `left:${224 - 30 - kk * 20}px;top:${342 - 30 - kk * 20}px;width:${60 + kk * 40}px;height:${60 + kk * 40}px;opacity:${1 - kk}`); }
+    for (let i = 0; i < 3; i++) el(d, 'div', 'abs', `left:${22 + i * 140}px;top:410px;width:126px;height:240px;border-radius:16px;background:${['#efe6d6', '#e3ecdf', '#e9e2f0'][i]};opacity:${rs}`);
+    el(d, 'div', 'abs', 'left:22px;top:690px;font-size:22px;font-weight:800;color:#333;opacity:' + rs, 'Google Play');
+  },
+  safari(t, f, { ins }) {
+    const k = win(t, f.t0, f.t1, .4);
+    const d = el(ins, 'div', 'abs', `inset:0;background:#f7efe0;opacity:${k}`);
+    imgEl(d, 'home', 'position:absolute;left:0;top:0;width:448px;opacity:.95;filter:saturate(.9)');
+    el(d, 'div', 'abs', 'left:0;right:0;bottom:0;height:120px;background:rgba(245,245,247,.97);border-top:1px solid #ddd');
+    el(d, 'div', 'abs', 'left:30px;right:30px;bottom:66px;height:44px;border-radius:12px;background:#e4e4e8;display:flex;align-items:center;justify-content:center;font-size:19px;color:#333', '🔒 catholicgram-dey7.vercel.app');
+    el(d, 'div', 'abs', 'left:0;right:0;bottom:16px;display:flex;justify-content:space-around;font-size:26px;color:#1a73e8', '<span>‹</span><span>›</span><span>⬆︎</span><span>📖</span><span>⧉</span>');
+    const sh = ease((t - f.t0 - 1.4) / .5);
+    if (t > f.t0 + .9 && t < f.t0 + 1.5) { const kk = (t - f.t0 - .9) / .6; el(d, 'div', 'tap', `left:${224 - 25 - kk * 15}px;top:${940 - 25 - kk * 15}px;width:${50 + kk * 30}px;height:${50 + kk * 30}px;opacity:${1 - kk}`); }
+    const sheet = el(d, 'div', 'abs', `left:0;right:0;bottom:0;height:520px;border-radius:24px 24px 0 0;background:#f2f2f6;transform:translateY(${(1 - sh) * 540}px);box-shadow:0 -10px 30px rgba(0,0,0,.15)`);
+    ['복사', '읽기 목록에 추가', '책갈피 추가', '즐겨찾기에 추가', '홈 화면에 추가', '페이지에서 찾기'].forEach((s, i) => { const hl = i === 4 && t > f.t0 + 2.6; el(sheet, 'div', 'abs', `left:20px;right:20px;top:${40 + i * 70}px;height:60px;border-radius:12px;background:${hl ? '#dbe8ff' : '#fff'};display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:22px;font-weight:${hl ? 800 : 400};color:#111`, `<span>${s}</span><span>${['⧉', '👓', '📖', '☆', '⊞', '🔍'][i]}</span>`); });
+    if (t > f.t0 + 2.6 && t < f.t0 + 3.3) { const kk = (t - f.t0 - 2.6) / .7; el(sheet, 'div', 'tap', `left:${200 - 28 - kk * 18}px;top:${40 + 4 * 70 + 30 - 28 - kk * 18}px;width:${56 + kk * 36}px;height:${56 + kk * 36}px;opacity:${1 - kk}`); }
+  },
+  lockchip(t, f, { fxl }) { const k = back((t - f.t0) / .6), o = win(t, f.t0, f.t1, .3); el(fxl, 'div', 'chip', `left:930px;top:560px;opacity:${o};transform:scale(${k})`, '🔒 운영자만 볼 수 있어요'); },
+  dove(t, f, { fxl }) { const k = back((t - f.t0) / .7), o = win(t, f.t0, f.t1, .3); el(fxl, 'div', 'chip', `left:960px;top:700px;opacity:${o};transform:scale(${k})`, '🕊️ 축일 아침, 교우들의 축하'); const x = clamp((t - f.t0) / 2.4); el(fxl, 'div', 'emo', `left:${lerp(900, 1520, eout(x))}px;top:${lerp(300, 610, eout(x)) + 18 * Math.sin(t * 6)}px;font-size:80px;opacity:${o}`, '🕊️'); },
+  pray(t, f, { fxl }) { for (let i = 0; i < 8; i++) { const ti = f.t0 + i * .22; const k = (t - ti) / 1.8; if (k < 0 || k > 1) continue; const x = PHX + 60 + (i * 53) % 300; el(fxl, 'div', 'emo', `left:${x}px;top:${640 - 380 * eout(k)}px;opacity:${1 - k * k};transform:scale(${.7 + .5 * k})`, '🙏'); } const k = back((t - f.t0) / .5), o = win(t, f.t0, f.t1, .3); el(fxl, 'div', 'chip', `left:950px;top:820px;opacity:${o};transform:scale(${k})`, '🙏 당신을 위해 기도합니다'); },
+  hearts(t, f, { fxl }) { for (let i = 0; i < 9; i++) { const ti = f.t0 + i * .18; const k = (t - ti) / 1.6; if (k < 0 || k > 1) continue; const x = PHX + 120 + (i * 61) % 280; el(fxl, 'div', 'emo', `left:${x}px;top:${660 - 360 * eout(k)}px;opacity:${1 - k * k}`, '❤️'); } },
+  prayrain(t, f, { fxl }) { for (let i = 0; i < 22; i++) { const ti = f.t0 + i * .2; const k = (t - ti) / 2.6; if (k < 0 || k > 1) continue; const x = 1000 + (i * 131) % 820; el(fxl, 'div', 'emo', `left:${x}px;top:${-60 + 1000 * k}px;opacity:${Math.sin(Math.PI * k)};font-size:${44 + (i % 3) * 12}px`, '🙏'); } },
+  notes(t, f, { fxl }) { for (let i = 0; i < 10; i++) { const ti = f.t0 + i * .35; const k = (t - ti) / 2.4; if (k < 0 || k > 1) continue; el(fxl, 'div', 'emo', `left:${PHX + 300 + 60 * Math.sin(i + k * 4) + k * 160}px;top:${700 - 500 * k}px;opacity:${Math.sin(Math.PI * k)};color:#b08a3e`, i % 2 ? '🎵' : '🎶'); } },
+  reelswipe(t, f, { ins }) { const per = 2.2; const ph = ((t - f.t0) % per) / per; if (ph > .55 && ph < .9) { const k = (ph - .55) / .35; el(ins, 'div', 'tapdot', `left:${224 - 22}px;top:${lerp(760, 300, eout(k))}px;width:44px;height:44px;opacity:${Math.sin(Math.PI * k)}`); } },
+  notif(t, f, { ins }) { const k = Math.min(back((t - f.t0) / .6), ease((f.t1 - t) / .5)); const d = el(ins, 'div', 'abs', `left:12px;right:12px;top:${-130 + 170 * k}px;height:110px;border-radius:26px;background:rgba(255,255,255,.98);box-shadow:0 10px 30px rgba(0,0,0,.22);display:flex;align-items:center;gap:14px;padding:0 18px;box-sizing:border-box`); imgEl(d, 'icon', 'width:56px;height:56px;border-radius:14px'); el(d, 'div', '', 'min-width:0', `<div style="font-size:16px;font-weight:700;color:#666">가톨릭그램 · 지금</div><div style="font-size:21px;font-weight:800;color:#111;margin-top:3px;white-space:nowrap">${f.t1 === undefined ? '' : f.t1 && f.t1.toFixed ? '' : ''}${f.t1t || f['t1'] && typeof f['t1'] === 'number' ? '' : ''}${f.title || ''}</div>`); },
+  stickers4(t, f, { fxl }) {
+    const ks = [['sheep01', '아멘이'], ['cloud01', '몽글이'], ['bell01', '딩동이'], ['candle01', '루']];
+    ks.forEach(([k, n], i) => { const ti = f.t0 + i * 1.6; const kk = back((t - ti) / .6); const o = Math.min(clamp((t - ti) / .25), clamp((f.t1 - t) / .4)); const x = 150 + i * 205, y = 560; const d = el(fxl, 'div', 'stk', `left:${x}px;top:${y - 40 * Math.max(0, Math.sin((t - ti) * 3)) * clamp(1 - (t - ti) / 2)}px;width:180px;height:180px;opacity:${o};transform:scale(${kk})`); imgEl(d, k, ''); el(fxl, 'div', 'abs', `left:${x}px;width:180px;top:${y + 190}px;text-align:center;font-weight:800;font-size:30px;color:#4a3e33;opacity:${o}`, n); });
+  },
+  reply(t, f, { ins }) { const k = back((t - f.t0) / .6), o = win(t, f.t0, f.t1, .3); const d = el(ins, 'div', 'abs', `left:28px;right:28px;top:300px;border-radius:24px;background:#fff;box-shadow:0 16px 40px rgba(0,0,0,.25);padding:26px;opacity:${o};transform:scale(${k})`); el(d, 'div', '', 'font-size:22px;font-weight:800;color:#b0405a', '💌 운영자 답장'); el(d, 'div', '', 'margin-top:12px;font-size:20px;line-height:1.5;color:#333', '사연 잘 읽었어요. 함께 기도하겠습니다. 늘 평화가 함께하길 빕니다 🙏'); },
+  soundwave(t, f, { fxl }) { const o = win(t, f.t0, f.t1, .3); const d = el(fxl, 'div', 'chip', `left:930px;top:720px;opacity:${o};display:flex;align-items:center;gap:10px`); el(d, 'span', '', '', '🔔 “찬미예수님!”'); for (let i = 0; i < 5; i++) el(d, 'span', '', `display:inline-block;width:6px;border-radius:3px;background:#b08a3e;height:${10 + 24 * Math.abs(Math.sin(t * 9 + i))}px`); },
+  shield(t, f, { fxl }) { const k = back((t - f.t0) / .8), o = win(t, f.t0, f.t1, .4); const d = el(fxl, 'div', 'abs', `left:1200px;top:300px;width:440px;height:440px;opacity:${o};transform:scale(${k})`); d.innerHTML = `<svg viewBox="0 0 200 220" width="440" height="440"><defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6fa0d8"/><stop offset="1" stop-color="#2f5f99"/></linearGradient></defs><path d="M100 8 L184 40 C184 120 150 180 100 212 C50 180 16 120 16 40 Z" fill="url(#sg)" stroke="#fff" stroke-width="8"/><path d="M100 60 v100 M64 98 h72" stroke="#fff" stroke-width="16" stroke-linecap="round"/></svg>`; },
+  wall(t, f, { full }) {
+    const k = win(t, f.t0, f.t1, .6); const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:radial-gradient(1100px 800px at 50% 50%, #fbf6ec, #e7d5b6);overflow:hidden`);
+    const L = ['home', 'react-both', 'dm', 'lounge', 'intentions', 'me', 'collage', 'music', 'anon', 'alerts', 'celebrate', 'reels', 'explore', 'letters', 'stamps', 'theme-navy', 'comments', 'effect-sticker'];
+    const g = ease((t - (S(33, 1) - .3)) / 2.0);
+    L.forEach((n, i) => { const col = i % 9, row = Math.floor(i / 9); const x0 = 40 + col * 210, y0 = 60 + row * 470 + (col % 2) * 60 - ((t - f.t0) * 18) % 60; const x = lerp(x0, 960 - 95, g), y = lerp(y0, 540 - 205, g); const ap = eout((t - f.t0 - i * .06) / .5); const dd = el(d, 'div', 'abs', `left:${x}px;top:${y}px;width:190px;height:410px;border-radius:24px;overflow:hidden;box-shadow:0 12px 30px rgba(60,40,10,.2);opacity:${ap * (1 - g)};transform:scale(${lerp(1, .4, g)})`); imgEl(dd, n, 'width:190px'); });
+    const ic = back((t - (S(33, 1) + 1.2)) / .8); imgEl(d, 'icon', `position:absolute;left:${960 - 120}px;top:${540 - 160}px;width:240px;height:240px;border-radius:56px;transform:scale(${ic});box-shadow:0 30px 70px rgba(60,40,10,.3)`);
+    const tt = clamp((t - (S(33, 1) + 1.6)) / .6); el(d, 'div', 'abs', `left:0;right:0;top:720px;text-align:center;font-weight:800;font-size:60px;color:#2b2420;opacity:${tt}`, '한 줄의 묵상, 한 번의 기도로');
+  },
+  end(t, f, { full }) {
+    const k = clamp((t - f.t0) / .8); const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:radial-gradient(1200px 900px at 50% 40%, #fbf3e1, #ead6b0)`);
+    el(d, 'div', 'abs', `left:960px;top:330px;width:900px;height:900px;margin:-450px;border-radius:50%;background:radial-gradient(circle, rgba(255,236,190,.9), rgba(255,236,190,0) 60%);transform:scale(${1 + .03 * Math.sin(t * 1.5)})`);
+    const ic = back((t - f.t0 - .3) / .9); imgEl(d, 'icon', `position:absolute;left:${960 - 120}px;top:150px;width:240px;height:240px;border-radius:56px;transform:scale(${ic});box-shadow:0 30px 70px rgba(60,40,10,.3)`);
+    const tt = clamp((t - f.t0 - .8) / .6); el(d, 'div', 'abs', `left:0;right:0;top:430px;text-align:center;font-weight:800;font-size:92px;letter-spacing:-2px;color:#2b2420;opacity:${tt}`, '가톨릭그램');
+    const bt = back((t - f.t0 - 1.4) / .7);
+    el(d, 'div', 'abs', `left:0;right:0;top:590px;text-align:center;opacity:${clamp((t - f.t0 - 1.4) / .3)};transform:scale(${bt})`, '<span style="display:inline-flex;align-items:center;gap:18px;padding:26px 48px;border-radius:999px;background:#2b2420;color:#fff;font-weight:800;font-size:44px;box-shadow:0 18px 40px rgba(43,36,32,.35)">▶ Play 스토어에서 ‘가톨릭그램’</span>');
+    const qt = clamp((t - f.t0 - 2.2) / .6);
+    el(d, 'div', 'abs', `left:0;right:0;top:760px;text-align:center;font-weight:700;font-size:32px;color:#6b5536;opacity:${qt}`, '아이폰: 사파리에서 catholicgram-dey7.vercel.app → 홈 화면에 추가');
+    const pt = clamp((t - (S(35, 1) + 1.2)) / .8);
+    el(d, 'div', 'abs', `left:0;right:0;top:860px;text-align:center;font-weight:800;font-size:54px;color:#b08a3e;opacity:${pt}`, '찬미예수님');
+  },
+};
+// notif title fix
+FXF.notif = (t, f, { ins }) => { const k = Math.min(back((t - f.t0) / .6), ease((f.t1 - t) / .5)); const d = el(ins, 'div', 'abs', `left:12px;right:12px;top:${-130 + 170 * k}px;height:110px;border-radius:26px;background:rgba(255,255,255,.98);box-shadow:0 10px 30px rgba(0,0,0,.22);display:flex;align-items:center;gap:14px;padding:0 18px;box-sizing:border-box`); imgEl(d, 'icon', 'width:56px;height:56px;border-radius:14px'); el(d, 'div', '', 'min-width:0', `<div style="font-size:16px;font-weight:700;color:#666">가톨릭그램 · 지금</div><div style="font-size:21px;font-weight:800;color:#111;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.title1}</div><div style="font-size:19px;color:#333;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${f.title2}</div>`); };
+for (const f of FX) { }
+function mix(a, b, k) { const p = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)); const x = p(a), y = p(b); return `rgb(${x.map((v, i) => Math.round(v + (y[i] - v) * k)).join(',')})`; }
+</script></body></html>
