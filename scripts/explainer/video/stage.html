@@ -288,7 +288,6 @@ window.render = t => {
   $('prog').style.opacity = (t < P(1) + 1 || t > P(35) - .3) ? 0 : 1;
   // subtitles
   const s = subAt(t); const sb = $('subs').firstChild;
-  const sw = $('subs'); if (fullHide || pi < 1) { sw.style.left = '260px'; sw.style.width = '1400px'; sw.style.justifyContent = 'center'; } else { sw.style.left = '120px'; sw.style.width = '880px'; sw.style.justifyContent = 'flex-start'; }
   if (s) { sb.textContent = s.text; const k2 = Math.min(eout((t - s.t0 + .15) / .2), clamp((s.t1 + .5 - t) / .2)); sb.style.opacity = k2; $('subs').style.visibility = 'visible'; } else $('subs').style.visibility = 'hidden';
   // phone layers
   renderPhone(t);
