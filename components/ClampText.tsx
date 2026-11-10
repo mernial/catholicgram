@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { URL_PATTERN } from '@/components/HashtagText';
 import { registerExpander } from '@/lib/select-scope';
 
 // 글을 정해진 줄 수만 보여 주고, 넘치면 마지막 줄의 글 바로 뒤에 '… 더 보기'를 붙인다.
@@ -48,6 +49,11 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
         if (fits(`${head}${text.slice(0, mid).trimEnd()} … 더 보기　`)) lo = mid; else hi = mid - 1;
       }
       probe.remove();
+      // 자르는 자리가 주소(https://…) 한가운데면 주소 앞에서 자름 — 잘린 주소는 눌러도 엉뚱한 곳으로 감 (운영자 2026-11-10)
+      for (const m of text.matchAll(URL_PATTERN)) {
+        const st = m.index ?? 0, en = st + m[0].length;
+        if (st < lo && lo < en) { lo = st; break; }
+      }
       setCut(lo);
       setLong(true);
     };
