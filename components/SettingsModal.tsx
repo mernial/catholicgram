@@ -26,7 +26,7 @@ let savedListScroll = 0;
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', restoreScroll = false, backRef, onSubView, onOpenLegal, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide, onPersonalPreview, onSwitchAccount }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', restoreScroll = false, backRef, onSubView, onOpenLegal, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide, onPersonalPreview, onSwitchAccount, onFeedback, feedbackLabel }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -47,6 +47,8 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   onEditProfile?: () => void;
   onOpenNotices?: () => void;
   onShareApp?: () => void;    // 가톨릭그램 알리기 (components/ShareApp)
+  onFeedback?: () => void;    // 건의하기 (관리자는 건의함) — 내 공간에서 옮겨 옴 (운영자 2026-11-11)
+  feedbackLabel?: string;
   onOpenLegal?: (doc: 'terms' | 'privacy') => void; // 이용약관·개인정보처리방침을 앱 안의 창으로 (없으면 예전처럼 페이지로)
 }) {
   const [view, setView] = useState<'main' | 'blocks' | 'feast' | 'sound' | 'version'>(initialView);
@@ -284,7 +286,10 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
               <button onClick={onOpenVault} className={`${row} bg-stone-50`}><span className={label}><IconBadge name="lock" tone="gold" />보관 음악 <span className="text-xs text-stone-400">(비공개 · 선물용 · 관리자)</span></span><span className="text-stone-300">›</span></button>
             )}
             {onShareApp && (
-              <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
+              <button onClick={onShareApp} className={row}><span className={label}><IconBadge name="megaphone" tone="gold" />친구 초대 · 가톨릭그램 알리기</span><span className="text-stone-300">›</span></button>
+            )}
+            {onFeedback && (
+              <button onClick={onFeedback} className={row}><span className={label}><IconBadge name="envelope" tone="green" />{feedbackLabel || '건의하기'}</span><span className="text-stone-300">›</span></button>
             )}
             <button onClick={() => openView('blocks')} className={row}><span className={label}><IconBadge name="prohibit" />차단 목록</span><span className="text-stone-300">›</span></button>
             <button onClick={() => { openView('version'); checkLatest(); }} className={row}>
