@@ -5585,7 +5585,6 @@ export default function Home() {
                   <option value="">없음</option>
                   {Object.entries(BADGES).map(([key, b]) => <option key={key} value={key}>{b.label}</option>)}
                 </select>
-                <button onClick={() => setBadgeGrantFor({ id: viewingProfile.id, name: viewingProfile.baptismal_name || '교우' })} className="ml-auto shrink-0 px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold">🏅 뱃지 달기</button>
               </div>
             )}
           </div>
