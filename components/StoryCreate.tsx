@@ -122,6 +122,7 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
   onPickMusic: (cb: (m: StoryMusic) => void) => void;
 }) {
   const cameraRef = useRef<HTMLInputElement>(null);
+  const videoCamRef = useRef<HTMLInputElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const collageRef = useRef<HTMLInputElement>(null);
   const [collageFiles, setCollageFiles] = useState<File[] | null>(null);
@@ -157,11 +158,18 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
           </button>
         </div>
         <p className="mt-6 mb-2 text-[1.0625rem] font-bold">사진·영상</p>
+        {/* 카메라: 사진·영상을 한 칸(accept="image/*,video/*")에 함께 두면 안드로이드 크롬이 카메라 대신 사진 고르기 창을 띄움(운영자 2026-11-11) → 사진 찍기·영상 찍기를 따로 */}
         <div className="grid grid-cols-2 gap-2.5">
-          <button onClick={() => cameraRef.current?.click()} className="aspect-[3/4] rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-3 active:scale-[0.98] transition">
-            <Icon name="camera" className="w-12 h-12" />
-            <span className="font-bold">카메라</span>
-          </button>
+          <div className="grid grid-rows-2 gap-2.5">
+            <button onClick={() => cameraRef.current?.click()} className="rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] transition">
+              <Icon name="camera" className="w-9 h-9" />
+              <span className="font-bold text-[0.9375rem]">사진 찍기</span>
+            </button>
+            <button onClick={() => videoCamRef.current?.click()} className="rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-1.5 active:scale-[0.98] transition">
+              <Icon name="video" className="w-9 h-9" />
+              <span className="font-bold text-[0.9375rem]">영상 찍기</span>
+            </button>
+          </div>
           <button onClick={() => galleryRef.current?.click()} className="aspect-[3/4] rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-3 active:scale-[0.98] transition">
             <Icon name="image" className="w-12 h-12" />
             <span className="font-bold">사진첩</span>
@@ -170,7 +178,8 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
         </div>
         <p className="mt-5 text-center text-[0.75rem] text-white/45">스토리는 24시간 뒤에 저절로 사라져요</p>
       </div>
-      <input ref={cameraRef} type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={one} />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={one} />
+      <input ref={videoCamRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={one} />
       <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={one} />
       <input ref={collageRef} type="file" accept="image/*" multiple className="hidden" onChange={e => {
         const fs = Array.from(e.target.files || []); e.target.value = '';
