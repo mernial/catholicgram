@@ -11,14 +11,15 @@ import { initial } from '@/lib/fancy-name';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { clipText } from '@/lib/clip-text';
 import VideoTrimmer from '@/components/VideoTrimmer';
+import StoryCreate, { type StoryMusic } from '@/components/StoryCreate';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 또는 짧은 영상(1분 이하) + 짧은 글.
 // 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
 // 홈 맨 위에 동그라미 줄(내 스토리 → 팔로우한 교우 → 다른 교우), 누르면 화면 가득 보기.
 
-export interface StoryPost { id: string; user_id: string; images?: string[] | null; video_url?: string | null; video_poster?: string | null; content?: string | null; created_at: string; pray_count?: number; like_count?: number }
-interface Story { id: string; user_id: string; image_url: string; video_url: string | null; caption: string | null; created_at: string; pray: number; like: number }
+export interface StoryPost { id: string; user_id: string; images?: string[] | null; video_url?: string | null; video_poster?: string | null; music?: string | null; music_title?: string | null; content?: string | null; created_at: string; pray_count?: number; like_count?: number }
+interface Story { id: string; user_id: string; image_url: string; video_url: string | null; music: string | null; music_title: string | null; caption: string | null; created_at: string; pray: number; like: number }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }
 export interface StoryUser { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string }
 
@@ -31,7 +32,7 @@ const ago = (iso: string) => {
   return m < 1 ? '방금' : m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간`;
 };
 
-export default function Stories({ posts, unavailable, openRequest, onOpenHandled, pickedFile, onDraftEnd, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment }: {
+export default function Stories({ posts, unavailable, openRequest, onOpenHandled, pickedFile, onDraftEnd, me, followingIds, blockedIds, isAdmin, viewerOpen, setViewerOpen, onOpenProfile, onMessage, onNeedLogin, canPost, onPosted, onDelete, myReactions, commentCounts, onReact, onComment, onReply, onFollow, onPickMusic, musicSrc, onBusyChange }: {
   posts: StoryPost[];                   // 24시간 안의 스토리 (화면이 불러옴)
   unavailable: boolean;                 // SQL 실행 전
   openRequest?: string | null;          // 이 교우의 스토리를 바로 열기 (알림을 눌렀을 때)
@@ -55,10 +56,15 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   commentCounts: Record<string, number>;
   onReact: (id: string, type: 'pray' | 'like') => void;
   onComment: (id: string) => void;
+  onReply?: (story: { id: string; user_id: string }, text: string) => Promise<boolean>; // 스토리에 메시지·감정 보내기 (1:1 메시지로)
+  onFollow?: (userId: string) => void;
+  onPickMusic?: (cb: (m: StoryMusic) => void) => void; // 음악 고르기 창(page 의 MusicPicker)
+  musicSrc?: (value: string) => { url: string; start: number; clip?: number } | null;
+  onBusyChange?: (busy: boolean) => void; // '스토리에 추가'·새 스토리 미리보기가 열려 있는지 (그동안 공지·소식 창을 띄우지 않게)
 }) {
   const stories: Story[] = useMemo(() => posts
     .filter(p => (p.images && p.images.length > 0) || !!p.video_url)
-    .map(p => ({ id: p.id, user_id: p.user_id, image_url: p.images?.[0] || p.video_poster || '', video_url: p.video_url || null, caption: p.content || null, created_at: p.created_at, pray: p.pray_count || 0, like: p.like_count || 0 })), [posts]);
+    .map(p => ({ id: p.id, user_id: p.user_id, image_url: p.images?.[0] || p.video_poster || '', video_url: p.video_url || null, music: p.music || null, music_title: p.music_title || null, caption: p.content || null, created_at: p.created_at, pray: p.pray_count || 0, like: p.like_count || 0 })), [posts]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
   const [seen, setSeen] = useState<string[]>([]);
   const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
@@ -66,6 +72,16 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [draft, setDraft] = useState<{ file: File; url: string; video?: boolean; duration?: number } | null>(null);
   const [trim, setTrim] = useState({ start: 0, end: 0 }); // 영상 스토리: 올릴 구간(초) — 1분 안쪽으로 고름
   const [videoStatus, setVideoStatus] = useState('');
+  const [draftMusic, setDraftMusic] = useState<StoryMusic | null>(null);
+  const [showCreate, setShowCreate] = useState(false); // '스토리에 추가' 화면
+  // 보기: 메시지 보내기
+  const [replyText, setReplyText] = useState('');
+  const [replyFocus, setReplyFocus] = useState(false);
+  const [sentBurst, setSentBurst] = useState<{ emoji: string; key: number } | null>(null);
+  const [followed, setFollowed] = useState<Set<string>>(new Set());
+  const replyRef = useRef<HTMLTextAreaElement>(null);
+  const busy = showCreate || !!draft;
+  useEffect(() => { onBusyChange?.(busy); }, [busy]);
   const videoJobRef = useRef(0);
   const cancelDraft = () => { videoJobRef.current++; if (draft) URL.revokeObjectURL(draft.url); setDraft(null); setVideoStatus(''); onDraftEnd?.(false); };
   useBackLayer(!!draft, cancelDraft); // 새 스토리 미리보기: 뒤로가기는 취소
@@ -126,8 +142,9 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     const tick = (now: number) => {
       if (!pausedRef.current) elapsed += now - last;
       last = now;
-      setProgress(Math.min(1, elapsed / STORY_MS));
-      if (elapsed >= STORY_MS) { step(1); return; }
+      const ms = current.music ? 15000 : STORY_MS; // 음악 스토리는 15초
+      setProgress(Math.min(1, elapsed / ms));
+      if (elapsed >= ms) { step(1); return; }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -135,6 +152,34 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   }, [viewerOpen, pos.user, pos.item, current?.id]);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
+  // 음악 스토리: 그 스토리를 보는 동안 음악 (멈추면 같이 멈춤)
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const musicKey = viewerOpen && current?.music && !current.video_url ? `${current.id}` : '';
+  useEffect(() => {
+    if (!musicKey || !current?.music) return;
+    const src = musicSrc?.(current.music);
+    if (!src) return;
+    const a = new Audio(src.url);
+    a.currentTime = src.start || 0;
+    a.loop = true;
+    audioRef.current = a;
+    if (!pausedRef.current) a.play().catch(() => {});
+    return () => { a.pause(); a.src = ''; if (audioRef.current === a) audioRef.current = null; };
+  }, [musicKey]);
+  useEffect(() => { const a = audioRef.current; if (!a) return; if (paused) a.pause(); else a.play().catch(() => {}); }, [paused]);
+  // 메시지 보내기 · 감정 보내기 (상대에게 1:1 메시지로)
+  const sendReply = async (text: string, emoji?: boolean) => {
+    if (!current) return;
+    if (!me) { onNeedLogin(); return; }
+    const t = text.trim();
+    if (!t || !onReply) return;
+    const ok = await onReply({ id: current.id, user_id: current.user_id }, t);
+    if (!ok) return;
+    setReplyText('');
+    replyRef.current?.blur();
+    setSentBurst({ emoji: emoji ? t : '✓', key: Date.now() });
+    setTimeout(() => setSentBurst(b => (b && Date.now() - b.key >= 1300 ? null : b)), 1400);
+  };
   useEffect(() => {
     const v = storyVideoRef.current;
     if (!v || !current?.video_url) return;
@@ -187,13 +232,14 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const pick = () => {
     if (!me) { onNeedLogin(); return; }
     if (!canPost()) return;
-    fileRef.current?.click();
+    setShowCreate(true);
   };
   // 새 게시물 화면에서 고른 사진 → '새 스토리' 미리보기 (받은 사진마다 한 번 — 효과 대신 그리는 중에 맞춤)
   const [pickedKey, setPickedKey] = useState<number | null>(null);
   // 사진이면 바로 미리보기. 영상이면 길이를 재어 미리보기 + 구간 고르기(처음 1분, 짧으면 전체) — 자르기·줄이기는 올릴 때
-  const startDraft = async (file: File) => {
+  const startDraft = async (file: File, music: StoryMusic | null = null) => {
     setCaption('');
+    setDraftMusic(file.type.startsWith('video/') ? null : music);
     if (!file.type.startsWith('video/')) { setVideoStatus(''); setDraft({ file, url: URL.createObjectURL(file) }); return; }
     const job = ++videoJobRef.current;
     const info = await getVideoInfo(file).catch(() => null);
@@ -252,13 +298,15 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
         const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
         media = { images: [await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name })] };
       }
-      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: clipText(caption.trim(), 100), ...media, is_story: true }).select('id');
+      const row: Record<string, unknown> = { user_id: me.id, author_name: me.name, content: clipText(caption.trim(), 100), ...media, is_story: true };
+      let { data: created, error } = await supabase.from('posts').insert(draftMusic ? { ...row, music: draftMusic.value, music_title: draftMusic.title } : row).select('id');
+      if (error && draftMusic && (error.code === 'PGRST204' || error.code === '42703')) ({ data: created, error } = await supabase.from('posts').insert(row).select('id')); // 음악 칸이 없으면 음악 없이
       if (error) {
         alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
         return;
       }
       URL.revokeObjectURL(draft.url);
-      setDraft(null);
+      setDraft(null); setDraftMusic(null); setShowCreate(false);
       onDraftEnd?.(true);
       // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
       if (created?.[0]?.id) {
@@ -321,6 +369,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
         )}
       </div>
       <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
+      {showCreate && <StoryCreate onClose={() => setShowCreate(false)} onFile={(f, m) => startDraft(f, m || null)} onPickMusic={cb => onPickMusic?.(cb)} />}
 
       {/* 올리기 미리보기 */}
       {draft && (
@@ -328,7 +377,9 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
           <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 text-white">
             <button onClick={cancelDraft} className="text-[0.9375rem]">취소</button>
             <p className="font-bold">새 스토리</p>
-            <span className="w-8" />
+            {!draft.video && onPickMusic
+              ? <button onClick={() => onPickMusic(m => setDraftMusic(m))} className="px-3 h-8 rounded-full bg-white/15 text-[0.8125rem] font-bold flex items-center gap-1"><Icon name="music" className="w-4 h-4" />{draftMusic ? '바꾸기' : '음악'}</button>
+              : <span className="w-8" />}
           </div>
           {draft.video && draft.duration ? (
             <VideoTrimmer src={draft.url} duration={draft.duration} max={MAX_VIDEO_SECONDS} start={trim.start} end={trim.end} onChange={(st, en) => setTrim({ start: st, end: en })} />
@@ -338,6 +389,12 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
             </div>
           )}
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
+            {draftMusic && (
+              <div className="flex items-center gap-2 self-center max-w-full px-3 py-1.5 rounded-full bg-white/15 text-white text-[0.8125rem]">
+                <Icon name="music" className="w-4 h-4 shrink-0" /><span className="truncate">{draftMusic.title}</span>
+                <button onClick={() => setDraftMusic(null)} className="ml-1 text-white/70 text-lg leading-none" aria-label="음악 빼기">×</button>
+              </div>
+            )}
             {/* input 대신 한 줄 textarea: 휴대폰 자판 위 자동 완성 줄이 뜨지 않음 */}
             <textarea rows={1} value={caption} onChange={e => setCaption(e.target.value.replace(/\n/g, ' ').slice(0, 100))} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} enterKeyHint="done" placeholder="한마디 쓰기 (선택)" className="block w-full resize-none [field-sizing:content] max-h-28 px-4 py-3 rounded-3xl bg-white/15 text-white placeholder-white/60 text-[0.9375rem] leading-6 focus:outline-none" />
             <button onClick={post} disabled={posting} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? (videoStatus || '올리는 중...') : '내 스토리에 올리기'}</button>
@@ -379,7 +436,11 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
                     <span className="font-bold text-[0.9375rem] truncate">{a?.baptismal_name || '교우'}</span>
                     <span className="text-white/70 text-[0.8125rem] shrink-0">{ago(current.created_at)}</span>
                   </button>
+                  {current.music_title && !current.video_url && <span className="min-w-0 truncate text-white/80 text-[0.75rem] flex items-center gap-1"><Icon name="music" className="w-3.5 h-3.5 shrink-0" />{current.music_title}</span>}
                   <span className="flex-1" />
+                  {!mine && me && onFollow && !followingIds.has(g.userId) && !followed.has(g.userId) && (
+                    <button onPointerDown={e => e.stopPropagation()} onClick={() => { onFollow(g.userId); setFollowed(prev => new Set(prev).add(g.userId)); }} className="shrink-0 px-3 h-8 rounded-lg border border-white/70 text-white text-[0.8125rem] font-bold">팔로우</button>
+                  )}
                   {current.video_url && <button onClick={toggleSound} onPointerDown={e => e.stopPropagation()} className="w-10 h-10 flex items-center justify-center" aria-label={videoMuted ? '소리 켜기' : '소리 끄기'}><Icon name={videoMuted ? 'mute' : 'speaker'} className="w-5 h-5" /></button>}
                   {(mine || isAdmin) && <button onClick={() => remove(current)} className="w-10 h-10 flex items-center justify-center" aria-label="스토리 지우기"><Icon name="trash" className="w-5 h-5" /></button>}
                   <button onClick={() => setViewerOpen(false)} className="w-10 h-10 flex items-center justify-center text-3xl leading-none" aria-label="닫기">×</button>
@@ -391,25 +452,57 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
               {/* 아래: 한마디 + 메시지 */}
               <div className="absolute bottom-0 inset-x-0 z-10 px-4 pt-10 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-gradient-to-t from-black/70 to-transparent flex flex-col gap-3">
                 {current.caption && <p className="text-white text-[1.0625rem] text-center leading-snug whitespace-pre-wrap drop-shadow">{current.caption}</p>}
-                {/* 기도 · 공감 · 댓글 · 메시지 (다른 게시글과 같음) */}
+                {/* 내 스토리: 기도·공감·댓글 숫자 / 다른 교우 스토리: 인스타그램처럼 '메시지 보내기' + 기도·공감·댓글 */}
                 {(() => {
                   const prayed = myReactions.has(`${current.id}:pray`);
                   const liked = myReactions.has(`${current.id}:like`);
-                  const item = 'flex flex-col items-center gap-0.5 text-white text-[0.8125rem] font-semibold min-w-[3.5rem]';
+                  if (mine || !onReply) {
+                    const item = 'flex flex-col items-center gap-0.5 text-white text-[0.8125rem] font-semibold min-w-[3.5rem]';
+                    return (
+                      <div className="flex items-end justify-around" onPointerDown={e => e.stopPropagation()}>
+                        <button onClick={() => onReact(current.id, 'pray')} className={item} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{current.pray}</button>
+                        <button onClick={() => onReact(current.id, 'like')} className={item} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{current.like}</button>
+                        <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={item} aria-label="댓글"><Icon name="message" className="w-8 h-8" />{commentCounts[current.id] || 0}</button>
+                      </div>
+                    );
+                  }
+                  const ico = 'w-10 h-10 shrink-0 flex items-center justify-center text-white';
                   return (
-                    <div className="flex items-end justify-around" onPointerDown={e => e.stopPropagation()}>
-                      <button onClick={() => onReact(current.id, 'pray')} className={item} aria-label="기도"><Icon name="pray" fill={prayed} className={`w-8 h-8 ${prayed ? 'text-amber-300' : ''}`} />{current.pray}</button>
-                      <button onClick={() => onReact(current.id, 'like')} className={item} aria-label="공감"><Icon name="heart" fill={liked} className={`w-8 h-8 ${liked ? 'text-rose-500' : ''}`} />{current.like}</button>
-                      <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={item} aria-label="댓글"><Icon name="reply" className="w-8 h-8" />{commentCounts[current.id] || 0}</button>
-                      {!mine && me && a && (
-                        <button onClick={() => { setViewerOpen(false); onMessage({ id: g.userId, baptismal_name: a.baptismal_name, avatar_url: a.avatar_url || undefined, handle: (a as Author).handle || undefined, badge_type: (a as Author).badge_type || undefined }); }} className={item} aria-label="메시지">
-                          <Icon name="message" className="w-7 h-7" />메시지
-                        </button>
-                      )}
+                    <div className="flex items-center gap-1" onPointerDown={e => e.stopPropagation()}>
+                      <div className="flex-1 min-w-0 flex items-center gap-1 rounded-full border border-white/60 bg-black/20 pl-4 pr-1.5 min-h-12">
+                        <textarea ref={replyRef} rows={1} value={replyText} onChange={e => setReplyText(e.target.value.slice(0, 500))}
+                          onFocus={() => { setReplyFocus(true); setPaused(true); }} onBlur={() => { setReplyFocus(false); setPaused(false); }}
+                          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover) and (pointer: fine)').matches) { e.preventDefault(); sendReply(replyText); } }}
+                          enterKeyHint="send" placeholder={`${a?.baptismal_name || '교우'}님에게 메시지 보내기`}
+                          className="flex-1 min-w-0 bg-transparent text-white placeholder-white/80 text-[0.9375rem] leading-6 py-2.5 resize-none [field-sizing:content] max-h-24 focus:outline-none" />
+                        {replyText.trim() && <button onPointerDown={e => e.preventDefault()} onClick={() => sendReply(replyText)} className="shrink-0 px-3 h-9 rounded-full text-[0.9375rem] font-bold text-white">보내기</button>}
+                      </div>
+                      {!replyFocus && <>
+                        <button onClick={() => onReact(current.id, 'pray')} className={ico} aria-label={`기도 ${current.pray}`}><Icon name="pray" fill={prayed} className={`w-7 h-7 ${prayed ? 'text-amber-300' : ''}`} /></button>
+                        <button onClick={() => onReact(current.id, 'like')} className={ico} aria-label={`공감 ${current.like}`}><Icon name="heart" fill={liked} className={`w-7 h-7 ${liked ? 'text-rose-500' : ''}`} /></button>
+                        <button onClick={() => { setViewerOpen(false); onComment(current.id); }} className={ico} aria-label={`댓글 ${commentCounts[current.id] || 0}`}><Icon name="message" className="w-7 h-7" /></button>
+                      </>}
                     </div>
                   );
                 })()}
               </div>
+              {/* 메시지 칸을 누르면: 화면을 어둡게 하고 빠른 감정 여섯 (누르면 바로 메시지로) */}
+              {replyFocus && !mine && (
+                <div className="absolute inset-x-0 top-0 bottom-28 z-[5] bg-black/55 backdrop-blur-[2px] flex items-center justify-center animate-fade-in"
+                  onPointerDown={e => { e.stopPropagation(); e.preventDefault(); replyRef.current?.blur(); }}>
+                  <div className="grid grid-cols-3 gap-x-8 gap-y-7" onPointerDown={e => e.stopPropagation()}>
+                    {['😂', '😮', '😍', '😢', '🙏', '👏'].map(em => (
+                      <button key={em} onPointerDown={e => e.preventDefault()} onClick={() => sendReply(em, true)} className="text-[3.75rem] leading-none active:scale-90 transition" aria-label={`${em} 보내기`}>{em}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sentBurst && (
+                <div key={sentBurst.key} className="pointer-events-none absolute inset-0 z-[6] flex flex-col items-center justify-center gap-2 animate-fade-in">
+                  <span className="text-[5.5rem] leading-none drop-shadow-lg" style={{ animation: 'giftPop 0.6s ease-out' }}>{sentBurst.emoji}</span>
+                  <span className="px-3 py-1.5 rounded-full bg-black/60 text-white text-[0.875rem] font-bold">메시지로 보냈어요</span>
+                </div>
+              )}
             </div>
           </div>
         );
