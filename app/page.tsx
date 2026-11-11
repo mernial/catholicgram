@@ -5550,8 +5550,9 @@ export default function Home() {
                       <button onClick={() => { storageSet(`birthdayPromptHidden:${user.id}`, '1'); setBirthdayPromptHidden(true); }} className="shrink-0 w-8 h-8 text-stone-400 text-xl leading-none" aria-label="생일 안내 닫기">×</button>
                     </div>
                   )}
-                  <div className="mt-3 rounded-2xl border border-stone-200 bg-white/60 py-2 grid divide-x divide-stone-100" style={{ gridTemplateColumns: `repeat(${myTiles.filter(t => !('img' in t)).length}, minmax(0, 1fr))` }}>
-                    {myTiles.filter(t => !('img' in t)).map(t => 'img' in t ? null : <button key={t.key} onClick={t.onClick} className={tileCls}>{tileBody(t)}</button>)}
+                  {/* 내 댓글·설정(·홈 화면에 추가)도 프로필 편집·메시지와 같은 모양의 단추 (운영자 2026-11-11 '같은 스타일로 일관되게') */}
+                  <div className="mt-1.5 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${myTiles.filter(t => !('img' in t)).length}, minmax(0, 1fr))` }}>
+                    {myTiles.map(t => 'img' in t ? null : <button key={t.key} onClick={t.onClick} aria-label={t.label} className={`${btn} min-w-0 whitespace-nowrap`}><Icon name={t.icon} className={ico} />{t.key === 'install' ? '앱 설치' : t.label}</button>)}
                   </div>
                   <div className="mt-2.5 rounded-2xl border border-stone-200 bg-white/60 py-2 grid grid-cols-3">
                     {myTiles.filter(t => 'img' in t).map(t => 'img' in t ? <a key={t.key} href={t.href} target="_blank" rel="noopener noreferrer" aria-label={t.aria} className={tileCls}>{tileBody(t)}</a> : null)}
