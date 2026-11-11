@@ -2019,14 +2019,10 @@ export default function Home() {
     window.location.href = data.url;
   };
 
-  // 내 공간: 로그아웃 · 다른 계정으로 로그인 (로그아웃한 뒤 로그인 창을 열고, 카카오·구글·네이버 모두 계정을 새로 고르게 한다)
-  const logout = async () => {
-    if (!(await askConfirm('로그아웃할까요?'))) return;
-    await signOutAndClear();
-    goToHome();
-  };
+  // 설정: 다른 계정으로 로그인 (로그아웃한 뒤 로그인 창을 열고, 카카오·구글·네이버 모두 계정을 새로 고르게 한다)
   const switchAccount = async () => {
     if (!(await askConfirm('지금 계정에서 로그아웃하고 다른 계정으로 로그인할까요?'))) return;
+    setShowSettings(false);
     await signOutAndClear();
     goToHome();
     setSwitchingAccount(true);
@@ -5562,12 +5558,6 @@ export default function Home() {
                       {tileGrid(adminTiles)}
                     </div>
                   )}
-                  {/* 계정: 자주 쓰지 않아 맨 아래 작은 글씨 (카카오 prompt=login, 구글 select_account, 네이버 auth_type=reauthenticate) */}
-                  <div className="mt-2.5 flex items-center justify-center gap-1 text-[0.8125rem] text-stone-500">
-                    <button onClick={switchAccount} className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 inline-flex items-center gap-1"><Icon name="users" className="w-[1.05em] h-[1.05em]" />다른 계정으로 로그인</button>
-                    <span className="text-stone-300" aria-hidden="true">|</span>
-                    <button onClick={logout} className="px-2.5 py-1.5 rounded-lg hover:bg-stone-100 inline-flex items-center gap-1"><Icon name="signout" className="w-[1.05em] h-[1.05em]" />로그아웃</button>
-                  </div>
                 </>
               ) : (
                 <div className="mt-3 flex gap-1.5">
@@ -6292,6 +6282,7 @@ export default function Home() {
         <SettingsModal user={user} onClose={() => setShowSettings(false)} onUnblock={unblockUser}
           feastDay={profile?.feast_day || ''} onFeastDayChange={updateMyFeastDay}
           onEditProfile={() => openFromSettings(openProfileEdit)}
+          onSwitchAccount={switchAccount}
           onShareApp={() => openFromSettings(() => setShowShareApp(true))}
           onOpenLegal={(doc: LegalDoc) => openFromSettings(() => setLegalDoc(doc))}
           onSamsungGuide={(preview: boolean) => openFromSettings(() => setSamsungGuideOpen(preview ? 'preview' : 'open'))}
