@@ -287,8 +287,9 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
         </span>
       </>)}
       {list && <BadgeListDialog userId={userId} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
-      {open && <BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />}
-      {book && <StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />}
+      {/* 내 공간 머리 칸은 isolate(성당 그림) → 그 안에 그리면 창이 그 칸에 갇혀 아래 가톨릭 앱·아래 탭이 창 위로 올라왔음(루비로사 2026-11-11) → body 에 */}
+      {open && createPortal(<BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />, document.body)}
+      {book && createPortal(<StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />, document.body)}
     </div>
   );
 }
