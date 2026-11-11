@@ -276,6 +276,7 @@
 - 설명 영상 내레이션 확정(운영자 2026-11-10): 0장은 새로 녹음한 것(잡음 줄이기 끔), 1~11장은 게인 올린 컴퓨터 녹음 — 어느 녹음을 쓰는지·다듬는 법은 `scripts/explainer/narration.md` '쓸 녹음'. 브라우저 잡음 줄이기가 문장 끝 작은 말을 지워 0장 '신부입니다'가 세 번 잘렸음
 - 8분 설명 영상 1차본(운영자 2026-11-10: '잔잔한 피아노로, 16:9, 아이폰 안내 문장 넣고, 실제 장면 없이 만들어'): 7분 40초 1920×1080 — 왼쪽 장 제목·핵심 낱말·자막, 오른쪽 휴대폰에 예시 자료로 찍은 앱 화면 33장, 첫머리 새벽 성당·끝 'Play 스토어에서 가톨릭그램'. 내레이션 문단 시각은 쉼에 맞춰 찾음. 도구·순서·유튜브 장 시간표 `scripts/explainer/video/`(작업 폴더 /tmp/cgexp)
 - 내 공간 맨 아래 '다른 계정으로 로그인 | 로그아웃' 줄 없앰(운영자 2026-11-11: '설정 안에 있는 것으로 충분'): '다른 계정으로 로그인'은 설정 → 로그아웃 바로 위 줄로 옮김(`SettingsModal onSwitchAccount` = page `switchAccount`: 확인 → 설정 닫기 → 로그아웃 → 로그인 창, 계정 새로 고르기). 로그아웃은 설정에 원래 있음
+- 운영자 곡 셋 추가(운영자 2026-11-11 '음악으로 올려줘'): Warm Felt Piano(2분 56초)·Tranilla(3분 8초)·Quiet Piano(3분 19초) — Suno mp3 를 다시 압축하지 않고 꼬리표만 지워(`ffmpeg -c copy -map_metadata -1`, Suno 사용자 이름·곡 id 빠짐) `public/bgm/{warm-felt-piano,tranilla,quiet-piano}.mp3`, `lib/music.ts` `BUILTIN_BGM` 맨 앞(만든 사람 '가톨릭그램', 분위기 고요) → '가톨릭그램 음악'·배경음악 고르기 맨 위
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`

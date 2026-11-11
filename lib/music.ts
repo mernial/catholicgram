@@ -69,6 +69,9 @@ export function uniqueTitles(tracks: BgmTrack[], prefer?: string | null): BgmTra
 }
 
 export const BUILTIN_BGM: BgmTrack[] = [
+  { id: 'builtin-warm-felt-piano', title: 'Warm Felt Piano', artist: '가톨릭그램', url: '/bgm/warm-felt-piano.mp3', mood: 'calm' },
+  { id: 'builtin-tranilla', title: 'Tranilla', artist: '가톨릭그램', url: '/bgm/tranilla.mp3', mood: 'calm' },
+  { id: 'builtin-quiet-piano', title: 'Quiet Piano', artist: '가톨릭그램', url: '/bgm/quiet-piano.mp3', mood: 'calm' },
   { id: 'builtin-calm-piano', title: '잔잔한 피아노', artist: '가톨릭그램', url: '/bgm/calm-piano.mp3' },
   { id: 'builtin-new-beginning', title: '새로운 시작', artist: '가톨릭그램', url: '/bgm/new-beginning.mp3' },
 ];
