@@ -46,7 +46,8 @@ export const SHRINK_OVER_MB = 12;
 // 영상을 720p·약 1.5Mbps 로 다시 녹화해 줄인다 (영상 길이만큼 걸림, 1분 영상 → 약 12MB).
 // 화면은 캔버스로, 소리는 Web Audio 로 받아 녹화하므로 아이폰 사파리에서도 동작한다.
 // 지원하지 않거나 실패하면 null. isCancelled 가 참이 되면(그사이 영상을 빼거나 바꿈) 멈추고 null.
-export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => void, isCancelled?: () => boolean): Promise<Blob | null> => {
+// range 를 주면 그 구간(초)만 녹화한다 — 긴 영상에서 원하는 부분만 잘라 올리기(스토리, 운영자 2026-11-11)
+export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => void, isCancelled?: () => boolean, range?: { start: number; end: number }): Promise<Blob | null> => {
   const video = await loadVideo(file).catch(() => null);
   const canvas = document.createElement('canvas');
   if (!video || typeof MediaRecorder === 'undefined' || !canvas.captureStream) return null;
@@ -89,13 +90,22 @@ export const shrinkVideo = async (file: Blob, onProgress?: (ratio: number) => vo
 
   let raf = 0;
   let finish = () => {};
+  const from = Math.max(0, range?.start ?? 0);
+  const to = Math.min(video.duration || Infinity, range?.end ?? Infinity);
   const ended = new Promise<void>(resolve => { finish = resolve; video.onended = () => resolve(); });
   const draw = () => {
     if (isCancelled?.()) { video.pause(); finish(); return; }
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    onProgress?.(Math.min(1, video.currentTime / (video.duration || 1)));
+    const span = (Number.isFinite(to) ? to : video.duration || 1) - from;
+    onProgress?.(Math.min(1, Math.max(0, (video.currentTime - from) / (span || 1))));
+    if (video.currentTime >= to) { video.pause(); finish(); return; }
     if (!video.ended) raf = requestAnimationFrame(draw);
   };
+  if (from > 0) {
+    await new Promise<void>(resolve => { video.onseeked = () => resolve(); video.currentTime = from; });
+    video.onseeked = null;
+  }
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height); // 첫 장면이 검게 녹화되지 않게
   recorder.start(1000);
   try { await video.play(); } catch { recorder.stop(); cleanup(); return null; }
   draw();
