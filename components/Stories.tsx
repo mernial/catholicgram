@@ -10,6 +10,7 @@ import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { clipText } from '@/lib/clip-text';
+import VideoTrimmer from '@/components/VideoTrimmer';
 import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 
 // 스토리: 24시간 뒤 사라지는 사진 한 장 또는 짧은 영상(1분 이하) + 짧은 글.
@@ -62,11 +63,11 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [seen, setSeen] = useState<string[]>([]);
   const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
   // 올리기
-  const [draft, setDraft] = useState<{ file: File; url: string; video?: boolean } | null>(null);
-  const [draftVideo, setDraftVideo] = useState<Blob | null>(null); // 영상 스토리: 올릴 영상(큰 영상은 줄인 것)
+  const [draft, setDraft] = useState<{ file: File; url: string; video?: boolean; duration?: number } | null>(null);
+  const [trim, setTrim] = useState({ start: 0, end: 0 }); // 영상 스토리: 올릴 구간(초) — 1분 안쪽으로 고름
   const [videoStatus, setVideoStatus] = useState('');
   const videoJobRef = useRef(0);
-  const cancelDraft = () => { videoJobRef.current++; if (draft) URL.revokeObjectURL(draft.url); setDraft(null); setDraftVideo(null); setVideoStatus(''); onDraftEnd?.(false); };
+  const cancelDraft = () => { videoJobRef.current++; if (draft) URL.revokeObjectURL(draft.url); setDraft(null); setVideoStatus(''); onDraftEnd?.(false); };
   useBackLayer(!!draft, cancelDraft); // 새 스토리 미리보기: 뒤로가기는 취소
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
@@ -190,30 +191,17 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   };
   // 새 게시물 화면에서 고른 사진 → '새 스토리' 미리보기 (받은 사진마다 한 번 — 효과 대신 그리는 중에 맞춤)
   const [pickedKey, setPickedKey] = useState<number | null>(null);
-  // 사진이면 바로 미리보기, 영상이면 길이(1분 이하)를 보고 미리보기 → 큰 영상은 뒤에서 720p 로 줄임(그동안 '올리기'는 기다림)
+  // 사진이면 바로 미리보기. 영상이면 길이를 재어 미리보기 + 구간 고르기(처음 1분, 짧으면 전체) — 자르기·줄이기는 올릴 때
   const startDraft = async (file: File) => {
     setCaption('');
-    if (!file.type.startsWith('video/')) { setDraftVideo(null); setVideoStatus(''); setDraft({ file, url: URL.createObjectURL(file) }); return; }
+    if (!file.type.startsWith('video/')) { setVideoStatus(''); setDraft({ file, url: URL.createObjectURL(file) }); return; }
     const job = ++videoJobRef.current;
     const info = await getVideoInfo(file).catch(() => null);
     if (job !== videoJobRef.current) return;
-    if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); onDraftEnd?.(false); return; }
-    if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`스토리 영상은 1분 이하만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); onDraftEnd?.(false); return; }
-    setDraft({ file, url: URL.createObjectURL(file), video: true });
-    setDraftVideo(null);
-    if (file.size <= SHRINK_OVER_MB * 1024 * 1024) { setVideoStatus(''); setDraftVideo(file); return; }
-    setVideoStatus('영상 용량을 줄이는 중... 0%');
-    const stale = () => videoJobRef.current !== job;
-    const shrunk = await shrinkVideo(file, r => { if (!stale()) setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`); }, stale).catch(() => null);
-    if (stale()) return;
+    if (!info || !Number.isFinite(info.duration) || info.duration <= 0) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); onDraftEnd?.(false); return; }
     setVideoStatus('');
-    const video = shrunk && shrunk.size < file.size ? shrunk : file;
-    if (video.size > MAX_VIDEO_MB * 1024 * 1024) {
-      alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n더 짧게 찍거나 화질을 낮춰서 올려주세요.`);
-      cancelDraft();
-      return;
-    }
-    setDraftVideo(video);
+    setTrim({ start: 0, end: Math.min(info.duration, MAX_VIDEO_SECONDS) });
+    setDraft({ file, url: URL.createObjectURL(file), video: true, duration: info.duration });
   };
   if (pickedFile && pickedFile.key !== pickedKey) {
     setPickedKey(pickedFile.key);
@@ -232,8 +220,19 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       let media: { images: string[]; video_url?: string; video_poster?: string | null };
       if (draft.video) {
         // 영상 스토리: 게시물 영상과 같은 곳(post-videos, 내 폴더)에 영상 + 미리보기 사진
-        const video = draftVideo;
-        if (!video) return;
+        const dur = draft.duration || 0;
+        const whole = trim.start < 0.3 && trim.end >= dur - 0.3;
+        let video: Blob = draft.file;
+        // 고른 구간만 잘라 다시 녹화(720p) — 전체를 올릴 때도 크면 줄임. 고른 길이만큼 걸림
+        if (!whole || draft.file.size > SHRINK_OVER_MB * 1024 * 1024) {
+          const job = videoJobRef.current;
+          setVideoStatus(whole ? '영상 용량을 줄이는 중... 0%' : '고른 부분을 자르는 중... 0%');
+          const out = await shrinkVideo(draft.file, r => { if (job === videoJobRef.current) setVideoStatus(`${whole ? '영상 용량을 줄이는 중' : '고른 부분을 자르는 중'}... ${Math.round(r * 100)}%`); }, () => job !== videoJobRef.current, whole ? undefined : trim).catch(() => null);
+          if (job !== videoJobRef.current) return;
+          if (out && (!whole || out.size < draft.file.size)) video = out;
+          else if (!whole) { setVideoStatus(''); alert('이 휴대폰에서는 영상을 자를 수 없어요.\n1분 안쪽으로 미리 잘라 둔 영상을 골라 주세요.'); return; }
+        }
+        if (video.size > MAX_VIDEO_MB * 1024 * 1024) { setVideoStatus(''); alert(`영상이 너무 커요 (${Math.round(video.size / 1024 / 1024)}MB).\n더 짧게 고르거나 화질을 낮춰서 올려주세요.`); return; }
         setVideoStatus('영상 올리는 중...');
         const poster = await makeVideoPoster(video);
         const posterUrl = poster ? await uploadMedia(poster, { kind: 'posters', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_poster.jpg` }).catch(() => null) : null;
@@ -259,7 +258,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
         return;
       }
       URL.revokeObjectURL(draft.url);
-      setDraft(null); setDraftVideo(null);
+      setDraft(null);
       onDraftEnd?.(true);
       // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
       if (created?.[0]?.id) {
@@ -269,6 +268,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       await onPosted();
       setOpenMineAfterPost(true);
     } catch {
+      setVideoStatus('');
       alert(draft.video ? '영상을 올리지 못했어요. 잠시 후 다시 시도해 주세요.' : '사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       setPosting(false);
@@ -330,16 +330,17 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
             <p className="font-bold">새 스토리</p>
             <span className="w-8" />
           </div>
-          <div className="relative flex-1 min-h-0 flex items-center justify-center">
-            {draft.video
-              ? <video src={draft.url} autoPlay muted loop playsInline className="max-w-full max-h-full object-contain" />
-              : <img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" />}
-            {videoStatus && <span className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 text-white text-[0.8125rem] whitespace-nowrap">{videoStatus}</span>}
-          </div>
+          {draft.video && draft.duration ? (
+            <VideoTrimmer src={draft.url} duration={draft.duration} max={MAX_VIDEO_SECONDS} start={trim.start} end={trim.end} onChange={(st, en) => setTrim({ start: st, end: en })} />
+          ) : (
+            <div className="relative flex-1 min-h-0 flex items-center justify-center">
+              <img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" />
+            </div>
+          )}
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
             {/* input 대신 한 줄 textarea: 휴대폰 자판 위 자동 완성 줄이 뜨지 않음 */}
             <textarea rows={1} value={caption} onChange={e => setCaption(e.target.value.replace(/\n/g, ' ').slice(0, 100))} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} enterKeyHint="done" placeholder="한마디 쓰기 (선택)" className="block w-full resize-none [field-sizing:content] max-h-28 px-4 py-3 rounded-3xl bg-white/15 text-white placeholder-white/60 text-[0.9375rem] leading-6 focus:outline-none" />
-            <button onClick={post} disabled={posting || (!!draft.video && !draftVideo)} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? '올리는 중...' : draft.video && !draftVideo ? '영상 준비 중...' : '내 스토리에 올리기'}</button>
+            <button onClick={post} disabled={posting} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? (videoStatus || '올리는 중...') : '내 스토리에 올리기'}</button>
             <p className="text-center text-[0.75rem] text-white/60">24시간 뒤에 저절로 사라져요</p>
           </div>
         </div>
