@@ -182,9 +182,10 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: Row; admin: boole
 }
 
 // 한 교우의 뱃지 모두 보기 (뱃지를 누르면 — 인증 뱃지 + 활동 뱃지, 설명과 받은 날, 누른 것은 테두리) — 운영자 2026-11-06
-export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: string; name?: string; highlight?: string; onClose: () => void }) {
+export function BadgeListDialog({ userId, name, highlight, onClose, empty, showHidden }: { userId: string; name?: string; highlight?: string; onClose: () => void; empty?: string; showHidden?: boolean }) {
   useBackLayer(true, onClose);
-  const { rows, ready, hidden } = useMemberBadges(userId);
+  const { rows, ready, hidden: hiddenRaw } = useMemberBadges(userId);
+  const hidden = hiddenRaw && !showHidden;
   const [prof, setProf] = useState<{ baptismal_name?: string; badge_type?: string | null } | null>(null);
   useEffect(() => {
     let alive = true;
@@ -217,7 +218,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose }: { userId: 
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
           {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
           {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
-          {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400">아직 받은 뱃지가 없어요.</p>}
+          {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400 leading-relaxed">{empty || '아직 받은 뱃지가 없어요.'}</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
           {!hidden && ready && (
             <button onClick={() => setBook(true)} className="w-full px-4 py-3 text-left text-[0.9375rem] font-bold text-amber-800 bg-[#fffaf0] flex items-center gap-2">📖 받은 뱃지 도장 모두 보기<span className="text-[0.75rem] font-normal text-stone-500">받은 날짜 · 예전에 받았던 뱃지도</span></button>
@@ -236,6 +237,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   const { stamps } = useBadgeStamps(userId, !missing);
   const [open, setOpen] = useState<Row | null>(null);
   const [book, setBook] = useState(false);
+  const [list, setList] = useState(false);
   const [saving, setSaving] = useState(false);
   // 본인: 다른 교우에게 보일지 (기본 보임). 끄면 다른 교우의 화면(공간·프로필 카드)에서 안 보임
   const toggleHidden = async (show: boolean) => {
@@ -260,34 +262,31 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   if (hidden && !mine && !admin) return null;
   if (rows.length === 0 && stamps.length === 0 && !(admin && !missing) && !mine) return null;
   if (rows.length === 0 && mine && missing) return null;
-  const bookBtn = (stamps.length > 0 || mine) && !missing && (
-    <button onClick={() => setBook(true)} className="text-[0.75rem] font-bold text-amber-800 bg-[#fffaf0] border border-dashed border-amber-300 rounded-full px-2 py-0.5" aria-label="받은 뱃지 도장 모음 보기">📖 도장 {stamps.length > 0 ? stamps.length : '모음'}</button>
-  );
+  // 한 줄로 (운영자 시안 2026-11-11): '내 뱃지 N' · '도장 N ›' · 보이기 단추 — 뱃지·도장은 누르면 창으로
+  const pill = 'shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 h-8 text-[0.8125rem] font-bold';
+  const count = (n: number, tone: string) => <span className={`min-w-[1.375rem] h-[1.375rem] px-1.5 rounded-full text-[0.75rem] inline-flex items-center justify-center ${tone}`}>{n}</span>;
+  const sep = <span className="w-px h-5 bg-stone-200 shrink-0" aria-hidden="true" />;
   return (
-    <div className="mt-3">
-      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-        <p className="text-[0.75rem] font-bold text-stone-500">{mine ? '내 뱃지' : '뱃지'}{rows.length > 0 ? ` ${rows.length}` : ''}{hidden && !mine && <span className="ml-1 font-normal text-stone-400">(본인이 숨김)</span>}</p>
-        {admin && !missing && <button onClick={onGrant} className="text-[0.75rem] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">{admin && mine ? '뱃지 관리' : '＋ 뱃지 달기'}</button>}
-        {bookBtn}
-        {mine && rows.length > 0 && (
-          <span className="ml-auto inline-flex items-center gap-1.5 text-[0.75rem] text-stone-600">
-            {hidden ? '나만 보기' : '다른 교우에게 보이기'}
-            <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
-          </span>
-        )}
-      </div>
-      {rows.length === 0 ? (
-        <p className="text-[0.8125rem] text-stone-400">{mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : '아직 받은 뱃지가 없어요.'}</p>
-      ) : (
-        <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] -mx-4 px-4 pb-1">
-          {rows.map(r => { const def = badgeOf(r.badge_key)!; return (
-            <button key={r.id} onClick={() => setOpen(r)} className="shrink-0 w-[4.5rem] flex flex-col items-center gap-1" aria-label={`${def.label} 뱃지 보기`}>
-              <BadgeIcon badge={def} size={58} />
-              <span className="text-[0.6875rem] font-bold text-stone-700 leading-tight text-center">{def.label}</span>
-            </button>
-          ); })}
-        </div>
-      )}
+    <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+      <button onClick={() => setList(true)} className={`${pill} bg-stone-100 text-stone-800`} aria-label={`${mine ? '내 ' : ''}뱃지 ${rows.length}개 보기`}>
+        {mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
+        {hidden && !mine && <span className="font-normal text-stone-400 text-[0.6875rem]">(숨김)</span>}
+      </button>
+      {!missing && (stamps.length > 0 || mine) && (<>
+        {sep}
+        <button onClick={() => setBook(true)} className={`${pill} bg-[#fffaf0] border border-amber-200 text-amber-900`} aria-label="받은 뱃지 도장 모음 보기">
+          <span aria-hidden="true">📖</span>도장{count(stamps.length, 'bg-amber-100 text-amber-900')}<span className="text-amber-700 text-base leading-none" aria-hidden="true">›</span>
+        </button>
+      </>)}
+      {admin && !missing && <button onClick={onGrant} className={`${pill} bg-amber-50 border border-amber-200 text-amber-800 h-8 px-2.5 text-[0.75rem]`}>{mine ? '뱃지 관리' : '＋ 달기'}</button>}
+      {mine && rows.length > 0 && (<>
+        <span className="ml-auto" />
+        <span className="shrink-0 inline-flex items-center gap-1 text-[0.6875rem] text-stone-600">
+          {hidden ? '나만 보기' : <><span className="hidden min-[400px]:inline">다른 교우에게&nbsp;</span>보이기</>}
+          <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
+        </span>
+      </>)}
+      {list && <BadgeListDialog userId={userId} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
       {open && <BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />}
       {book && <StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />}
     </div>
