@@ -15,7 +15,8 @@ export interface MusicSegmentTarget { trackId: string; audioUrl: string; title: 
 // 유튜브 음악 넣기(검색·링크)는 아예 없앰 (운영자 요청 2026-11-01) — 예전에 유튜브 음악을 넣은 글은 그대로 재생되고,
 // 예전에 즐겨찾기한 유튜브 곡은 목록에서 보이지 않음
 // 즐겨찾기: 곡마다 ☆ 를 누르면 넣고 빼기 (이 휴대폰에만, lib/music-favorites). 즐겨찾기가 있으면 그 탭부터 열림
-export default function MusicPicker({ tracks, giftTracks = [], initialSegment, onSelect, onClose, onAddMusic }: {
+export default function MusicPicker({ tracks, giftTracks = [], initialSegment, onSelect, onClose, onAddMusic, z = 'z-[85]' }: {
+  z?: string; // 스토리 새로 만들기(z-90) 위에서 열 때는 더 위로
   tracks: BgmTrack[];
   giftTracks?: BgmTrack[]; // 내가 선물받은 노래 (관리자의 보관 음악 → 나만 고를 수 있음, 글을 보는 교우는 누구나 들음)
   onAddMusic?: () => void; // 관리자에게만: '가톨릭그램 음악'에 음악 파일 올리기 (BgmAdmin)
@@ -97,7 +98,7 @@ export default function MusicPicker({ tracks, giftTracks = [], initialSegment, o
   );
 
   return (
-    <BottomSheet bare label="음악 고르기" onClose={onClose} z="z-[85]" tone="bg-white">
+    <BottomSheet bare label="음악 고르기" onClose={onClose} z={z} tone="bg-white">
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div className="p-4 border-b border-stone-100 flex items-center justify-between">
           <h2 className="font-bold text-stone-900"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1 text-violet-700" />음악 추가</h2>

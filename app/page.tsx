@@ -600,7 +600,8 @@ export default function Home() {
   const [editStickers, setEditStickers] = useState<Sticker[]>([]); // 게시글 수정: 붙인 이모티콘
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
   const [musicSegment, setMusicSegment] = useState<MusicSegmentTarget | null>(null); // 고른 곡의 구간만 다시 고치기
-  const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit'>('composer');
+  const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit' | 'story'>('composer');
+  const storyMusicCbRef = useRef<((m: { value: string; title: string }) => void) | null>(null); // 스토리에 넣을 음악을 고르면 부를 것
 
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [exploreQuery, setExploreQuery] = useState('');
@@ -674,6 +675,8 @@ export default function Home() {
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [user?.id, askBadgeRefresh]);
   useBackLayer(showBadgeBoard, () => setShowBadgeBoard(false));
+  // 스토리 만들기(작은 창들) 위에서 연 음악 고르기: 뒤로가기는 음악 고르기만
+  useBackLayer(showMusicPicker && musicPickerFor === 'story', () => { setShowMusicPicker(false); setMusicPickerFor('composer'); storyMusicCbRef.current = null; });
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
   const [memberMusicGift, setMemberMusicGift] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 교우에게 노래 선물 창
   const [stickerGrants, setStickerGrants] = useState<string[]>([]); // 내가 선물받은 전용 이모티콘 (sticker_grants)
@@ -2198,6 +2201,7 @@ export default function Home() {
 
   // 스토리 (24시간 안, 게시글에 is_story 표시)
   const [storyPosts, setStoryPosts] = useState<Post[]>([]);
+  const [storyBusy, setStoryBusy] = useState(false); // 스토리 만드는 중 (components/Stories onBusyChange)
   const [storiesUnavailable, setStoriesUnavailable] = useState(false);
   const [storyOpenRequest, setStoryOpenRequest] = useState<string | null>(null);
   // 앱을 보고 있는 동안 스토리를 3분마다 새로 (새로 올라온 스토리가 보이게)
@@ -2212,6 +2216,16 @@ export default function Home() {
     setStoriesUnavailable(false);
     setStoryPosts((data || []) as Post[]);
     fetchCommentCounts((data || []).map(p => p.id));
+  };
+  // 스토리에 메시지·감정 보내기 → 그 교우에게 1:1 메시지 ('📸 스토리 답장 · …')
+  const sendStoryReply = async (story: { id: string; user_id: string }, text: string) => {
+    if (!user) { setShowAuthModal(true); return false; }
+    if (!requireProfile()) return false;
+    if (story.user_id === user.id) return false;
+    const { data: sent, error } = await insertDm({ sender_id: user.id, receiver_id: story.user_id, content: `📸 스토리 답장 · ${text}` });
+    if (error) { alert(`메시지를 보내지 못했어요.\n(${error.message})`); return false; }
+    if (sent) sendPush('message', sent.id);
+    return true;
   };
   const deleteStory = async (id: string) => {
     const result = await callPostApi({ action: 'delete', id });
@@ -4264,21 +4278,23 @@ export default function Home() {
   useBackLayer(showPostList && !!selectedPostDetail, () => setSelectedPostDetail(null));
   // 뒤로가기 처리: 열린 창이 있으면 창만 닫고, 없으면 이전 화면으로. 홈에서는 '한 번 더 누르면 종료'
   const otherModalOpen = !!(actionModalUser || stickerGiftFor || memberMusicGift || showAuthModal || avatarFile || selectedPostDetail || selectedImage
-    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || showMusicPicker || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || storyFromComposer || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
+    || showNotifications || showSettings || showFeedback || reportTarget || showInstallGuide || showSponsorAdmin || showPushPrompt || showAdminMembers || (showMusicPicker && musicPickerFor !== 'story') || showBgmAdmin || showProfileMusicPicker || showMusicVault || showMusicLibrary || !!musicGiftTrack || (profileEditMode && !needsProfileSetup) || showIntentions || showVideoEditor || showNotices || showComposer || !!editingPostId || !!followList || showAdminStats || showAdminUsage || showTesterSignup || showAdminTesters || !!postMenuId || fabOpen || !!commentSheetId || storyViewerOpen || storyFromComposer || !!avatarPreview || showDeletedMessages || showMediaStorage || showLetters || feedMenuOpen || showLounge || !!openGroup || showNewChat || !!messageSheet || showAnon || showMyComments
     || showShareApp || showFancyName || showDmBookmarks || !!legalDoc || showPostList);
+  // 스토리 만들기('스토리에 추가'·새 스토리 미리보기)는 작은 창(back layer)이라 위 목록에 없음 — 그 위로 선물·공지·소식 창이 뜨지 않게
+  const popupBlocked = otherModalOpen || storyBusy;
   // 선물 상자: 알림을 눌러 연 선물은 바로, 아직 열지 않은 선물은 다른 창이 없을 때 (처음 정보 입력 중이 아닐 때)
   const shownGift = activeGift || forcedGift ? myGifts.find(g => g.key === (activeGift || forcedGift))
-    : !otherModalOpen && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key)) : undefined;
+    : !popupBlocked && !needsProfileSetup && openedGifts ? myGifts.find(g => !openedGifts.includes(g.key)) : undefined;
   // 팝업 공지는 다른 창이 없을 때만, 처음 정보 입력 중이 아닐 때만
-  const showPopupNotice = !!popupNotice && !otherModalOpen && !needsProfileSetup && !shownGift;
+  const showPopupNotice = !!popupNotice && !popupBlocked && !needsProfileSetup && !shownGift;
   // 개인 안내: 받는 교우에게만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (업데이트 소식보다 먼저)
   const personalToShow = personalPreview ? PERSONAL_NOTICES
     : user && updateNotesReady ? myPersonalNotices({ handle: profile?.handle, hidden: personalHidden, closed: personalClosed }) : [];
   // 운영자 답장(사연함): 아직 안 본 것만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (개인 안내보다 먼저). 본 것은 giftsOpened 와 같은 길로 기억(다른 기기에도)
   const replyToShow = user && openedGifts ? replyLetters.filter(l => !openedGifts.includes(letterReplyKey(l))) : [];
-  const showLetterReply = replyToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice;
+  const showLetterReply = replyToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice;
   const closeLetterReply = () => replyToShow.forEach(l => rememberGift(letterReplyKey(l)));
-  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
+  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
   const closePersonal = () => {
     if (personalPreview) { setPersonalPreview(false); return; }
     setPersonalClosed(prev => [...prev, ...personalToShow.map(n => n.id)]);
@@ -4293,7 +4309,7 @@ export default function Home() {
   const updateNotesToShow = user && updateNotesHidden && updateNotesReady
     ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
     : [];
-  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal;
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal;
   const hideUpdateNotes = () => {
     if (!user) return;
     const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
@@ -4303,7 +4319,7 @@ export default function Home() {
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
   // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
   const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
-    && activeTab === 'home' && !otherModalOpen && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showUpdateNotes);
+    && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showUpdateNotes);
   const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
   const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
   const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showUpdateNotes || showSamsungGuide;
@@ -4870,6 +4886,11 @@ export default function Home() {
             commentCounts={commentCounts}
             onReact={(id, type) => handleReaction(id, type)}
             onComment={id => toggleCommentBox(id)}
+            onReply={sendStoryReply}
+            onBusyChange={setStoryBusy}
+            onFollow={id => toggleFollow(id, 'none')}
+            onPickMusic={cb => { storyMusicCbRef.current = cb; setMusicSegment(null); setMusicPickerFor('story'); setShowMusicPicker(true); }}
+            musicSrc={value => { const m = parsePostMusic(value); if (m?.kind !== 'bgm') return null; const t = findTrack(m.trackId); return t ? { url: t.url, start: m.start, clip: m.clip } : null; }}
             me={user && profile ? { id: user.id, name: profile.baptismal_name, avatar: profile.avatar_url } : null}
             followingIds={followingIds}
             blockedIds={blockedIds}
@@ -6958,7 +6979,7 @@ export default function Home() {
 
       {/* 글쓰기: 음악 고르기 */}
       {showMusicPicker && (
-        <MusicPicker tracks={uniqueTitles(bgmTracks.filter(t => t.active !== false))} giftTracks={myMusicGifts.map(g => g.track)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} onSelect={m => { if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
+        <MusicPicker z={musicPickerFor === 'story' ? 'z-[95]' : undefined} tracks={uniqueTitles(bgmTracks.filter(t => t.active !== false))} giftTracks={myMusicGifts.map(g => g.track)} initialSegment={musicSegment} onAddMusic={isAdmin ? () => setShowBgmAdmin(true) : undefined} onClose={() => { setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); storyMusicCbRef.current = null; }} onSelect={m => { if (musicPickerFor === 'story') { storyMusicCbRef.current?.(m); storyMusicCbRef.current = null; } else if (musicPickerFor === 'edit') setEditMusic({ value: m.value, title: m.title }); else setComposerMusic(m); setShowMusicPicker(false); setMusicPickerFor('composer'); setMusicSegment(null); }} />
       )}
 
       {/* 관리자: 배경음악 관리 */}
