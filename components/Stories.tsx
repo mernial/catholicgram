@@ -10,13 +10,14 @@ import Icon from '@/components/Icon';
 import { initial } from '@/lib/fancy-name';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { clipText } from '@/lib/clip-text';
+import { MAX_VIDEO_MB, MAX_VIDEO_SECONDS, SHRINK_OVER_MB, getVideoInfo, makeVideoPoster, shrinkVideo } from '@/lib/video';
 
-// 스토리: 24시간 뒤 사라지는 사진 한 장 + 짧은 글.
+// 스토리: 24시간 뒤 사라지는 사진 한 장 또는 짧은 영상(1분 이하) + 짧은 글.
 // 게시글(posts)에 is_story 표시로 저장 → 기도·공감·댓글·알림을 다른 게시글과 똑같이 씀.
 // 홈 맨 위에 동그라미 줄(내 스토리 → 팔로우한 교우 → 다른 교우), 누르면 화면 가득 보기.
 
-export interface StoryPost { id: string; user_id: string; images?: string[] | null; content?: string | null; created_at: string; pray_count?: number; like_count?: number }
-interface Story { id: string; user_id: string; image_url: string; caption: string | null; created_at: string; pray: number; like: number }
+export interface StoryPost { id: string; user_id: string; images?: string[] | null; video_url?: string | null; video_poster?: string | null; content?: string | null; created_at: string; pray_count?: number; like_count?: number }
+interface Story { id: string; user_id: string; image_url: string; video_url: string | null; caption: string | null; created_at: string; pray: number; like: number }
 interface Author { id: string; baptismal_name: string; avatar_url?: string | null; handle?: string | null; badge_type?: string | null }
 export interface StoryUser { id: string; baptismal_name: string; avatar_url?: string; handle?: string; badge_type?: string }
 
@@ -55,14 +56,18 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   onComment: (id: string) => void;
 }) {
   const stories: Story[] = useMemo(() => posts
-    .filter(p => p.images && p.images.length > 0)
-    .map(p => ({ id: p.id, user_id: p.user_id, image_url: p.images![0], caption: p.content || null, created_at: p.created_at, pray: p.pray_count || 0, like: p.like_count || 0 })), [posts]);
+    .filter(p => (p.images && p.images.length > 0) || !!p.video_url)
+    .map(p => ({ id: p.id, user_id: p.user_id, image_url: p.images?.[0] || p.video_poster || '', video_url: p.video_url || null, caption: p.content || null, created_at: p.created_at, pray: p.pray_count || 0, like: p.like_count || 0 })), [posts]);
   const [authors, setAuthors] = useState<Record<string, Author>>({});
   const [seen, setSeen] = useState<string[]>([]);
   const [openMineAfterPost, setOpenMineAfterPost] = useState(false);
   // 올리기
-  const [draft, setDraft] = useState<{ file: File; url: string } | null>(null);
-  useBackLayer(!!draft, () => { if (draft) URL.revokeObjectURL(draft.url); setDraft(null); onDraftEnd?.(false); }); // 새 스토리 미리보기: 뒤로가기는 취소
+  const [draft, setDraft] = useState<{ file: File; url: string; video?: boolean } | null>(null);
+  const [draftVideo, setDraftVideo] = useState<Blob | null>(null); // 영상 스토리: 올릴 영상(큰 영상은 줄인 것)
+  const [videoStatus, setVideoStatus] = useState('');
+  const videoJobRef = useRef(0);
+  const cancelDraft = () => { videoJobRef.current++; if (draft) URL.revokeObjectURL(draft.url); setDraft(null); setDraftVideo(null); setVideoStatus(''); onDraftEnd?.(false); };
+  useBackLayer(!!draft, cancelDraft); // 새 스토리 미리보기: 뒤로가기는 취소
   const [caption, setCaption] = useState('');
   const [posting, setPosting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -70,6 +75,8 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [pos, setPos] = useState<{ user: number; item: number }>({ user: 0, item: 0 });
   const [paused, setPaused] = useState(false);
   const [progress, setProgress] = useState(0);
+  const storyVideoRef = useRef<HTMLVideoElement>(null);
+  const [videoMuted, setVideoMuted] = useState(false);
 
   useEffect(() => { setSeen(loadSeen()); }, []);
   // 작성자 이름·사진
@@ -109,10 +116,11 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     setSeen(next); saveSeen(next);
   }, [viewerOpen, current?.id]);
 
-  // 5초마다 다음으로 (누르고 있으면 멈춤)
+  // 5초마다 다음으로 (누르고 있으면 멈춤). 영상은 영상 길이만큼 — 진행 막대는 영상 재생 위치, 끝나면 다음으로
   useEffect(() => {
     if (!viewerOpen || !current) return;
     setProgress(0);
+    if (current.video_url) return;
     let elapsed = 0, last = performance.now(), raf = 0;
     const tick = (now: number) => {
       if (!pausedRef.current) elapsed += now - last;
@@ -126,6 +134,23 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   }, [viewerOpen, pos.user, pos.item, current?.id]);
   const pausedRef = useRef(false);
   pausedRef.current = paused;
+  useEffect(() => {
+    const v = storyVideoRef.current;
+    if (!v || !current?.video_url) return;
+    if (paused) v.pause(); else v.play().catch(() => {});
+  }, [paused, current?.id]);
+  // 영상 스토리: 소리와 함께 틀어 보고, 휴대폰이 막으면 소리 없이 (왼쪽 위 단추로 소리 켜기)
+  const startVideo = (v: HTMLVideoElement | null) => {
+    if (!v) return;
+    v.muted = false;
+    v.play().then(() => setVideoMuted(false)).catch(() => { v.muted = true; setVideoMuted(true); v.play().catch(() => {}); });
+  };
+  const toggleSound = () => {
+    const v = storyVideoRef.current;
+    if (!v) return;
+    v.muted = !v.muted; setVideoMuted(v.muted);
+    if (!v.muted) v.play().catch(() => {});
+  };
 
   const open = (userIndex: number) => {
     const g = groups[userIndex];
@@ -165,32 +190,76 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   };
   // 새 게시물 화면에서 고른 사진 → '새 스토리' 미리보기 (받은 사진마다 한 번 — 효과 대신 그리는 중에 맞춤)
   const [pickedKey, setPickedKey] = useState<number | null>(null);
+  // 사진이면 바로 미리보기, 영상이면 길이(1분 이하)를 보고 미리보기 → 큰 영상은 뒤에서 720p 로 줄임(그동안 '올리기'는 기다림)
+  const startDraft = async (file: File) => {
+    setCaption('');
+    if (!file.type.startsWith('video/')) { setDraftVideo(null); setVideoStatus(''); setDraft({ file, url: URL.createObjectURL(file) }); return; }
+    const job = ++videoJobRef.current;
+    const info = await getVideoInfo(file).catch(() => null);
+    if (job !== videoJobRef.current) return;
+    if (!info) { alert('이 영상은 읽을 수 없어요. 다른 영상을 골라주세요.'); onDraftEnd?.(false); return; }
+    if (info.duration > MAX_VIDEO_SECONDS + 0.5) { alert(`스토리 영상은 1분 이하만 올릴 수 있어요.\n(고른 영상: ${Math.round(info.duration)}초)`); onDraftEnd?.(false); return; }
+    setDraft({ file, url: URL.createObjectURL(file), video: true });
+    setDraftVideo(null);
+    if (file.size <= SHRINK_OVER_MB * 1024 * 1024) { setVideoStatus(''); setDraftVideo(file); return; }
+    setVideoStatus('영상 용량을 줄이는 중... 0%');
+    const stale = () => videoJobRef.current !== job;
+    const shrunk = await shrinkVideo(file, r => { if (!stale()) setVideoStatus(`영상 용량을 줄이는 중... ${Math.round(r * 100)}%`); }, stale).catch(() => null);
+    if (stale()) return;
+    setVideoStatus('');
+    const video = shrunk && shrunk.size < file.size ? shrunk : file;
+    if (video.size > MAX_VIDEO_MB * 1024 * 1024) {
+      alert(`영상이 너무 커요 (${Math.round(file.size / 1024 / 1024)}MB).\n더 짧게 찍거나 화질을 낮춰서 올려주세요.`);
+      cancelDraft();
+      return;
+    }
+    setDraftVideo(video);
+  };
   if (pickedFile && pickedFile.key !== pickedKey) {
     setPickedKey(pickedFile.key);
-    setCaption('');
-    setDraft({ file: pickedFile.file, url: URL.createObjectURL(pickedFile.file) });
+    startDraft(pickedFile.file);
   }
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    setCaption('');
-    setDraft({ file, url: URL.createObjectURL(file) });
+    startDraft(file);
   };
   const post = async () => {
     if (!draft || !me) return;
     setPosting(true);
     try {
-      const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
-      const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
-      const url = await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name });
-      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: clipText(caption.trim(), 100), images: [url], is_story: true }).select('id');
+      let media: { images: string[]; video_url?: string; video_poster?: string | null };
+      if (draft.video) {
+        // 영상 스토리: 게시물 영상과 같은 곳(post-videos, 내 폴더)에 영상 + 미리보기 사진
+        const video = draftVideo;
+        if (!video) return;
+        setVideoStatus('영상 올리는 중...');
+        const poster = await makeVideoPoster(video);
+        const posterUrl = poster ? await uploadMedia(poster, { kind: 'posters', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_poster.jpg` }).catch(() => null) : null;
+        const type = video.type || draft.file.type || 'video/mp4';
+        const ext = type.includes('webm') ? 'webm' : type.includes('quicktime') ? 'mov' : 'mp4';
+        let videoUrl: string;
+        try {
+          videoUrl = await uploadMedia(video, { kind: 'videos', ext, contentType: type, bucket: 'post-videos', path: `${me.id}/story_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.${ext}` });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          alert(/size|large|exceed|413/i.test(msg) ? `영상이 너무 커요. ${MAX_VIDEO_MB}MB 이하로 줄여서 올려주세요.` : '영상을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
+          return;
+        } finally { setVideoStatus(''); }
+        media = { images: [], video_url: videoUrl, video_poster: posterUrl };
+      } else {
+        const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
+        const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
+        media = { images: [await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name })] };
+      }
+      const { data: created, error } = await supabase.from('posts').insert({ user_id: me.id, author_name: me.name, content: clipText(caption.trim(), 100), ...media, is_story: true }).select('id');
       if (error) {
         alert(error.code === '42703' || error.code === 'PGRST204' ? '스토리 기능을 준비 중이에요. (관리자: supabase/stories.sql 실행 필요)' : '스토리를 올리지 못했어요.');
         return;
       }
       URL.revokeObjectURL(draft.url);
-      setDraft(null);
+      setDraft(null); setDraftVideo(null);
       onDraftEnd?.(true);
       // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
       if (created?.[0]?.id) {
@@ -200,7 +269,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       await onPosted();
       setOpenMineAfterPost(true);
     } catch {
-      alert('사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
+      alert(draft.video ? '영상을 올리지 못했어요. 잠시 후 다시 시도해 주세요.' : '사진을 올리지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       setPosting(false);
     }
@@ -251,21 +320,26 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
           <p className="self-center text-[0.8125rem] text-stone-400 leading-snug">{unavailable ? '스토리 준비 중 (관리자: stories.sql 실행)' : <>오늘의 순간을 스토리로 나눠 보세요<br />24시간 뒤에 사라져요</>}</p>
         )}
       </div>
-      <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onFile} />
+      <input ref={fileRef} type="file" accept="image/*,video/*" className="hidden" onChange={onFile} />
 
       {/* 올리기 미리보기 */}
       {draft && (
         <div className="fixed inset-0 z-[90] bg-black flex flex-col">
           <div className="flex items-center justify-between px-4 pt-[calc(0.75rem+env(safe-area-inset-top))] pb-3 text-white">
-            <button onClick={() => { URL.revokeObjectURL(draft.url); setDraft(null); onDraftEnd?.(false); }} className="text-[0.9375rem]">취소</button>
+            <button onClick={cancelDraft} className="text-[0.9375rem]">취소</button>
             <p className="font-bold">새 스토리</p>
             <span className="w-8" />
           </div>
-          <div className="flex-1 min-h-0 flex items-center justify-center"><img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" /></div>
+          <div className="relative flex-1 min-h-0 flex items-center justify-center">
+            {draft.video
+              ? <video src={draft.url} autoPlay muted loop playsInline className="max-w-full max-h-full object-contain" />
+              : <img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" />}
+            {videoStatus && <span className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-black/70 text-white text-[0.8125rem] whitespace-nowrap">{videoStatus}</span>}
+          </div>
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
             {/* input 대신 한 줄 textarea: 휴대폰 자판 위 자동 완성 줄이 뜨지 않음 */}
             <textarea rows={1} value={caption} onChange={e => setCaption(e.target.value.replace(/\n/g, ' ').slice(0, 100))} onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} enterKeyHint="done" placeholder="한마디 쓰기 (선택)" className="block w-full resize-none [field-sizing:content] max-h-28 px-4 py-3 rounded-3xl bg-white/15 text-white placeholder-white/60 text-[0.9375rem] leading-6 focus:outline-none" />
-            <button onClick={post} disabled={posting} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? '올리는 중...' : '내 스토리에 올리기'}</button>
+            <button onClick={post} disabled={posting || (!!draft.video && !draftVideo)} className="w-full py-3.5 rounded-full bg-white text-stone-900 font-bold disabled:opacity-50">{posting ? '올리는 중...' : draft.video && !draftVideo ? '영상 준비 중...' : '내 스토리에 올리기'}</button>
             <p className="text-center text-[0.75rem] text-white/60">24시간 뒤에 저절로 사라져요</p>
           </div>
         </div>
@@ -280,7 +354,15 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
           <div className="fixed inset-0 z-[90] bg-black flex justify-center">
             <div className="relative w-full max-w-xl h-full select-none"
               onPointerDown={() => setPaused(true)} onPointerUp={() => setPaused(false)} onPointerCancel={() => setPaused(false)}>
-              <img loading="lazy" src={current.image_url} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+              {current.video_url ? (
+                <video key={current.id} ref={v => { storyVideoRef.current = v; }} src={current.video_url} poster={current.image_url || undefined} playsInline preload="auto"
+                  onLoadedData={e => { if (!pausedRef.current) startVideo(e.currentTarget); }}
+                  onTimeUpdate={e => { const v = e.currentTarget; if (v.duration) setProgress(Math.min(1, v.currentTime / v.duration)); }}
+                  onEnded={() => step(1)}
+                  className="absolute inset-0 w-full h-full object-contain" />
+              ) : (
+                <img loading="lazy" src={current.image_url} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+              )}
               {/* 위: 진행 막대 + 작성자 */}
               <div className="absolute top-0 inset-x-0 z-10 px-2.5 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-8 bg-gradient-to-b from-black/60 to-transparent">
                 <div className="flex gap-1">
@@ -297,6 +379,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
                     <span className="text-white/70 text-[0.8125rem] shrink-0">{ago(current.created_at)}</span>
                   </button>
                   <span className="flex-1" />
+                  {current.video_url && <button onClick={toggleSound} onPointerDown={e => e.stopPropagation()} className="w-10 h-10 flex items-center justify-center" aria-label={videoMuted ? '소리 켜기' : '소리 끄기'}><Icon name={videoMuted ? 'mute' : 'speaker'} className="w-5 h-5" /></button>}
                   {(mine || isAdmin) && <button onClick={() => remove(current)} className="w-10 h-10 flex items-center justify-center" aria-label="스토리 지우기"><Icon name="trash" className="w-5 h-5" /></button>}
                   <button onClick={() => setViewerOpen(false)} className="w-10 h-10 flex items-center justify-center text-3xl leading-none" aria-label="닫기">×</button>
                 </div>

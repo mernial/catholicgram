@@ -4994,7 +4994,7 @@ export default function Home() {
             <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
             <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="photo-camera" />
             <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
-            <input type="file" accept="image/*" onChange={handleStoryFile} className="hidden" id="story-upload" />
+            <input type="file" accept="image/*,video/*" onChange={handleStoryFile} className="hidden" id="story-upload" />
             {composerStep === 'pick' ? (
               <>
                 {/* 1단계 (인스타그램처럼 어두운 화면): ✕ · 새 게시물 · 다음 */}
