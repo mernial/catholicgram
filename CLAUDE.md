@@ -279,6 +279,7 @@
 - 운영자 곡 셋 추가(운영자 2026-11-11 '음악으로 올려줘'): Warm Felt Piano(2분 56초)·Tranilla(3분 8초)·Quiet Piano(3분 19초) — Suno mp3 를 다시 압축하지 않고 꼬리표만 지워(`ffmpeg -c copy -map_metadata -1`, Suno 사용자 이름·곡 id 빠짐) `public/bgm/{warm-felt-piano,tranilla,quiet-piano}.mp3`, `lib/music.ts` `BUILTIN_BGM` 맨 앞(만든 사람 '가톨릭그램', 분위기 고요) → '가톨릭그램 음악'·배경음악 고르기 맨 위
 - 내 공간 정리(운영자 시안 2026-11-11: '배지랑 도장을 누르면 나오도록, 음악칸도 깔끔하게, 지저분하지 않게'): 뱃지 선반(`BadgeShelf`)을 메달 줄 대신 한 줄 알약으로 — '내 뱃지 N'(누르면 `BadgeListDialog`, 본인·관리자는 숨긴 뱃지도 `showHidden`, 없으면 받는 법 안내 `empty`) · '📖 도장 N ›'(StampBook) · '다른 교우에게 보이기' 밀기 단추(400px 아래는 '보이기'), 관리자는 '＋ 달기'. 순서는 이름·@아이디·소개 → 뱃지 줄 → 배경음악 칸(가로 꽉 찬 연보라 한 줄: ▶·♫ 곡 제목·'배경음악'/재생 막대·안에 '바꾸기', 없으면 점선 한 줄) → 프로필 편집·메시지 → 기능 아이콘 칸(테두리 상자·칸 사이 세로줄) → 가톨릭 앱 칸(3칸 상자). 이름 칸 오른쪽 위 흐린 성당 그림(svg `-z-10`, `isolate`). 관리자 아이콘 칸은 그대로
 - 내 공간 '건의하기'·'친구 초대'를 설정 안으로(운영자 2026-11-11: '그냥 설정 안으로, 깔끔하게'): 내 공간 아이콘 칸은 내 댓글·설정·(홈 화면에 추가)만, 설정 목록에 '친구 초대 · 가톨릭그램 알리기'·'건의하기'(관리자는 '건의함', `SettingsModal onFeedback`·`feedbackLabel` → `openFromSettings(setShowFeedback)` — 뒤로가기는 설정 목록으로), 관리자 아이콘 칸 맨 앞에 '건의함'도
+- 내 공간 내 댓글·설정을 프로필 편집처럼(운영자 2026-11-11: '일관되게'): 아이콘 상자 대신 프로필 편집·메시지와 같은 회색 단추 두 칸(아이콘+글), 홈 화면에 추가가 있으면 아래 한 줄 가득
 ## Android 앱 (Google Play) 진행 상황
 - 패키지 `com.catholicgram.android` (PWABuilder TWA). 예전 초안 앱 `com.catholicgram.app`은 쓰지 않음
 - 2026-10-27: 비공개 테스트(Alpha) 1 (1.0.0.0) + 대한민국 + 테스터 이메일 목록 '테스터'(12명)로 **검토 제출함**. Play Console 아동 안전 표준 선언 URL은 `https://catholicgram-dey7.vercel.app/child-safety`
