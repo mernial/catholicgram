@@ -5508,15 +5508,14 @@ export default function Home() {
               const myTiles: Tile[] = [
                 { key: 'comments', icon: 'reply', tone: 'sky', label: '내 댓글', onClick: () => setShowMyComments(true) },
                 { key: 'settings', icon: 'gear', tone: 'stone', label: '설정', onClick: () => { setSettingsView('main'); setShowSettings(true); } },
-                { key: 'feedback', icon: 'envelope', tone: 'green', label: isAdmin ? '건의함' : '건의하기', onClick: () => setShowFeedback(true) },
-                // 가톨릭그램 알리기: 카카오톡·문자로 보내기, 주소 복사, 주보용 QR 사진 (components/ShareApp)
-                { key: 'share', icon: 'megaphone', tone: 'gold', label: '친구 초대', onClick: () => setShowShareApp(true) },
+                // 건의하기·친구 초대는 설정 안으로 옮김 (운영자 2026-11-11 '내 공간을 깔끔하게') — 관리자 건의함은 관리자 칸
                 ...(!isStandalone ? [{ key: 'install', icon: 'phone' as IconName, tone: 'violet' as const, label: '홈 화면에 추가', onClick: handleInstallClick }] : []),
                 // 가톨릭 앱: 매일미사·가톨릭성경·cpbc플러스 앱 그림 — 누르면 바로 열림 (components/CatholicApps, 루비로사 건의·운영자)
                 ...CATHOLIC_APPS.map(a => ({ key: a.key, label: a.name, img: `/apps/${a.key}.png`, href: a.url, aria: a.label })),
               ];
               const adminTiles: Tile[] = [
                 { key: 'members', icon: 'users', tone: 'green', label: '회원 명단', onClick: () => setShowAdminMembers(true) },
+                { key: 'feedback', icon: 'envelope', tone: 'green', label: '건의함', onClick: () => setShowFeedback(true) },
                 { key: 'stats', icon: 'chart', tone: 'sky', label: '접속 통계', onClick: () => setShowAdminStats(true) },
                 { key: 'usage', icon: 'stack', tone: 'sky', label: '데이터 사용량', onClick: () => setShowAdminUsage(true) },
                 { key: 'testers', icon: 'phone', tone: 'green', label: '테스터 신청', onClick: () => setShowAdminTesters(true) },
@@ -6289,6 +6288,7 @@ export default function Home() {
           onEditProfile={() => openFromSettings(openProfileEdit)}
           onSwitchAccount={switchAccount}
           onShareApp={() => openFromSettings(() => setShowShareApp(true))}
+          onFeedback={() => openFromSettings(() => setShowFeedback(true))} feedbackLabel={isAdmin ? '건의함' : '건의하기'}
           onOpenLegal={(doc: LegalDoc) => openFromSettings(() => setLegalDoc(doc))}
           onSamsungGuide={(preview: boolean) => openFromSettings(() => setSamsungGuideOpen(preview ? 'preview' : 'open'))}
           onPersonalPreview={isAdmin && PERSONAL_NOTICES.length > 0 ? () => openFromSettings(() => setPersonalPreview(true)) : undefined}
