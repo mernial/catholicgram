@@ -2618,17 +2618,13 @@ export default function Home() {
     if (!track) return null;
     const playing = profileMusicNow?.userId === userId && profileMusicNow.playing;
     return (
-      <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="max-w-full inline-flex items-center gap-2 rounded-full bg-violet-50 border border-violet-200 pl-1 pr-3.5 py-1" aria-label={playing ? '배경음악 멈추기' : '배경음악 듣기'}>
-        <span className="w-8 h-8 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
-        <span className="min-w-0 text-left">
-          <span className="block text-[0.8125rem] font-bold text-violet-900 truncate"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />{profileMusicMap[userId]?.title || track.title}</span>
-          <span className="block text-[0.6875rem] text-violet-700/80">{playing ? '흐르는 중 · 누르면 멈춰요' : '눌러서 듣기'}</span>
-        </span>
-        {playing && (
-          <span className="flex items-end gap-[2px] h-3.5 shrink-0" aria-hidden="true">
-            {[0, 0.25, 0.5].map(d => <span key={d} className="eq-bar w-[3px] h-full rounded-sm bg-violet-600" style={{ animationDelay: `${d}s` }} />)}
-          </span>
-        )}
+      <button type="button" data-profile-music onClick={() => toggleProfileMusic(userId)} className="min-w-0 flex-1 flex items-center gap-2.5 text-left" aria-label={playing ? '배경음악 멈추기' : '배경음악 듣기'}>
+        <span className="w-9 h-9 rounded-full bg-violet-700 text-white flex items-center justify-center shrink-0"><Icon name={playing ? 'pause' : 'play'} fill className="w-3.5 h-3.5" /></span>
+        <Icon name="music" className="w-[1.1em] h-[1.1em] shrink-0 text-violet-800" />
+        <span className="min-w-0 truncate text-[0.9375rem] font-bold text-violet-950">{profileMusicMap[userId]?.title || track.title}</span>
+        {playing
+          ? <span className="flex items-end gap-[2px] h-3.5 shrink-0" aria-hidden="true">{[0, 0.25, 0.5].map(d => <span key={d} className="eq-bar w-[3px] h-full rounded-sm bg-violet-600" style={{ animationDelay: `${d}s` }} />)}</span>
+          : <span className="shrink-0 text-[0.75rem] text-violet-700/70 border-l border-violet-200 pl-2">배경음악</span>}
       </button>
     );
   };
@@ -5415,14 +5411,20 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="flex items-center gap-1">
+            <div className="mt-3 relative isolate">
+              {/* 이름 칸 오른쪽 위 흐린 성당 그림 (운영자 시안 2026-11-11) */}
+              <svg viewBox="0 0 200 110" className="absolute -z-10 -right-2 -top-3 w-44 h-auto text-stone-300/50 pointer-events-none select-none" aria-hidden="true">
+                <path d="M0 110 C40 70 80 62 120 70 C150 58 180 62 200 72 L200 110 Z" fill="currentColor" opacity=".45" />
+                <path d="M96 58 v-16 l14 -12 l14 12 v16 z" fill="currentColor" />
+                <rect x="108.5" y="12" width="3" height="16" rx="1" fill="currentColor" /><rect x="104" y="17" width="12" height="3" rx="1" fill="currentColor" />
+                <path d="M106 58 v-8 a4 4 0 0 1 8 0 v8 z" fill="#fff" opacity=".7" />
+                <path d="M60 110 C80 84 100 80 124 84 C146 78 168 84 184 96 L184 110 Z" fill="currentColor" opacity=".6" />
+              </svg>
+              <div className="relative flex items-center gap-1">
                 <h2 className="text-[1rem] font-bold text-stone-900">{viewingProfile?.baptismal_name || '교우'}</h2>
                 <RoleBadge type={viewingProfile?.badge_type} size="md" />
               </div>
-              <p className="text-[0.8125rem] text-stone-400">@{viewingProfile?.handle || 'user'}</p>
-              {/* 교우 뱃지 선반 (관리자가 달아 준 뱃지, components/MemberBadges) */}
-              {viewingUserId && <BadgeShelf key={viewingUserId} userId={viewingUserId} admin={isAdmin} mine={viewingUserId === user?.id} onGrant={() => setBadgeGrantFor({ id: viewingUserId, name: viewingProfile?.baptismal_name || '교우' })} />}
+              <p className="relative text-[0.8125rem] text-stone-400">@{viewingProfile?.handle || 'user'}</p>
               {/* 한 줄 소개: 내 공간이면 눌러서 쓰기·고치기 */}
               {bioDraft !== null ? (
                 <div className="mt-2 flex flex-col gap-1.5">
@@ -5440,11 +5442,13 @@ export default function Home() {
               ) : viewingUserId === user?.id && (
                 <button onClick={() => setBioDraft('')} className="mt-1 text-[0.8125rem] text-stone-500"><Icon name="pencil" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />나를 소개하는 한 마디 쓰기</button>
               )}
+              {/* 뱃지·도장 한 줄 (누르면 창으로, components/MemberBadges BadgeShelf) */}
+              {viewingUserId && <BadgeShelf key={viewingUserId} userId={viewingUserId} admin={isAdmin} mine={viewingUserId === user?.id} onGrant={() => setBadgeGrantFor({ id: viewingUserId, name: viewingProfile?.baptismal_name || '교우' })} />}
               {/* 배경음악: 이 공간에 들어오면 흐르는 곡 (누구나 내 공간에서 '가톨릭그램 음악' 중에 정함) */}
               {viewingUserId && profileTrack(viewingUserId) && (
-                <div className="mt-2 flex items-center gap-2 flex-wrap">
+                <div className="mt-3 flex items-center gap-2 rounded-2xl bg-violet-50 border border-violet-100 pl-1.5 pr-1.5 py-1.5">
                   {profileMusicBar(viewingUserId)}
-                  {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
+                  {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="shrink-0 text-[0.8125rem] px-3 py-1.5 rounded-xl bg-white border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
                 </div>
               )}
               {/* 배경음악이 아직 없을 때도 재생칸을 보여 줌 (운영자 요청): 어느 공간에서나 — 내 공간은 넣기, 관리자는 노래 선물, 다른 교우는 안내 */}
@@ -5460,15 +5464,11 @@ export default function Home() {
                   setShowProfileMusicPicker(true);
                 };
                 return (
-                  <div className="mt-2">
-                    <button type="button" onClick={press} className={`max-w-full inline-flex items-center gap-2 rounded-full border border-dashed pl-1 pr-3.5 py-1 ${gifted ? 'bg-amber-50 border-amber-300' : 'bg-stone-50 border-stone-300'}`} aria-label={own ? '배경음악 넣기' : isAdmin ? '노래 선물하기' : '배경음악 없음'}>
-                      <span className="w-8 h-8 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center shrink-0"><Icon name="play" fill className="w-3.5 h-3.5" /></span>
-                      <span className="min-w-0 text-left">
-                        <span className="block text-[0.8125rem] font-bold text-stone-700 truncate"><Icon name="music" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-0.5" />배경음악{own ? '' : ' 없음'}</span>
-                        <span className={`block text-[0.6875rem] truncate ${gifted ? 'text-amber-700 font-bold' : 'text-stone-500'}`}>{sub}</span>
-                      </span>
-                    </button>
-                  </div>
+                  <button type="button" onClick={press} className={`mt-3 w-full flex items-center gap-2.5 rounded-2xl border border-dashed pl-1.5 pr-3 py-1.5 text-left ${gifted ? 'bg-amber-50 border-amber-300' : 'bg-stone-50 border-stone-300'}`} aria-label={own ? '배경음악 넣기' : isAdmin ? '노래 선물하기' : '배경음악 없음'}>
+                    <span className="w-9 h-9 rounded-full bg-stone-200 text-stone-500 flex items-center justify-center shrink-0"><Icon name="music" className="w-4 h-4" /></span>
+                    <span className="shrink-0 text-[0.9375rem] font-bold text-stone-700">배경음악{own ? '' : ' 없음'}</span>
+                    <span className={`min-w-0 truncate text-[0.75rem] border-l border-stone-300 pl-2 ${gifted ? 'text-amber-700 font-bold' : 'text-stone-500'}`}>{sub}</span>
+                  </button>
                 );
               })()}
               {isAdmin && viewingRealName && (
@@ -5551,7 +5551,12 @@ export default function Home() {
                       <button onClick={() => { storageSet(`birthdayPromptHidden:${user.id}`, '1'); setBirthdayPromptHidden(true); }} className="shrink-0 w-8 h-8 text-stone-400 text-xl leading-none" aria-label="생일 안내 닫기">×</button>
                     </div>
                   )}
-                  <div className="mt-3">{tileGrid(myTiles)}</div>
+                  <div className="mt-3 rounded-2xl border border-stone-200 bg-white/60 py-2 grid divide-x divide-stone-100" style={{ gridTemplateColumns: `repeat(${myTiles.filter(t => !('img' in t)).length}, minmax(0, 1fr))` }}>
+                    {myTiles.filter(t => !('img' in t)).map(t => 'img' in t ? null : <button key={t.key} onClick={t.onClick} className={tileCls}>{tileBody(t)}</button>)}
+                  </div>
+                  <div className="mt-2.5 rounded-2xl border border-stone-200 bg-white/60 py-2 grid grid-cols-3">
+                    {myTiles.filter(t => 'img' in t).map(t => 'img' in t ? <a key={t.key} href={t.href} target="_blank" rel="noopener noreferrer" aria-label={t.aria} className={tileCls}>{tileBody(t)}</a> : null)}
+                  </div>
                   {isAdmin && (
                     <div className="mt-3">
                       <p className="text-[0.75rem] font-bold text-stone-400 mb-1.5 px-1">관리자</p>
