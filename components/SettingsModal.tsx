@@ -26,7 +26,7 @@ let savedListScroll = 0;
 interface BlockedProfile { id: string; baptismal_name: string; handle?: string; avatar_url?: string }
 
 // 설정: 약관/개인정보, 차단 목록, 로그아웃, 회원 탈퇴
-export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', restoreScroll = false, backRef, onSubView, onOpenLegal, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide, onPersonalPreview }: {
+export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFeastDayChange, initialView = 'main', restoreScroll = false, backRef, onSubView, onOpenLegal, onOpenMembers, onOpenBgm, onOpenVault, onOpenStats, onEditProfile, onOpenNotices, onOpenTester, onShareApp, onSamsungGuide, onPersonalPreview, onSwitchAccount }: {
   user: User;
   onClose: () => void;
   onUnblock: (userId: string) => Promise<void> | void;
@@ -35,6 +35,7 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
   initialView?: 'main' | 'feast' | 'sound';
   restoreScroll?: boolean; // 설정에서 연 창을 뒤로가기로 닫고 다시 열린 설정: 목록을 보던 자리로
   backRef?: React.MutableRefObject<(() => boolean) | null>; // 휴대폰 뒤로가기: 설정 안의 화면이면 설정 목록으로 (물러났으면 true)
+  onSwitchAccount?: () => void; // 다른 계정으로 로그인 (page: 확인 → 로그아웃 → 로그인 창)
   onSubView?: (open: boolean) => void; // 목록에서 안의 화면을 누름(true) / ← 로 목록에 돌아옴(false) — page 가 뒤로가기 기록을 쌓고 걷음
   onOpenMembers?: () => void; // 관리자에게만 전달
   onOpenBgm?: () => void;     // 관리자에게만 전달
@@ -292,6 +293,9 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
             </button>
             <a href="/terms" onClick={e => { if (onOpenLegal) { e.preventDefault(); onOpenLegal('terms'); } }} className={row}><span className={label}><IconBadge name="scroll" />이용약관 및 커뮤니티 규칙</span><span className="text-stone-300">›</span></a>
             <a href="/privacy" onClick={e => { if (onOpenLegal) { e.preventDefault(); onOpenLegal('privacy'); } }} className={row}><span className={label}><IconBadge name="lock" />개인정보처리방침</span><span className="text-stone-300">›</span></a>
+            {onSwitchAccount && (
+              <button onClick={onSwitchAccount} className={row}><span className={label}><IconBadge name="users" />다른 계정으로 로그인</span><span className="text-stone-300">›</span></button>
+            )}
             <button onClick={() => signOutAndClear().then(onClose)} className={row}><span className={label}><IconBadge name="signout" />로그아웃</span></button>
             <button onClick={handleDelete} disabled={deleting} className={`${row} text-red-600`}>
               <span>{deleting ? '탈퇴 처리 중...' : '회원 탈퇴'}</span>

@@ -21,7 +21,7 @@ body{font-family:NSR,'Noto Color Emoji',sans-serif;-webkit-font-smoothing:antial
 #pts{margin-top:40px;display:flex;flex-direction:column;gap:18px}
 .pt{display:flex;align-items:center;gap:18px;font-weight:700;font-size:34px;color:#4a3e33}
 .pt .ic{width:58px;height:58px;border-radius:18px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:32px;box-shadow:0 6px 16px rgba(80,60,30,.10)}
-#subs{position:absolute;left:120px;width:880px;top:858px;height:160px;z-index:6;display:flex;align-items:flex-end}
+#subs{position:absolute;left:120px;width:880px;top:858px;height:160px;z-index:12;display:flex;align-items:flex-end}
 #subs .box{background:rgba(32,26,22,.82);color:#fff;font-weight:700;font-size:34px;line-height:1.42;padding:16px 28px;border-radius:20px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
 #phone{position:absolute;left:1180px;top:40px;width:476px;height:1000px;z-index:3;transform-origin:50% 50%}
 #bezel{position:absolute;inset:0;border-radius:64px;background:#15161b;box-shadow:0 40px 90px rgba(60,40,20,.30),0 8px 24px rgba(0,0,0,.25),inset 0 0 0 3px #2c2e36}
@@ -351,7 +351,7 @@ const FXF = {
     el(d, 'div', 'abs', `left:0;right:0;top:575px;text-align:center;font-weight:700;font-size:40px;color:${mix('#eee', '#6b5536', dawn)};opacity:${st}`, '신자들이 함께 만드는 공간');
     // lower third name
     const nt = Math.min(eout((t - 2.0) / .6), clamp((P(1) + .2 - t) / .5));
-    const lt = el(d, 'div', 'abs', `left:120px;top:880px;opacity:${nt};transform:translateX(${(1 - nt) * -40}px);display:flex;align-items:center;gap:20px`);
+    const lt = el(d, 'div', 'abs', `left:120px;top:740px;opacity:${nt};transform:translateX(${(1 - nt) * -40}px);display:flex;align-items:center;gap:20px`);
     el(lt, 'div', '', 'width:8px;height:86px;border-radius:4px;background:#b08a3e');
     el(lt, 'div', '', `font-weight:800;font-size:44px;color:${mix('#fff', '#2b2420', dawn)}`, '윤호요셉 신부<div style="font-weight:700;font-size:26px;opacity:.75;margin-top:6px">가톨릭그램을 만든 사람</div>');
   },
@@ -378,7 +378,7 @@ const FXF = {
     el(d, 'div', 'abs', `left:958px;top:496px;width:4px;height:28px;background:#3a2a1a;border-radius:2px`);
     el(d, 'div', 'abs', `left:${960 - 22}px;top:${420 - 10 * (fl - 1)}px;width:44px;height:96px;border-radius:50% 50% 45% 45%/70% 70% 30% 30%;background:radial-gradient(ellipse at 50% 75%, #fff8e0 0 25%, #ffd36a 45%, rgba(255,140,40,.85) 75%, rgba(255,120,30,0) 100%);opacity:${lit};transform:scale(${fl * lit}) rotate(${2 * Math.sin(t * 5)}deg);transform-origin:50% 100%`);
     const tx = clamp((t - f.t0 - 1.4) / 1);
-    el(d, 'div', 'abs', `left:0;right:0;top:880px;text-align:center;font-weight:800;font-size:56px;color:#f6e6c8;opacity:${tx}`, '마음 놓고 모일 수 있는 곳');
+    el(d, 'div', 'abs', `left:0;right:0;top:150px;text-align:center;font-weight:800;font-size:56px;color:#f6e6c8;opacity:${tx}`, '마음 놓고 모일 수 있는 곳');
   },
   tagsfloat(t, f, { fxl }) {
     f.items.forEach((s, i) => { const ti = f.t0 + .3 + i * .55; const k = back((t - ti) / .6); const o = Math.min(clamp((t - ti) / .3), clamp((f.t1 - t) / .4)); const pos = [[1040, 230], [1650, 360], [1010, 640], [1640, 760]][i]; el(fxl, 'div', 'chip', `left:${pos[0]}px;top:${pos[1] + 8 * Math.sin(t * 1.5 + i)}px;opacity:${o};transform:scale(${k})`, ['⛪ ', '📖 ', '📢 ', '🙏 '][i] + s); });
@@ -398,7 +398,7 @@ const FXF = {
       el(d, 'div', 'dio', `left:${x}px;top:${y}px;transform:translate(-50%,-50%);opacity:${clamp(ap * 1.4)}`, n + '교구');
     });
     const tx = clamp((t - (S(5, 1) + .8)) / .8);
-    el(d, 'div', 'abs', `left:0;right:0;top:880px;text-align:center;font-weight:800;font-size:54px;color:#4a3a22;opacity:${tx}`, '전국의 신자들이 한곳에');
+    el(d, 'div', 'abs', `left:0;right:0;top:70px;text-align:center;font-weight:800;font-size:54px;color:#4a3a22;opacity:${tx}`, '전국의 신자들이 한곳에');
   },
   spread(t, f, { fxl }) {
     const avs = 7; for (let i = 0; i < avs; i++) { const a = -Math.PI / 2 + (i - 3) * .42; const R = 560; const x = PHX + 238 + R * Math.cos(a) * 1.1 - 520, y = 500 + R * Math.sin(a) * .9 + 120; }
@@ -458,15 +458,15 @@ const FXF = {
   },
   end(t, f, { full }) {
     const k = clamp((t - f.t0) / .8); const d = el(full, 'div', 'abs', `inset:0;opacity:${k};background:radial-gradient(1200px 900px at 50% 40%, #fbf3e1, #ead6b0)`);
-    el(d, 'div', 'abs', `left:960px;top:330px;width:900px;height:900px;margin:-450px;border-radius:50%;background:radial-gradient(circle, rgba(255,236,190,.9), rgba(255,236,190,0) 60%);transform:scale(${1 + .03 * Math.sin(t * 1.5)})`);
-    const ic = back((t - f.t0 - .3) / .9); imgEl(d, 'icon', `position:absolute;left:${960 - 120}px;top:150px;width:240px;height:240px;border-radius:56px;transform:scale(${ic});box-shadow:0 30px 70px rgba(60,40,10,.3)`);
-    const tt = clamp((t - f.t0 - .8) / .6); el(d, 'div', 'abs', `left:0;right:0;top:430px;text-align:center;font-weight:800;font-size:92px;letter-spacing:-2px;color:#2b2420;opacity:${tt}`, '가톨릭그램');
+    el(d, 'div', 'abs', `left:960px;top:270px;width:900px;height:900px;margin:-450px;border-radius:50%;background:radial-gradient(circle, rgba(255,236,190,.9), rgba(255,236,190,0) 60%);transform:scale(${1 + .03 * Math.sin(t * 1.5)})`);
+    const ic = back((t - f.t0 - .3) / .9); imgEl(d, 'icon', `position:absolute;left:${960 - 120}px;top:90px;width:240px;height:240px;border-radius:56px;transform:scale(${ic});box-shadow:0 30px 70px rgba(60,40,10,.3)`);
+    const tt = clamp((t - f.t0 - .8) / .6); el(d, 'div', 'abs', `left:0;right:0;top:360px;text-align:center;font-weight:800;font-size:92px;letter-spacing:-2px;color:#2b2420;opacity:${tt}`, '가톨릭그램');
     const bt = back((t - f.t0 - 1.4) / .7);
-    el(d, 'div', 'abs', `left:0;right:0;top:590px;text-align:center;opacity:${clamp((t - f.t0 - 1.4) / .3)};transform:scale(${bt})`, '<span style="display:inline-flex;align-items:center;gap:18px;padding:26px 48px;border-radius:999px;background:#2b2420;color:#fff;font-weight:800;font-size:44px;box-shadow:0 18px 40px rgba(43,36,32,.35)">▶ Play 스토어에서 ‘가톨릭그램’</span>');
+    el(d, 'div', 'abs', `left:0;right:0;top:510px;text-align:center;opacity:${clamp((t - f.t0 - 1.4) / .3)};transform:scale(${bt})`, '<span style="display:inline-flex;align-items:center;gap:18px;padding:26px 48px;border-radius:999px;background:#2b2420;color:#fff;font-weight:800;font-size:44px;box-shadow:0 18px 40px rgba(43,36,32,.35)">▶ Play 스토어에서 ‘가톨릭그램’</span>');
     const qt = clamp((t - f.t0 - 2.2) / .6);
-    el(d, 'div', 'abs', `left:0;right:0;top:760px;text-align:center;font-weight:700;font-size:32px;color:#6b5536;opacity:${qt}`, '아이폰: 사파리에서 catholicgram-dey7.vercel.app → 홈 화면에 추가');
+    el(d, 'div', 'abs', `left:0;right:0;top:650px;text-align:center;font-weight:700;font-size:32px;color:#6b5536;opacity:${qt}`, '아이폰: 사파리에서 catholicgram-dey7.vercel.app → 홈 화면에 추가');
     const pt = clamp((t - (S(35, 1) + 1.2)) / .8);
-    el(d, 'div', 'abs', `left:0;right:0;top:860px;text-align:center;font-weight:800;font-size:54px;color:#b08a3e;opacity:${pt}`, '찬미예수님');
+    el(d, 'div', 'abs', `left:0;right:0;top:720px;text-align:center;font-weight:800;font-size:54px;color:#b08a3e;opacity:${pt}`, '찬미예수님');
   },
 };
 // notif title fix
