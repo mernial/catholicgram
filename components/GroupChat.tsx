@@ -14,7 +14,7 @@ import NewChat, { GROUP_SETUP_HINT, isGroupSetupError, type ChatPerson } from '@
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { useChatMedia, ChatMediaView, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator, BackToReply } from '@/components/ChatSheets';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { useQuietSend } from '@/components/QuietSend';
@@ -481,9 +481,11 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const startEdit = (m: GroupMessage) => { setMenuMsg(null); setReplyTo(null); setEditing(m); setInput(chatText(m.content)); /* 이모티콘과 함께 보낸 글은 글만 고침 */ setTimeout(() => inputRef.current?.focus(), 50); };
   const cancelEdit = () => { setEditing(null); setInput(''); };
   // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
-  const jumpTo = (id: string) => {
+  const [returnTo, setReturnTo] = useState<string | null>(null); // 답장을 눌러 옮겨 왔으면 그 답장 자리 (아래 '답장으로 돌아가기')
+  const jumpTo = (id: string, from?: string) => {
     const el = document.getElementById(`gm-${id}`);
     if (!el) return;
+    setReturnTo(from ?? null);
     atBottomRef.current = false;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setFlashId(id);
@@ -498,7 +500,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
   const gestures = usePressGestures<GroupMessage>({
     keyOf: m => m.id,
     // 한 번 누르기: 답장 말풍선이면 원래 메시지로 (메뉴는 꾹 누를 때만 — 루비로사 건의), 관리자 보기는 예전처럼 메뉴(프로필)
-    onTap: (m, el) => { if (adminView) openMenu(m, el); else if (m.reply_to && document.getElementById(`gm-${m.reply_to}`)) jumpTo(m.reply_to); },
+    onTap: (m, el) => { if (adminView) openMenu(m, el); else if (m.reply_to && document.getElementById(`gm-${m.reply_to}`)) jumpTo(m.reply_to, m.id); },
     onDoubleTap: adminView ? undefined : m => { if (canWriteRef.current) react(m, '❤️'); },
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: adminView ? undefined : m => { if (canWriteRef.current) startReply(m); },
@@ -783,7 +785,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
                           className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${flashId === m.id ? 'ring-4 ring-amber-300' : ''} ${search.currentId === m.id ? 'ring-4 ring-yellow-300' : ''} ${blocked ? 'bg-white/60 text-stone-400 italic' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                           {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                           {m.reply_to && (
-                            <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
+                            <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!, m.id); }}
                               aria-label={`${quoted ? nameOf(quoted.user_id) : '이전 메시지'}에게 답장 · 눌러서 원래 메시지 보기`}
                               className={`flex max-w-full items-center gap-1 text-left not-italic mb-0.5 text-[0.8125rem] leading-snug ${mine && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                               {quoted && !(quoted.user_id && blockedIds.has(quoted.user_id)) && <QuoteThumb m={quoted} />}
@@ -828,6 +830,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
       </div>
 
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
+      {returnTo && !stickerPick.open && !stickerPick.picked && <BackToReply onBack={() => { const r = returnTo; setReturnTo(null); if (document.getElementById(`gm-${r}`)) jumpTo(r); }} onClose={() => setReturnTo(null)} />}
       {!stickerPick.open && !stickerPick.picked && !hasStickerSuggestion(input) && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} />}
 
       <TypingIndicator typers={typing.typers} lookup={id => (people[id] ? { name: people[id].baptismal_name, avatar: people[id].avatar_url ?? null } : undefined)} />

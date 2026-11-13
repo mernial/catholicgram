@@ -87,6 +87,25 @@ export function JumpToLatest({ listRef, newCount = 0, onJump, className = 'botto
   );
 }
 
+// 답장을 눌러 원래 메시지로 옮겨 간 뒤, 아래 가운데에 '답장으로 돌아가기' 단추 (운영자 요청 2026-11-13)
+export function BackToReply({ onBack, onClose, className = 'bottom-[calc(5.5rem+env(safe-area-inset-bottom))]' }: {
+  onBack: () => void;
+  onClose: () => void;
+  className?: string;   // 놓을 높이 (입력칸 위)
+}) {
+  return (
+    <div className={`absolute left-1/2 -translate-x-1/2 z-20 flex items-center rounded-full bg-stone-800/90 text-white shadow-lg ${className}`}>
+      <button type="button" onClick={onBack} className="pl-4 pr-2 h-10 flex items-center gap-1.5 text-[0.875rem] font-bold whitespace-nowrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-4 h-4" aria-hidden="true"><path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14m0 0l-6-6m6 6l6-6" /></svg>
+        답장으로 돌아가기
+      </button>
+      <button type="button" onClick={onClose} aria-label="돌아가기 단추 닫기" className="w-9 h-10 flex items-center justify-center text-white/70">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="w-4 h-4" aria-hidden="true"><path strokeLinecap="round" d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </div>
+  );
+}
+
 // 입력 중 표시: 한 사람이면 '○○님이 입력 중', 여러 사람이면 프로필 사진을 겹쳐 '○명이 입력 중' (점 세 개가 움직임)
 export function TypingIndicator({ typers, lookup }: {
   typers: { id: string; name: string; avatar: string | null }[];

@@ -17,7 +17,7 @@ import NewChat from '@/components/NewChat';
 import MessageMenu, { REACTION_EMOJIS, MORE_EMOJIS, SwipeHint, anchorOf, type MenuAnchor } from '@/components/MessageMenu';
 import { useChatMedia, ChatMediaView, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator, BackToReply } from '@/components/ChatSheets';
 import BottomSheet from '@/components/BottomSheet';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { useFlipList } from '@/lib/use-flip-list';
@@ -1710,7 +1710,7 @@ export default function Home() {
   const dmGestures = usePressGestures<Message>({
     keyOf: m => String(m.id),
     // 한 번 누르기: 답장 말풍선이면 원래 메시지로 (루비로사 건의 — 예전엔 내 메시지를 누르면 고치기 메뉴가 떠서, 메뉴는 이제 꾹 누를 때만)
-    onTap: m => { if (m.reply_to && document.getElementById(`dm-${m.reply_to}`)) jumpToMessage(m.reply_to); },
+    onTap: m => { if (m.reply_to && document.getElementById(`dm-${m.reply_to}`)) jumpToMessage(m.reply_to, m.id); },
     onDoubleTap: m => { if (!dmRequestRef.current) toggleMessageHeart(m.id); },
     onLongPress: (m, el) => openMessageMenu(m, el),
     onSwipe: m => { if (!dmRequestRef.current) startReply(m); },
@@ -1725,9 +1725,11 @@ export default function Home() {
   const cancelEditMessage = () => { setEditingMessage(null); setMessageInput(''); };
   // 답장 표시를 누르면 원래 메시지로 옮겨 잠깐 강조
   const [flashMessageId, setFlashMessageId] = useState<string | null>(null);
-  const jumpToMessage = (id: string | number) => {
+  const [dmReturn, setDmReturn] = useState<{ id: string; room: string | null } | null>(null); // 답장을 눌러 옮겨 왔으면 그 답장 자리 (아래 '답장으로 돌아가기')
+  const jumpToMessage = (id: string | number, from?: string | number) => {
     const el = document.getElementById(`dm-${id}`);
     if (!el) return;
+    setDmReturn(from != null ? { id: String(from), room: chatPartnerIdRef.current } : null);
     chatStick.atBottom.current = false;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setFlashMessageId(String(id));
@@ -5953,6 +5955,7 @@ export default function Home() {
         // 채팅방: 화면 높이에 맞춰 메시지만 스크롤되고 입력창은 항상 맨 아래에 보임
         <section className="relative flex-1 min-h-0 flex flex-col bg-stone-100">
           {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' */}
+          {!dmCapture && dmReturn && dmReturn.room === currentChatUser?.id && !dmSticker.open && !dmSticker.picked && <BackToReply onBack={() => { const r = dmReturn.id; setDmReturn(null); if (document.getElementById(`dm-${r}`)) jumpToMessage(r); }} onClose={() => setDmReturn(null)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
           {!dmCapture && !dmSticker.open && !dmSticker.picked && !hasStickerSuggestion(messageInput) && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
           <div ref={chatStick.listRef} {...dmStickerTap} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
             {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
@@ -6031,7 +6034,7 @@ export default function Home() {
                           >
                             {/* 답장: 어떤 메시지에 대한 답인지 (누르면 그 메시지로) */}
                             {msg.reply_to != null && (
-                              <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!); }}
+                              <button type="button" onClick={e => { e.stopPropagation(); jumpToMessage(msg.reply_to!, msg.id); }}
                                 aria-label={`${quoted ? (quoted.sender_id === user?.id ? '내' : `${currentChatUser?.baptismal_name || '상대'}님`) : '이전'} 메시지에 답장 · 눌러서 원래 메시지 보기`}
                                 className={`flex max-w-full items-center gap-1 text-left mb-0.5 text-[0.8125rem] leading-snug ${isMe && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                                 {quoted && !quoted.deleted_at && <QuoteThumb m={quoted} />}
