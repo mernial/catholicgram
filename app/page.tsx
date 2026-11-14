@@ -6844,7 +6844,7 @@ export default function Home() {
       {/* 개인 안내 (lib/personal-notices): 받는 교우에게만 */}
       {showPersonal && (
         <PersonalNoticePopup notices={personalToShow} preview={personalPreview} onClose={closePersonal} onHide={personalPreview ? undefined : hidePersonal}
-          onAction={a => { if (a !== 'sound') return; closePersonal(); setSettingsView('sound'); setShowSettings(true); }} />
+          onAction={a => { closePersonal(); if (a === 'tester') { setShowTesterSignup(true); return; } setSettingsView('sound'); setShowSettings(true); }} />
       )}
       {/* 테스터 14일 출석 도장 (components/TesterAttendance): Play 테스트 앱으로 연 날에만 도장 */}
       {showTesterAttend && (
