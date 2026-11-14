@@ -122,6 +122,7 @@ import { renderPostTextCard } from '@/lib/post-text-card';
 import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 import { PERSONAL_NOTICES, myPersonalNotices, personalHiddenKey } from '@/lib/personal-notices';
 import { PersonalNoticePopup } from '@/components/PersonalNotice';
+import { TesterRestartPopup, testerRestartVariant, testerRestartHiddenKey, TESTER_RESTART_UNTIL } from '@/components/TesterRestartNotice';
 import { LetterReplyPopup, letterReplyKey, type LetterReply } from '@/components/LetterReplyPopup';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
@@ -459,6 +460,10 @@ export default function Home() {
   const [personalHidden, setPersonalHidden] = useState<string[]>([]);
   const [personalClosed, setPersonalClosed] = useState<string[]>([]);
   const [personalPreview, setPersonalPreview] = useState(false);
+  // 테스트 다시 14일 안내 (components/TesterRestartNotice): 다시 보지 않기·이번에만 닫기·관리자 미리 보기
+  const [testerRestartHidden, setTesterRestartHidden] = useState(true);
+  const [testerRestartClosed, setTesterRestartClosed] = useState(false);
+  const [testerRestartPreview, setTesterRestartPreview] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -3219,6 +3224,7 @@ export default function Home() {
       const { data, error } = withInstall.error ? await supabase.from('tester_signups').select('status').eq('user_id', user.id).maybeSingle() : withInstall; // 설치 확인 칸 전
       setIsAndroid(isAndroidDevice());
       setTesterPromptDismissed(storageGet(`testerPromptDismissed:${user.id}`) === '1');
+      setTesterRestartHidden(storageGet(testerRestartHiddenKey(user.id)) === '1');
       setTesterStatus(error ? null : ((data?.status as TesterStatus | undefined) || 'none'));
       setTesterInstalled(withInstall.error || !data ? null : !!(data as { play_first_at?: string | null }).play_first_at);
     })();
@@ -4294,7 +4300,12 @@ export default function Home() {
   const replyToShow = user && openedGifts ? replyLetters.filter(l => !openedGifts.includes(letterReplyKey(l))) : [];
   const showLetterReply = replyToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice;
   const closeLetterReply = () => replyToShow.forEach(l => rememberGift(letterReplyKey(l)));
-  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
+  // 테스트 다시 14일 안내: 구글 '등록함' 안드로이드 테스터에게만, 11월 29일까지, 홈에서 (개인 안내·업데이트 소식보다 먼저)
+  const showTesterRestart = testerRestartPreview || (!!user && updateNotesReady && isAndroid && testerStatus === 'added' && Date.now() < TESTER_RESTART_UNTIL
+    && !testerRestartHidden && !testerRestartClosed && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
+  const closeTesterRestart = () => { if (testerRestartPreview) setTesterRestartPreview(false); else setTesterRestartClosed(true); };
+  const hideTesterRestart = () => { if (user) storageSet(testerRestartHiddenKey(user.id), '1'); setTesterRestartHidden(true); };
+  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart);
   const closePersonal = () => {
     if (personalPreview) { setPersonalPreview(false); return; }
     setPersonalClosed(prev => [...prev, ...personalToShow.map(n => n.id)]);
@@ -4309,7 +4320,7 @@ export default function Home() {
   const updateNotesToShow = user && updateNotesHidden && updateNotesReady
     ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
     : [];
-  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal;
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart;
   const hideUpdateNotes = () => {
     if (!user) return;
     const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
@@ -4319,10 +4330,10 @@ export default function Home() {
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
   // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
   const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
-    && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showUpdateNotes);
+    && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart && !showUpdateNotes);
   const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
   const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showUpdateNotes || showSamsungGuide;
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showTesterRestart || showUpdateNotes || showSamsungGuide;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -4386,6 +4397,7 @@ export default function Home() {
     if (showSamsungGuide) closeSamsungGuide();
     if (showLetterReply) closeLetterReply();
     if (showPersonal) closePersonal();
+    if (showTesterRestart) closeTesterRestart();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -6683,6 +6695,12 @@ export default function Home() {
         <PersonalNoticePopup notices={personalToShow} preview={personalPreview} onClose={closePersonal} onHide={personalPreview ? undefined : hidePersonal}
           onAction={a => { if (a !== 'sound') return; closePersonal(); setSettingsView('sound'); setShowSettings(true); }} />
       )}
+      {/* 테스트 다시 14일 안내 (components/TesterRestartNotice): 어느 앱으로 열었는지에 따라 다른 말 */}
+      {showTesterRestart && (
+        <TesterRestartPopup variant={testerRestartPreview ? 'play' : testerRestartVariant(myAppKind, testerInstalled)} preview={testerRestartPreview}
+          onClose={closeTesterRestart} onHide={testerRestartPreview ? undefined : hideTesterRestart}
+          onInstallGuide={() => { closeTesterRestart(); setShowTesterSignup(true); }} />
+      )}
       {/* 업데이트 소식 (lib/update-notes): 고친 것·새로 생긴 것·바뀐 것 */}
       {showUpdateNotes && <UpdatePopup notes={updateNotesToShow} onHide={hideUpdateNotes} onClose={closeUpdateNotes} />}
       {showSamsungGuide && <SamsungGuidePopup kind={appKind()} preview={samsungGuideOpen === 'preview'} onClose={closeSamsungGuide} onHide={samsungGuideOpen ? undefined : hideSamsungGuide} />}
@@ -6704,7 +6722,7 @@ export default function Home() {
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
       {showAdminUsage && isAdmin && <AdminUsage onClose={() => setShowAdminUsage(false)} />}
-      {showAdminTesters && isAdmin && <AdminTesters onClose={() => setShowAdminTesters(false)} sendPush={sendPush} />}
+      {showAdminTesters && isAdmin && <AdminTesters onClose={() => setShowAdminTesters(false)} sendPush={sendPush} onPreviewRestart={() => { setShowAdminTesters(false); setTesterRestartPreview(true); }} />}
       {showTesterSignup && user && <TesterSignup user={user} onClose={() => setShowTesterSignup(false)} onStatusChange={setTesterStatus} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
       {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}

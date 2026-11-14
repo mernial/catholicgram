@@ -23,7 +23,7 @@ const isApplePush = (endpoint: string) => { try { return /(^|\.)push\.apple\.com
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind'; id?: string };
+type NotifyBody = { type?: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind' | 'tester_restart'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['badge', 'sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind'].includes(type)) {
+  if (!id || !type || !['badge', 'sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind', 'tester_restart'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -164,6 +164,16 @@ export async function POST(request: Request) {
       title: '📱 가톨릭그램 앱 설치를 기다리고 있어요',
       body: '테스터 교우님, 아직 Play 스토어 앱 설치가 확인되지 않았어요. 눌러서 설치 방법을 확인해 주세요 🙏',
       url: '/?tester=1', tag: 'tester-added',
+    } }));
+    if (list.length === 0) return Response.json({ sent: 0, targets: 0, missed: [] });
+  } else if (type === 'tester_restart') {
+    // 관리자: 비공개 테스트 다시 14일 — 구글 '등록함' 테스터 모두에게 '앱을 열어 안내를 확인해 주세요' (자세한 말은 앱이 어느 앱으로 열었는지에 따라 다르게 보여 줌: components/TesterRestartNotice)
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: rows } = await admin.from('tester_signups').select('user_id').eq('status', 'added');
+    (rows || []).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
+      title: '📱 가톨릭그램 테스트가 14일 더 이어져요',
+      body: '테스터 교우님, 앱을 열어 안내를 꼭 확인해 주세요 🙏',
+      url: '/', tag: 'tester-restart',
     } }));
     if (list.length === 0) return Response.json({ sent: 0, targets: 0, missed: [] });
   } else if (type === 'letter_gift') {
@@ -431,7 +441,7 @@ export async function POST(request: Request) {
     .select('*').in('user_id', targets.map(t => t.recipientId));
   const subscriptions = onePerDevice((rows || []) as (PushSub & { user_id: string })[]); // 같은 기기에는 한 번만
   // 설치 안내는 알림을 못 받은 테스터(알림을 끄거나 허락하지 않음)를 관리자 화면에 알려 준다 → 카카오톡 등으로 따로 연락
-  const missedOf = (reached: Set<string>) => (type === 'tester_remind' ? { targets: targets.length, missed: targets.map(t => t.recipientId).filter(u => !reached.has(u)) } : {});
+  const missedOf = (reached: Set<string>) => (type === 'tester_remind' || type === 'tester_restart' ? { targets: targets.length, missed: targets.map(t => t.recipientId).filter(u => !reached.has(u)) } : {});
   if (subscriptions.length === 0) return Response.json({ sent: 0, ...missedOf(new Set()) });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
