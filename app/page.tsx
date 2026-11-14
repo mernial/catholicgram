@@ -25,9 +25,10 @@ import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInpu
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { notePush, lastPushState, permissionWord, everPushOn, lastPushLossAt, LOST_WHY } from '@/lib/push-log';
 import { pushDeviceKey, notePlayHere, playHereRecently, PLAY_MARK, PAUSE_FOREVER } from '@/lib/push-devices';
+import PostStickerSheet from '@/components/PostStickerSheet';
 import PushPauseSheet, { pauseLabel, vibrateSteps, type PauseChoice } from '@/components/PushPauseSheet';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
-import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
+import { MAX_POST_STICKERS, STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
 import { appKind, browserName, type AppKind } from '@/lib/app-kind';
 import { useTyping } from '@/lib/typing';
@@ -614,6 +615,7 @@ export default function Home() {
   const [editSelIdx, setEditSelIdx] = useState(0);         // 게시글 수정: 고른 사진 (자르기·가리기·삭제)
   const [editEmojiOpen, setEditEmojiOpen] = useState(false); // 게시글 수정: 이모티콘 줄 펼침
   const [editStickers, setEditStickers] = useState<Sticker[]>([]); // 게시글 수정: 붙인 이모티콘
+  const [editStickerOpen, setEditStickerOpen] = useState(false); // 게시글 수정: 내 이모티콘 넣기 창
   const [editMusic, setEditMusic] = useState<{ value: string; title: string } | null>(null); // 글 고치기: 음악
   const [musicSegment, setMusicSegment] = useState<MusicSegmentTarget | null>(null); // 고른 곡의 구간만 다시 고치기
   const [musicPickerFor, setMusicPickerFor] = useState<'composer' | 'edit' | 'story'>('composer');
@@ -2814,7 +2816,7 @@ export default function Home() {
     setEditingPostId(post.id);
     const parts = splitPostStickers(post.content);
     setEditContent(parts.text);
-    setEditStickers(parts.stickers);
+    setEditStickers(parts.stickers); setEditStickerOpen(false);
     setEditOverlays(post.video_overlays || null);
     setEditVisibility(post.visibility || 'public');
     setEditMusic(post.music ? { value: post.music, title: post.music_title || '음악' } : null);
@@ -5310,8 +5312,20 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* 인스타그램처럼 아래 목록 (글에 이모티콘 넣기는 없앰 — 운영자 요청, 이모티콘은 사진 위 '이모티콘 붙이기'로) */}
+                {/* 글에 넣은 내 이모티콘 (× 로 빼기) */}
+                {composerStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={composerStickers} size="w-24 h-24" onRemove={i => setComposerStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
+
+                {/* 인스타그램처럼 아래 목록 */}
                 <div className="border-t border-stone-100">
+                  {/* 내 이모티콘 넣기 (운영자 2026-11-14 다시 요청) — 글쓰기 화면 위에 따로 뜨는 창이라 칸 안에서 밀어도 글쓰기 화면이 막히지 않음 */}
+                  <button type="button" onClick={() => setComposerStickerOpen(true)} className={row}>
+                    <Icon name="sticker" className="w-6 h-6 text-stone-800 shrink-0" />
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-[0.9375rem] text-stone-900">이모티콘 넣기</span>
+                      <span className="block text-[0.8125rem] text-stone-500">{composerStickers.length > 0 ? `${composerStickers.length}개 넣음 · 한 글에 ${MAX_POST_STICKERS}개까지` : '내가 가진 이모티콘을 글에'}</span>
+                    </span>
+                    <span className="text-stone-400 text-xl">›</span>
+                  </button>
                   <button type="button" onClick={() => setShowMusicPicker(true)} className={row}>
                     <Icon name="music" className="w-6 h-6 text-stone-800 shrink-0" />
                     <span className="flex-1 min-w-0">
@@ -6986,7 +7000,7 @@ export default function Home() {
                   <textarea ref={editTextRef} value={editContent} onChange={e => setEditContent(e.target.value)} rows={4} placeholder="문구를 입력하세요..." aria-label="글 내용"
                     className="block w-full min-h-[7rem] px-4 pt-2 pb-3 text-[1.0625rem] leading-relaxed text-stone-900 bg-transparent resize-none focus:outline-none placeholder:text-stone-400" />
                   {user && <div className="px-4"><MentionSuggest value={editContent} onChange={setEditContent} excludeId={user.id} /></div>}
-                  {/* 예전에 글에 넣은 이모티콘 (× 로 빼기만, 새로 넣기는 없앰) */}
+                  {/* 글에 넣은 이모티콘 (× 로 빼기, 아래 '내 이모티콘'으로 더 넣기) */}
                   {editStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={editStickers} size="w-24 h-24" onRemove={i => setEditStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
                   {editEmojiOpen && (
                     <>
@@ -7000,6 +7014,10 @@ export default function Home() {
                   <div className="flex items-center border-t border-stone-100 px-2">
                     <button type="button" onClick={() => setEditEmojiOpen(o => !o)} aria-pressed={editEmojiOpen} className={`inline-flex items-center gap-2 px-3 py-3 text-[0.9375rem] ${editEmojiOpen ? 'text-amber-700 font-bold' : 'text-stone-600'}`}>
                       <Icon name="smiley" className="w-6 h-6" />이모티콘
+                    </button>
+                    <span className="w-px h-5 bg-stone-200" aria-hidden="true" />
+                    <button type="button" onClick={() => setEditStickerOpen(true)} className="inline-flex items-center gap-2 px-3 py-3 text-[0.9375rem] text-stone-600">
+                      <Icon name="sticker" className="w-6 h-6" />내 이모티콘
                     </button>
                     <span className="w-px h-5 bg-stone-200" aria-hidden="true" />
                     <button type="button" onClick={() => insertAtEnd('#')} className="inline-flex items-center gap-2 px-3 py-3 text-[0.9375rem] text-stone-600">
@@ -7205,6 +7223,10 @@ export default function Home() {
       {/* 홈 화면 추가 방법 안내 */}
       {/* 홈 화면에 추가하기: 쓰는 브라우저에 맞춘 단계 + 메뉴 단추 자리를 가리키는 화살표 (components/InstallGuide) */}
       {showInstallGuide && <InstallGuide isIOS={isIOS} canInstall={!!installPrompt} onInstall={startNativeInstall} onClose={() => setShowInstallGuide(false)} />}
+
+      {/* 게시글에 내 이모티콘 넣기 (글쓰기·글 고치기) */}
+      {showComposer && composerStickerOpen && <PostStickerSheet stickers={composerStickers} onChange={setComposerStickers} onClose={() => setComposerStickerOpen(false)} />}
+      {editingPostId && editStickerOpen && <PostStickerSheet stickers={editStickers} onChange={setEditStickers} onClose={() => setEditStickerOpen(false)} />}
 
       {/* 휴대폰 알림 끄기 고르기 (알림 받기는 그대로) */}
       {showPushPause && <PushPauseSheet onPick={c => { pickPushPause(c).catch(() => {}); }} onClose={() => setShowPushPause(false)} />}
