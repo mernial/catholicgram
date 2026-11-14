@@ -1,26 +1,40 @@
 'use client';
 
-// 뱃지 모음 (운영자 2026-11-14: '내 뱃지 고르기·가진 뱃지·1등 보기를 한곳에, 없는 뱃지도, 다음 등급까지 얼마나 남았는지도')
-// 탭 넷: 내 뱃지(가진 것 + 대표 고르기) · 활동 등급(6가지 활동의 지금 등급과 다음 등급까지 남은 수) · 1등(누가 1등인지, 없는 것은 흐리게) · 기념
-// 활동 숫자는 본인 것만 /api/badges/stats 에서 (lib/member-stats). 1등 교우는 member_badges(로그인한 교우는 모두 읽기)
+// 뱃지 모음 (운영자 2026-11-14 시안 '뱃지 홈 + 성장 목록 + 상세' 확정, 대표 뱃지 1개)
+// 칩 넷: 홈(요약·대표 뱃지·다음 목표·최근 받은 뱃지·내 뱃지) · 활동 등급(6활동 진행 막대, 못 받은 것은 흐리게) · 1등(지금 1등 교우·내 기록) · 기념
+// 뱃지를 누르면 상세(큰 뱃지·등급·설명·이 등급이 된 날·7단계 줄·다음까지 남은 수·대표로 정하기)
+// 활동 숫자는 본인 것만 /api/badges/stats (lib/member-stats). 1등 교우는 member_badges(로그인한 교우는 모두 읽기)
 import { createPortal } from 'react-dom';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import BottomSheet from '@/components/BottomSheet';
 import { BadgeIcon } from '@/components/BadgeIcon';
-import { StampBook, useMemberBadges } from '@/components/MemberBadges';
+import { StampBook, useBadgeStamps, useMemberBadges } from '@/components/MemberBadges';
 import { showAlert } from '@/components/ConfirmDialog';
 import { toast } from '@/lib/chat-actions';
 import { supabase } from '@/lib/supabase';
 import { useBackLayer } from '@/lib/back-layers';
-import { LADDERS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, shownBadges, type StatKey } from '@/lib/badges';
+import { LADDERS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, shownBadges, type MemberBadgeDef, type StatKey } from '@/lib/badges';
 
-type Tab = 'mine' | 'tiers' | 'champ' | 'honor';
+type Tab = 'home' | 'tiers' | 'champ' | 'honor';
 type Holder = { id: string; name: string };
 const fmt = (n: number) => n.toLocaleString('en-US');
+const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}.${d.getDate()}`; };
+const ymd = (iso: string) => { const d = new Date(iso); return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`; };
 
-export default function BadgeCollection({ userId, initialTab = 'mine', onClose, onOpenProfile }: { userId: string; initialTab?: Tab; onClose: () => void; onOpenProfile?: (id: string) => void }) {
+function TierTag({ def, champion }: { def: MemberBadgeDef; champion?: boolean }) {
+  return (<>
+    {def.tier && <span className="text-[0.6875rem] font-bold rounded-full border px-1.5 py-px" style={{ color: TIERS[def.tier - 1].pill[2], background: TIERS[def.tier - 1].pill[0], borderColor: TIERS[def.tier - 1].pill[1] }}>{TIERS[def.tier - 1].name}</span>}
+    {champion && <span className="text-[0.6875rem] font-bold rounded-full border px-1.5 py-px text-[#7a4b00] bg-[#fff8e1] border-[#f3d27a]">1등</span>}
+  </>);
+}
+const Bar = ({ pct, color = '#c9a24a', h = 'h-1.5' }: { pct: number; color?: string; h?: string }) => (
+  <div className={`${h} rounded-full bg-[#efe9dc] overflow-hidden`}><div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} /></div>
+);
+
+export default function BadgeCollection({ userId, initialTab = 'home', onClose, onOpenProfile }: { userId: string; initialTab?: Tab | 'mine'; onClose: () => void; onOpenProfile?: (id: string) => void }) {
   const { rows, featured, setFeatured, reload } = useMemberBadges(userId);
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const { stamps } = useBadgeStamps(userId);
+  const [tab, setTab] = useState<Tab>(initialTab === 'mine' ? 'home' : initialTab);
   const [stats, setStats] = useState<Partial<Record<StatKey, number>> | null>(null);
   const [holders, setHolders] = useState<Record<string, Holder[]>>({});
   const [pick, setPick] = useState<string | null>(null);
@@ -32,7 +46,6 @@ export default function BadgeCollection({ userId, initialTab = 'mine', onClose, 
   const have = useMemo(() => new Set(keys), [keys]);
   const shown = useMemo(() => shownBadges(keys), [keys]);
 
-  // 내 활동 숫자
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -44,7 +57,6 @@ export default function BadgeCollection({ userId, initialTab = 'mine', onClose, 
     })();
     return () => { alive = false; };
   }, []);
-  // 1등 교우
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -61,6 +73,27 @@ export default function BadgeCollection({ userId, initialTab = 'mine', onClose, 
     return () => { alive = false; };
   }, []);
 
+  // 활동마다 지금 등급·다음 단계
+  const ladder = useMemo(() => LADDERS.map(L => {
+    const held = keys.map(k => badgeOf(k)).filter(d => d?.family === L.id).map(d => d!.tier || 0);
+    const count = stats?.[L.stat];
+    const byCount = count === undefined ? 0 : L.steps.filter(n => count >= n).length;
+    const cur = Math.max(held.length ? Math.max(...held) : 0, byCount);
+    const next = cur < 7 ? L.steps[cur] : null;
+    const prev = cur > 0 ? L.steps[cur - 1] : 0;
+    const ratio = count === undefined || next === null ? 0 : (count - prev) / (next - prev);
+    return { L, count, cur, next, prev, ratio, champ: have.has(L.champion) };
+  }), [keys, stats, have]);
+  const goals = ladder.filter(x => x.next !== null && x.count !== undefined).sort((a, b) => b.ratio - a.ratio).slice(0, 3);
+  const recent = useMemo(() => {
+    const seen = new Set<string>();
+    return [...stamps].sort((a, b) => b.earned_at.localeCompare(a.earned_at)).filter(s => { if (seen.has(s.badge_key) || !badgeOf(s.badge_key)) return false; seen.add(s.badge_key); return true; }).slice(0, 4);
+  }, [stamps]);
+  const champs = MEMBER_BADGES.filter(b => b.auto && !b.permanent && !b.retired);
+  const honors = MEMBER_BADGES.filter(b => (!b.auto && !b.tier && !b.retired) || b.key === 'm_year1');
+  const total = LADDERS.length * 7 + champs.length + honors.length;
+  const featuredShown = shown.find(s => s.key === featured) || shown[0];
+
   const choose = async (key: string) => {
     setSaving(true);
     const { error } = await supabase.from('profiles').update({ featured_badge: key }).eq('id', userId);
@@ -71,88 +104,113 @@ export default function BadgeCollection({ userId, initialTab = 'mine', onClose, 
     toast(`'${badgeOf(key)?.label}' 뱃지가 이름 옆에 보여요`);
   };
 
-  const champs = MEMBER_BADGES.filter(b => b.auto && !b.permanent && !b.retired);
-  const honors = MEMBER_BADGES.filter(b => !b.auto && !b.tier && !b.retired || b.key === 'm_year1');
-  const tabBtn = (t: Tab, label: string, n?: string) => (
-    <button key={t} onClick={() => setTab(t)} className={`flex-1 py-2 rounded-xl text-[0.875rem] font-bold ${tab === t ? 'bg-stone-900 text-white' : 'text-stone-600'}`}>
-      {label}{n && <span className={`ml-1 text-[0.75rem] ${tab === t ? 'text-white/70' : 'text-stone-400'}`}>{n}</span>}
-    </button>
+  const chip = (t: Tab, label: string) => (
+    <button key={t} onClick={() => setTab(t)} className={`shrink-0 rounded-full border px-3 py-1.5 text-[0.8125rem] font-bold ${tab === t ? 'bg-[#1f2a44] text-white border-[#1f2a44]' : 'bg-white text-stone-700 border-[#e3dccb]'}`}>{label}</button>
   );
+  const sec = (title: string, right?: ReactNode) => <div className="flex items-baseline justify-between mt-4 mb-2"><b className="text-[0.9375rem] text-[#1f2a44]">{title}</b>{right}</div>;
+  const ladderRow = (x: typeof ladder[number]) => {
+    const def = badgeOf(`t_${x.L.id}_${Math.max(1, x.cur)}`)!;
+    const label = x.cur ? (x.champ ? badgeOf(x.L.champion)?.label || def.label : def.label) : `${x.L.short} ${fmt(x.L.steps[0])}${x.L.unit}`;
+    return (
+      <button key={x.L.id} onClick={() => setPick(def.key)} className={`w-full text-left flex items-center gap-2.5 rounded-2xl border p-2.5 ${x.cur ? 'bg-white border-[#eee5d2]' : 'bg-[#faf8f3] border-[#eee5d2]'}`}>
+        <span className={x.cur ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={def} size={54} champion={x.champ && x.cur > 0} /></span>
+        <span className="flex-1 min-w-0">
+          <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-[#1f2a44]">{label} {x.cur > 0 && <TierTag def={def} champion={x.champ} />}</span>
+          <span className="block text-[0.75rem] text-stone-500 mt-0.5">{STAT_LABELS[x.L.stat]} {x.count === undefined ? '…' : `${fmt(x.count)}${x.L.unit}`}{x.next !== null && x.count !== undefined ? ` · 다음 ${TIERS[x.cur].name}까지 ${fmt(Math.max(0, x.next - x.count))}${x.L.unit || '번'}` : x.next === null ? ' · 가장 높은 유일 등급 ✨' : ''}</span>
+          <span className="block mt-1.5"><Bar pct={x.next === null ? 100 : x.ratio * 100} color={x.next === null ? '#9b6cf0' : '#c9a24a'} /></span>
+        </span>
+        <span className="w-14 text-right text-[0.75rem] font-bold text-stone-500">{x.cur === 0 ? '🔒' : x.next === null ? '✓' : x.count === undefined ? '' : `${fmt(x.count)}/${fmt(x.next)}`}</span>
+      </button>
+    );
+  };
+
+  // 상세
   const pickDef = pick ? badgeOf(pick) : null;
-  const pickChampion = pick ? shown.find(s => s.key === pick)?.champion : false;
+  const pickLadder = pickDef?.family ? ladder.find(x => x.L.id === pickDef.family) : undefined;
+  const pickHave = pick ? have.has(pick) : false;
+  const pickChampion = pickHave && (pickDef?.tier ? !!pickLadder?.champ : !!(pickDef?.auto && !pickDef.permanent));
+  const pickRow = pick ? rows.find(r => r.badge_key === pick) : undefined;
+  const pickLabel = pickDef ? (pickDef.tier && pickChampion ? badgeOf(pickLadder!.L.champion)?.label || pickDef.label : pickDef.label) : '';
 
   return createPortal(
-    <BottomSheet bare label="뱃지 모음" onClose={onClose} z="z-[86]" tone="bg-white">
-      <div className="shrink-0 px-5 pb-2 flex items-center gap-2">
-        <h2 className="text-[1.125rem] font-bold text-stone-900">🏅 뱃지 모음</h2>
-        <span className="text-[0.8125rem] text-stone-500">받은 뱃지 {shown.length}</span>
-        <button onClick={() => setBook(true)} className="ml-auto text-[0.8125rem] font-bold text-amber-800 bg-[#fffaf0] border border-amber-200 rounded-full px-3 py-1">📖 받은 기록</button>
+    <BottomSheet bare label="뱃지 모음" onClose={onClose} z="z-[86]" tone="bg-[#fdfaf3]">
+      <div className="shrink-0 px-5 pb-1 flex items-center gap-2">
+        <h2 className="text-[1.25rem] font-bold text-[#1f2a44]">🏅 나의 뱃지</h2>
+        <button onClick={() => setBook(true)} className="ml-auto text-[0.75rem] font-bold text-amber-800 bg-[#fffaf0] border border-amber-200 rounded-full px-3 py-1">📖 받은 기록</button>
         <button onClick={onClose} className="w-9 h-9 -mr-2 text-stone-400 text-2xl leading-none" aria-label="닫기">×</button>
       </div>
-      <div className="shrink-0 mx-4 mb-2 p-1 rounded-2xl bg-stone-100 flex gap-1">
-        {tabBtn('mine', '내 뱃지', String(shown.length))}{tabBtn('tiers', '활동 등급')}{tabBtn('champ', '1등')}{tabBtn('honor', '기념')}
+      <div className="shrink-0 mx-4 mt-1 bg-white rounded-2xl shadow-[0_4px_16px_rgba(31,42,68,0.08)] flex divide-x divide-stone-100">
+        {([['⭐ 받은 뱃지', shown.length], ['🏆 1등', shown.filter(s => s.champion).length], ['📖 전체', total]] as const).map(([t, n]) => (
+          <div key={t} className="flex-1 text-center py-2"><small className="block text-[0.6875rem] text-stone-500">{t}</small><b className="text-[1.125rem] text-[#1f2a44]">{n}개</b></div>
+        ))}
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-        {tab === 'mine' && (<>
-          <p className="text-[0.8125rem] text-stone-500 mb-3">뱃지를 누르면 자세히 보고 <b>대표 뱃지</b>(이름 옆에 보이는 하나)로 정할 수 있어요.</p>
-          {shown.length === 0 && <p className="py-10 text-center text-sm text-stone-400 leading-relaxed">아직 받은 뱃지가 없어요<br />&lsquo;활동 등급&rsquo; 탭에서 받는 법을 볼 수 있어요</p>}
+      <div className="shrink-0 flex gap-1.5 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none]">{chip('home', '홈')}{chip('tiers', '활동 등급')}{chip('champ', '1등')}{chip('honor', '기념')}</div>
+
+      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+        {tab === 'home' && (<>
+          {sec('대표 뱃지', <small className="text-[0.6875rem] text-stone-400">이름 옆에 보이는 하나</small>)}
+          {featuredShown ? (() => { const d = badgeOf(featuredShown.key)!; return (
+            <button onClick={() => setPick(featuredShown.key)} className="w-full text-left flex items-center gap-3 rounded-2xl border-[1.5px] border-[#ecd38a] bg-gradient-to-br from-[#fff8e1] to-white p-2.5">
+              <BadgeIcon badge={d} size={78} champion={featuredShown.champion} />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1 font-bold text-[1.0625rem] text-[#1f2a44]">{featuredShown.label} <TierTag def={d} champion={featuredShown.champion} /></span>
+                <span className="block text-[0.75rem] text-stone-500 mt-0.5">{d.desc}</span>
+                <span className="block text-[0.6875rem] text-amber-800 font-bold mt-1">다른 뱃지로 바꾸려면 아래 내 뱃지를 누르세요</span>
+              </span>
+            </button>
+          ); })() : <p className="text-sm text-stone-400 py-4 text-center">아직 받은 뱃지가 없어요 · 아래 다음 목표부터 시작해 보세요</p>}
+
+          {goals.length > 0 && (<>
+            {sec('🎯 다음 목표 · 거의 다 왔어요')}
+            <div className="grid grid-cols-3 gap-2">
+              {goals.map(x => { const d = badgeOf(`t_${x.L.id}_${x.cur + 1}`)!; return (
+                <button key={x.L.id} onClick={() => setPick(d.key)} className="rounded-2xl border border-[#eee5d2] bg-white p-2 flex flex-col items-center">
+                  <span className="opacity-45 grayscale"><BadgeIcon badge={d} size={46} /></span>
+                  <b className="text-[0.75rem] text-[#1f2a44] mt-1 text-center leading-tight">{d.label}</b>
+                  <small className="text-[0.6875rem] font-bold text-[#b07d10]">{fmt(Math.max(0, x.next! - x.count!))} 남음</small>
+                  <span className="w-full mt-1"><Bar pct={x.ratio * 100} /></span>
+                </button>
+              ); })}
+            </div>
+          </>)}
+
+          {recent.length > 0 && (<>
+            {sec('최근 받은 뱃지', <button onClick={() => setBook(true)} className="text-[0.6875rem] text-stone-400">전체 보기 ›</button>)}
+            <div className="grid grid-cols-4 gap-1">
+              {recent.map(s => { const d = badgeOf(s.badge_key)!; return (
+                <button key={s.id} onClick={() => setPick(s.badge_key)} className="flex flex-col items-center">
+                  <BadgeIcon badge={d} size={50} />
+                  <b className="text-[0.6875rem] text-[#1f2a44] mt-1 text-center leading-tight">{d.label}</b>
+                  <small className="text-[0.625rem] text-stone-400">{md(s.earned_at)}</small>
+                </button>
+              ); })}
+            </div>
+          </>)}
+
+          {sec(`내 뱃지 ${shown.length}`, <small className="text-[0.6875rem] text-stone-400">눌러서 대표로 정하기</small>)}
           <div className="grid grid-cols-3 gap-2">
             {shown.map(s => { const d = badgeOf(s.key)!; const isF = s.key === featured; return (
-              <button key={s.key} onClick={() => setPick(s.key)} className={`relative rounded-2xl border p-2 pt-3 flex flex-col items-center gap-1 ${isF ? 'border-amber-300 bg-amber-50' : 'border-stone-200'}`}>
+              <button key={s.key} onClick={() => setPick(s.key)} className={`relative rounded-2xl border p-2 pt-3 flex flex-col items-center gap-1 ${isF ? 'border-[#ecd38a] bg-[#fff8e1]' : 'border-[#eee5d2] bg-white'}`}>
                 {isF && <span className="absolute top-1 left-1 text-[0.625rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5">대표</span>}
-                <BadgeIcon badge={d} size={60} champion={s.champion} />
-                <span className="text-[0.8125rem] font-bold text-stone-800 text-center leading-tight">{s.label}</span>
-                {d.tier && <span className="text-[0.6875rem]" style={{ color: TIERS[d.tier - 1].pill[2] }}>{TIERS[d.tier - 1].name}{s.champion ? ' · 1등' : ''}</span>}
+                <BadgeIcon badge={d} size={56} champion={s.champion} />
+                <span className="text-[0.75rem] font-bold text-[#1f2a44] text-center leading-tight">{s.label}</span>
               </button>
             ); })}
           </div>
         </>)}
 
-        {tab === 'tiers' && (<div className="flex flex-col gap-2.5">
-          <p className="text-[0.8125rem] text-stone-500">활동이 쌓이면 일반 → 고급 → 희귀 → 영웅 → 전설 → 신화 → 유일 순서로 올라가요. 그 활동 1등이면 금 월계관이 둘러져요.</p>
-          {LADDERS.map(L => {
-            const held = keys.map(k => badgeOf(k)).filter(d => d?.family === L.id).map(d => d!.tier || 0);
-            const count = stats?.[L.stat];
-            const byCount = count === undefined ? 0 : L.steps.filter(n => count >= n).length;
-            const cur = Math.max(held.length ? Math.max(...held) : 0, byCount);
-            const next = cur < 7 ? L.steps[cur] : null;
-            const prev = cur > 0 ? L.steps[cur - 1] : 0;
-            const pct = count === undefined || next === null ? 100 : Math.max(0, Math.min(100, ((count - prev) / (next - prev)) * 100));
-            const curDef = cur > 0 ? badgeOf(`t_${L.id}_${cur}`) : badgeOf(`t_${L.id}_1`);
-            const champ = have.has(L.champion);
-            return (
-              <div key={L.id} className="rounded-2xl border border-stone-200 p-3">
-                <div className="flex items-center gap-3">
-                  <span className={cur === 0 ? 'opacity-35 grayscale' : ''}><BadgeIcon badge={curDef!} size={56} champion={champ && cur > 0} /></span>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-bold text-stone-900 text-[0.9375rem]">{L.short} <span className="text-[0.8125rem]" style={{ color: cur ? TIERS[cur - 1].pill[2] : '#a8a29e' }}>{cur ? TIERS[cur - 1].name : '아직 없음'}{champ ? ' · 1등' : ''}</span></p>
-                    <p className="text-[0.8125rem] text-stone-600">{STAT_LABELS[L.stat]} <b>{count === undefined ? '…' : `${fmt(count)}${L.unit}`}</b></p>
-                    {next !== null
-                      ? <p className="text-[0.75rem] text-stone-500 mt-0.5">다음 <b style={{ color: TIERS[cur].pill[2] }}>{TIERS[cur].name}</b>까지 {count === undefined ? '…' : <b>{fmt(Math.max(0, next - count))}{L.unit || '번'} 남음</b>} ({fmt(next)}{L.unit})</p>
-                      : <p className="text-[0.75rem] font-bold text-violet-700 mt-0.5">가장 높은 유일 등급이에요 ✨</p>}
-                  </div>
-                </div>
-                <div className="mt-2 h-2 rounded-full bg-stone-100 overflow-hidden"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: next !== null ? TIERS[cur].colors[1] : '#9b6cf0' }} /></div>
-                <div className="mt-2 flex justify-between">
-                  {L.steps.map((n, i) => (
-                    <span key={n} className={`flex flex-col items-center ${i < cur ? '' : 'opacity-30 grayscale'}`} title={`${TIERS[i].name} ${fmt(n)}${L.unit}`}>
-                      <BadgeIcon badge={`t_${L.id}_${i + 1}`} size={30} />
-                      <span className="text-[0.625rem] text-stone-500 mt-0.5">{fmt(n)}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+        {tab === 'tiers' && (<div className="flex flex-col gap-2 mt-2">
+          <p className="text-[0.75rem] text-stone-500">일반 → 고급 → 희귀 → 영웅 → 전설 → 신화 → 유일. 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
+          {ladder.map(ladderRow)}
         </div>)}
 
-        {tab === 'champ' && (<div className="flex flex-col gap-2">
-          <p className="text-[0.8125rem] text-stone-500">그 활동에서 가장 많이 한 교우에게 저절로 달리고(5 이상), 1등이 바뀌면 옮겨 가요. 관리자는 빠져요.</p>
+        {tab === 'champ' && (<div className="flex flex-col gap-2 mt-2">
+          <p className="text-[0.75rem] text-stone-500">그 활동을 가장 많이 한 교우에게 저절로(5 이상) 달리고, 1등이 바뀌면 옮겨 가요. 관리자는 빠져요.</p>
           {champs.map(b => { const hs = holders[b.key] || []; const mine = have.has(b.key); const my = b.stat ? stats?.[b.stat] : undefined; return (
-            <div key={b.key} className={`rounded-2xl border p-3 flex items-center gap-3 ${mine ? 'border-amber-300 bg-amber-50' : 'border-stone-200'}`}>
-              <span className={mine ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={b} size={52} /></span>
+            <div key={b.key} className={`rounded-2xl border p-2.5 flex items-center gap-2.5 ${mine ? 'border-[#ecd38a] bg-[#fff8e1]' : 'border-[#eee5d2] bg-white'}`}>
+              <button onClick={() => setPick(b.key)} className={mine ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={b} size={52} /></button>
               <div className="flex-1 min-w-0">
-                <p className="font-bold text-stone-900 text-[0.9375rem]">{b.label}{mine && <span className="ml-1.5 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">내가 1등</span>}</p>
+                <p className="font-bold text-[#1f2a44] text-[0.9375rem]">{b.label}{mine ? <span className="ml-1.5 text-[0.6875rem] font-bold text-amber-800 bg-amber-100 rounded-full px-1.5 py-px">내가 1등</span> : <span className="ml-1 text-[0.75rem]">🔒</span>}</p>
                 <p className="text-[0.75rem] text-stone-500 leading-snug">{b.desc}</p>
                 <p className="text-[0.75rem] mt-1 flex flex-wrap items-center gap-1">
                   <span className="text-stone-400">지금 1등</span>
@@ -164,34 +222,43 @@ export default function BadgeCollection({ userId, initialTab = 'mine', onClose, 
           ); })}
         </div>)}
 
-        {tab === 'honor' && (<div className="flex flex-col gap-2">
-          <p className="text-[0.8125rem] text-stone-500">특별한 때에 받는 뱃지예요.</p>
+        {tab === 'honor' && (<div className="flex flex-col gap-2 mt-2">
+          <p className="text-[0.75rem] text-stone-500">특별한 때에 받아 오래 간직하는 뱃지예요.</p>
           {honors.map(b => { const mine = have.has(b.key); return (
-            <div key={b.key} className={`rounded-2xl border p-3 flex items-center gap-3 ${mine ? 'border-emerald-300 bg-emerald-50' : 'border-stone-200'}`}>
+            <button key={b.key} onClick={() => setPick(b.key)} className={`text-left rounded-2xl border p-2.5 flex items-center gap-2.5 ${mine ? 'border-emerald-300 bg-emerald-50' : 'border-[#eee5d2] bg-[#faf8f3]'}`}>
               <span className={mine ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={b} size={52} /></span>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-stone-900 text-[0.9375rem]">{b.label}{mine && <span className="ml-1.5 text-[0.6875rem] font-bold text-emerald-800 bg-emerald-100 rounded-full px-1.5 py-px">받음</span>}</p>
-                <p className="text-[0.75rem] text-stone-500 leading-snug">{b.desc}</p>
-                <p className="text-[0.6875rem] text-stone-400 mt-0.5">{b.key === 'tester14' ? 'Play 테스트 앱으로 14일 출석을 모두 마치면 저절로' : b.key === 'm_year1' ? '가입한 지 1년이 되면 저절로' : '관리자가 달아 드려요'}</p>
-              </div>
-            </div>
+              <span className="flex-1 min-w-0">
+                <span className="block font-bold text-[#1f2a44] text-[0.9375rem]">{b.label}{mine ? <span className="ml-1.5 text-[0.6875rem] font-bold text-emerald-800 bg-emerald-100 rounded-full px-1.5 py-px">받음</span> : <span className="ml-1 text-[0.75rem]">🔒</span>}</span>
+                <span className="block text-[0.75rem] text-stone-500 leading-snug">{b.desc}</span>
+                <span className="block text-[0.6875rem] text-stone-400 mt-0.5">{b.key === 'tester14' ? 'Play 테스트 앱으로 14일 출석을 모두 마치면 저절로' : b.key === 'm_year1' ? '가입한 지 1년이 되면 저절로' : '관리자가 달아 드려요'}</span>
+              </span>
+            </button>
           ); })}
         </div>)}
       </div>
 
       {pickDef && (
-        <div className="fixed inset-0 z-[96] bg-black/60 flex items-center justify-center p-6" onClick={() => setPick(null)} role="dialog" aria-label={`${pickDef.label} 뱃지`}>
-          <div className="bg-white rounded-3xl w-full max-w-xs p-6 flex flex-col items-center text-center shadow-2xl" onClick={e => e.stopPropagation()}>
-            <BadgeIcon badge={pickDef} size={112} champion={!!pickChampion} />
-            {pickDef.tier && <p className="mt-2 text-[0.8125rem] font-bold" style={{ color: TIERS[pickDef.tier - 1].pill[2] }}>{TIERS[pickDef.tier - 1].name} 등급{pickChampion ? ' · 1등' : ''}</p>}
-            <h3 className="mt-1 text-[1.25rem] font-bold text-stone-900">{shown.find(s => s.key === pick)?.label || pickDef.label}</h3>
-            <p className="mt-1.5 text-[0.9375rem] text-stone-600 leading-relaxed">{pickDef.desc}</p>
-            <div className="mt-4 flex gap-2 w-full">
-              {pick === featured
-                ? <span className="flex-1 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">대표 뱃지예요</span>
-                : <button disabled={saving} onClick={async () => { await choose(pick!); setPick(null); }} className="flex-1 py-2.5 rounded-xl bg-amber-500 text-white text-[0.9375rem] font-bold disabled:opacity-50">{saving ? '저장 중' : '대표로 정하기'}</button>}
-              <button onClick={() => setPick(null)} className="flex-1 py-2.5 rounded-xl bg-stone-900 text-white text-[0.9375rem] font-bold">닫기</button>
-            </div>
+        <div className="fixed inset-0 z-[96] bg-black/55 flex items-end sm:items-center justify-center" onClick={() => setPick(null)} role="dialog" aria-label={`${pickLabel} 뱃지`}>
+          <div className="relative bg-white w-full sm:w-96 max-h-[88dvh] overflow-y-auto rounded-t-[1.75rem] sm:rounded-3xl px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setPick(null)} className="absolute right-4 top-3 w-9 h-9 text-stone-400 text-2xl leading-none" aria-label="닫기">×</button>
+            <div className={`flex justify-center ${pickHave ? '' : 'opacity-45 grayscale'}`}><BadgeIcon badge={pickDef} size={124} champion={pickChampion} /></div>
+            <h3 className="mt-2 text-[1.375rem] font-bold text-[#1f2a44]">{pickLabel}</h3>
+            <div className="mt-1 flex justify-center gap-1"><TierTag def={pickDef} champion={pickChampion} /><span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-600">{pickDef.tier ? '활동 등급' : pickDef.auto && !pickDef.permanent ? '1등 뱃지' : '기념'}</span>{!pickHave && <span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-500">🔒 아직</span>}</div>
+            <p className="mt-2 text-[0.875rem] text-stone-600 leading-relaxed">{pickDef.desc}</p>
+            {pickRow && <div className="mt-3 flex justify-between rounded-2xl bg-[#fbf6ea] px-4 py-2.5 text-[0.875rem]"><span>📅 {pickDef.tier ? '이 등급이 된 날' : '받은 날'}</span><b>{ymd(pickRow.created_at)}</b></div>}
+            {pickLadder && (
+              <div className="mt-3 text-left">
+                <b className="text-[0.875rem] text-[#1f2a44]">등급 단계</b>
+                <div className="flex justify-between my-1.5">
+                  {pickLadder.L.steps.map((n, i) => <span key={n} className={`flex flex-col items-center ${i < pickLadder.cur ? '' : 'opacity-30 grayscale'}`}><BadgeIcon badge={`t_${pickLadder.L.id}_${i + 1}`} size={32} /><span className="text-[0.5625rem] text-stone-500 mt-0.5">{fmt(n)}</span></span>)}
+                </div>
+                <Bar pct={pickLadder.next === null ? 100 : pickLadder.ratio * 100} h="h-2" color={pickLadder.next === null ? '#9b6cf0' : '#c9a24a'} />
+                <p className="text-[0.75rem] text-stone-500 mt-1">{STAT_LABELS[pickLadder.L.stat]} {pickLadder.count === undefined ? '…' : `${fmt(pickLadder.count)}${pickLadder.L.unit}`}{pickLadder.next !== null && pickLadder.count !== undefined && <> · 다음 <b style={{ color: TIERS[pickLadder.cur].pill[2] }}>{TIERS[pickLadder.cur].name}</b>까지 {fmt(Math.max(0, pickLadder.next - pickLadder.count))}{pickLadder.L.unit || '번'}</>}</p>
+              </div>
+            )}
+            {pickHave && (pick === featured
+              ? <p className="mt-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">★ 대표 뱃지예요</p>
+              : <button disabled={saving} onClick={async () => { await choose(pick!); setPick(null); }} className="mt-4 w-full py-3 rounded-2xl bg-[#1f2a44] text-white text-[0.9375rem] font-bold disabled:opacity-50">{saving ? '저장 중' : '★ 대표 뱃지로 정하기'}</button>)}
           </div>
         </div>
       )}
