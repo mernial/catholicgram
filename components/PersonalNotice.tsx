@@ -28,7 +28,7 @@ export function PersonalNoticePopup({ notices, preview, onHide, onClose, onActio
           <IconBadge name="loveLetter" tone="rose" />
           <div className="min-w-0">
             <p className="text-[0.75rem] font-bold text-rose-700">
-              {preview ? `개인 안내 미리 보기 · 받는 분 ${Array.from(new Set(notices.flatMap(n => n.handles))).map(h => `@${h}`).join(', ')}` : `개인 안내 · ${first.to}님께만 보여요`}
+              {preview ? `개인 안내 미리 보기 · 받는 분 ${Array.from(new Set(notices.flatMap(n => [...n.handles.map(h => `@${h}`), ...(n.names || [])]))).join(', ')}` : `개인 안내 · ${first.to}님께만 보여요`}
             </p>
             <h2 className="text-[1.0625rem] font-bold text-stone-900 leading-snug">{first.to}님, {first.title}</h2>
           </div>
@@ -68,6 +68,9 @@ export function PersonalNoticePopup({ notices, preview, onHide, onClose, onActio
               {n.sign && <p className="text-right text-[0.875rem] font-bold text-stone-500">— {n.sign}</p>}
             </section>
           ))}
+          {action === 'tester' && onAction && (
+            <button type="button" onClick={() => onAction('tester')} className="w-full py-3.5 rounded-2xl bg-emerald-700 text-white text-[1rem] font-bold active:bg-emerald-800">테스터 설치 안내 열기</button>
+          )}
           {action === 'sound' && onAction && (
             <button type="button" onClick={() => onAction('sound')} className="w-full py-3.5 rounded-2xl bg-rose-600 text-white text-[1rem] font-bold active:bg-rose-700">알림 소리 설정 열기</button>
           )}
