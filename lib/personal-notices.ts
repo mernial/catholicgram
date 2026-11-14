@@ -15,6 +15,7 @@ export type PersonalNotice = {
   id: string;
   date: string;            // 'YYYY-MM-DD' (한국 날짜)
   handles: string[];       // 받는 교우 @아이디 (대소문자·띄어쓰기·_·.·- 무시)
+  names?: string[];        // @아이디를 모를 때 프로필 이름으로도 (같은 방법으로 비교)
   to: string;              // 부르는 이름 ('루비로사')
   title: string;
   intro?: string;
@@ -24,6 +25,40 @@ export type PersonalNotice = {
 };
 
 export const PERSONAL_NOTICES: PersonalNotice[] = [
+  {
+    id: 'stella-2026-11-14',
+    date: '2026-11-14',
+    handles: ['elisabeth stella oh'],
+    names: ['엘리 오', '엘리사벳 오'],
+    to: '엘리스텔라',
+    title: '출석 체크 단추가 안 보이던 이유를 찾았어요',
+    intro: '알려 주셔서 고맙습니다 🙏 앱을 잘못 까신 게 아니에요. **계정이 두 개**라서 생긴 일이에요.',
+    sections: [
+      {
+        heading: '무엇이 문제였나요',
+        text: '테스터 신청은 예전 계정 **\'엘리사벳 오\'**로 하셨는데, 지금은 새 계정 **\'엘리 오\'**로 로그인해 계세요. 테스터 신청과 출석 도장은 **계정마다 따로** 적혀서, 앱이 새 계정을 테스터로 알아보지 못했어요. 그래서 오른쪽 위 출석 체크(달력) 단추가 안 보였어요.',
+      },
+      {
+        heading: '이렇게 해 주세요 (\'엘리 오\' 계정을 계속 쓰실 때)',
+        steps: [
+          '내 공간 → **설정** → **안드로이드 앱 테스터 신청**',
+          '예전과 **같은 구글 이메일**을 적고 신청하기',
+          '운영자가 확인해서 \'등록함\'으로 바꿔 드려요 (구글 Play 명단에는 이미 들어 있어서 새로 기다리실 일은 없어요)',
+          '그러면 사연함 옆에 **출석 체크 단추**가 생기고, 그날부터 도장이 쌓여요',
+        ],
+        note: '예전 계정 \'엘리사벳 오\'로 다시 로그인하셔도 바로 테스터로 보여요. 다만 앞으로 쓰실 **한 계정으로만** 들어와 주셔야 출석이 한곳에 모여요.',
+      },
+      {
+        heading: '출석은 꼭 Play 테스트 앱으로',
+        text: '맨 위 \'가톨릭그램\' 아래에 **✓ Play 테스트 앱**이라고 보이는 앱으로 하루 한 번 열어 주세요. 예전 아이콘이나 인터넷 창으로 들어오시면 도장이 찍히지 않아요.',
+      },
+      {
+        heading: '🎁 엘리스텔라 이모티콘',
+        text: '전용 이모티콘은 예전 계정에 드린 것이라 새 계정에서는 아직 안 보일 수 있어요. 새 계정으로도 다시 선물해 드릴게요.',
+      },
+    ],
+    sign: '가톨릭그램 운영자 드림',
+  },
   {
     id: 'rubyrosa-2026-11-11',
     date: '2026-11-11',
@@ -187,14 +222,16 @@ const handleKey = (h: string) => h.toLowerCase().replace(/[\s._\-@]/g, '');
 const noticeTime = (n: PersonalNotice) => Date.parse(`${n.date}T00:00:00+09:00`);
 
 /** 이 교우에게 띄울 개인 안내 (다시 보지 않기·이번에 닫은 것·오래된 것 빼고, 최근 것부터) */
-export function myPersonalNotices({ handle, hidden, closed, now = Date.now(), notices = PERSONAL_NOTICES }: {
-  handle?: string | null; hidden: string[]; closed: string[]; now?: number; notices?: PersonalNotice[];
+export function myPersonalNotices({ handle, name, hidden, closed, now = Date.now(), notices = PERSONAL_NOTICES }: {
+  handle?: string | null; name?: string | null; hidden: string[]; closed: string[]; now?: number; notices?: PersonalNotice[];
 }): PersonalNotice[] {
-  if (!handle) return [];
-  const me = handleKey(handle);
-  if (!me) return [];
+  const me = handle ? handleKey(handle) : '';
+  const myName = name ? handleKey(name) : '';
+  if (!me && !myName) return [];
   return notices.filter(n => {
-    if (!n.handles.some(h => handleKey(h) === me)) return false;
+    const byHandle = !!me && n.handles.some(h => handleKey(h) === me);
+    const byName = !!myName && (n.names || []).some(x => handleKey(x) === myName);
+    if (!byHandle && !byName) return false;
     const t = noticeTime(n);
     if (!Number.isFinite(t) || t > now || now - t > PERSONAL_SHOW_DAYS * DAY) return false;
     return !hidden.includes(n.id) && !closed.includes(n.id);
