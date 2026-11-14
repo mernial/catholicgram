@@ -90,6 +90,9 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPr
     const ids = copied.ids.filter(id => pending.some(p => p.user_id === id));
     if (ids.length === 0) return;
     if (!(await askConfirm(`Play Console 테스터 목록에 ${ids.length}명을 붙여넣고 저장하셨나요?\n비공개 테스트 검토도 끝나 '게시됨'인가요?\n'등록함'으로 표시하면 그분들께 설치 안내 알림이 가요.`))) return;
+    await setAdded(ids);
+  };
+  const setAdded = async (ids: string[]) => {
     setBusy(true);
     const { error } = await supabase.from('tester_signups').update({ status: 'added' }).in('user_id', ids);
     setBusy(false);
@@ -97,6 +100,36 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPr
     ids.forEach(id => sendPush('tester_added', id));
     setCopied(null);
     reload();
+  };
+
+  // 구글 Play Console 테스터 목록과 비교 (운영자 2026-11-14): 붙여넣은 이메일 목록은 이 기기에만 기억 — 구글 목록에 아직 없는 신청자를 맨 위로
+  const [googleText, setGoogleText] = useState('');
+  const [googleAt, setGoogleAt] = useState<string | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [compareDraft, setCompareDraft] = useState('');
+  useEffect(() => { try { setGoogleText(localStorage.getItem('testerGoogleList') || ''); setGoogleAt(localStorage.getItem('testerGoogleListAt')); } catch { /* 기억 못 함 */ } }, []);
+  // 지메일은 점(.)과 + 뒤를 무시하므로 비교할 때 같은 주소로 봄
+  const normEmail = (e: string) => { const [u, d = ''] = e.trim().toLowerCase().split('@'); return /^(gmail|googlemail)\.com$/.test(d) ? `${u.split('+')[0].replace(/\./g, '')}@gmail.com` : `${u}@${d}`; };
+  const googleEmails = [...new Set((googleText.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g) || []).map(normEmail))];
+  const googleSet = new Set(googleEmails);
+  const hasGoogle = googleSet.size > 0;
+  const inGoogle = (r: Signup) => googleSet.has(normEmail(r.google_email));
+  const saveGoogle = (text: string) => {
+    const at = new Date().toISOString();
+    setGoogleText(text); setGoogleAt(text ? at : null); setCompareOpen(false);
+    try { if (text) { localStorage.setItem('testerGoogleList', text); localStorage.setItem('testerGoogleListAt', at); } else { localStorage.removeItem('testerGoogleList'); localStorage.removeItem('testerGoogleListAt'); } } catch { /* 기억 못 함 */ }
+  };
+  // 목록 순서: 구글 목록을 붙여넣었으면 '구글 목록에 없음' 먼저, 아니면 '신청함' 먼저 — 그 안에서는 최근 신청 순(불러온 순서 그대로)
+  const sorted = (list || []).map((r, i) => ({ r, i, k: hasGoogle ? (inGoogle(r) ? 1 : 0) : (r.status === 'requested' ? 0 : 1) })).sort((a, b) => a.k - b.k || a.i - b.i).map(x => x.r);
+  const notInGoogle = hasGoogle ? (list || []).filter(r => !inGoogle(r)) : [];
+  const inGoogleNotMarked = hasGoogle ? pending.filter(inGoogle) : [];
+  const signupSet = new Set((list || []).map(r => normEmail(r.google_email)));
+  const googleOnly = hasGoogle ? googleEmails.filter(e => !signupSet.has(e)) : [];
+  const markInGoogle = async () => {
+    const ids = inGoogleNotMarked.map(r => r.user_id);
+    if (ids.length === 0 || busy) return;
+    if (!(await askConfirm(`구글 목록에 이미 있는 ${ids.length}명을 '등록함'으로 표시할까요?\n그분들께 설치 안내 알림이 가요.`))) return;
+    await setAdded(ids);
   };
 
   // 구글 검토가 끝나기 전에 '등록함'으로 알렸으면, 게시된 뒤 등록한 분들께 설치 안내를 한 번 더 보낸다
@@ -368,13 +401,55 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPr
                 </div>
               )}
 
+              <div className="bg-white border border-stone-200 rounded-2xl p-3.5 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-stone-800">🔍 구글 Play 목록과 비교</p>
+                  <button onClick={() => { setCompareDraft(googleText); setCompareOpen(o => !o); }} className="text-[0.75rem] font-bold text-blue-700 underline">{hasGoogle ? '목록 다시 넣기' : '목록 넣기'}</button>
+                </div>
+                {!hasGoogle && !compareOpen && <p className="text-xs text-stone-500 leading-relaxed">Play Console 테스터 이메일 목록을 붙여넣으면, 아직 구글 목록에 올리지 않은 신청자를 맨 위로 올려 드려요. 지금은 &lsquo;신청함&rsquo;인 분이 맨 위예요.</p>}
+                {compareOpen && (
+                  <>
+                    <p className="text-xs text-stone-500 leading-relaxed">Play Console → 비공개 테스트 → 테스터 → 이메일 목록의 주소들을 그대로 붙여넣어 주세요 (쉼표·줄바꿈 상관없어요). 이 휴대폰에만 기억해요.</p>
+                    <textarea value={compareDraft} onChange={e => setCompareDraft(e.target.value)} rows={5} placeholder="maria1234@gmail.com, …" className="w-full text-xs p-2 border border-stone-200 rounded-lg bg-stone-50 font-mono shrink-0" />
+                    <div className="flex gap-2">
+                      <button onClick={() => saveGoogle(compareDraft.trim())} disabled={!/@/.test(compareDraft)} className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold disabled:opacity-50">비교하기</button>
+                      {hasGoogle && <button onClick={() => saveGoogle('')} className="px-3 py-2.5 rounded-xl border border-stone-300 text-stone-600 text-sm font-bold">지우기</button>}
+                    </div>
+                  </>
+                )}
+                {hasGoogle && !compareOpen && (
+                  <div className="text-xs text-stone-600 leading-relaxed flex flex-col gap-1.5">
+                    <p>구글 목록 {googleEmails.length}명{googleAt && <span className="text-stone-400"> · {when(googleAt)}에 넣음</span>}</p>
+                    {notInGoogle.length > 0 ? (
+                      <>
+                        <p className="text-red-700 font-bold">⚠️ 구글 목록에 없는 신청자 {notInGoogle.length}명 (아래 맨 위에 있어요)</p>
+                        <button onClick={() => copy(notInGoogle)} className="w-full py-2.5 rounded-xl bg-stone-900 text-white text-sm font-bold">구글 목록에 없는 {notInGoogle.length}명 이메일 복사</button>
+                      </>
+                    ) : <p className="text-emerald-800 font-bold">✅ 앱에 신청한 분은 모두 구글 목록에 있어요</p>}
+                    {inGoogleNotMarked.length > 0 && (
+                      <button onClick={markInGoogle} disabled={busy} className="w-full py-2.5 rounded-xl border border-emerald-700 text-emerald-800 text-sm font-bold disabled:opacity-50">구글 목록에 이미 있는 {inGoogleNotMarked.length}명을 &lsquo;등록함&rsquo;으로 표시</button>
+                    )}
+                    {googleOnly.length > 0 && (
+                      <details className="text-stone-500">
+                        <summary className="cursor-pointer">구글 목록에만 있고 앱 신청은 없는 주소 {googleOnly.length}개</summary>
+                        <p className="mt-1 break-all font-mono text-[0.6875rem]">{googleOnly.join(', ')}</p>
+                      </details>
+                    )}
+                    <p className="text-[0.6875rem] text-stone-400">지메일은 점(.)이 달라도 같은 주소로 봐요. 구글 목록을 바꾼 뒤에는 &lsquo;목록 다시 넣기&rsquo;로 새로 붙여넣어 주세요.</p>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100">
                 {list.length === 0 && <p className="p-6 text-center text-sm text-stone-400">아직 신청한 분이 없어요.<br /><span className="text-xs">안드로이드 폰 홈 화면에 모집 안내가 떠요. 공지로도 알려 보세요.</span></p>}
-                {list.map(s => (
+                {sorted.map(s => (
                   <div key={s.user_id} className="p-3 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold text-stone-800 truncate">{who[s.user_id]?.baptismal_name || '교우'}{who[s.user_id]?.handle && <span className="font-normal text-stone-400"> @{who[s.user_id]?.handle}</span>}</p>
                       <p className="text-xs text-stone-600 break-all">{s.google_email}</p>
+                      {hasGoogle && (inGoogle(s)
+                        ? <p className="text-[0.6875rem] font-bold text-emerald-700">✓ 구글 목록에 있음</p>
+                        : <p className="text-[0.6875rem] font-bold text-red-700">⚠️ 구글 목록에 없음</p>)}
                       <p className="text-[0.6875rem] text-stone-400">
                         {md(s.created_at)} 신청
                         {s.play_first_at && <> · <span className="text-sky-700 font-bold">📱 {md(s.play_first_at)} 설치</span>{s.play_opened_at && md(s.play_opened_at) !== md(s.play_first_at) && <> · 마지막 {md(s.play_opened_at)}</>}</>}
