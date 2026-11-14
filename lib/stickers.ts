@@ -438,6 +438,55 @@ const KEYWORDS: Record<string, string[]> = {
   '굿모닝': ['굿모닝', '좋은아침', '아침', '일어났', '기상'],
 };
 
+// 비슷한 뜻 무리 (운영자 2026-11-14: '좋아요는 좋아요 칠 때만이 아니라 굿·따봉·훌륭해 같은 비슷한 말에도'):
+// 이모티콘의 말(KEYWORDS) 중 하나가 무리의 낱말과 똑같으면, 그 무리의 다른 말을 쳐도 그 이모티콘이 추천된다.
+// 직접 맞는 말이 비슷한 말보다 앞 (점수 2배). 새 무리·낱말은 여기 한 줄씩
+const MOOD_GROUPS: string[][] = [
+  ['좋아', '좋네', '좋다', '좋습', '굿', '따봉', '엄지', '훌륭', '굉장', '멋지', '멋져', '멋있', '최고', '짱', '잘했', '나이스', 'nice', 'good', '끝내주', '브라보', '좋은데', '완벽'],
+  ['감사', '고마', '고맙', '땡큐', 'thank', '땡스', '감사드', '덕분'],
+  ['사랑', '하트', '좋아해', '러브', 'love', '애정', '♥', '❤'],
+  ['ㅋㅋ', 'ㅎㅎ', '하하', '히히', '헤헤', '웃겨', '웃기', '재밌', '재미있', '킥킥', '깔깔', '빵터'],
+  ['헉', '헐', '깜짝', '놀라', '놀랐', '세상에', '어머', '우와', '맙소사', '충격'],
+  ['속상', '슬퍼', '슬프', '우울', '눈물', 'ㅠ', 'ㅜ', '서운', '섭섭', '울고', '서러', '흑흑', '엉엉'],
+  ['화나', '화났', '짜증', '열받', '버럭', '분노'],
+  ['화이팅', '파이팅', '힘내', '응원', '할수있', '아자', '홧팅', '기운내'],
+  ['토닥', '위로', '힘들', '지쳤', '지친', '힘드'],
+  ['수고', '고생', '애썼', '애쓰'],
+  ['축하', '생일', '합격', '결혼', '졸업', '승진', '경축', '생축', '축하드'],
+  ['미안', '죄송', '쏘리', 'sorry', '잘못했', '송구'],
+  ['안녕', '반가', '방가', '하이', 'hi', 'hello', '오랜만', '어서오', '환영'],
+  ['안녕히', '또만나', '또봐', '다음에봐', '바이', '빠이', 'bye', '잘가'],
+  ['잘자', '굿나잇', '좋은밤', '자러', '잘게', '이만잘', '꿀잠', '푹자', '안녕히주무'],
+  ['좋은아침', '굿모닝', '일어났', '기상'],
+  ['기도', '묵주', '화살기도', '기도드'],
+  ['평화', '평안', '샬롬', '찬미'],
+  ['축복', '은총', '은혜', '복받'],
+  ['아멘', '알렐루야'],
+  ['맞아', '맞네', '맞지', '맞습', '그러게', '인정', '동감', '그렇지', '그쵸', '공감', 'ㅇㅈ'],
+  ['알겠', '알았', '넵', '네넵', '오케이', '오키', 'ok', '확인', '접수'],
+  ['피곤', '졸려', '졸리', '하품', '잠와'],
+  ['기뻐', '기쁘', '기쁜', '행복', '신나', '신난', '야호', '앗싸', '아싸', '즐거', '기분좋'],
+  ['걱정', '불안', '어떡해', '어떻게해', '어쩌지', '큰일'],
+  ['부끄', '쑥스', '민망', '수줍', '창피'],
+  ['뭐지', '어리둥절', '모르겠', '헷갈', '갸우뚱'],
+  ['기다려', '기다릴', '잠깐', '잠시', '조금만'],
+  ['보고싶', '그리워', '그립', '보고파'],
+];
+// 이모티콘 말 → 직접 말 + 비슷한 말 (처음 쓸 때 한 번 만듦)
+let moodCache: Map<string, string[]> | null = null;
+function moodKeys(label: string): string[] {
+  if (!moodCache) moodCache = new Map();
+  const hit = moodCache.get(label);
+  if (hit) return hit;
+  const direct = new Set(KEYWORDS[label] || []);
+  const extra = new Set<string>();
+  for (const g of MOOD_GROUPS) if (g.some(w => direct.has(w))) g.forEach(w => { if (!direct.has(w)) extra.add(w); });
+  const out = [...extra];
+  moodCache.set(label, out);
+  return out;
+}
+const allKeys = (label: string) => [...(KEYWORDS[label] || []), ...moodKeys(label)];
+
 export const hasStickerSuggestion = (text: string) => suggestStickers(text, 1).length > 0;
 
 // 추천은 지금 치고 있는 말에만 맞춘다: 마지막 낱말 (두 낱말에 걸친 말 '좋은 아침'은 바로 앞 낱말까지 이어 봄).
@@ -464,7 +513,9 @@ export function suggestStickers(text: string, limit = 12, rank?: (s: Sticker) =>
   const scored: { s: Sticker; score: number; i: number; r: number }[] = [];
   STICKERS.forEach((s, i) => {
     if (!canUseSticker(s)) return; // 전용 이모티콘은 쓸 수 있는 사람에게만 추천
-    const score = tailMatches(text, KEYWORDS[s.label] || []).hits.reduce((sum, h) => sum + h.len, 0);
+    const direct = tailMatches(text, KEYWORDS[s.label] || []).hits.reduce((sum, h) => sum + h.len, 0);
+    const near = tailMatches(text, moodKeys(s.label)).hits.reduce((sum, h) => sum + h.len, 0);
+    const score = direct * 2 + near;
     if (score > 0) scored.push({ s, score, i, r: rank ? rank(s) : 0 });
   });
   return scored.sort((a, b) => a.r - b.r || b.score - a.score || a.i - b.i).slice(0, limit).map(x => x.s);
@@ -477,7 +528,7 @@ export function stripStickerWords(text: string, s: Sticker): string {
   const wordIdx = parts.map((p, i) => (p.trim() ? i : -1)).filter(i => i >= 0);
   const lastIdx = wordIdx[wordIdx.length - 1], prevIdx = wordIdx[wordIdx.length - 2];
   if (lastIdx === undefined) return text;
-  const { hits, prevLen } = tailMatches(text, KEYWORDS[s.label] || []);
+  const { hits, prevLen } = tailMatches(text, allKeys(s.label));
   const kill = new Set<number>();
   for (const h of hits) {
     if (h.at < prevLen && prevIdx !== undefined) kill.add(prevIdx); // 앞 낱말에 걸친 말 ('좋은 아침')
