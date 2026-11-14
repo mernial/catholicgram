@@ -13,8 +13,19 @@ const loadVideo = (file: Blob) => new Promise<HTMLVideoElement>((resolve, reject
   video.onerror = () => reject(new Error('영상을 읽을 수 없어요'));
 });
 
+// 휴대폰에서 바로 찍은(MediaRecorder) webm 은 길이가 Infinity 로 나옴 → 끝으로 한 번 감아 진짜 길이를 얻음
+const realDuration = (video: HTMLVideoElement) => new Promise<void>(resolve => {
+  if (Number.isFinite(video.duration)) return resolve();
+  const done = () => { video.ontimeupdate = null; video.ondurationchange = null; try { video.currentTime = 0; } catch { /* */ } resolve(); };
+  video.ondurationchange = () => { if (Number.isFinite(video.duration)) done(); };
+  video.ontimeupdate = () => { if (Number.isFinite(video.duration)) done(); };
+  setTimeout(done, 3000);
+  try { video.currentTime = 1e7; } catch { done(); }
+});
+
 export const getVideoInfo = async (file: Blob) => {
   const video = await loadVideo(file);
+  await realDuration(video);
   const info = { duration: video.duration, width: video.videoWidth, height: video.videoHeight };
   URL.revokeObjectURL(video.src);
   return info;
