@@ -28,7 +28,8 @@ export async function refreshAutoBadges(admin: SupabaseClient): Promise<{ awarde
     recipientId: list[0].recipientId,
     payload: {
       title: `🏅 새 뱃지 ${list.length}개를 받았어요`,
-      body: `${list.map(t => t.payload.title.replace(/^🏅 /, '').replace(/ — .*$/, '').replace(/ (도장|뱃지)를 받았어요$/, '')).join(' · ')} — 내 공간 '내 뱃지'에서 확인해 보세요`,
+      // 너무 길어지지 않게 셋까지만 이름을 적고 나머지는 '외 N개'
+      body: `${list.slice(0, 3).map(t => t.payload.title.replace(/^🏅 /, '').replace(/ — .*$/, '').replace(/ (도장|뱃지)를 받았어요$/, '')).join(' · ')}${list.length > 3 ? ` 외 ${list.length - 3}개` : ''} — 내 공간 '내 뱃지'에서 확인해 보세요`,
       url: list[0].payload.url, tag: list[0].payload.tag,
     },
   });

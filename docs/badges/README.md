@@ -95,11 +95,25 @@
 - 성직자·수도자 '인증 방패' 색.
 - 3D 그림을 겹쳐 쓸지, 조합마다 만들지(위 3의 무게 문제) — 제작 세션이 시안과 함께 제안.
 
+## 7. 결과 (2026-11-14 저녁) — 이 방식으로 만들어 앱 코드에 넣어 둠 (운영자 '올려 줘' 전, 브랜치에만 있음)
+
+운영자가 본 시안 차례: ① 예시 GIF 를 바탕으로 가운데만 등급 색 → "왕관이 똑바로(수평으로) 돌게, 월계관·왕관 반짝임이 일정한 차례로 되풀이되게" → ② 왕관만 3D 로 새로 만들어 얹음 → "새 왕관이 월계관과 금 느낌이 안 맞는다" → ③ 왕관에 **월계관의 실제 금빛(밝기별 색 + 밝기 분포)** 을 입힘. 앱에 들어간 모습은 `final-in-app.png`.
+
+- **그림 조각** `public/badges/3d/`: `tier-1~7.webp`(등급 메달, 테까지 등급 색 금속 · 6·7은 빛 번짐 포함) · `emblem/<키>.webp`/`<키>-g.webp`(돋을새김 문양, -g 는 큰 나무용 크림빛) · `frame.webp`(1등 틀: 예시의 월계관 + 금 테 + 빛, 가운데 뚫림·왕관 지움) · `crown.webp`(18장 움직이는 왕관, 수평 회전 90° = 4번 대칭이라 계속 도는 것으로 보임) · `crown-still.webp`
+- **겹치는 코드** `components/BadgeIcon.tsx` `Badge3D`: 메달 → (큰 나무·생명의 나무) 빛줄기 → 문양 → 숫자 판(글자) → 1등 틀 → 왕관 → 별(월계관 아래→위, 다이아몬드, 왕관 끝 — 1.26초마다 같은 차례, `app/globals.css` `.cg-star`·`.cg-sweep`). 34px 아래(이름 옆)는 멈춘 그림·숫자 없음, `prefers-reduced-motion` 이면 멈춤
+- **다시 만드는 법** `pipeline/` (작업 폴더에 `ex2/`, `r3d/` 를 나란히 둠):
+  1. `r3d/`: `npm i three@0.170.0`, `crown.html`·`shot.js` 를 넣고 `python3 -m http.server 8765`, `node shot.js '[{"page":"crown.html","q":"size=480","out":"cr","size":480,"frames":[0,…,17]}]'` → `r3d/cr/*.png` (왕관 낱장). 글꼴 `r3d/nsr.ttf`(나눔스퀘어라운드 EB — 시안 그림의 숫자에만 씀)
+  2. `ex2/`: `example-crown.gif` 를 `f00.png~f11.png` 로 풀고, 문양 `emb/<키>.png`(1024px, `EMBLEMS` 를 흰색 SVG 로 뽑아 투명 배경으로 찍음 — `EMBLEMS` 를 잠깐 export)
+  3. `python3 assets.py out <키,키,…>` → `out/` 을 `public/badges/3d/` 로. 시안 그림은 `python3 make2.py all`
+  - `make.py`: 가운데 판(`disc`)·등급 메달(`tier_frames`)·검은 바탕→투명(`to_rgba`) / `make2.py`: 왕관 지운 바탕(`base_plate`)·월계관 금빛 본뜨기(`laurel_look`)·왕관 색 입히기(`crown_frames`)·1등 합치기(`champ_frames`)
+- **1안(27가지 7단계)** 도 넣음: `lib/badges.ts` `LADDERS` 33줄, SQL `supabase/badge-ladders-27.sql`(숫자 넣고 그 자리에서 조용히 계산 — 알림 없음), `member-badges.sql` 에도 같은 숫자. 사다리 id 에는 밑줄 금지(SQL 이 `t_<id>_<단계>` 를 밑줄로 가름: `toppost`·`commentloved`)
+- 버린 것: three.js 로 통째로 만든 시안(`trial-3d-champions.png`)과 그 도구, 재질로 바꾼 등급표
+- 한계: 예시 GIF 가 358px 라 1등 틀은 아주 크게 보면 부드럽다. 운영자에게 원본(큰 그림·영상)이 있으면 `f*.png` 만 바꿔 다시 만들면 됨
+
 ## 6. 참고 파일 (이 폴더)
 - `example-crown.gif` · `example-crown-frames.png` — 운영자의 예시(품질 기준)
 - `trial-svg-champions.png` — SVG 시안(거절)
 - `trial-3d-champions.png` — three.js 3D 시안(왕관 입체 회전은 됨, 품질 미달)
-- `trial-3d-tiers.png` — 재질로 바꾼 등급표(잘못 이해한 시안, 버림)
-- `3d-pipeline/` — `scene.html`(three.js 장면: 메달·월계관·왕관, 주소 인자 `tier`·`champion`·`emb`·`num`·`size`·`frames`), `shot.js`(낱장 찍기), `post.py`(빛 번짐·별·webp)
+- `pipeline/` — 지금 그림을 만든 도구(위 7), `final-in-app.png` — 앱 코드로 그린 모습
 - `svg-wip.patch` — 올리지 않은 SVG 작업
 - 지난 배지 기록: `grep -n '뱃지\|배지' docs/history/2026-11.md`

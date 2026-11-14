@@ -24,7 +24,7 @@ export interface MemberBadgeDef {
 
 export type StatKey = 'likes' | 'prays' | 'comments' | 'posts' | 'photos' | 'feedback' | 'bugs' | 'intentions' | 'lounge' | 'days'
   | 'likesGiven' | 'praysGiven' | 'commentLikes' | 'videos' | 'stories' | 'followers' | 'following' | 'dms' | 'groupMsgs' | 'anonReplies' | 'dawn' | 'night' | 'music'
-  | 'replies' | 'reactions' | 'stickers' | 'sunday' | 'longform' | 'welcomes' | 'hashtags' | 'streak' | 'letters' | 'years';
+  | 'replies' | 'reactions' | 'stickers' | 'sunday' | 'longform' | 'welcomes' | 'hashtags' | 'streak' | 'letters' | 'years' | 'topPost';
 
 export const BADGE_GROUPS: Record<BadgeGroup, string> = {
   love: '받은 마음',
@@ -100,7 +100,7 @@ export const TIERS = [
   { name: '줄기', colors: ['#8cc3f7', '#2f73d0', '#163f85'], pill: ['#eef5fe', '#bcd8f7', '#163f85'] },
   { name: '꽃', colors: ['#ff9a8f', '#d8382f', '#7e130f'], pill: ['#fff1f0', '#fbc4bf', '#9e1f1a'] },
   { name: '열매', colors: ['#fff09a', '#f2c21b', '#a87a00'], pill: ['#fffbe6', '#f6e08a', '#7a5a00'] },
-  { name: '큰 나무', colors: ['#fff4c2', '#b8800f', '#5e3a00'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
+  { name: '큰 나무', colors: ['#ffe27a', '#e09a0c', '#7a4500'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
   { name: '생명의 나무', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
 ] as const;
 export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; steps: number[] }[] = [
@@ -110,6 +110,34 @@ export const LADDERS: { id: string; short: string; unit: string; emblem: string;
   { id: 'days', short: '출석', unit: '일', emblem: 'daily', stat: 'days', champion: 'daily', what: '가톨릭그램에 들른 날이', steps: [7, 30, 60, 120, 200, 300, 365] },
   { id: 'streak', short: '연속', unit: '일', emblem: 'streak', stat: 'streak', champion: 'streak', what: '하루도 빠지지 않고 연속으로 들른 날이', steps: [7, 14, 30, 60, 100, 200, 365] },
   { id: 'prays', short: '기도', unit: '번', emblem: 'prayers', stat: 'praysGiven', champion: 'intercessor', what: '교우들의 글·기도지향에 기도(🙏)를', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  // 1등 뱃지가 있던 나머지 활동도 모두 7단계로 (운영자 2026-11-14 '1안') — 1등 메달의 가운데 색이 그 교우의 등급. id 에는 밑줄을 쓰지 않는다(SQL 이 't_<id>_<단계>' 를 밑줄로 가름)
+  { id: 'prayed', short: '받은 기도', unit: '번', emblem: 'prayers', stat: 'prays', champion: 'prayers', what: '글에 기도(🙏)를 받은 것이', steps: [20, 60, 200, 600, 1500, 4000, 8000] },
+  { id: 'toppost', short: '인기 글', unit: '', emblem: 'trophy', stat: 'topPost', champion: 'trophy', what: '글 하나에 받은 공감·기도가', steps: [10, 20, 40, 70, 120, 200, 300] },
+  { id: 'commentloved', short: '댓글 공감', unit: '', emblem: 'comment_loved', stat: 'commentLikes', champion: 'comment_loved', what: '쓴 댓글에 공감·기도를 받은 것이', steps: [10, 30, 100, 300, 800, 2000, 5000] },
+  { id: 'followers', short: '팔로워', unit: '명', emblem: 'popular', stat: 'followers', champion: 'popular', what: '나를 팔로우하는 교우가', steps: [5, 15, 30, 60, 100, 200, 400] },
+  { id: 'following', short: '팔로우', unit: '명', emblem: 'friendly', stat: 'following', champion: 'friendly', what: '내가 팔로우하는 교우가', steps: [5, 15, 30, 60, 100, 200, 400] },
+  { id: 'cheer', short: '응원', unit: '번', emblem: 'cheer', stat: 'likesGiven', champion: 'cheer', what: '교우들의 글에 공감(❤️)을 보낸 것이', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'reactor', short: '리액션', unit: '번', emblem: 'reactor', stat: 'reactions', champion: 'reactor', what: '대화·댓글에 감정 표시를 남긴 것이', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'messenger', short: '메시지', unit: '개', emblem: 'messenger', stat: 'dms', champion: 'messenger', what: '1:1 메시지를 보낸 것이', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'groupchat', short: '단체방', unit: '개', emblem: 'groupchat', stat: 'groupMsgs', champion: 'groupchat', what: '단체방에서 이야기한 것이', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'lounge', short: '사랑방', unit: '개', emblem: 'lounge', stat: 'lounge', champion: 'lounge', what: '사랑방에서 이야기한 것이', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
+  { id: 'replier', short: '답글', unit: '개', emblem: 'replier', stat: 'replies', champion: 'replier', what: '교우들의 댓글에 답글을 단 것이', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
+  { id: 'sticker', short: '이모티콘', unit: '개', emblem: 'sticker', stat: 'stickers', champion: 'sticker', what: '대화에서 이모티콘을 보낸 것이', steps: [20, 60, 200, 600, 1500, 4000, 8000] },
+  { id: 'photo', short: '사진', unit: '편', emblem: 'photo', stat: 'photos', champion: 'photo', what: '사진 글을 올린 것이', steps: [5, 20, 60, 150, 400, 1000, 2000] },
+  { id: 'comforter', short: '위로', unit: '번', emblem: 'comforter', stat: 'anonReplies', champion: 'comforter', what: '익명 고민상담에 위로의 답글을 남긴 것이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'intention', short: '기도지향', unit: '개', emblem: 'intention', stat: 'intentions', champion: 'intention', what: '기도지향을 올린 것이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'story', short: '스토리', unit: '개', emblem: 'story', stat: 'stories', champion: 'story', what: '스토리를 올린 것이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'dj', short: '음악', unit: '편', emblem: 'dj', stat: 'music', champion: 'dj', what: '글에 배경음악을 넣은 것이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'hashtag', short: '해시태그', unit: '편', emblem: 'hashtag', stat: 'hashtags', champion: 'hashtag', what: '#해시태그를 붙인 글이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'welcomer', short: '환영', unit: '번', emblem: 'welcomer', stat: 'welcomes', champion: 'welcomer', what: '새로 온 교우의 글에 댓글로 반겨 준 것이', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'earlybird', short: '새벽 글', unit: '편', emblem: 'earlybird', stat: 'dawn', champion: 'earlybird', what: '새벽(4~7시)에 올린 글이', steps: [3, 10, 25, 60, 120, 250, 500] },
+  { id: 'nightowl', short: '밤 글', unit: '편', emblem: 'nightowl', stat: 'night', champion: 'nightowl', what: '밤(22~3시)에 올린 글이', steps: [3, 10, 25, 60, 120, 250, 500] },
+  { id: 'sunday', short: '주일 글', unit: '편', emblem: 'sunday', stat: 'sunday', champion: 'sunday', what: '주일에 올린 글이', steps: [3, 10, 25, 60, 120, 250, 500] },
+  { id: 'longform', short: '묵상', unit: '편', emblem: 'longform', stat: 'longform', champion: 'longform', what: '긴 글(300자 이상)로 묵상을 나눈 것이', steps: [3, 10, 25, 60, 120, 250, 500] },
+  { id: 'video', short: '영상', unit: '편', emblem: 'video', stat: 'videos', champion: 'video', what: '영상을 올린 것이', steps: [1, 5, 15, 40, 100, 200, 400] },
+  { id: 'letter', short: '사연', unit: '통', emblem: 'letter', stat: 'letters', champion: 'letter', what: '사연함에 사연을 보낸 것이', steps: [1, 3, 7, 15, 30, 60, 100] },
+  { id: 'idea', short: '건의', unit: '번', emblem: 'idea', stat: 'feedback', champion: 'idea', what: '건의함에 의견을 낸 것이', steps: [1, 3, 7, 15, 30, 60, 100] },
+  { id: 'detective', short: '오류 신고', unit: '번', emblem: 'detective', stat: 'bugs', champion: 'detective', what: '오류를 찾아 알려 준 것이', steps: [1, 3, 7, 15, 30, 60, 100] },
 ];
 const fmtN = (n: number) => n.toLocaleString('en-US');
 const LADDER_DEFS: MemberBadgeDef[] = LADDERS.flatMap(L => L.steps.map((n, i) => ({
@@ -160,7 +188,7 @@ export const badgeOf = (key: string): MemberBadgeDef | undefined => MEMBER_BADGE
 export const STAT_LABELS: Record<StatKey, string> = {
   likes: '받은 공감', prays: '받은 기도', commentLikes: '댓글에 받은 공감', followers: '팔로워', likesGiven: '보낸 공감', praysGiven: '보낸 기도', anonReplies: '고민 답글', following: '팔로잉',
   comments: '쓴 댓글', posts: '쓴 글', photos: '사진 글', videos: '영상', stories: '스토리', music: '음악 넣은 글', dms: '보낸 메시지', groupMsgs: '단체방 대화', dawn: '새벽 글', night: '밤 글', intentions: '기도지향', lounge: '사랑방 대화', days: '들른 날', feedback: '건의', bugs: '오류 신고',
-  replies: '답글', reactions: '감정 표시', stickers: '보낸 이모티콘', sunday: '주일 글', longform: '긴 글', welcomes: '새 교우 환영 댓글', hashtags: '해시태그 글', streak: '최장 연속 출석', letters: '사연', years: '함께한 햇수',
+  replies: '답글', reactions: '감정 표시', stickers: '보낸 이모티콘', sunday: '주일 글', longform: '긴 글', welcomes: '새 교우 환영 댓글', hashtags: '해시태그 글', streak: '최장 연속 출석', letters: '사연', years: '함께한 햇수', topPost: '글 하나가 받은 공감·기도',
 };
 
 // 받은 기록(도장): 뱃지를 받을 때마다 한 줄 (member_badges 에서 떼어져도 남음 — supabase/member-badges.sql badge_stamps)
