@@ -23,7 +23,10 @@ export default function RoleBadge({ type, size = 'sm', showLabel = true, onClick
     <Tag type={onClick ? 'button' : undefined} onClick={onClick ? (e: React.MouseEvent) => { e.stopPropagation(); onClick(); } : undefined}
       className={`inline-flex items-center gap-1 shrink-0 align-middle rounded-full border font-bold leading-none ${badge.className} ${showLabel ? (size === 'md' ? 'pl-0.5 pr-2 py-0.5' : 'pl-px pr-1.5 py-px') : 'p-0 border-0 bg-transparent'} ${text}`}
       title={`인증된 ${badge.label}`} aria-label={onClick ? `인증된 ${badge.label} — 무슨 뱃지인지 보기` : undefined}>
-      <RoleIcon type={badge.key} size={icon} title={`인증된 ${badge.label}`} />
+      {/* 관리자는 월계관·왕관 그림이라 같은 칸에서 작아 보임 → 조금 크게, 알약 높이는 그대로 */}
+      {badge.key === 'admin'
+        ? <span className="inline-flex shrink-0" style={{ margin: `-${Math.round(icon * 0.22)}px -${Math.round(icon * 0.12)}px -${Math.round(icon * 0.18)}px -${Math.round(icon * 0.14)}px` }}><RoleIcon type="admin" size={Math.round(icon * 1.4)} title={`인증된 ${badge.label}`} /></span>
+        : <RoleIcon type={badge.key} size={icon} title={`인증된 ${badge.label}`} />}
       {showLabel && <span>{badge.label}</span>}
     </Tag>
   );
