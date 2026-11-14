@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { badgeOf } from '@/lib/badges';
+import { badgeOf, badgeRank } from '@/lib/badges';
 
 // 교우마다 달고 있는 활동 뱃지 키 (이름 옆 작은 메달용) — 앱이 열릴 때 한 번 모두 받아 두고(1등마다 한 줄이라 작음),
 // 뱃지가 바뀌면(member-badges-changed) 다시 받는다. 본인이 숨긴 교우(profiles.hide_badges)는 뺀다.
@@ -36,7 +36,7 @@ export async function loadBadgeMap(force = false) {
       }
       const next: BadgeMap = {};
       // 이름 옆에는 1등 뱃지·기념 뱃지를 먼저, 달성 도장(permanent)은 뒤에 (많아질 수 있으므로 +N 으로)
-      rows.sort((a, b) => Number(!!badgeOf(a.badge_key)?.permanent) - Number(!!badgeOf(b.badge_key)?.permanent));
+      rows.sort((a, b) => badgeRank(a.badge_key) - badgeRank(b.badge_key)); // 1등 → 높은 등급 → 기념 → 나머지
       rows.forEach(r => { if (!hidden.has(r.user_id)) (next[r.user_id] ||= []).push(r.badge_key); });
       // 고른 대표 뱃지를 맨 앞으로 (이름 옆에는 맨 앞 하나 + 나머지 수)
       Object.entries(next).forEach(([uid, keys]) => { const f = featured[uid]; if (f && keys.includes(f)) next[uid] = [f, ...keys.filter(k => k !== f)]; });

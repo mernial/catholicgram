@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
-import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, badgeOf, type BadgeGroup, type BadgeStamp, type MemberBadgeRow, type StatKey } from '@/lib/badges';
+import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, badgeRank, shownBadges, type BadgeGroup, type BadgeStamp, type MemberBadgeRow, type StatKey } from '@/lib/badges';
 type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
@@ -161,7 +161,8 @@ export function useMemberBadges(userId: string | null | undefined) {
     return () => { alive = false; };
   }, [userId, tick]);
   // 대표 뱃지를 맨 앞으로
-  const sorted = featured && rows.some(r => r.badge_key === featured) ? [...rows.filter(r => r.badge_key === featured), ...rows.filter(r => r.badge_key !== featured)] : rows;
+  const ranked = [...rows].sort((x, y) => badgeRank(x.badge_key) - badgeRank(y.badge_key));
+  const sorted = featured && ranked.some(r => r.badge_key === featured) ? [...ranked.filter(r => r.badge_key === featured), ...ranked.filter(r => r.badge_key !== featured)] : ranked;
   return { rows: sorted, ready, missing, hidden, setHidden, featured: sorted[0]?.badge_key || null, chosen: featured, setFeatured, reload };
 }
 
@@ -212,7 +213,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
   const who = name || prof?.baptismal_name || '교우';
   const [book, setBook] = useState(false);
   const clergy = roleOf(prof?.badge_type);
-  const total = (clergy ? 1 : 0) + (hidden ? 0 : rows.length);
+  const total = (clergy ? 1 : 0) + (hidden ? 0 : shownBadges(rows.map(r => r.badge_key)).length);
   const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string, badgeKey?: string) => (
     <div key={key} className={`flex items-start gap-3 px-3 py-3 ${highlight === key ? 'bg-amber-50' : ''}`}>
       <div className="shrink-0 w-14 flex justify-center">{icon}</div>
@@ -240,9 +241,14 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
           <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
-          {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보여요. 바꾸려면 '대표로'를 누르세요.</p>}
+          {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보여요. 바꾸려면 &lsquo;대표로&rsquo;를 누르세요.</p>}
           {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
-          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`, r.badge_key); })}
+          {!hidden && shownBadges(rows.map(r => r.badge_key)).map(sb => {
+            const r = rows.find(x => x.badge_key === sb.key)!; const def = badgeOf(sb.key)!;
+            const title = def.tier ? `${def.label} · ${TIERS[def.tier - 1].name}${sb.champion ? ` · 1등 (${sb.label})` : ''}` : def.label;
+            const sub = def.tier ? `활동 등급 · ${fmtDate(r.created_at)} 이 등급이 됨${sb.champion ? ' · 지금 이 활동 1등이라 금 월계관' : ''}` : `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(sb.key) : ''}${r.note ? ` · “${r.note}”` : ''}`;
+            return item(sb.key, <BadgeIcon badge={def} size={48} champion={sb.champion} />, title, def.desc, sub, sb.key);
+          })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400 leading-relaxed">{empty || '아직 받은 뱃지가 없어요.'}</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
           {!hidden && ready && (
@@ -294,7 +300,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   return (
     <div className="mt-3 flex items-center gap-1.5 flex-wrap">
       <button onClick={() => setList(true)} className={`${pill} bg-stone-100 text-stone-800`} aria-label={`${mine ? '내 ' : ''}뱃지 ${rows.length}개 보기`}>
-        {rows[0] && <BadgeIcon badge={rows[0].badge_key} size={20} />}{mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
+        {rows[0] && (() => { const f = shownBadges(rows.map(r => r.badge_key))[0]; return f ? <BadgeIcon badge={f.key} size={20} champion={f.champion} /> : null; })()}{mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
         {hidden && !mine && <span className="font-normal text-stone-400 text-[0.6875rem]">(숨김)</span>}
       </button>
       {!missing && (stamps.length > 0 || mine) && (<>
@@ -319,36 +325,45 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   );
 }
 
-// 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 그 교우의 뱃지 모두 — 누구나)
+
+// 이름 옆 알약: 대표 뱃지 메달 + 글('공감 300', 1등이면 '소통왕') — 18px 메달만으로는 안 보여서 (운영자 2026-11-14 시안 ③)
+function BadgePill({ keys, size, onOpen }: { keys: string[]; size: number; onOpen: () => void }) {
+  const first = shownBadges(keys)[0];
+  if (!first) return null;
+  const def = badgeOf(first.key)!;
+  const [bg, bd, fg] = first.champion ? ['#fff8e1', '#f3d27a', '#7a4b00'] : def.tier ? TIERS[def.tier - 1].pill : ['#f5f5f4', '#e7e5e4', '#44403c'];
+  return (
+    <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
+      className="inline-flex items-center gap-0.5 rounded-full border pl-0.5 pr-1.5 max-w-[8.5rem]" style={{ background: bg, borderColor: bd, color: fg }}
+      aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`}>
+      <BadgeIcon badge={def} size={size} champion={first.champion} />
+      <span className="truncate font-bold leading-none" style={{ fontSize: Math.max(10.5, Math.min(12.5, size * 0.62)) }}>{first.label}</span>
+    </button>
+  );
+}
+
+// 프로필 카드·목록 줄 (누르면 그 교우의 뱃지 모두 — 누구나)
 export function BadgeRow({ userId, size = 22, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
   const { rows, hidden } = useMemberBadges(userId);
   const [open, setOpen] = useState(false);
   if (rows.length === 0 || hidden) return null;
-  // 대표 뱃지 하나만 (운영자 2026-11-14) — 누르면 모두
   return (
     <span className={`inline-flex items-center ${className}`}>
-      <button type="button" onClick={e => { e.stopPropagation(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
-        aria-label={`뱃지 ${rows.length}개 보기: ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
-        <BadgeIcon badge={rows[0].badge_key} size={size} />
-      </button>
+      <BadgePill keys={rows.map(r => r.badge_key)} size={size} onOpen={() => setOpen(true)} />
       {open && <BadgeListDialog userId={userId} highlight={rows[0].badge_key} onClose={() => setOpen(false)} />}
     </span>
   );
 }
 
-// 이름 옆 작은 활동 뱃지 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 누르면 그 교우의 뱃지 모두
+// 이름 옆 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 대표 뱃지 하나, 누르면 그 교우의 뱃지 모두
 export function NameBadges({ userId, size = 18, className = '' }: { userId?: string | null; size?: number; max?: number; className?: string }) {
   const map = useBadgeMap();
   const [open, setOpen] = useState(false);
   const keys = userId ? map[userId] : undefined;
   if (!userId || !keys || keys.length === 0) return null;
-  // 대표 뱃지(교우가 고른 것, 없으면 첫 뱃지) 하나만 (운영자 2026-11-14: '+4' 도 없앰) — 누르면 그 교우의 뱃지 모두
   return (
-    <span className={`inline-flex items-center shrink-0 ${className}`}>
-      <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
-        aria-label={`뱃지 ${keys.length}개 보기: ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
-        <BadgeIcon badge={keys[0]} size={size} />
-      </button>
+    <span className={`inline-flex items-center shrink-0 min-w-0 ${className}`}>
+      <BadgePill keys={keys} size={size} onOpen={() => setOpen(true)} />
       {open && <BadgeListDialog userId={userId} highlight={keys[0]} onClose={() => setOpen(false)} />}
     </span>
   );
@@ -394,7 +409,7 @@ export function BadgeLeaderboard({ onClose, onOpenProfile }: { onClose: () => vo
             <div key={g} className="mt-4">
               <p className="text-[0.8125rem] font-bold text-stone-500 mb-1.5">{BADGE_GROUPS[g]}</p>
               <div className="divide-y divide-stone-100 rounded-2xl border border-stone-200 bg-white overflow-hidden">
-                {MEMBER_BADGES.filter(b => b.group === g).map(b => { const holders = byBadge[b.key] || []; return (
+                {MEMBER_BADGES.filter(b => b.group === g && !b.retired && !b.tier).map(b => { const holders = byBadge[b.key] || []; return (
                   <div key={b.key} className="flex items-center gap-3 px-3 py-2.5">
                     <BadgeIcon badge={b} size={40} className={holders.length ? '' : 'opacity-40 grayscale'} />
                     <div className="flex-1 min-w-0">
@@ -525,7 +540,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <div key={g} className="mt-4">
               <p className="text-[0.8125rem] font-bold text-stone-500 mb-2">{BADGE_GROUPS[g]}</p>
               <div className="grid grid-cols-3 gap-2">
-                {MEMBER_BADGES.filter(b => b.group === g).map(b => { const on = have.has(b.key); return (
+                {MEMBER_BADGES.filter(b => b.group === g && !b.retired && !b.tier).map(b => { const on = have.has(b.key); return (
                   <button key={b.key} onClick={() => toggle(b.key)} disabled={busy !== null} aria-pressed={on}
                     className={`relative flex flex-col items-center gap-1.5 p-3 rounded-2xl border text-center transition-colors ${on ? 'bg-amber-50 border-amber-300' : 'bg-white border-stone-200'} ${busy === b.key ? 'opacity-60' : ''}`}>
                     <BadgeIcon badge={b} size={52} className={on ? '' : 'opacity-80'} />

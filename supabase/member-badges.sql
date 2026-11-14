@@ -204,12 +204,38 @@ begin
 
   -- 달성 도장: 기준을 넘은 교우 모두에게(관리자도), 한 번 받으면 떼지 않음 (lib/badges.ts milestone 과 같아야 함)
   create temp table badge_milestones (badge_key text, stat text, min_s bigint) on commit drop;
-  insert into badge_milestones values
-    ('m_posts10', 'writer', 10), ('m_posts50', 'writer', 50), ('m_comments100', 'talker', 100), ('m_hearts100', 'hearts', 100),
-    ('m_prays100', 'intercessor', 100), ('m_days30', 'daily', 30), ('m_days100', 'daily', 100), ('m_streak7', 'streak', 7), ('m_year1', 'years', 1);
+  -- (예전 달성 도장 글 10편·댓글 100개 등은 2026-11-14 활동 등급으로 바뀜 — 함께 1년만 남음)
+  insert into badge_milestones values ('m_year1', 'years', 1);
   create temp table badge_new (user_id uuid, badge_key text) on commit drop;
   insert into badge_new
     select distinct bs.user_id, m.badge_key from badge_stats bs join badge_milestones m on m.stat = bs.badge_key where bs.user_id is not null and bs.s >= m.min_s;
+
+  -- 활동 등급 (2026-11-14): 활동마다 닿은 가장 높은 등급 하나 't_<활동>_<1~7>' (일반·고급·희귀·영웅·전설·신화·유일, lib/badges.ts LADDERS 와 같아야 함)
+  -- 관리자도 받음. 낮은 등급은 떼고(받은 기록은 badge_stamps 에 남음), 숫자가 줄어도 등급은 내려가지 않음
+  create temp table badge_ladders (family text, stat text, tier int, min_s bigint) on commit drop;
+  insert into badge_ladders values
+    ('comments', 'talker', 1, 5), ('comments', 'talker', 2, 20), ('comments', 'talker', 3, 50), ('comments', 'talker', 4, 100), ('comments', 'talker', 5, 300), ('comments', 'talker', 6, 600), ('comments', 'talker', 7, 1000),
+    ('hearts', 'hearts', 1, 10), ('hearts', 'hearts', 2, 30), ('hearts', 'hearts', 3, 100), ('hearts', 'hearts', 4, 300), ('hearts', 'hearts', 5, 700), ('hearts', 'hearts', 6, 1500), ('hearts', 'hearts', 7, 3000),
+    ('posts', 'writer', 1, 1), ('posts', 'writer', 2, 5), ('posts', 'writer', 3, 15), ('posts', 'writer', 4, 30), ('posts', 'writer', 5, 60), ('posts', 'writer', 6, 120), ('posts', 'writer', 7, 250),
+    ('days', 'daily', 1, 3), ('days', 'daily', 2, 7), ('days', 'daily', 3, 30), ('days', 'daily', 4, 60), ('days', 'daily', 5, 100), ('days', 'daily', 6, 200), ('days', 'daily', 7, 365),
+    ('streak', 'streak', 1, 3), ('streak', 'streak', 2, 7), ('streak', 'streak', 3, 14), ('streak', 'streak', 4, 30), ('streak', 'streak', 5, 60), ('streak', 'streak', 6, 100), ('streak', 'streak', 7, 200),
+    ('prays', 'intercessor', 1, 10), ('prays', 'intercessor', 2, 30), ('prays', 'intercessor', 3, 100), ('prays', 'intercessor', 4, 300), ('prays', 'intercessor', 5, 700), ('prays', 'intercessor', 6, 1500), ('prays', 'intercessor', 7, 3000);
+  insert into badge_new
+    select x.user_id, 't_' || x.family || '_' || x.tier from (
+      select bs.user_id, l.family, max(l.tier) as tier from badge_stats bs join badge_ladders l on l.stat = bs.badge_key
+      where bs.user_id is not null and bs.s >= l.min_s group by bs.user_id, l.family) x;
+  -- 이미 같거나 더 높은 등급이 달려 있으면 새로 달지 않음
+  delete from badge_new n where n.badge_key like 't\_%' and exists (
+    select 1 from member_badges mb where mb.user_id = n.user_id and mb.badge_key like 't\_%'
+      and split_part(mb.badge_key, '_', 2) = split_part(n.badge_key, '_', 2)
+      and split_part(mb.badge_key, '_', 3)::int >= split_part(n.badge_key, '_', 3)::int);
+  -- 더 높은 등급을 새로 받으면 낮은 등급은 뗌
+  delete from member_badges mb where mb.badge_key like 't\_%' and exists (
+    select 1 from badge_new n where n.user_id = mb.user_id and n.badge_key like 't\_%'
+      and split_part(n.badge_key, '_', 2) = split_part(mb.badge_key, '_', 2)
+      and split_part(n.badge_key, '_', 3)::int > split_part(mb.badge_key, '_', 3)::int);
+  -- 예전 달성 도장은 활동 등급으로 바뀜 (받은 기록은 badge_stamps 에 그대로)
+  delete from member_badges mb where mb.badge_key in ('m_posts10', 'm_posts50', 'm_comments100', 'm_hearts100', 'm_prays100', 'm_days30', 'm_days100', 'm_streak7');
 
   -- 관리자는 1등에서 뺌, 최소 기준 5 미만은 없음(운영자 2026-11-06: '최소 기준 5개 이상'). 뱃지마다 최댓값인 교우(동점이면 모두)
   delete from badge_stats bs where bs.s is null or bs.s < 5 or bs.user_id is null or bs.user_id in (select user_id from badge_admins);
@@ -223,7 +249,7 @@ begin
   insert into badge_new select distinct w.user_id, w.badge_key from badge_winners w;
   return query
     insert into member_badges (user_id, badge_key, auto, permanent, granted_by)
-    select distinct n.user_id, n.badge_key, true, (n.badge_key like 'm\_%'), null::uuid from badge_new n
+    select distinct n.user_id, n.badge_key, true, (n.badge_key like 'm\_%' or n.badge_key like 't\_%'), null::uuid from badge_new n
     on conflict (user_id, badge_key) do nothing
     returning member_badges.user_id, member_badges.badge_key;
 end;
