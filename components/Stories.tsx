@@ -134,6 +134,58 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     setSeen(next); saveSeen(next);
   }, [viewerOpen, current?.id]);
 
+  // 사진 미리 받기 (운영자 2026-11-14: '스토리에서 사진이 좀 늦게 떠'): 예전엔 그 스토리를 여는 순간에야 받기 시작했고(게다가 loading=lazy),
+  // 사진이 뜨기 전부터 5초가 흘러 늦게 뜬 사진은 보는 시간이 줄었음 → 창을 열면 지금 것과 다음 세 장을 미리 받고, 사진이 뜰 때까지 막대를 멈춤
+  const [loadedImgs, setLoadedImgs] = useState<Set<string>>(() => new Set());
+  const markLoaded = (url: string) => setLoadedImgs(prev => (prev.has(url) ? prev : new Set(prev).add(url)));
+  const upcoming = useMemo(() => {
+    if (!viewerOpen) return [] as string[];
+    const out: string[] = [];
+    for (let u = pos.user, i = pos.item; u < groups.length && out.length < 4; u++, i = 0) {
+      for (; i < groups[u].items.length && out.length < 4; i++) {
+        const it = groups[u].items[i];
+        if (it.image_url) out.push(it.image_url);
+      }
+    }
+    return out;
+  }, [viewerOpen, pos.user, pos.item, groups]);
+  const preloadRef = useRef(new Map<string, HTMLImageElement>());
+  useEffect(() => {
+    upcoming.forEach(url => {
+      if (preloadRef.current.has(url)) return;
+      const im = new Image();
+      im.decoding = 'async';
+      im.onload = () => markLoaded(url);
+      im.onerror = () => markLoaded(url); // 못 받아도 멈춰 있지 않게
+      im.src = url;
+      preloadRef.current.set(url, im);
+    });
+  }, [upcoming]);
+  // 창을 열기 전에도: 스토리 줄이 보이면 잠시 뒤 앞쪽 세 교우의 첫 사진을 받아 둠 (동그라미를 누르면 바로 뜨게)
+  const firstImgs = groups.slice(0, 3).map(g => g.items.find(i => !seen.includes(i.id))?.image_url || g.items[0]?.image_url || '').filter(Boolean).join('|');
+  useEffect(() => {
+    if (!firstImgs) return;
+    const t = setTimeout(() => firstImgs.split('|').forEach(url => {
+      if (preloadRef.current.has(url)) return;
+      const im = new Image();
+      im.decoding = 'async';
+      im.onload = () => markLoaded(url);
+      im.src = url;
+      preloadRef.current.set(url, im);
+    }), 1500);
+    return () => clearTimeout(t);
+  }, [firstImgs]);
+  const waitingImg = !!(viewerOpen && current && !current.video_url && current.image_url && !loadedImgs.has(current.image_url));
+  const waitingRef = useRef(false);
+  waitingRef.current = waitingImg;
+  // 아주 느려도 멈춰 있지만은 않게: 8초 지나면 그냥 흘러감
+  useEffect(() => {
+    if (!waitingImg || !current?.image_url) return;
+    const url = current.image_url;
+    const t = setTimeout(() => markLoaded(url), 8000);
+    return () => clearTimeout(t);
+  }, [waitingImg, current?.image_url]);
+
   // 5초마다 다음으로 (누르고 있으면 멈춤). 영상은 영상 길이만큼 — 진행 막대는 영상 재생 위치, 끝나면 다음으로
   useEffect(() => {
     if (!viewerOpen || !current) return;
@@ -141,7 +193,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     if (current.video_url) return;
     let elapsed = 0, last = performance.now(), raf = 0;
     const tick = (now: number) => {
-      if (!pausedRef.current) elapsed += now - last;
+      if (!pausedRef.current && !waitingRef.current) elapsed += now - last;
       last = now;
       const ms = current.music ? 15000 : STORY_MS; // 음악 스토리는 15초
       setProgress(Math.min(1, elapsed / ms));
@@ -397,7 +449,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
             <VideoTrimmer src={draft.url} duration={draft.duration} max={MAX_VIDEO_SECONDS} start={trim.start} end={trim.end} onChange={(st, en) => setTrim({ start: st, end: en })} />
           ) : (
             <div className="relative flex-1 min-h-0 flex items-center justify-center">
-              <img loading="lazy" src={draft.url} alt="" className="max-w-full max-h-full object-contain" />
+              <img src={draft.url} alt="" className="max-w-full max-h-full object-contain" />
             </div>
           )}
           <div className="p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] flex flex-col gap-3">
@@ -431,7 +483,13 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
                   onEnded={() => step(1)}
                   className="absolute inset-0 w-full h-full object-contain" />
               ) : (
-                <img loading="lazy" src={current.image_url} alt="" className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+                <img key={current.id} src={current.image_url} alt="" decoding="async" fetchPriority="high" onLoad={() => markLoaded(current.image_url)} onError={() => markLoaded(current.image_url)}
+                  className="absolute inset-0 w-full h-full object-contain" draggable={false} />
+              )}
+              {waitingImg && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none" role="status" aria-label="사진을 불러오는 중">
+                  <span className="w-10 h-10 rounded-full border-[3px] border-white/30 border-t-white animate-spin" />
+                </div>
               )}
               {/* 위: 진행 막대 + 작성자 */}
               <div className="absolute top-0 inset-x-0 z-10 px-2.5 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-8 bg-gradient-to-b from-black/60 to-transparent">

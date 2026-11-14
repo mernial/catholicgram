@@ -23,6 +23,8 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
   const [burst, setBurst] = useState(0);
   // 사진마다 실제 비율 (불러온 뒤 알 수 있음). 틀은 첫 사진 모양을 따른다
   const [ratios, setRatios] = useState<Record<number, number>>({});
+  // 옆으로 넘기는 사진: 첫 장이 뜨면(= 이 글이 화면 가까이) 지금 보는 장과 다음 장은 바로 받아 둠 — 예전엔 모두 lazy 라 넘길 때 회색 칸이 잠깐 보였음
+  const [near, setNear] = useState(false);
   const frame = frameRatio(ratios[0]);
   const tap = useDoubleTap(
     () => onOpen(index),
@@ -38,12 +40,12 @@ export default function PostPhotos({ images, onOpen, onDoubleTap, musicTitle, on
         {images.map((img, i) => (
           // 아이패드처럼 넓은 화면: 사진이 화면보다 길어지지 않게 높이를 화면의 75%까지로 (양옆은 바탕색)
           <div key={i} className="w-full shrink-0 snap-center flex justify-center bg-stone-100">
-            <img loading="lazy"
+            <img loading={i === 0 || !(near && i <= index + 1) ? 'lazy' : 'eager'} decoding="async"
               src={img}
               alt="게시물 사진"
               className="w-full tablet:w-[min(100%,calc(75dvh*var(--frame)))] cursor-pointer bg-stone-100"
               style={{ aspectRatio: String(frame), objectFit: photoFit(ratios[i], frame), '--frame': frame } as React.CSSProperties}
-              onLoad={e => { const r = naturalRatio(e.currentTarget); if (r) setRatios(prev => (prev[i] === r ? prev : { ...prev, [i]: r })); }}
+              onLoad={e => { if (i === 0) setNear(true); const r = naturalRatio(e.currentTarget); if (r) setRatios(prev => (prev[i] === r ? prev : { ...prev, [i]: r })); }}
               onClick={tap}
             />
           </div>
