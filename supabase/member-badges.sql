@@ -82,6 +82,18 @@ insert into public.badge_stamps (user_id, badge_key, earned_at, auto, note)
 select mb.user_id, mb.badge_key, mb.created_at, mb.auto, mb.note from public.member_badges mb
 where not exists (select 1 from public.badge_stamps s where s.user_id = mb.user_id and s.badge_key = mb.badge_key);
 
+-- 활동 등급 단계 숫자 (lib/badges.ts LADDERS 와 같아야 함 — 2026-11-14 운영자 요청으로 넓힘). 이 파일을 다시 실행하면 이 숫자로 맞춰짐
+create table if not exists public.badge_ladder_steps (family text not null, stat text not null, tier int not null, min_s bigint not null, primary key (family, tier));
+alter table public.badge_ladder_steps enable row level security;
+delete from public.badge_ladder_steps;
+insert into public.badge_ladder_steps values
+  ('comments', 'talker', 1, 10), ('comments', 'talker', 2, 50), ('comments', 'talker', 3, 150), ('comments', 'talker', 4, 400), ('comments', 'talker', 5, 1000), ('comments', 'talker', 6, 2500), ('comments', 'talker', 7, 5000),
+  ('hearts', 'hearts', 1, 30), ('hearts', 'hearts', 2, 100), ('hearts', 'hearts', 3, 300), ('hearts', 'hearts', 4, 1000), ('hearts', 'hearts', 5, 3000), ('hearts', 'hearts', 6, 7000), ('hearts', 'hearts', 7, 15000),
+  ('posts', 'writer', 1, 3), ('posts', 'writer', 2, 10), ('posts', 'writer', 3, 30), ('posts', 'writer', 4, 80), ('posts', 'writer', 5, 200), ('posts', 'writer', 6, 400), ('posts', 'writer', 7, 800),
+  ('days', 'daily', 1, 7), ('days', 'daily', 2, 30), ('days', 'daily', 3, 60), ('days', 'daily', 4, 120), ('days', 'daily', 5, 200), ('days', 'daily', 6, 300), ('days', 'daily', 7, 365),
+  ('streak', 'streak', 1, 7), ('streak', 'streak', 2, 14), ('streak', 'streak', 3, 30), ('streak', 'streak', 4, 60), ('streak', 'streak', 5, 100), ('streak', 'streak', 6, 200), ('streak', 'streak', 7, 365),
+  ('prays', 'intercessor', 1, 30), ('prays', 'intercessor', 2, 100), ('prays', 'intercessor', 3, 300), ('prays', 'intercessor', 4, 1000), ('prays', 'intercessor', 5, 3000), ('prays', 'intercessor', 6, 7000), ('prays', 'intercessor', 7, 15000);
+
 -- 1등 자동 뱃지 계산 (service role·관리자만). 돌려주는 줄 = 이번에 새로 받은 교우 (앱이 알림을 보냄)
 -- 관리자 계정(ADMIN_EMAILS)은 1등에서 뺀다 (운영자 2026-11-06)
 create or replace function public.refresh_auto_badges()
@@ -212,14 +224,7 @@ begin
 
   -- 활동 등급 (2026-11-14): 활동마다 닿은 가장 높은 등급 하나 't_<활동>_<1~7>' (일반·고급·희귀·영웅·전설·신화·유일, lib/badges.ts LADDERS 와 같아야 함)
   -- 관리자도 받음. 낮은 등급은 떼고(받은 기록은 badge_stamps 에 남음), 숫자가 줄어도 등급은 내려가지 않음
-  create temp table badge_ladders (family text, stat text, tier int, min_s bigint) on commit drop;
-  insert into badge_ladders values
-    ('comments', 'talker', 1, 5), ('comments', 'talker', 2, 20), ('comments', 'talker', 3, 50), ('comments', 'talker', 4, 100), ('comments', 'talker', 5, 300), ('comments', 'talker', 6, 600), ('comments', 'talker', 7, 1000),
-    ('hearts', 'hearts', 1, 10), ('hearts', 'hearts', 2, 30), ('hearts', 'hearts', 3, 100), ('hearts', 'hearts', 4, 300), ('hearts', 'hearts', 5, 700), ('hearts', 'hearts', 6, 1500), ('hearts', 'hearts', 7, 3000),
-    ('posts', 'writer', 1, 1), ('posts', 'writer', 2, 5), ('posts', 'writer', 3, 15), ('posts', 'writer', 4, 30), ('posts', 'writer', 5, 60), ('posts', 'writer', 6, 120), ('posts', 'writer', 7, 250),
-    ('days', 'daily', 1, 3), ('days', 'daily', 2, 7), ('days', 'daily', 3, 30), ('days', 'daily', 4, 60), ('days', 'daily', 5, 100), ('days', 'daily', 6, 200), ('days', 'daily', 7, 365),
-    ('streak', 'streak', 1, 3), ('streak', 'streak', 2, 7), ('streak', 'streak', 3, 14), ('streak', 'streak', 4, 30), ('streak', 'streak', 5, 60), ('streak', 'streak', 6, 100), ('streak', 'streak', 7, 200),
-    ('prays', 'intercessor', 1, 10), ('prays', 'intercessor', 2, 30), ('prays', 'intercessor', 3, 100), ('prays', 'intercessor', 4, 300), ('prays', 'intercessor', 5, 700), ('prays', 'intercessor', 6, 1500), ('prays', 'intercessor', 7, 3000);
+  create temp table badge_ladders on commit drop as select family, stat, tier, min_s from public.badge_ladder_steps;
   insert into badge_new
     select x.user_id, 't_' || x.family || '_' || x.tier from (
       select bs.user_id, l.family, max(l.tier) as tier from badge_stats bs join badge_ladders l on l.stat = bs.badge_key

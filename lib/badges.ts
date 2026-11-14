@@ -90,7 +90,8 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
 ];
 
 // --- 활동 등급 뱃지 (운영자 2026-11-14: '일반·고급·희귀·영웅·전설·신화·유일, 댓글 10·50·100 처럼 올라갈 때마다 등급이 올라가게') ---
-// 활동마다 지금 닿은 가장 높은 등급 하나만 달린다(낮은 등급은 떼고, 받은 기록은 도장 모음에 남음). 숫자는 supabase/member-badges.sql badge_ladders 와 같아야 함.
+// 활동마다 지금 닿은 가장 높은 등급 하나만 달린다(낮은 등급은 떼고, 받은 기록은 도장 모음에 남음). 숫자는 supabase/member-badges.sql 의 badge_ladder_steps 표와 같아야 함
+// (2026-11-14 운영자: 한 달 만에 전설이 나와서 올리기 쉬운 활동(공감·기도·댓글·글)은 구간을 넓힘 — 숫자를 바꿀 땐 표만 고치고 badge-tiers-reset.sql 처럼 다시 계산)
 // 그 활동 1등이면(champion 키) 그 등급 메달에 금 월계관 + 왕관 (BadgeIcon champion)
 export const TIERS = [
   { name: '일반', colors: ['#c9ced6', '#7d858f', '#4d545d'], pill: ['#f3f4f6', '#d1d5db', '#374151'] },
@@ -102,12 +103,12 @@ export const TIERS = [
   { name: '유일', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
 ] as const;
 export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; steps: number[] }[] = [
-  { id: 'comments', short: '댓글', unit: '개', emblem: 'talker', stat: 'comments', champion: 'talker', what: '댓글을', steps: [5, 20, 50, 100, 300, 600, 1000] },
-  { id: 'hearts', short: '공감', unit: '', emblem: 'hearts', stat: 'likes', champion: 'hearts', what: '글에 공감(❤️)을', steps: [10, 30, 100, 300, 700, 1500, 3000] },
-  { id: 'posts', short: '글', unit: '편', emblem: 'writer', stat: 'posts', champion: 'writer', what: '글을', steps: [1, 5, 15, 30, 60, 120, 250] },
-  { id: 'days', short: '출석', unit: '일', emblem: 'daily', stat: 'days', champion: 'daily', what: '가톨릭그램에 들른 날이', steps: [3, 7, 30, 60, 100, 200, 365] },
-  { id: 'streak', short: '연속', unit: '일', emblem: 'streak', stat: 'streak', champion: 'streak', what: '하루도 빠지지 않고 연속으로 들른 날이', steps: [3, 7, 14, 30, 60, 100, 200] },
-  { id: 'prays', short: '기도', unit: '번', emblem: 'prayers', stat: 'praysGiven', champion: 'intercessor', what: '교우들의 글·기도지향에 기도(🙏)를', steps: [10, 30, 100, 300, 700, 1500, 3000] },
+  { id: 'comments', short: '댓글', unit: '개', emblem: 'talker', stat: 'comments', champion: 'talker', what: '댓글을', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
+  { id: 'hearts', short: '공감', unit: '', emblem: 'hearts', stat: 'likes', champion: 'hearts', what: '글에 공감(❤️)을', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'posts', short: '글', unit: '편', emblem: 'writer', stat: 'posts', champion: 'writer', what: '글을', steps: [3, 10, 30, 80, 200, 400, 800] },
+  { id: 'days', short: '출석', unit: '일', emblem: 'daily', stat: 'days', champion: 'daily', what: '가톨릭그램에 들른 날이', steps: [7, 30, 60, 120, 200, 300, 365] },
+  { id: 'streak', short: '연속', unit: '일', emblem: 'streak', stat: 'streak', champion: 'streak', what: '하루도 빠지지 않고 연속으로 들른 날이', steps: [7, 14, 30, 60, 100, 200, 365] },
+  { id: 'prays', short: '기도', unit: '번', emblem: 'prayers', stat: 'praysGiven', champion: 'intercessor', what: '교우들의 글·기도지향에 기도(🙏)를', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
 ];
 const fmtN = (n: number) => n.toLocaleString('en-US');
 const LADDER_DEFS: MemberBadgeDef[] = LADDERS.flatMap(L => L.steps.map((n, i) => ({
