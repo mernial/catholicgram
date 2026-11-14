@@ -220,7 +220,8 @@ begin
   insert into badge_milestones values ('m_year1', 'years', 1);
   create temp table badge_new (user_id uuid, badge_key text) on commit drop;
   insert into badge_new
-    select distinct bs.user_id, m.badge_key from badge_stats bs join badge_milestones m on m.stat = bs.badge_key where bs.user_id is not null and bs.s >= m.min_s;
+    select distinct bs.user_id, m.badge_key from badge_stats bs join badge_milestones m on m.stat = bs.badge_key where bs.user_id is not null and bs.s >= m.min_s
+      and bs.user_id not in (select user_id from badge_admins); -- 관리자는 모든 등급에서 뺌 (운영자 2026-11-14)
 
   -- 활동 등급 (2026-11-14): 활동마다 닿은 가장 높은 등급 하나 't_<활동>_<1~7>' (일반·고급·희귀·영웅·전설·신화·유일, lib/badges.ts LADDERS 와 같아야 함)
   -- 관리자도 받음. 낮은 등급은 떼고(받은 기록은 badge_stamps 에 남음), 숫자가 줄어도 등급은 내려가지 않음
@@ -228,7 +229,9 @@ begin
   insert into badge_new
     select x.user_id, 't_' || x.family || '_' || x.tier from (
       select bs.user_id, l.family, max(l.tier) as tier from badge_stats bs join badge_ladders l on l.stat = bs.badge_key
-      where bs.user_id is not null and bs.s >= l.min_s group by bs.user_id, l.family) x;
+      where bs.user_id is not null and bs.s >= l.min_s and bs.user_id not in (select user_id from badge_admins) group by bs.user_id, l.family) x;
+  -- 관리자에게 이미 달린 등급·달성 뱃지는 뗌
+  delete from member_badges mb where (mb.badge_key like 't\_%' or mb.badge_key like 'm\_%') and mb.user_id in (select user_id from badge_admins);
   -- 이미 같거나 더 높은 등급이 달려 있으면 새로 달지 않음
   delete from badge_new n where n.badge_key like 't\_%' and exists (
     select 1 from member_badges mb where mb.user_id = n.user_id and mb.badge_key like 't\_%'

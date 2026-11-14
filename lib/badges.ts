@@ -89,18 +89,19 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
   { key: 'firstfruit', label: '첫 열매', desc: '가톨릭그램의 처음을 함께한 교우', group: 'honor', colors: ['#7bbf5a', '#3f8a33'], rim: 'gold' },
 ];
 
+// 등급 이름은 '겨자씨의 성장'(마태 13,31 — 운영자 2026-11-14 A안): 겨자씨·새싹·줄기·꽃·열매·큰 나무·생명의 나무 (색은 그대로 회색·초록·파랑·빨강·노랑·금색·무지개). 관리자 계정은 등급·1등 모두 빠짐
 // --- 활동 등급 뱃지 (운영자 2026-11-14: '일반·고급·희귀·영웅·전설·신화·유일, 댓글 10·50·100 처럼 올라갈 때마다 등급이 올라가게') ---
 // 활동마다 지금 닿은 가장 높은 등급 하나만 달린다(낮은 등급은 떼고, 받은 기록은 도장 모음에 남음). 숫자는 supabase/member-badges.sql 의 badge_ladder_steps 표와 같아야 함
 // (2026-11-14 운영자: 한 달 만에 전설이 나와서 올리기 쉬운 활동(공감·기도·댓글·글)은 구간을 넓힘 — 숫자를 바꿀 땐 표만 고치고 badge-tiers-reset.sql 처럼 다시 계산)
 // 그 활동 1등이면(champion 키) 그 등급 메달에 금 월계관 + 왕관 (BadgeIcon champion)
 export const TIERS = [
-  { name: '일반', colors: ['#c9ced6', '#7d858f', '#4d545d'], pill: ['#f3f4f6', '#d1d5db', '#374151'] },
-  { name: '고급', colors: ['#8fe0a0', '#2f9a4b', '#155f2a'], pill: ['#effaf1', '#b6e6c1', '#155f2a'] },
-  { name: '희귀', colors: ['#8cc3f7', '#2f73d0', '#163f85'], pill: ['#eef5fe', '#bcd8f7', '#163f85'] },
-  { name: '영웅', colors: ['#ff9a8f', '#d8382f', '#7e130f'], pill: ['#fff1f0', '#fbc4bf', '#9e1f1a'] },
-  { name: '전설', colors: ['#fff09a', '#f2c21b', '#a87a00'], pill: ['#fffbe6', '#f6e08a', '#7a5a00'] },
-  { name: '신화', colors: ['#fff4c2', '#b8800f', '#5e3a00'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
-  { name: '유일', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
+  { name: '겨자씨', colors: ['#c9ced6', '#7d858f', '#4d545d'], pill: ['#f3f4f6', '#d1d5db', '#374151'] },
+  { name: '새싹', colors: ['#8fe0a0', '#2f9a4b', '#155f2a'], pill: ['#effaf1', '#b6e6c1', '#155f2a'] },
+  { name: '줄기', colors: ['#8cc3f7', '#2f73d0', '#163f85'], pill: ['#eef5fe', '#bcd8f7', '#163f85'] },
+  { name: '꽃', colors: ['#ff9a8f', '#d8382f', '#7e130f'], pill: ['#fff1f0', '#fbc4bf', '#9e1f1a'] },
+  { name: '열매', colors: ['#fff09a', '#f2c21b', '#a87a00'], pill: ['#fffbe6', '#f6e08a', '#7a5a00'] },
+  { name: '큰 나무', colors: ['#fff4c2', '#b8800f', '#5e3a00'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
+  { name: '생명의 나무', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
 ] as const;
 export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; steps: number[] }[] = [
   { id: 'comments', short: '댓글', unit: '개', emblem: 'talker', stat: 'comments', champion: 'talker', what: '댓글을', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
