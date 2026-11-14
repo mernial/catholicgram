@@ -2,7 +2,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 관리자 전용: 테스터마다 정한 날(since, 기본 14일 전)부터 앱에 들어온 날·활동
-// GET ?since=ISO → { since, kindTracked, testers: { [user_id]: { lastSeen, days, playDays, lastPlay, posts, comments, reactions, messages } } }
+// GET ?since=ISO → { since, kindTracked, testers: { [user_id]: { lastSeen, days, playDays, playDayList, lastPlay, posts, comments, reactions, messages } } }
+// playDayList: Play 앱으로 들어온 한국 날짜들(출석 도장, lib/tester-attendance) — 접속 기록 + tester_signups.play_opened_at
 // 접속은 app_sessions(서버만 읽음), 'Play 앱으로 들어온 날'은 app_sessions.app_kind = 'play'(supabase/app-sessions-kind.sql 뒤부터 쌓임)
 
 const kstDay = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
@@ -33,7 +34,10 @@ export async function GET(request: Request) {
   const sinceMs = Number.isFinite(asked) ? Math.max(asked, Date.now() - 60 * 86400e3) : Date.now() - 14 * 86400e3;
   const since = new Date(sinceMs).toISOString();
 
-  const { data: signups } = await admin.from('tester_signups').select('user_id');
+  const withOpen = await admin.from('tester_signups').select('user_id, play_opened_at');
+  const { data: signups } = withOpen.error ? await admin.from('tester_signups').select('user_id') : withOpen; // 설치 확인 칸 전
+  const opened = new Map<string, string>();
+  (signups || []).forEach(s => { const o = (s as { play_opened_at?: string | null }).play_opened_at; if (o) opened.set(s.user_id as string, o); });
   const ids = [...new Set((signups || []).map(s => s.user_id as string))];
   if (ids.length === 0) return Response.json({ since, kindTracked: false, testers: {} });
 
@@ -55,7 +59,7 @@ export async function GET(request: Request) {
     count('messages', 'sender_id'), count('lounge_messages', 'user_id'), count('group_chat_messages', 'user_id'),
   ]);
 
-  const out: Record<string, { lastSeen: string | null; days: number; playDays: number | null; lastPlay: string | null; posts: number; comments: number; reactions: number; messages: number }> = {};
+  const out: Record<string, { lastSeen: string | null; days: number; playDays: number | null; playDayList: string[]; lastPlay: string | null; posts: number; comments: number; reactions: number; messages: number }> = {};
   for (const id of ids) {
     const mine = sessions.rows.filter(s => s.user_id === id);
     const days = new Set<string>(); const playDays = new Set<string>();
@@ -69,10 +73,12 @@ export async function GET(request: Request) {
         if (!lastPlay || seen > lastPlay) lastPlay = seen;
       }
     }
+    const op = opened.get(id);
+    if (op && op >= since) { playDays.add(kstDay(op)); if (!lastPlay || op > lastPlay) lastPlay = op; }
     const startDay = kstDay(since);
     const inRange = (set: Set<string>) => [...set].filter(d => d >= startDay).length;
     out[id] = {
-      lastSeen, days: inRange(days), playDays: kindTracked ? inRange(playDays) : null, lastPlay,
+      lastSeen, days: inRange(days), playDays: kindTracked ? inRange(playDays) : null, playDayList: [...playDays].filter(d => d >= startDay).sort(), lastPlay,
       posts: posts.get(id) || 0, comments: comments.get(id) || 0, reactions: reactions.get(id) || 0,
       messages: (messages.get(id) || 0) + (lounge.get(id) || 0) + (groups.get(id) || 0),
     };

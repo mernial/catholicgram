@@ -6,12 +6,14 @@ import { IconBadge } from '@/components/Icon';
 import { TESTER_GOAL } from '@/lib/android-test';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm } from '@/components/ConfirmDialog';
+import { AttendDots } from '@/components/TesterAttendance';
+import { ATTEND_DAYS, attendDayNo, attendStreak, kstToday } from '@/lib/tester-attendance';
 
 // 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
 // play_first_at·play_opened_at: 그 교우가 Play 테스트 앱을 처음·마지막으로 연 때 (supabase/tester-installs.sql)
 // 테스트 다시 14일이 시작된 날(구글 검토일 2026-11-14) — 이날부터 하루하루 들어왔는지 봄
 const ACTIVITY_SINCE = '2026-11-14T00:00:00+09:00';
-interface Activity { lastSeen: string | null; days: number; playDays: number | null; lastPlay: string | null; posts: number; comments: number; reactions: number; messages: number }
+interface Activity { lastSeen: string | null; days: number; playDays: number | null; playDayList?: string[]; lastPlay: string | null; posts: number; comments: number; reactions: number; messages: number }
 const kstDay = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
 const daysAgo = (iso: string) => Math.round((Date.parse(kstDay(new Date().toISOString())) - Date.parse(kstDay(iso))) / 86400e3);
 const agoLabel = (iso: string | null) => { if (!iso) return '들어온 적 없음'; const d = daysAgo(iso); return d <= 0 ? '오늘' : d === 1 ? '어제' : `${d}일 전`; };
@@ -19,10 +21,11 @@ interface Signup { user_id: string; google_email: string; status: 'requested' | 
 const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
 interface Who { baptismal_name: string; handle?: string | null }
 
-export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
+export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPreviewAttend }: {
   onClose: () => void;
   sendPush: (type: 'tester_added', id: string) => void;
   onPreviewRestart?: () => void; // 테스트 다시 14일 안내 창 미리 보기 (components/TesterRestartNotice)
+  onPreviewAttend?: () => void;  // 출석 도장 창 미리 보기 (components/TesterAttendance)
 }) {
   const [list, setList] = useState<Signup[] | null>(null);
   const [who, setWho] = useState<Record<string, Who>>({});
@@ -143,6 +146,26 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
       if (!res.ok || !out.missed) { alert('보내지 못했어요. 잠시 후 다시 해 주세요.'); return; }
       setRestartResult({ people: (out.targets ?? added.length) - out.missed.length, missed: out.missed });
     } finally { setRestarting(false); }
+  };
+  // 출석 도장(lib/tester-attendance): 오늘 아직 Play 테스트 앱을 안 연 '등록함' 테스터에게 알림
+  const [attending, setAttending] = useState(false);
+  const [attendResult, setAttendResult] = useState<{ people: number; missed: string[] } | null>(null);
+  const attendRemind = async (count: number) => {
+    if (attending || count === 0) return;
+    if (!(await askConfirm(`오늘 아직 도장을 안 찍은 ${count}명에게 '오늘 출석 도장 찍으러 오세요' 알림을 보낼까요?`))) return;
+    setAttending(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ type: 'tester_attend', id: 'all' }),
+      });
+      const out = await res.json().catch(() => ({})) as { targets?: number; missed?: string[] };
+      if (res.status === 409) { alert('설치 확인 SQL(tester-installs.sql)을 먼저 실행해야 보낼 수 있어요.'); return; }
+      if (!res.ok || !out.missed) { alert('보내지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+      setAttendResult({ people: (out.targets ?? count) - out.missed.length, missed: out.missed });
+    } finally { setAttending(false); }
   };
   const when = (iso: string) => { const d = new Date(iso); return `${md(iso)} ${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
@@ -287,6 +310,63 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
                   );
                 })()}
               </div>
+
+              {added.length > 0 && (
+                <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden">
+                  <div className="p-3.5 pb-2 flex items-center justify-between gap-2">
+                    <p className="text-sm font-bold text-stone-800">📅 테스터 출석부 <span className="font-normal text-stone-400 text-xs">· {Math.min(ATTEND_DAYS, Math.max(1, attendDayNo()))}일째</span></p>
+                    {onPreviewAttend && <button onClick={onPreviewAttend} className="text-[0.75rem] font-bold text-blue-700 underline">도장 창 미리 보기</button>}
+                  </div>
+                  {range !== 'restart' && <p className="px-3.5 pb-3 text-xs text-stone-500">위 &lsquo;접속·활동&rsquo;에서 <b>11월 14일부터</b>를 고르면 보여요.</p>}
+                  {range === 'restart' && !act && <p className="px-3.5 pb-3 text-xs text-stone-400">불러오는 중…</p>}
+                  {range === 'restart' && act && (() => {
+                    const today = kstToday();
+                    const rows = added.map(s => ({ s, days: act.testers[s.user_id]?.playDayList || [] }));
+                    const stamped = rows.filter(r => r.days.includes(today)).length;
+                    const absent = rows.filter(r => { const last = r.days[r.days.length - 1]; return !last || (Date.parse(today) - Date.parse(last)) / 86400e3 >= 2; });
+                    const notToday = rows.length - stamped;
+                    return (
+                      <>
+                        <div className="mx-3.5 mb-2 p-3 rounded-2xl bg-blue-50 border border-blue-100">
+                          <div className="flex gap-2 text-center">
+                            <div className="flex-1 bg-white rounded-xl py-2"><b className="block text-xl text-blue-700">{stamped}명</b><span className="text-[0.6875rem] text-stone-500 font-bold">오늘 도장</span></div>
+                            <div className="flex-1 bg-white rounded-xl py-2"><b className="block text-xl text-blue-700">{rows.length}명</b><span className="text-[0.6875rem] text-stone-500 font-bold">등록한 테스터</span></div>
+                            <div className="flex-1 bg-white rounded-xl py-2"><b className="block text-xl text-red-700">{absent.length}명</b><span className="text-[0.6875rem] text-stone-500 font-bold">2일 넘게 안 옴</span></div>
+                          </div>
+                          {absent.length > 0 && <p className="mt-2 text-xs text-stone-600 leading-relaxed">안 오신 분: <b>{absent.map(({ s, days }) => { const last = days[days.length - 1]; return `${who[s.user_id]?.baptismal_name || '교우'}${last ? `(${Math.round((Date.parse(today) - Date.parse(last)) / 86400e3)}일)` : '(아직 없음)'}`; }).join(', ')}</b></p>}
+                          {notToday > 0 && (
+                            <button onClick={() => attendRemind(notToday)} disabled={attending} className="mt-2 w-full py-2.5 rounded-xl bg-blue-600 text-white text-sm font-bold disabled:opacity-60">
+                              {attending ? '보내는 중…' : `📣 오늘 아직 안 온 ${notToday}명에게 출석 알림`}
+                            </button>
+                          )}
+                          {attendResult && (
+                            <p className="mt-2 text-xs text-emerald-900 leading-relaxed"><b>✅ {attendResult.people}명에게 보냈어요</b>
+                              {attendResult.missed.length > 0 && <> · 알림을 꺼 두어 못 받은 분: <b>{attendResult.missed.map(id => who[id]?.baptismal_name || '교우').join(', ')}</b></>}</p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 px-3.5 pb-1">
+                          <span className="w-[5.5rem] shrink-0" />
+                          <div className="grid grid-cols-[repeat(14,minmax(0,1fr))] gap-[2px] flex-1 min-w-0 text-center text-[0.5rem] font-bold text-stone-400">
+                            {Array.from({ length: ATTEND_DAYS }, (_, i) => <span key={i} className={i + 1 === attendDayNo(today) ? 'text-amber-700' : ''}>{i + 1}</span>)}
+                          </div>
+                          <span className="w-10 shrink-0" />
+                        </div>
+                        {rows.map(({ s, days }) => {
+                          const tone = days.includes(today) ? 'text-blue-700' : days.length && (Date.parse(today) - Date.parse(days[days.length - 1])) / 86400e3 < 2 ? 'text-amber-700' : 'text-red-700';
+                          return (
+                            <div key={s.user_id} className="flex items-center gap-2 px-3.5 py-2 border-t border-stone-100">
+                              <p className="w-[5.5rem] shrink-0 text-[0.8125rem] font-bold text-stone-800 truncate">{who[s.user_id]?.baptismal_name || '교우'}</p>
+                              <AttendDots days={days} today={today} />
+                              <p className={`w-10 shrink-0 text-right text-[0.75rem] font-bold leading-tight ${tone}`}>{days.length}일<br /><span className="text-[0.625rem] text-stone-400">연속 {attendStreak(days, today)}</span></p>
+                            </div>
+                          );
+                        })}
+                        <p className="px-3.5 py-2.5 text-[0.6875rem] text-stone-400 leading-relaxed border-t border-stone-100">● 도장 = 그날(한국 날짜) Play 테스트 앱으로 들어옴 · 노란 테두리 = 오늘. 예전 아이콘·인터넷 창으로 들어온 날은 세지 않아요.{!act.kindTracked && ' 지금은 SQL(app-sessions-kind.sql) 전이라 Play 앱을 마지막으로 연 날만 찍혀요 — 실행하면 그날부터 하루하루 쌓여요.'}</p>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
               <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100">
                 {list.length === 0 && <p className="p-6 text-center text-sm text-stone-400">아직 신청한 분이 없어요.<br /><span className="text-xs">안드로이드 폰 홈 화면에 모집 안내가 떠요. 공지로도 알려 보세요.</span></p>}
