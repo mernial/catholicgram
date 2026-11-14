@@ -240,7 +240,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
           <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
-          {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보이고 나머지는 +숫자로 보여요. 바꾸려면 '대표로'를 누르세요.</p>}
+          {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보여요. 바꾸려면 '대표로'를 누르세요.</p>}
           {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
           {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`, r.badge_key); })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400 leading-relaxed">{empty || '아직 받은 뱃지가 없어요.'}</p>}
@@ -324,13 +324,12 @@ export function BadgeRow({ userId, size = 22, className = '' }: { userId: string
   const { rows, hidden } = useMemberBadges(userId);
   const [open, setOpen] = useState(false);
   if (rows.length === 0 || hidden) return null;
-  // 대표 뱃지 하나 + 나머지 수 (운영자 2026-11-14) — 누르면 모두
+  // 대표 뱃지 하나만 (운영자 2026-11-14) — 누르면 모두
   return (
     <span className={`inline-flex items-center ${className}`}>
       <button type="button" onClick={e => { e.stopPropagation(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
         aria-label={`뱃지 ${rows.length}개 보기: ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
         <BadgeIcon badge={rows[0].badge_key} size={size} />
-        {rows.length > 1 && <span className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - 1}</span>}
       </button>
       {open && <BadgeListDialog userId={userId} highlight={rows[0].badge_key} onClose={() => setOpen(false)} />}
     </span>
@@ -343,13 +342,12 @@ export function NameBadges({ userId, size = 18, className = '' }: { userId?: str
   const [open, setOpen] = useState(false);
   const keys = userId ? map[userId] : undefined;
   if (!userId || !keys || keys.length === 0) return null;
-  // 대표 뱃지(교우가 고른 것, 없으면 첫 뱃지) 하나 + 나머지 수 '+4' (운영자 2026-11-14) — 누르면 그 교우의 뱃지 모두
+  // 대표 뱃지(교우가 고른 것, 없으면 첫 뱃지) 하나만 (운영자 2026-11-14: '+4' 도 없앰) — 누르면 그 교우의 뱃지 모두
   return (
     <span className={`inline-flex items-center shrink-0 ${className}`}>
       <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
         aria-label={`뱃지 ${keys.length}개 보기: ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
         <BadgeIcon badge={keys[0]} size={size} />
-        {keys.length > 1 && <span className="text-[0.6875rem] text-stone-500 font-bold leading-none">+{keys.length - 1}</span>}
       </button>
       {open && <BadgeListDialog userId={userId} highlight={keys[0]} onClose={() => setOpen(false)} />}
     </span>
