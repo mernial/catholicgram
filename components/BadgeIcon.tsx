@@ -405,78 +405,62 @@ function Numbered({ n, children }: { n: string; children: ReactNode }) {
   );
 }
 
-// --- 활동 등급 메달 + 1등 월계관 (운영자 2026-11-14 시안 ③) ---
-// 등급 = 메달 색 자체(겨자씨 회색·새싹 초록·줄기 파랑·꽃 빨강·열매 노랑·큰 나무 진한 금속 금색·생명의 나무 무지개), 아래 숫자 판.
-// champion = 그 활동 1등 → 메달을 조금 줄이고 둘레에 금 월계관 + 위에 왕관
-function laurel(id: string) {
-  const leaf = (r: number, from: number, to: number, n: number, side: 1 | -1) => Array.from({ length: n }, (_, i) => {
-    const a = (from + (to - from) * i / (n - 1)) * Math.PI / 180; const x = 32 + r * Math.cos(a), y = 32 + r * Math.sin(a);
-    return <ellipse key={`${side}${i}`} cx={x.toFixed(2)} cy={y.toFixed(2)} rx="2.3" ry="4.7" fill={`url(#${id}L)`} stroke="#7a520c" strokeWidth="0.55" transform={`rotate(${(a * 180 / Math.PI + (side > 0 ? 62 : -62)).toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})`} />;
-  });
-  return (<>
-    <defs>
-      <linearGradient id={`${id}L`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff2b8" /><stop offset="0.5" stopColor="#e6b743" /><stop offset="1" stopColor="#9a6a10" /></linearGradient>
-      <radialGradient id={`${id}G`}><stop offset="0.5" stopColor="#ffd86b" stopOpacity="0.75" /><stop offset="1" stopColor="#ffd86b" stopOpacity="0" /></radialGradient>
-    </defs>
-    <circle cx="32" cy="32" r="32" fill={`url(#${id}G)`} />
-    {leaf(26.8, 100, 220, 8, 1)}{leaf(26.8, 80, -40, 8, -1)}
-  </>);
-}
-const crown = <g transform="translate(32 7.5)"><path d="M-8.5 4 L-8.5 -3.5 L-4.2 0 L0 -5.6 L4.2 0 L8.5 -3.5 L8.5 4 Z" fill="#ffd34d" stroke="#8a5a00" strokeWidth="1" strokeLinejoin="round" /><circle cx="0" cy="-5.6" r="1.3" fill="#fff6c9" /></g>;
+// --- 활동 등급 메달 + 1등 월계관·왕관 (운영자 2026-11-14 예시 그림 품질로 — 그림 조각을 겹쳐 그림, 만든 법은 docs/badges/README.md) ---
+// 가운데 판 색 = 등급(겨자씨 회색·새싹 초록·줄기 파랑·꽃 빨강·열매 노랑·큰 나무 금·생명의 나무 무지개)
+// champion = 그 활동 1등 → 금 월계관 + 수평으로 도는 왕관, 월계관·왕관이 차례로 반짝임. 큰 나무·생명의 나무는 판 자체가 반짝임
+const B3 = '/badges/3d';
+const STAR = 'M0 -10 L1.5 -1.5 L10 0 L1.5 1.5 L0 10 L-1.5 1.5 L-10 0 L-1.5 -1.5 Z';
+// 반짝이는 자리 (칸 한 변을 100 으로): [x, y, 크기, 차례 0~1]
+const CHAMP_STARS: [number, number, number, number][] = (() => {
+  const out: [number, number, number, number][] = [];
+  [122, 150, 178, 204, 228].forEach((ang, k) => [1, -1].forEach(sgn => {
+    const a = (sgn > 0 ? ang : 180 - ang) * Math.PI / 180, r = (214 + (k === 1 || k === 3 ? 6 : -4)) / 7.16;
+    out.push([50 + r * Math.cos(a), 50.14 + r * Math.sin(a), k % 2 === 0 ? 1.25 : 0.95, k / 7]);
+  }));
+  out.push([50, 73.9, 1.5, 0], [50, 6.1, 1.5, 5 / 7], [36.3, 10.1, 1.05, 6 / 7], [63.7, 10.1, 1.05, 6 / 7]);
+  return out;
+})();
+const TIER_STARS: [number, number, number, number][] = [-120, -60, 0, 60, 120, 180].map((d, k) => [50 + 36.9 * Math.cos(d * Math.PI / 180), 50 + 36.9 * Math.sin(d * Math.PI / 180), k % 2 === 0 ? 1.2 : 0.9, k / 6]);
+const layer = { position: 'absolute', maxWidth: 'none', pointerEvents: 'none', userSelect: 'none' } as const;
 
-function TierMedal({ def, size, champion }: { def: MemberBadgeDef; size: number | string; champion?: boolean }) {
-  const id = `tm${useId().replace(/[^\w-]/g, '')}`;
+function Badge3D({ def, size, champion, emblemKey, label }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemKey?: string; label: string }) {
   const ti = Math.max(0, Math.min(6, (def.tier || 1) - 1));
-  const [l, m, d] = TIERS[ti].colors;
-  const unique = ti === 6, myth = ti === 5;
-  const r = champion ? 20.5 : 26;
-  const num = tierNum(def);
-  const emblem = EMBLEMS[ladderOf(def.family)?.emblem || ''] || null;
   const px = typeof size === 'number' ? `${size}px` : size;
+  const small = typeof size === 'number' && size < 34;       // 이름 옆 등 아주 작은 자리: 움직임·숫자 없이
+  const num = small ? '' : tierNum(def);
+  const emb = emblemKey ?? ladderOf(def.family)?.emblem;
+  const special = ti >= 5;                                    // 큰 나무·생명의 나무: 판이 반짝임
+  // 메달 칸 (1등이면 월계관 안쪽으로 줄여 넣음). 단위는 바깥 칸의 %
+  const m = champion ? { l: 22.21, t: 22.35, w: 55.59 } : { l: -4, t: -4, w: 108 };
+  const ew = num ? 40.05 : 46.4, ecy = num ? 45.23 : 50;
+  const stars = champion ? CHAMP_STARS : special ? TIER_STARS.map(([x, y, s, ph]) => [m.l + x * m.w / 100, m.t + y * m.w / 100, s * 1.5, ph] as [number, number, number, number]) : [];
   return (
-    <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} (${TIERS[ti].name})${champion ? ' 1등' : ''}`} style={{ width: px, height: px }}>
-      <defs>
-        {unique ? <linearGradient id={`${id}d`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff8ad8" /><stop offset="0.35" stopColor="#9b6cf0" /><stop offset="0.7" stopColor="#36c6e0" /><stop offset="1" stopColor="#7ef0b0" /></linearGradient>
-          : myth ? <linearGradient id={`${id}d`} x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stopColor="#fff1b8" /><stop offset="0.22" stopColor="#d9a332" /><stop offset="0.42" stopColor="#7a4d05" /><stop offset="0.58" stopColor="#f3cf6a" /><stop offset="0.78" stopColor="#a8700c" /><stop offset="1" stopColor="#5a3500" /></linearGradient>
-          : <radialGradient id={`${id}d`} cx="0.35" cy="0.28" r="0.9"><stop offset="0" stopColor={l} /><stop offset="0.55" stopColor={m} /><stop offset="1" stopColor={d} /></radialGradient>}
-        <linearGradient id={`${id}r`} x1="0" y1="0" x2="1" y2="1">{myth ? <><stop offset="0" stopColor="#fff6cc" /><stop offset="0.3" stopColor="#8a5a00" /><stop offset="0.55" stopColor="#ffe08a" /><stop offset="1" stopColor="#4a2c00" /></> : <><stop offset="0" stopColor={unique ? '#fff' : l} /><stop offset="0.5" stopColor={unique ? '#c7b3ff' : d} /><stop offset="1" stopColor={unique ? '#7fe3f0' : m} /></>}</linearGradient>
-        <radialGradient id={`${id}s`} cx="0.3" cy="0.2" r="0.6"><stop offset="0" stopColor="#fff" stopOpacity={myth ? 0.6 : 0.5} /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
-        <filter id={`${id}f`} x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0.7" stdDeviation="0.6" floodOpacity="0.35" /></filter>
-      </defs>
-      {champion && laurel(id)}
-      <circle cx="32" cy="33" r={r + 1.5} fill="#000" fillOpacity="0.18" />
-      <circle cx="32" cy="32" r={r + 1.4} fill={`url(#${id}r)`} />
-      <circle cx="32" cy="32" r={r - 0.6} fill={`url(#${id}d)`} />
-      <circle cx="32" cy="32" r={r - 0.6} fill={`url(#${id}s)`} />
-      {myth && <path d={`M${32 - r * 0.7} ${32 - r * 0.2} L${32 - r * 0.2} ${32 - r * 0.75} L${32 - r * 0.02} ${32 - r * 0.6} L${32 - r * 0.55} ${32 - r * 0.02} Z`} fill="#fff" fillOpacity="0.35" />}
-      <circle cx="32" cy="32" r={r - 1.6} fill="none" stroke="#fff" strokeOpacity="0.3" strokeWidth="0.8" />
-      {unique && [[-0.6, -0.55], [0.62, -0.42], [0.5, 0.6]].map(([x, y], i) => <path key={i} d="M0 -2.6 L0.7 -0.7 L2.6 0 L0.7 0.7 L0 2.6 L-0.7 0.7 L-2.6 0 L-0.7 -0.7 Z" fill="#fff" transform={`translate(${32 + x * r} ${32 + y * r}) scale(${r / 26})`} />)}
-      <g filter={`url(#${id}f)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round"><g transform={`translate(32 ${num ? 30 : 32}) scale(${(r / 26) * 0.92})`}>{emblem}</g></g>
-      {num && <g><rect x={32 - (champion ? 12 : 15)} y={champion ? 45 : 48} width={champion ? 24 : 30} height={champion ? 10 : 12} rx="5.5" fill={unique ? '#5b3fb0' : d} stroke="#fff" strokeWidth="1.3" />
-        <text x="32" y={champion ? 52.7 : 57.2} textAnchor="middle" fontSize={champion ? (num.length > 4 ? 6 : 7.2) : (num.length > 4 ? 7.6 : 9)} fontWeight="900" fill="#fff" fontFamily="inherit">{num}</text></g>}
-      {champion && crown}
-    </svg>
-  );
-}
-
-// 등급이 없는 1등 뱃지(사진작가·아이디어 천사 등): 원래 메달을 줄이고 금 월계관 + 왕관
-function ChampionMedal({ def, size }: { def: MemberBadgeDef; size: number | string }) {
-  const id = `cm${useId().replace(/[^\w-]/g, '')}`;
-  const px = typeof size === 'number' ? `${size}px` : size;
-  return (
-    <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} 1등`} style={{ width: px, height: px }}>
-      {laurel(id)}
-      <g transform="translate(32 33) scale(0.7) translate(-32 -32)"><MedalBody id={id} colors={def.colors} rim="gold">{EMBLEMS[def.key]}</MedalBody></g>
-      {crown}
-    </svg>
+    <span role="img" aria-label={label} className="shrink-0" style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle', width: px, height: px }}>
+      <span style={{ ...layer, left: `${m.l}%`, top: `${m.t}%`, width: `${m.w}%`, height: `${m.w}%` }}>
+        <img src={`${B3}/tier-${ti + 1}.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, inset: 0, width: '100%', height: '100%' }} />
+        {special && !small && <span className="cg-sweep-box" style={{ ...layer, left: '19.6%', top: '19.6%', width: '60.8%', height: '60.8%', borderRadius: '50%', overflow: 'hidden' }}><span className="cg-sweep" /></span>}
+        {emb && <img src={`${B3}/emblem/${emb}${ti === 5 ? '-g' : ''}.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: `${50 - ew / 2}%`, top: `${ecy - ew * 0.49}%`, width: `${ew}%`, height: `${ew}%` }} />}
+        {num && <span style={{ ...layer, left: 0, right: 0, top: '61.9%', height: '12.6%', display: 'flex', justifyContent: 'center' }}>
+          <span style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '0 0.75em', borderRadius: '999px', background: ti === 6 ? '#3b2270' : TIERS[ti].colors[2], border: `0.11em solid ${ti >= 3 ? '#ffecaa' : '#f5f7fa'}`, boxShadow: '0.06em 0.1em 0.12em rgba(0,0,0,.35)', color: '#fff', fontWeight: 900, lineHeight: 1, fontSize: `calc(${px} * ${(m.w / 100 * (num.length > 5 ? 0.078 : 0.093)).toFixed(4)})`, letterSpacing: '-0.02em' }}>{num}</span>
+        </span>}
+      </span>
+      {champion && <img src={`${B3}/frame.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, inset: 0, width: '100%', height: '100%' }} />}
+      {champion && (small
+        ? <img src={`${B3}/crown-still.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: '30.97%', top: '3.23%', width: '38.05%' }} />
+        : <picture><source srcSet={`${B3}/crown-still.webp`} media="(prefers-reduced-motion: reduce)" /><img src={`${B3}/crown.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: '30.97%', top: '3.23%', width: '38.05%' }} /></picture>)}
+      {!small && stars.map(([x, y, s, ph], i) => (
+        <svg key={i} viewBox="-10 -10 20 20" className="cg-star" style={{ ...layer, left: `${x - 4.5 * s}%`, top: `${y - 4.5 * s}%`, width: `${9 * s}%`, height: `${9 * s}%`, overflow: 'visible', animationDelay: `${(-(1 - ph) * 1.26).toFixed(2)}s` }}><path d={STAR} fill="#fff" /></svg>
+      ))}
+    </span>
   );
 }
 
 export function BadgeIcon({ badge, size = 40, className = '', champion }: { badge: MemberBadgeDef | string; size?: number | string; className?: string; champion?: boolean }) {
   const def = typeof badge === 'string' ? badgeOf(badge) : badge;
   if (!def) return null;
-  if (def.tier) return <span className={`inline-flex shrink-0 ${className}`}><TierMedal def={def} size={size} champion={champion} /></span>;
-  if (def.auto && !def.permanent) return <span className={`inline-flex shrink-0 ${className}`}><ChampionMedal def={def} size={size} /></span>;
+  if (def.tier) return <span className={`inline-flex shrink-0 ${className}`}><Badge3D def={def} size={size} champion={champion} label={`${def.label} (${TIERS[def.tier - 1].name})${champion ? ' 1등' : ''}`} /></span>;
+  // 등급 없이 1등만인 뱃지(아직 첫 등급 숫자에 못 미친 1등): 겨자씨 색 메달 + 월계관 + 왕관
+  if (def.auto && !def.permanent) return <span className={`inline-flex shrink-0 ${className}`}><Badge3D def={def} size={size} champion emblemKey={def.key} label={`${def.label} 1등`} /></span>;
   return <Medal colors={def.colors} rim={def.rim} size={size} title={`${def.label} 뱃지`} className={className}>{EMBLEMS[def.key]}</Medal>;
 }
 

@@ -537,3 +537,10 @@ html[data-theme="charcoal"] .to-yellow-50 { --tw-gradient-to: rgb(66 32 6 / 0.5)
 }
 .eq-bar { transform-origin: bottom; animation: eqBar 0.9s ease-in-out infinite; }
 @media (prefers-reduced-motion: reduce) { .eq-bar { animation: none; } }
+
+/* 배지: 별빛이 차례로 반짝임(1.26초마다 되풀이 — 왕관이 도는 박자와 같음), 큰 나무·생명의 나무 판 위로 빛줄기 (components/BadgeIcon.tsx Badge3D) */
+@keyframes cgStar { 0%, 100% { opacity: 1; transform: scale(1.15) rotate(0deg); } 16%, 84% { opacity: 0; transform: scale(0.4) rotate(0deg); } }
+.cg-star { transform-origin: center; animation: cgStar 1.26s linear infinite; filter: drop-shadow(0 0 1.5px #ffe9a8) drop-shadow(0 0 4px rgba(255, 214, 110, 0.9)); }
+@keyframes cgSweep { 0% { transform: translateX(-160%) rotate(24deg); } 60%, 100% { transform: translateX(160%) rotate(24deg); } }
+.cg-sweep { position: absolute; left: 25%; top: -30%; width: 34%; height: 160%; background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,252,235,0.75) 45%, rgba(255,255,255,0.2) 60%, rgba(255,255,255,0)); animation: cgSweep 2.52s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .cg-star, .cg-sweep { animation: none; opacity: 0; } }

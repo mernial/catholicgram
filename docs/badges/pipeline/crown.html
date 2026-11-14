@@ -1,0 +1,60 @@
+<!doctype html><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const Q = new URLSearchParams(location.search); const SIZE = +(Q.get('size') || 480); const FR = +(Q.get('frames') || 18);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(2); renderer.setSize(SIZE, SIZE); renderer.setClearColor(0, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.2; renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+function studioEnv() {
+  const e = new THREE.Scene();
+  e.add(new THREE.Mesh(new THREE.SphereGeometry(20, 32, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.42, 0.27, 0.08), side: THREE.BackSide })));
+  const panel = (w, h, x, y, z, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); e.add(m); };
+  panel(12, 4, 0, 12, 5, [7, 6.2, 4.6]); panel(3, 9, -12, 3, 7, [6, 5.2, 3.6]); panel(3, 7, 12, 2, 5, [4.5, 3.6, 2.2]);
+  panel(9, 2.5, 0, -10, 8, [2.2, 1.6, 0.8]); panel(2.5, 2.5, 5, 7, 13, [10, 9.5, 8]); panel(2, 2, -6, 5, 13, [8, 7.4, 6]);
+  return e;
+}
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(studioEnv(), 0.015).texture;
+const camera = new THREE.PerspectiveCamera(20, 1, 0.1, 100);
+camera.position.set(0, 0.95, 5.6); camera.lookAt(0, 0.2, 0);   // 살짝 위에서 내려다봄 → 띠 윗면 타원이 보여 입체감
+{ const l = new THREE.DirectionalLight(0xfff0d0, 2.4); l.position.set(-3, 4, 6); scene.add(l); }
+{ const l = new THREE.DirectionalLight(0xffd27a, 1.2); l.position.set(4, 2, 2); scene.add(l); }
+const gold = new THREE.MeshPhysicalMaterial({ color: 0xffc23c, metalness: 1, roughness: 0.32, envMapIntensity: 2.0, clearcoat: 0.4, clearcoatRoughness: 0.15, side: THREE.DoubleSide });
+const goldL = gold.clone(); goldL.color = new THREE.Color(0xffd35a); goldL.roughness = 0.28;
+const ruby = new THREE.MeshPhysicalMaterial({ color: 0xc00418, roughness: 0.03, metalness: 0.05, clearcoat: 1, clearcoatRoughness: 0, ior: 1.77, envMapIntensity: 2.6, emissive: new THREE.Color(0x7a0010), emissiveIntensity: 0.5 });
+const velvet = new THREE.MeshPhysicalMaterial({ color: 0x3a0309, roughness: 0.95, sheen: 0.35, sheenColor: new THREE.Color(0xa01826), sheenRoughness: 0.6 });
+const g = new THREE.Group(); scene.add(g);
+const Rb = 0.56, Rt = 0.62, H = 0.26;
+const wrap = (geo, R, flare) => { const p = geo.attributes.position; for (let j = 0; j < p.count; j++) { const x = p.getX(j), y = p.getY(j), z = p.getZ(j); const rr = R + z + flare * y; const a = x / R; p.setX(j, rr * Math.sin(a)); p.setZ(j, rr * Math.cos(a)); } geo.computeVertexNormals(); return geo; };
+// 띠
+g.add(new THREE.Mesh(new THREE.CylinderGeometry(Rt, Rb, H, 128, 1, true), gold));
+for (const [y, r, R] of [[H / 2, 0.03, Rt], [-H / 2, 0.04, Rb], [-H / 2 + 0.075, 0.016, Rb + 0.018]]) { const t = new THREE.Mesh(new THREE.TorusGeometry(R, r, 16, 128), goldL); t.rotation.x = Math.PI / 2; t.position.y = y; g.add(t); }
+// 띠 위쪽 구슬 줄
+for (let i = 0; i < 32; i++) { const a = i / 32 * Math.PI * 2; const b = new THREE.Mesh(new THREE.SphereGeometry(0.02, 12, 8), goldL); b.position.set(Math.sin(a) * (Rt + 0.012), H / 2 - 0.055, Math.cos(a) * (Rt + 0.012)); g.add(b); }
+// 벨벳
+const vel = new THREE.Mesh(new THREE.SphereGeometry(Rt * 0.97, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), velvet); vel.scale.y = 0.1; vel.position.y = -0.02; vel.position.y = H / 2 - 0.03; g.add(vel);
+// 끝: 큰 잎 모양 4개 + 작은 봉우리 4개
+const N = 8, flare = 0.13;
+for (let i = 0; i < N; i++) {
+  const big = i % 2 === 0, a = i / N * Math.PI * 2, h = big ? 0.62 : 0.3, w = big ? 0.2 : 0.15;
+  const s = new THREE.Shape();
+  if (big) { s.moveTo(-w * 1.15, 0); s.bezierCurveTo(-w * 0.5, h * 0.18, -w * 0.45, h * 0.3, -w * 0.95, h * 0.52); s.bezierCurveTo(-w * 0.6, h * 0.6, -w * 0.25, h * 0.75, 0, h); s.bezierCurveTo(w * 0.25, h * 0.75, w * 0.6, h * 0.6, w * 0.95, h * 0.52); s.bezierCurveTo(w * 0.45, h * 0.3, w * 0.5, h * 0.18, w * 1.15, 0); }
+  else { s.moveTo(-w, 0); s.quadraticCurveTo(-w * 0.3, h * 0.4, 0, h); s.quadraticCurveTo(w * 0.3, h * 0.4, w, 0); }
+  s.lineTo(-w * 1.15, 0);
+  const geo = wrap(new THREE.ExtrudeGeometry(s, { depth: 0.035, bevelEnabled: true, bevelThickness: 0.02, bevelSize: 0.018, bevelSegments: 3, curveSegments: 20 }), Rt - 0.02, flare);
+  const m = new THREE.Mesh(geo, big ? goldL : gold); m.position.y = H / 2 - 0.01; m.rotation.y = a; g.add(m);
+  const rt = Rt + flare * h + 0.0;
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.055 : 0.04, 24, 16), goldL); tip.position.set(Math.sin(a) * rt, H / 2 + h + 0.02, Math.cos(a) * rt); g.add(tip);
+  if (big) {
+    const rg = Rt + flare * h * 0.42 + 0.03; const gm = new THREE.Mesh(new THREE.SphereGeometry(0.075, 32, 20), ruby); gm.scale.set(0.72, 1.35, 0.45); gm.position.set(Math.sin(a) * rg, H / 2 + h * 0.42, Math.cos(a) * rg); gm.rotation.y = a; gm.rotateX(-0.28); g.add(gm);
+    const st = new THREE.Mesh(new THREE.TorusGeometry(0.078, 0.014, 10, 32), goldL); st.scale.set(0.76, 1.36, 1); st.position.copy(gm.position); st.rotation.copy(gm.rotation); g.add(st);
+  }
+  const bj = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.06 : 0.034, 24, 16), big ? ruby : goldL); bj.scale.set(1.25, 0.85, 0.5);
+  const rb = (Rt + Rb) / 2 + 0.02; bj.position.set(Math.sin(a) * rb, -0.02, Math.cos(a) * rb); bj.rotation.y = a; g.add(bj);
+}
+window.renderFrame = (i) => { g.rotation.y = -(i / FR) * (Math.PI / 2); renderer.render(scene, camera); return renderer.domElement.toDataURL('image/png'); };
+window.ready = true;
+</script>

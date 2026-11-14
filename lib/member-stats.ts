@@ -78,6 +78,7 @@ export async function computeMemberStats(admin: SupabaseClient, userId: string):
     sunday: real.filter(p => kstDow(p.created_at) === 0).length,
     longform: real.filter(p => (p.content || '').length >= 300).length,
     hashtags: real.filter(p => (p.content || '').includes('#')).length,
+    topPost: real.reduce((n, p) => Math.max(n, (p.like_count || 0) + (p.pray_count || 0)), 0),
   };
   return stats;
 }
