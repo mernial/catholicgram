@@ -333,14 +333,12 @@ function BadgePill({ keys, size, onOpen }: { keys: string[]; size: number; onOpe
   const first = shownBadges(keys)[0];
   if (!first) return null;
   const def = badgeOf(first.key)!;
-  const [bg, bd, fg] = first.champion ? ['#fff8e1', '#f3d27a', '#7a4b00'] : def.tier ? TIERS[def.tier - 1].pill : ['#f5f5f4', '#e7e5e4', '#44403c'];
   const medal = Math.round(size * 1.4);
+  // 이름 옆에는 뱃지 그림만 (운영자 2026-11-14: '공감 60' 같은 글자 없이, 누르면 무엇인지 — 뱃지 모두 보기 창)
   return (
     <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
-      className="inline-flex items-center gap-1 min-w-0" aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`}>
+      className="inline-flex items-center shrink-0" aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`} title={`${first.label}${first.champion ? ' 1등' : ''}`}>
       <BadgeIcon badge={def} size={medal} champion={first.champion} />
-      <span className="truncate font-bold leading-none rounded-full border px-2 py-[0.2rem] max-w-[7.5rem]"
-        style={{ background: bg, borderColor: bd, color: fg, fontSize: Math.max(10.5, Math.min(12.5, size * 0.62)) }}>{first.label}</span>
     </button>
   );
 }

@@ -423,11 +423,11 @@ const CHAMP_STARS: [number, number, number, number][] = (() => {
 const TIER_STARS: [number, number, number, number][] = [-120, -60, 0, 60, 120, 180].map((d, k) => [50 + 36.9 * Math.cos(d * Math.PI / 180), 50 + 36.9 * Math.sin(d * Math.PI / 180), k % 2 === 0 ? 1.2 : 0.9, k / 6]);
 const layer = { position: 'absolute', maxWidth: 'none', pointerEvents: 'none', userSelect: 'none' } as const;
 
-function Badge3D({ def, size, champion, emblemKey, label }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemKey?: string; label: string }) {
-  const ti = Math.max(0, Math.min(6, (def.tier || 1) - 1));
+function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemKey?: string; label: string; tierIdx?: number; noNum?: boolean }) {
+  const ti = tierIdx ?? Math.max(0, Math.min(6, (def.tier || 1) - 1));
   const px = typeof size === 'number' ? `${size}px` : size;
   const small = typeof size === 'number' && size < 34;       // 이름 옆 등 아주 작은 자리: 움직임·숫자 없이
-  const num = small ? '' : tierNum(def);
+  const num = small || noNum ? '' : tierNum(def);
   const emb = emblemKey ?? ladderOf(def.family)?.emblem;
   const special = ti >= 5;                                    // 큰 나무·생명의 나무: 판이 반짝임
   // 메달 칸 (1등이면 월계관 안쪽으로 줄여 넣음). 단위는 바깥 칸의 %
@@ -439,7 +439,7 @@ function Badge3D({ def, size, champion, emblemKey, label }: { def: MemberBadgeDe
       <span style={{ ...layer, left: `${m.l}%`, top: `${m.t}%`, width: `${m.w}%`, height: `${m.w}%` }}>
         <img src={`${B3}/tier-${ti + 1}.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, inset: 0, width: '100%', height: '100%' }} />
         {special && !small && <span className="cg-sweep-box" style={{ ...layer, left: '19.6%', top: '19.6%', width: '60.8%', height: '60.8%', borderRadius: '50%', overflow: 'hidden' }}><span className="cg-sweep" /></span>}
-        {emb && <img src={`${B3}/emblem/${emb}${ti === 5 ? '-g' : ''}.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: `${50 - ew / 2}%`, top: `${ecy - ew * 0.49}%`, width: `${ew}%`, height: `${ew}%` }} />}
+        {emb && <img src={`${B3}/emblem/${emb}${ti === 5 && emb !== 'admin' ? '-g' : ''}.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: `${50 - ew / 2}%`, top: `${ecy - ew * 0.49}%`, width: `${ew}%`, height: `${ew}%` }} />}
         {num && <span style={{ ...layer, left: 0, right: 0, top: '61.9%', height: '12.6%', display: 'flex', justifyContent: 'center' }}>
           <span style={{ display: 'flex', alignItems: 'center', height: '100%', padding: '0 0.75em', borderRadius: '999px', background: ti === 6 ? '#3b2270' : TIERS[ti].colors[2], border: `0.11em solid ${ti >= 3 ? '#ffecaa' : '#f5f7fa'}`, boxShadow: '0.06em 0.1em 0.12em rgba(0,0,0,.35)', color: '#fff', fontWeight: 900, lineHeight: 1, fontSize: `calc(${px} * ${(m.w / 100 * (num.length > 5 ? 0.078 : 0.093)).toFixed(4)})`, letterSpacing: '-0.02em' }}>{num}</span>
         </span>}
@@ -524,9 +524,12 @@ export const roleOf = (type?: string | null): 'admin' | 'clergy' | 'religious' |
   return null;
 };
 
+// 관리자 인증 뱃지 = 금 메달(파란 방패·체크·십자가) + 금 월계관 + 도는 왕관 (운영자 2026-11-14: '관리자도 월계수의 왕관으로')
+const ADMIN_DEF: MemberBadgeDef = { key: 'admin', label: '관리자', desc: '', group: 'honor', colors: ['#ffe27a', '#e09a0c'] };
 export function RoleIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
   const id = `rl${useId().replace(/[^\w-]/g, '')}`;
   const role = roleOf(type);
+  if (role === 'admin') return <span className={`inline-flex shrink-0 ${className}`}><Badge3D def={ADMIN_DEF} size={size} champion emblemKey="admin" tierIdx={5} noNum label={title || '인증된 관리자'} /></span>;
   const art = role ? ROLE_ART[role] : undefined;
   if (!art) return null;
   const px = typeof size === 'number' ? `${size}px` : size;
