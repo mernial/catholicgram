@@ -24,7 +24,8 @@ import { useFlipList } from '@/lib/use-flip-list';
 import { closePanelOnInputFocus, leaveInputForPanel, useEnterSend, useTypeToInput } from '@/lib/use-enter-send';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { notePush, lastPushState, permissionWord, everPushOn, lastPushLossAt, LOST_WHY } from '@/lib/push-log';
-import { pushDeviceKey, notePlayHere, playHereRecently, PLAY_MARK } from '@/lib/push-devices';
+import { pushDeviceKey, notePlayHere, playHereRecently, PLAY_MARK, PAUSE_FOREVER } from '@/lib/push-devices';
+import PushPauseSheet, { pauseLabel, vibrateSteps, type PauseChoice } from '@/components/PushPauseSheet';
 import StickerPanel, { PostStickers, StickerAbove, StickerButton, StickerImage, StickerWithText, useCloseStickersOnTap, useStickerPicker } from '@/components/StickerPanel';
 import { STICKER_PACKS, chatPreview, chatStickerParts, chatText, hasStickerSuggestion, isGiftHandle, joinChatSticker, joinPostStickers, parseSticker, postPlainText, setStickerAccess, splitPostStickers, stickerText, type Sticker } from '@/lib/stickers';
 import GiftBox, { type Gift } from '@/components/GiftBox';
@@ -440,6 +441,10 @@ export default function Home() {
   const [pushStatus, setPushStatus] = useState<'checking' | 'unsupported' | 'ios-needs-install' | 'denied' | 'off' | 'on'>('checking');
   const [pushWant, setPushWant] = useState<boolean | null>(null); // 밀기 단추를 바꾼 뒤 켜기·끄기가 끝나기 전 (단추는 바꾼 쪽에)
   const [pushBusy, setPushBusy] = useState(false);
+  // 휴대폰 알림을 앱에서 끈 때까지 (알림 받기는 그대로, push_subscriptions.paused_until — supabase/push-pause.sql). null = 켜짐
+  const [pushPausedUntil, setPushPausedUntil] = useState<string | null>(null);
+  const pauseSupportedRef = useRef<boolean | null>(null); // paused_until 칸이 있는지 (SQL 전이면 예전처럼 알림 받기를 지워서 끔)
+  const [showPushPause, setShowPushPause] = useState(false);
   // 푸시 알림을 눌러 들어온 경우 열어야 할 화면 (?post=... / ?chat=...)
   const [deepLink, setDeepLink] = useState<{ post?: string; chat?: string; cheer?: CheerKind; alerts?: boolean; feedback?: boolean; notice?: string; reports?: boolean; comment?: string; view?: string; profile?: string; story?: string; anon?: string; reply?: string; letters?: boolean; lounge?: string; tester?: boolean; group?: string; gift?: string } | null>(null);
   const [feedbackView, setFeedbackView] = useState<'reports' | 'inbox' | 'mine' | null>(null); // 알림으로 열면: 신고 목록 / 받은 건의함(관리자) / 내 건의(답변 확인)
@@ -3482,7 +3487,13 @@ export default function Home() {
       // 알림 받기가 이 앱에 남아 있으면 켜짐 (허용을 거두면 브라우저가 알림 받기를 지움)
       await savePushSubscription(sub, userId); // 로그인 계정이 바뀌었을 수 있으므로 갱신
       notePush(userId, 'on', '켜져 있음');
+      await readPushPause(sub.endpoint);
       setPushStatus('on');
+    } else if (granted && storageGet(`pushOff:${userId}`) === '1' && await pauseColumnReady()) {
+      // 예전에 알림창에서 직접 끈 휴대폰(알림 받기를 지웠음): 이제는 알림 받기를 다시 만들어 두고 '끔'만 적는다 → 다시 켤 때 허용을 묻지 않음
+      if (await enablePush(true)) {
+        if (await savePushPause(PAUSE_FOREVER)) storageRemove(`pushOff:${userId}`);
+      }
     } else if (granted && storageGet(`pushOff:${userId}`) !== '1') {
       // 허용은 되어 있는데 알림 받기가 빠졌으면(브라우저가 정리하는 등) 조용히 다시 켠다
       setPushStatus('off');
@@ -3515,6 +3526,65 @@ export default function Home() {
     };
     events.forEach(t => window.addEventListener(t, run, true));
   };
+
+  // 알림 잠시 끄기·끄기 (lib/push-devices isPaused): 칸이 있는지 한 번 보고, 이 휴대폰 구독 줄의 paused_until 을 읽고 쓴다
+  const pauseColumnReady = async () => {
+    if (pauseSupportedRef.current !== null) return pauseSupportedRef.current;
+    const { error } = await supabase.from('push_subscriptions').select('paused_until').limit(1);
+    pauseSupportedRef.current = !error;
+    return pauseSupportedRef.current;
+  };
+  const readPushPause = async (endpoint: string) => {
+    const { data, error } = await supabase.from('push_subscriptions').select('paused_until').eq('endpoint', endpoint).maybeSingle();
+    if (error) { if (error.code === '42703' || error.code === 'PGRST204') pauseSupportedRef.current = false; return; }
+    pauseSupportedRef.current = true;
+    const until = (data as { paused_until?: string | null } | null)?.paused_until || null;
+    setPushPausedUntil(until && Date.parse(until) > Date.now() ? until : null);
+  };
+  const savePushPause = async (until: string | null) => {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js').catch(() => undefined);
+    const sub = reg ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    if (!sub || !user) return false;
+    const { error } = await supabase.from('push_subscriptions').update({ paused_until: until }).eq('endpoint', sub.endpoint);
+    if (error) return false;
+    setPushPausedUntil(until);
+    notePush(user.id, until ? 'off' : 'on', until ? `앱에서 끔 (${pauseLabel(until)}) · 알림 받기는 그대로` : '앱에서 다시 켬', true);
+    return true;
+  };
+  const pickPushPause = async (c: PauseChoice) => {
+    setShowPushPause(false);
+    if ('vibrate' in c) {
+      showAlert({ title: '진동만 받기', message: vibrateSteps(appKind(), isIOS, browserName()), icon: 'phone' });
+      return;
+    }
+    setPushWant(false);
+    try {
+      if (await pauseColumnReady()) {
+        if (await savePushPause(c.until)) {
+          setToast({ key: 'push-pause', icon: '🔕', title: '휴대폰 알림을 껐어요', body: `${pauseLabel(c.until)} 이 휴대폰에 알림이 오지 않아요`, action: () => {} });
+        } else showAlert({ title: '알림을 끄지 못했어요', message: '잠시 뒤 다시 해 주세요.', icon: 'bell' });
+      } else {
+        // supabase/push-pause.sql 실행 전: 예전처럼 알림 받기를 지워서 끔
+        await disablePush();
+        if (isAdmin) showAlert({ title: '관리자 안내', message: "supabase/push-pause.sql 을 실행하면 알림 받기를 지우지 않고 '잠시 끄기'로 꺼져요.", icon: 'bell' });
+      }
+    } finally { setPushWant(null); }
+  };
+  const resumePush = async () => {
+    setPushWant(true);
+    try {
+      if (pushStatus === 'on' && pushPausedUntil) {
+        if (await savePushPause(null)) setToast({ key: 'push-on', icon: '🔔', title: '휴대폰 알림을 켰어요', body: '댓글·메시지 소식이 다시 와요', action: () => {} });
+      } else await enablePush();
+    } finally { setPushWant(null); }
+  };
+  // 끈 시간이 지나면 화면의 단추도 다시 켜짐으로
+  useEffect(() => {
+    if (!pushPausedUntil || pushPausedUntil.startsWith('9999')) return;
+    const left = Date.parse(pushPausedUntil) - Date.now();
+    const t = setTimeout(() => setPushPausedUntil(null), Math.max(0, Math.min(left, 2 ** 31 - 1)));
+    return () => clearTimeout(t);
+  }, [pushPausedUntil]);
 
   // silent: 이미 알림이 허용된 경우(앱 설치 때 허용 등) 안내 없이 바로 구독
   // auto: 저절로 풀린 허용을 첫 터치에 다시 받는 때 (armAutoRegrant)
@@ -7136,6 +7206,9 @@ export default function Home() {
       {/* 홈 화면에 추가하기: 쓰는 브라우저에 맞춘 단계 + 메뉴 단추 자리를 가리키는 화살표 (components/InstallGuide) */}
       {showInstallGuide && <InstallGuide isIOS={isIOS} canInstall={!!installPrompt} onInstall={startNativeInstall} onClose={() => setShowInstallGuide(false)} />}
 
+      {/* 휴대폰 알림 끄기 고르기 (알림 받기는 그대로) */}
+      {showPushPause && <PushPauseSheet onPick={c => { pickPushPause(c).catch(() => {}); }} onClose={() => setShowPushPause(false)} />}
+
       {/* 댓글 알림 목록 */}
       {showNotifications && (
         <BottomSheet bare label="알림" onClose={() => setShowNotifications(false)} z="z-[70]">
@@ -7156,17 +7229,18 @@ export default function Home() {
                   <Switch size="sm" label="알림 소리" on={alertSoundOn} onChange={next => { if (next !== alertSoundOn) toggleAlertSound(); }} />
                 </div>
                 {(pushStatus === 'on' || pushStatus === 'off') && (() => {
-                  const shownOn = pushWant ?? pushStatus === 'on';
+                  const paused = pushStatus === 'on' && !!pushPausedUntil;
+                  const shownOn = pushWant ?? (pushStatus === 'on' && !paused);
                   return (
-                    <div className="h-8 pl-2 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-1 shrink-0">
-                      <Icon name="phone" className="w-[1.1em] h-[1.1em]" />
-                      <span>{pushBusy ? '설정 중…' : '휴대폰 알림'}</span>
+                    <div className="h-8 pl-1 pr-1 rounded-lg border border-stone-200 text-xs text-stone-600 inline-flex items-center gap-0.5 shrink-0">
+                      {/* 글자를 누르면 끄기 고르기(1시간·내일 아침까지·끄기·진동만) — 휴대폰 알림 받기 자체는 늘 켜 둠 (운영자 2026-11-14) */}
+                      <button type="button" onClick={() => setShowPushPause(true)} className="h-full pl-1 pr-0.5 inline-flex items-center gap-1" aria-label="휴대폰 알림 끄기·진동 고르기">
+                        <Icon name={paused ? 'bellSlash' : 'phone'} className="w-[1.1em] h-[1.1em]" />
+                        <span>{pushBusy ? '설정 중…' : paused && pushPausedUntil ? (pushPausedUntil.startsWith('9999') ? '알림 꺼짐' : `꺼짐 · ${pauseLabel(pushPausedUntil).replace(/까지$/, '')}`) : '휴대폰 알림'}</span>
+                        <span className="text-stone-400 -ml-0.5" aria-hidden="true">›</span>
+                      </button>
                       <Switch size="sm" label="휴대폰 알림 받기" on={shownOn} busy={pushBusy}
-                        onChange={async next => {
-                          // 끌 때는 한 번 묻는다: 작은 단추를 잘못 건드려 꺼지면 직접 끈 것으로 기억되어 다음에 열어도 꺼진 채로 남음
-                          if (!next && !(await askConfirm({ title: '휴대폰 알림을 끌까요?', message: '댓글·메시지·생일 소식이 휴대폰에 오지 않아요.\n언제든 다시 켤 수 있어요.', ok: '끄기', cancel: '켜 두기', icon: 'bell' }))) return;
-                          setPushWant(next); (next ? enablePush() : disablePush()).catch(() => {}).finally(() => setPushWant(null));
-                        }} />
+                        onChange={next => { if (next) resumePush().catch(() => {}); else setShowPushPause(true); }} />
                     </div>
                   );
                 })()}
