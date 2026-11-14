@@ -248,7 +248,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
             const r = rows.find(x => x.badge_key === sb.key)!; const def = badgeOf(sb.key)!;
             const title = def.tier ? `${def.label} · ${TIERS[def.tier - 1].name}${sb.champion ? ` · 1등 (${sb.label})` : ''}` : def.label;
             const sub = def.tier ? `활동 등급 · ${fmtDate(r.created_at)} 이 등급이 됨${sb.champion ? ' · 지금 이 활동 1등이라 금 월계관' : ''}` : `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(sb.key) : ''}${r.note ? ` · “${r.note}”` : ''}`;
-            return item(sb.key, <BadgeIcon badge={def} size={48} champion={sb.champion} />, title, def.desc, sub, sb.key);
+            return item(sb.key, sb.champion ? <span className="inline-flex" style={{ margin: '-16px -14px' }}><BadgeIcon badge={def} size={80} champion /></span> : <BadgeIcon badge={def} size={48} />, title, def.desc, sub, sb.key);
           })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400 leading-relaxed">{empty || '아직 받은 뱃지가 없어요.'}</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
@@ -333,12 +333,16 @@ function BadgePill({ keys, size, onOpen }: { keys: string[]; size: number; onOpe
   const first = shownBadges(keys)[0];
   if (!first) return null;
   const def = badgeOf(first.key)!;
-  const medal = Math.round(size * 1.4);
+  // 관리자 뱃지(RoleBadge)와 같은 크기 (운영자 2026-11-14): 1등(월계관·왕관)은 칸의 3.2배, 그냥 메달은 그 안 메달과 같은 지름.
+  // 글줄 높이는 그대로 두고 위아래·옆으로 똑같이 넘치게 — 메달 가운데가 글줄 가운데에
+  const base = Math.max(17, size);   // RoleBadge 'xs' 칸(17)보다 작게는 안 함
+  const B = first.champion ? Math.round(base * 3.2) : Math.round(base * 3.2 * 0.556), ex = B - size;
   // 이름 옆에는 뱃지 그림만 (운영자 2026-11-14: '공감 60' 같은 글자 없이, 누르면 무엇인지 — 뱃지 모두 보기 창)
   return (
     <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
-      className="inline-flex items-center shrink-0" aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`} title={`${first.label}${first.champion ? ' 1등' : ''}`}>
-      <BadgeIcon badge={def} size={medal} champion={first.champion} />
+      className="inline-flex items-center shrink-0 relative z-[1]" style={{ margin: `-${Math.round(ex / 2)}px -${first.champion ? Math.round(B * 0.1) : 0}px` }}
+      aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`} title={`${first.label}${first.champion ? ' 1등' : ''}`}>
+      <BadgeIcon badge={def} size={B} champion={first.champion} />
     </button>
   );
 }

@@ -433,7 +433,8 @@ function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum, spinSm
   // 메달 칸 (1등이면 월계관 안쪽으로 줄여 넣음). 단위는 바깥 칸의 %
   const m = champion ? { l: 22.21, t: 22.35, w: 55.59 } : { l: -4, t: -4, w: 108 };
   // 관리자 방패는 판을 거의 채우게 크게 (운영자 2026-11-14: 체크가 눈에 잘 띄게)
-  const ew = emb === 'admin' ? 66 : num ? 40.05 : 46.4, ecy = emb === 'admin' ? 50 : num ? 45.23 : 50;
+  // 문양을 크게 (운영자 2026-11-14 '모든 배지 마크가 작아 잘 안 보임'): 숫자 판이 있으면 판 위쪽에 맞춰 조금 올림
+  const ew = emb === 'admin' ? 66 : num ? 54 : 63, ecy = emb === 'admin' ? 50 : num ? 42.5 : 50;
   const stars = champion ? CHAMP_STARS : special ? TIER_STARS.map(([x, y, s, ph]) => [m.l + x * m.w / 100, m.t + y * m.w / 100, s * 1.5, ph] as [number, number, number, number]) : [];
   return (
     <span role="img" aria-label={label} className="shrink-0" style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle', width: px, height: px }}>
