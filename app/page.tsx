@@ -123,6 +123,8 @@ import { pendingNotes, hiddenNotesKey } from '@/lib/update-notes';
 import { PERSONAL_NOTICES, myPersonalNotices, personalHiddenKey } from '@/lib/personal-notices';
 import { PersonalNoticePopup } from '@/components/PersonalNotice';
 import { TesterRestartPopup, testerRestartVariant, testerRestartHiddenKey, TESTER_RESTART_UNTIL } from '@/components/TesterRestartNotice';
+import { TesterAttendancePopup } from '@/components/TesterAttendance';
+import { ATTEND_DAYS, attendDayNo, attendDates, attendSeenKey, attendHiddenKey, kstToday } from '@/lib/tester-attendance';
 import { LetterReplyPopup, letterReplyKey, type LetterReply } from '@/components/LetterReplyPopup';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
@@ -464,6 +466,10 @@ export default function Home() {
   const [testerRestartHidden, setTesterRestartHidden] = useState(true);
   const [testerRestartClosed, setTesterRestartClosed] = useState(false);
   const [testerRestartPreview, setTesterRestartPreview] = useState(false);
+  // 테스터 14일 출석 도장 (components/TesterAttendance): 하루 한 번, 서버에서 받은 Play 앱 출석일
+  const [attendDays, setAttendDays] = useState<string[] | null>(null);
+  const [attendClosed, setAttendClosed] = useState(false);
+  const [attendPreview, setAttendPreview] = useState(false);
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -3231,6 +3237,22 @@ export default function Home() {
       setTesterInstalled(withInstall.error || !data ? null : !!(data as { play_first_at?: string | null }).play_first_at);
     })();
   }, [user]);
+  // 출석 도장: 구글 '등록함' 안드로이드 테스터, 14일 동안, 오늘 아직 안 봤고 '다시 보지 않기' 안 했으면 — 접속 기록이 먼저 적히게 조금 기다렸다 받음
+  useEffect(() => {
+    if (!user || !isAndroid || testerStatus !== 'added') return;
+    const no = attendDayNo();
+    if (no < 1 || no > ATTEND_DAYS) return;
+    if (storageGet(attendHiddenKey(user.id)) === '1' || storageGet(attendSeenKey(user.id, kstToday())) === '1') return;
+    let off = false;
+    const timer = setTimeout(async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const res = await fetch('/api/tester/attendance', { headers: { Authorization: `Bearer ${session.access_token}` } }).catch(() => null);
+      const out = res && res.ok ? await res.json().catch(() => null) as { days?: string[] } | null : null;
+      if (!off && out?.days) setAttendDays(out.days);
+    }, 3500);
+    return () => { off = true; clearTimeout(timer); };
+  }, [user, isAndroid, testerStatus]);
   // 앱이 둘인 테스터: 지금 보는 앱이 Play 테스트 앱인지 예전 앱(홈 화면에 추가한 앱)인지 맨 위·홈 첫머리에 표시 (components/AppKindNotice)
   useEffect(() => {
     const kind = appKind();
@@ -4305,9 +4327,12 @@ export default function Home() {
   // 테스트 다시 14일 안내: 구글 '등록함' 안드로이드 테스터에게만, 11월 29일까지, 홈에서 (개인 안내·업데이트 소식보다 먼저)
   const showTesterRestart = testerRestartPreview || (!!user && updateNotesReady && isAndroid && testerStatus === 'added' && Date.now() < TESTER_RESTART_UNTIL
     && !testerRestartHidden && !testerRestartClosed && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
+  const showTesterAttend = attendPreview || (!!user && !!attendDays && !attendClosed && updateNotesReady && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart);
+  const closeTesterAttend = () => { if (attendPreview) { setAttendPreview(false); return; } if (user) storageSet(attendSeenKey(user.id, kstToday()), '1'); setAttendClosed(true); };
+  const hideTesterAttend = () => { if (user) { storageSet(attendHiddenKey(user.id), '1'); storageSet(attendSeenKey(user.id, kstToday()), '1'); } setAttendClosed(true); };
   const closeTesterRestart = () => { if (testerRestartPreview) setTesterRestartPreview(false); else setTesterRestartClosed(true); };
   const hideTesterRestart = () => { if (user) storageSet(testerRestartHiddenKey(user.id), '1'); setTesterRestartHidden(true); };
-  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart);
+  const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart && !showTesterAttend);
   const closePersonal = () => {
     if (personalPreview) { setPersonalPreview(false); return; }
     setPersonalClosed(prev => [...prev, ...personalToShow.map(n => n.id)]);
@@ -4322,7 +4347,7 @@ export default function Home() {
   const updateNotesToShow = user && updateNotesHidden && updateNotesReady
     ? pendingNotes({ isAdmin, hidden: updateNotesHidden, closed: updateNotesClosed, joinedAt: user.created_at })
     : [];
-  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart;
+  const showUpdateNotes = updateNotesToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart && !showTesterAttend;
   const hideUpdateNotes = () => {
     if (!user) return;
     const next = [...new Set([...(updateNotesHidden || []), ...updateNotesToShow.map(n => n.id)])].slice(-200);
@@ -4332,10 +4357,10 @@ export default function Home() {
   const closeUpdateNotes = () => setUpdateNotesClosed(prev => [...prev, ...updateNotesToShow.map(n => n.id)]);
   // 업데이트 소식 창이 닫힌 뒤에, 홈에서 다른 창이 없을 때 (삼성 인터넷이 아니면 — 크롬으로 바꾸면 — 저절로 안 뜸)
   const showSamsungGuide = !!samsungGuideOpen || (!!user && updateNotesReady && !samsungGuideHidden && !samsungGuideClosed && isSamsungInternet()
-    && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart && !showUpdateNotes);
+    && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showPersonal && !showTesterRestart && !showTesterAttend && !showUpdateNotes);
   const closeSamsungGuide = () => { setSamsungGuideOpen(null); setSamsungGuideClosed(true); };
   const hideSamsungGuide = () => { if (user) storageSet(samsungGuideKey(user.id), '1'); setSamsungGuideHidden(true); closeSamsungGuide(); };
-  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showTesterRestart || showUpdateNotes || showSamsungGuide;
+  const anyModalOpen = otherModalOpen || showPopupNotice || !!shownGift || showLetterReply || showPersonal || showTesterRestart || showTesterAttend || showUpdateNotes || showSamsungGuide;
   // 창(사진 크게 보기 등)을 열면 뒤로가기 기록 한 칸을 쌓는다 → 스와이프로 뒤로 가면 창만 닫히고 화면은 그대로
   useEffect(() => {
     if (anyModalOpen) {
@@ -4400,6 +4425,7 @@ export default function Home() {
     if (showLetterReply) closeLetterReply();
     if (showPersonal) closePersonal();
     if (showTesterRestart) closeTesterRestart();
+    if (showTesterAttend) closeTesterAttend();
     setActionModalUser(null); setStickerGiftFor(null); setShowAuthModal(false); setAvatarFile(null); setSelectedPostDetail(null); setSelectedImage(null);
     setShowNotifications(false); setShowSettings(false); setShowFeedback(false); setReportTarget(null); setShowShareApp(false); setLegalDoc(null);
     setShowInstallGuide(false); setShowSponsorAdmin(false); setShowPushPrompt(false); setShowAdminMembers(false);
@@ -6698,6 +6724,11 @@ export default function Home() {
         <PersonalNoticePopup notices={personalToShow} preview={personalPreview} onClose={closePersonal} onHide={personalPreview ? undefined : hidePersonal}
           onAction={a => { if (a !== 'sound') return; closePersonal(); setSettingsView('sound'); setShowSettings(true); }} />
       )}
+      {/* 테스터 14일 출석 도장 (components/TesterAttendance): Play 테스트 앱으로 연 날에만 도장 */}
+      {showTesterAttend && (
+        <TesterAttendancePopup days={attendPreview ? attendDates().slice(0, Math.max(0, Math.min(ATTEND_DAYS, attendDayNo()) - 1)) : (attendDays || [])} today={kstToday()}
+          isPlay={attendPreview || myAppKind === 'play'} preview={attendPreview} onClose={closeTesterAttend} onHide={attendPreview ? undefined : hideTesterAttend} />
+      )}
       {/* 테스트 다시 14일 안내 (components/TesterRestartNotice): 어느 앱으로 열었는지에 따라 다른 말 */}
       {showTesterRestart && (
         <TesterRestartPopup variant={testerRestartPreview ? 'play' : testerRestartVariant(myAppKind, testerInstalled)} preview={testerRestartPreview}
@@ -6725,7 +6756,7 @@ export default function Home() {
       {/* 숏폼 영상 꾸미기 */}
       {showAdminStats && isAdmin && <AdminStats onClose={() => setShowAdminStats(false)} />}
       {showAdminUsage && isAdmin && <AdminUsage onClose={() => setShowAdminUsage(false)} />}
-      {showAdminTesters && isAdmin && <AdminTesters onClose={() => setShowAdminTesters(false)} sendPush={sendPush} onPreviewRestart={() => { setShowAdminTesters(false); setTesterRestartPreview(true); }} />}
+      {showAdminTesters && isAdmin && <AdminTesters onClose={() => setShowAdminTesters(false)} sendPush={sendPush} onPreviewRestart={() => { setShowAdminTesters(false); setTesterRestartPreview(true); }} onPreviewAttend={() => { setShowAdminTesters(false); setAttendPreview(true); }} />}
       {showTesterSignup && user && <TesterSignup user={user} onClose={() => setShowTesterSignup(false)} onStatusChange={setTesterStatus} />}
       {showDeletedMessages && isAdmin && <DeletedMessages onClose={() => setShowDeletedMessages(false)} />}
       {showMediaStorage && isAdmin && <MediaStorage onClose={() => setShowMediaStorage(false)} />}
