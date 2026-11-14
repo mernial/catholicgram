@@ -83,12 +83,14 @@ export default function AdminTesters({ onClose, sendPush, onPreviewAttend }: {
   const absent = added.filter(r => installed(r) && !(r.lastPlay && daysAgo(r.lastPlay) <= 1))
     .sort((a, b) => (a.lastPlay || '').localeCompare(b.lastPlay || ''));
   const notInstalled = added.filter(r => !installed(r));
+  // 설치는 했는데 예전 아이콘·인터넷 창으로만 들어오는 분 (가톨릭그램 접속이 Play 앱을 연 때보다 나중)
+  const switchers = absent.filter(r => r.lastSeen && (!r.lastPlay || Date.parse(r.lastSeen) > Date.parse(r.lastPlay) + 2 * 3600e3));
   const stampedToday = added.filter(r => r.days.includes(today)).length;
 
   // ── 알림 보내기 (서버가 다시 골라 보냄) ──
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<Record<string, { people: number; missed: string[] }>>({});
-  const notify = async (type: 'tester_attend' | 'tester_remind', count: number, question: string) => {
+  const notify = async (type: 'tester_attend' | 'tester_remind' | 'tester_switch', count: number, question: string) => {
     if (sending || count === 0) return;
     if (!(await askConfirm(question))) return;
     setSending(type);
@@ -223,6 +225,13 @@ export default function AdminTesters({ onClose, sendPush, onPreviewAttend }: {
                     <button onClick={() => notify('tester_attend', absent.length, `오늘 아직 Play 테스트 앱을 열지 않은 테스터에게 '오늘 출석 도장 찍으러 오세요' 알림을 보낼까요?\n이 칸 ${absent.length}명과 설치 안 된 분도 함께 받고, 오늘 이미 들어온 분께는 안 가요.`)}
                       disabled={!!sending} className="mt-2 w-full py-2.5 rounded-xl bg-amber-600 text-white text-sm font-bold disabled:opacity-60">{sending === 'tester_attend' ? '보내는 중…' : '📣 출석 알림 보내기'}</button>
                     {sentLine('tester_attend')}
+                    {switchers.length > 0 && (
+                      <>
+                        <button onClick={() => notify('tester_switch', switchers.length, `예전 아이콘·인터넷 창으로만 들어오는 ${switchers.length}명(${switchers.map(r => name(r.s)).join(', ')})에게만 'Play 테스트 앱으로 들어와 주세요' 안내를 보낼까요?\n알림을 누르면 앱에서 Play 테스트 앱 열기 단추가 있는 안내가 떠요.`)}
+                          disabled={!!sending} className="mt-1.5 w-full py-2.5 rounded-xl border-2 border-amber-600 bg-white text-amber-800 text-sm font-bold disabled:opacity-60">{sending === 'tester_switch' ? '보내는 중…' : `📱 예전 아이콘으로 보는 ${switchers.length}명에게만 Play 앱 안내`}</button>
+                        {sentLine('tester_switch')}
+                      </>
+                    )}
                   </>
                 ))}
 
