@@ -406,7 +406,7 @@ function Numbered({ n, children }: { n: string; children: ReactNode }) {
 }
 
 // --- 활동 등급 메달 + 1등 월계관 (운영자 2026-11-14 시안 ③) ---
-// 등급 = 메달 색 자체(일반 회색·고급 초록·희귀 파랑·영웅 빨강·전설 노랑·신화 진한 금속 금색·유일 무지개), 아래 숫자 판.
+// 등급 = 메달 색 자체(겨자씨 회색·새싹 초록·줄기 파랑·꽃 빨강·열매 노랑·큰 나무 진한 금속 금색·생명의 나무 무지개), 아래 숫자 판.
 // champion = 그 활동 1등 → 메달을 조금 줄이고 둘레에 금 월계관 + 위에 왕관
 function laurel(id: string) {
   const leaf = (r: number, from: number, to: number, n: number, side: 1 | -1) => Array.from({ length: n }, (_, i) => {

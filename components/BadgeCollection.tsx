@@ -13,6 +13,7 @@ import { showAlert } from '@/components/ConfirmDialog';
 import { toast } from '@/lib/chat-actions';
 import { supabase } from '@/lib/supabase';
 import { useBackLayer } from '@/lib/back-layers';
+import { ADMIN_EMAILS } from '@/lib/admin';
 import { LADDERS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, shownBadges, type MemberBadgeDef, type StatKey } from '@/lib/badges';
 
 type Tab = 'home' | 'tiers' | 'champ' | 'honor';
@@ -40,6 +41,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
   const [pick, setPick] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [book, setBook] = useState(false);
+  const [adminSelf, setAdminSelf] = useState(false); // 관리자는 활동 등급·1등에서 빠짐 (운영자 2026-11-14)
   useBackLayer(true, onClose);
   useBackLayer(!!pick, () => setPick(null));
   const keys = useMemo(() => rows.map(r => r.badge_key), [rows]);
@@ -51,6 +53,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
+      if (session.user.id === userId && ADMIN_EMAILS.includes(session.user.email || '')) { if (alive) setAdminSelf(true); return; }
       const res = await fetch('/api/badges/stats', { headers: { authorization: `Bearer ${session.access_token}` } }).catch(() => null);
       if (!alive || !res?.ok) return;
       setStats(await res.json().catch(() => null));
@@ -116,7 +119,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
         <span className={x.cur ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={def} size={54} champion={x.champ && x.cur > 0} /></span>
         <span className="flex-1 min-w-0">
           <span className="flex items-center gap-1 font-bold text-[0.9375rem] text-[#1f2a44]">{label} {x.cur > 0 && <TierTag def={def} champion={x.champ} />}</span>
-          <span className="block text-[0.75rem] text-stone-500 mt-0.5">{STAT_LABELS[x.L.stat]} {x.count === undefined ? '…' : `${fmt(x.count)}${x.L.unit}`}{x.next !== null && x.count !== undefined ? ` · 다음 ${TIERS[x.cur].name}까지 ${fmt(Math.max(0, x.next - x.count))}${x.L.unit || '번'}` : x.next === null ? ' · 가장 높은 유일 등급 ✨' : ''}</span>
+          <span className="block text-[0.75rem] text-stone-500 mt-0.5">{STAT_LABELS[x.L.stat]} {x.count === undefined ? '…' : `${fmt(x.count)}${x.L.unit}`}{x.next !== null && x.count !== undefined ? ` · 다음 ${TIERS[x.cur].name}까지 ${fmt(Math.max(0, x.next - x.count))}${x.L.unit || '번'}` : x.next === null ? ' · 가장 높은 생명의 나무 등급 ✨' : ''}</span>
           <span className="block mt-1.5"><Bar pct={x.next === null ? 100 : x.ratio * 100} color={x.next === null ? '#9b6cf0' : '#c9a24a'} /></span>
         </span>
         <span className="w-14 text-right text-[0.75rem] font-bold text-stone-500">{x.cur === 0 ? '🔒' : x.next === null ? '✓' : x.count === undefined ? '' : `${fmt(x.count)}/${fmt(x.next)}`}</span>
@@ -199,8 +202,9 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
           </div>
         </>)}
 
+        {adminSelf && <p className="mt-3 rounded-2xl bg-stone-100 px-3 py-2 text-[0.75rem] text-stone-600">관리자 계정은 활동 등급과 1등에서 빠져요. 교우들이 어떻게 보는지 확인하는 용도로 보세요.</p>}
         {tab === 'tiers' && (<div className="flex flex-col gap-2 mt-2">
-          <p className="text-[0.75rem] text-stone-500">일반 → 고급 → 희귀 → 영웅 → 전설 → 신화 → 유일. 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
+          <p className="text-[0.75rem] text-stone-500">겨자씨 → 새싹 → 줄기 → 꽃 → 열매 → 큰 나무 → 생명의 나무 (겨자씨의 비유, 마태 13,31). 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
           {ladder.map(ladderRow)}
         </div>)}
 
