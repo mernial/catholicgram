@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { appKind } from '@/lib/app-kind';
 
 // 접속 통계용 기록: 앱을 열면 '접속 1회', 보고 있는 동안 1분마다 '아직 있음'.
 // 15초 넘게 다른 앱에 있다가 돌아오면 새 접속으로 센다.
@@ -30,7 +31,8 @@ export function startVisitTracking() {
   const standalone = window.matchMedia?.('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
 
   const start = async () => {
-    const res = await post({ action: 'start', deviceId: deviceId(), standalone });
+    let kind: string | undefined; try { kind = appKind(); } catch { /* 모름 */ }
+    const res = await post({ action: 'start', deviceId: deviceId(), standalone, appKind: kind });
     visitId = typeof res.id === 'string' ? res.id : null;
   };
   const ping = (keepalive = false) => { if (visitId) post({ action: 'ping', id: visitId }, keepalive); };

@@ -9,6 +9,12 @@ import { askConfirm } from '@/components/ConfirmDialog';
 
 // 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
 // play_first_at·play_opened_at: 그 교우가 Play 테스트 앱을 처음·마지막으로 연 때 (supabase/tester-installs.sql)
+// 테스트 다시 14일이 시작된 날(구글 검토일 2026-11-14) — 이날부터 하루하루 들어왔는지 봄
+const ACTIVITY_SINCE = '2026-11-14T00:00:00+09:00';
+interface Activity { lastSeen: string | null; days: number; playDays: number | null; lastPlay: string | null; posts: number; comments: number; reactions: number; messages: number }
+const kstDay = (iso: string) => new Date(new Date(iso).getTime() + 9 * 3600e3).toISOString().slice(0, 10);
+const daysAgo = (iso: string) => Math.round((Date.parse(kstDay(new Date().toISOString())) - Date.parse(kstDay(iso))) / 86400e3);
+const agoLabel = (iso: string | null) => { if (!iso) return '들어온 적 없음'; const d = daysAgo(iso); return d <= 0 ? '오늘' : d === 1 ? '어제' : `${d}일 전`; };
 interface Signup { user_id: string; google_email: string; status: 'requested' | 'added'; created_at: string; play_first_at?: string | null; play_opened_at?: string | null }
 const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
 interface Who { baptismal_name: string; handle?: string | null }
@@ -47,6 +53,24 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
   const apply = (r: Awaited<ReturnType<typeof fetchList>>) => { setSetupNeeded(r.setupNeeded); setList(r.list); setWho(r.who); };
   const reload = () => fetchList().then(apply);
   useEffect(() => { fetchList().then(apply); }, []);
+
+  // 테스터마다 접속·활동 (서버 /api/admin/tester-activity — 접속 기록은 서버만 읽음). 기본은 다시 시작한 테스트(11월 14일)부터
+  const [range, setRange] = useState<'restart' | 'week'>('restart');
+  const [act, setAct] = useState<{ since: string; kindTracked: boolean; testers: Record<string, Activity> } | null>(null);
+  const [actError, setActError] = useState(false);
+  useEffect(() => {
+    let off = false;
+    (async () => {
+      setAct(null); setActError(false);
+      const since = range === 'restart' ? ACTIVITY_SINCE : new Date(Date.now() - 7 * 86400e3).toISOString();
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`/api/admin/tester-activity?since=${encodeURIComponent(since)}`, { headers: { Authorization: `Bearer ${session?.access_token}` } }).catch(() => null);
+      const out = res && res.ok ? await res.json().catch(() => null) : null;
+      if (off) return;
+      if (out?.testers) setAct(out); else setActError(true);
+    })();
+    return () => { off = true; };
+  }, [range]);
 
   const pending = (list || []).filter(s => s.status === 'requested');
   const added = (list || []).filter(s => s.status === 'added');
@@ -238,6 +262,32 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
                 )}
               </div>
 
+              <div className="bg-white border border-stone-200 rounded-2xl p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-stone-800">👀 테스터 접속·활동</p>
+                  <div className="flex rounded-full bg-stone-100 p-0.5 text-[0.75rem] font-bold">
+                    {([['restart', '11월 14일부터'], ['week', '최근 7일']] as const).map(([k, label]) => (
+                      <button key={k} onClick={() => setRange(k)} className={`px-2.5 py-1 rounded-full ${range === k ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                {!act && !actError && <p className="mt-2 text-xs text-stone-400">불러오는 중…</p>}
+                {actError && <p className="mt-2 text-xs text-red-600">접속 기록을 불러오지 못했어요. 잠시 후 다시 열어 주세요.</p>}
+                {act && (() => {
+                  const rows = added.map(s => ({ s, a: act.testers[s.user_id] }));
+                  const recentPlay = rows.filter(({ s, a }) => { const lp = a?.lastPlay || s.play_opened_at; return lp && daysAgo(lp) <= 1; }).length;
+                  const recentAny = rows.filter(({ a }) => a?.lastSeen && daysAgo(a.lastSeen) <= 1).length;
+                  const away = rows.filter(({ a }) => !a?.lastSeen || daysAgo(a.lastSeen) > 3);
+                  return (
+                    <div className="mt-2 text-xs text-stone-600 leading-relaxed">
+                      <p>구글 등록 {added.length}명 중 <b className="text-emerald-800">오늘·어제 Play 앱으로 들어온 분 {recentPlay}명</b> · 어느 앱으로든 들어온 분 {recentAny}명</p>
+                      {away.length > 0 && <p className="mt-1 text-red-700">3일 넘게 안 들어온 분 {away.length}명: <b>{away.map(({ s }) => who[s.user_id]?.baptismal_name || '교우').join(', ')}</b></p>}
+                      <p className="mt-1 text-[0.6875rem] text-stone-400">줄 색깔: 초록 = 오늘·어제 들어옴 · 노랑 = 2~3일 전 · 빨강 = 3일 넘게 안 들어옴.{!act.kindTracked && ' Play 앱으로 들어온 날 수는 SQL(app-sessions-kind.sql)을 실행한 뒤부터 세요. 그 전에는 Play 앱을 마지막으로 연 때만 보여요.'} 구글은 Play 스토어로 깐 앱을 연 기록만 세요.</p>
+                    </div>
+                  );
+                })()}
+              </div>
+
               <div className="bg-white border border-stone-200 rounded-2xl divide-y divide-stone-100">
                 {list.length === 0 && <p className="p-6 text-center text-sm text-stone-400">아직 신청한 분이 없어요.<br /><span className="text-xs">안드로이드 폰 홈 화면에 모집 안내가 떠요. 공지로도 알려 보세요.</span></p>}
                 {list.map(s => (
@@ -249,6 +299,21 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
                         {md(s.created_at)} 신청
                         {s.play_first_at && <> · <span className="text-sky-700 font-bold">📱 {md(s.play_first_at)} 설치</span>{s.play_opened_at && md(s.play_opened_at) !== md(s.play_first_at) && <> · 마지막 {md(s.play_opened_at)}</>}</>}
                       </p>
+                      {act?.testers[s.user_id] && (() => {
+                        const a = act.testers[s.user_id];
+                        const lastPlay = a.lastPlay || s.play_opened_at || null; // Play 앱을 마지막으로 연 때 (접속 기록 또는 설치 확인 칸)
+                        const seenDays = a.lastSeen ? daysAgo(a.lastSeen) : 99;
+                        const tone = seenDays <= 1 ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : seenDays <= 3 ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-red-50 text-red-800 border-red-200';
+                        return (
+                          <div className={`mt-1.5 rounded-lg border px-2 py-1.5 text-[0.75rem] leading-relaxed ${tone}`}>
+                            <p className="font-bold">
+                              {a.lastSeen ? `마지막 접속 ${agoLabel(a.lastSeen)}` : '이 기간에 들어온 적 없음'} · 들어온 날 {a.days}일
+                              {act.kindTracked && <> (Play 앱 {a.playDays ?? 0}일)</>}
+                            </p>
+                            <p>Play 앱: {lastPlay ? `마지막 ${agoLabel(lastPlay)}` : '연 적 없음'} · 글 {a.posts} · 댓글 {a.comments} · 공감·기도 {a.reactions} · 메시지 {a.messages}</p>
+                          </div>
+                        );
+                      })()}
                     </div>
                     {s.play_first_at
                       ? <span className="text-[0.6875rem] font-bold rounded-full px-2 py-0.5 shrink-0 bg-sky-100 text-sky-800">설치함</span>
