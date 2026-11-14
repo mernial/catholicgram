@@ -23,7 +23,7 @@ const isApplePush = (endpoint: string) => { try { return /(^|\.)push\.apple\.com
 
 const MAX_AGE_MS = 2 * 60 * 1000; // 오래된 글로 알림을 반복 발송하는 것을 막기 위함
 
-type NotifyBody = { type?: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind' | 'tester_restart' | 'tester_attend'; id?: string };
+type NotifyBody = { type?: 'badge' | 'sticker_gift' | 'music_gift' | 'group_message' | 'test' | 'lounge_call' | 'lounge_mention' | 'letter_gift' | 'letter_reply' | 'comment' | 'post' | 'story' | 'anon_reply' | 'letter' | 'message' | 'follow' | 'feedback' | 'feedback_reply' | 'report' | 'report_reply' | 'tester_added' | 'tester_remind' | 'tester_restart' | 'tester_attend' | 'tester_switch'; id?: string };
 // group: 같은 tag 로 여러 알림이 오면 휴대폰에서 'group.title N개' 하나로 합침 (public/sw.js combined). 누르면 가장 최근 것으로
 // icon·image: 휴대폰 알림의 그림 (선물 상자 등, public/sw.js 가 그대로 씀)
 type Payload = { title: string; body: string; url: string; tag: string; group?: { title: string }; icon?: string; image?: string };
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
   if (!user) return Response.json({ error: 'unauthorized' }, { status: 401 });
 
   const { type, id } = ((await request.json().catch(() => ({}))) ?? {}) as NotifyBody;
-  if (!id || !type || !['badge', 'sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind', 'tester_restart', 'tester_attend'].includes(type)) {
+  if (!id || !type || !['badge', 'sticker_gift', 'music_gift', 'group_message', 'test', 'lounge_call', 'lounge_mention', 'letter_gift', 'letter_reply', 'comment', 'post', 'story', 'anon_reply', 'letter', 'message', 'follow', 'feedback', 'feedback_reply', 'report', 'report_reply', 'tester_added', 'tester_remind', 'tester_restart', 'tester_attend', 'tester_switch'].includes(type)) {
     return Response.json({ error: 'bad request' }, { status: 400 });
   }
 
@@ -191,6 +191,28 @@ export async function POST(request: Request) {
       body: '테스터 교우님, Play 테스트 앱을 열면 오늘 도장이 쾅! 찍혀요 🙏',
       url: '/', tag: 'tester-attend',
     } }));
+    if (list.length === 0) return Response.json({ sent: 0, targets: 0, missed: [] });
+  } else if (type === 'tester_switch') {
+    // 관리자: Play 테스트 앱은 깔았는데 예전 아이콘·인터넷 창으로만 들어오는 테스터에게 'Play 테스트 앱으로 들어와 주세요' (id = 'all')
+    // 고르는 법: 구글 '등록함' + 설치 확인(play_first_at) + 오늘(한국 날짜) Play 앱을 안 엶 + 마지막 접속(app_sessions)이 Play 앱을 마지막으로 연 때보다 2시간 넘게 뒤
+    if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
+    const { data: rows, error } = await admin.from('tester_signups').select('user_id, play_first_at, play_opened_at').eq('status', 'added').not('play_first_at', 'is', null);
+    if (error) return Response.json({ error: 'install tracking not set up' }, { status: 409 });
+    const kst = (ms: number) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+    const today = kst(Date.now());
+    const cand = (rows || []).filter(r => !r.play_opened_at || kst(Date.parse(r.play_opened_at as string)) !== today);
+    const lastSeen = new Map<string, number>();
+    if (cand.length) {
+      const { data: sess } = await admin.from('app_sessions').select('user_id, last_seen_at, started_at')
+        .in('user_id', cand.map(r => r.user_id as string)).gte('last_seen_at', new Date(Date.now() - 14 * 86400e3).toISOString()).limit(5000);
+      (sess || []).forEach(x => { const t = Date.parse((x.last_seen_at || x.started_at) as string); const u = x.user_id as string; if (!lastSeen.has(u) || t > lastSeen.get(u)!) lastSeen.set(u, t); });
+    }
+    cand.filter(r => { const seen = lastSeen.get(r.user_id as string); const play = r.play_opened_at ? Date.parse(r.play_opened_at as string) : 0; return seen && seen > play + 2 * 3600e3; })
+      .forEach(r => list.push({ recipientId: r.user_id as string, payload: {
+        title: '📱 Play 테스트 앱으로 들어와 주세요',
+        body: '예전 아이콘이나 인터넷 창으로 들어오시면 테스트 출석이 되지 않아요. 눌러서 Play 테스트 앱으로 여는 법을 확인해 주세요 🙏',
+        url: '/', tag: 'tester-switch',
+      } }));
     if (list.length === 0) return Response.json({ sent: 0, targets: 0, missed: [] });
   } else if (type === 'letter_gift') {
     // 관리자가 사연을 선물 대상으로 뽑음 → 보낸 분께
@@ -457,7 +479,7 @@ export async function POST(request: Request) {
     .select('*').in('user_id', targets.map(t => t.recipientId));
   const subscriptions = onePerDevice((rows || []) as (PushSub & { user_id: string })[]); // 같은 기기에는 한 번만
   // 설치 안내는 알림을 못 받은 테스터(알림을 끄거나 허락하지 않음)를 관리자 화면에 알려 준다 → 카카오톡 등으로 따로 연락
-  const missedOf = (reached: Set<string>) => (type === 'tester_remind' || type === 'tester_restart' || type === 'tester_attend' ? { targets: targets.length, missed: targets.map(t => t.recipientId).filter(u => !reached.has(u)) } : {});
+  const missedOf = (reached: Set<string>) => (type === 'tester_remind' || type === 'tester_restart' || type === 'tester_attend' || type === 'tester_switch' ? { targets: targets.length, missed: targets.map(t => t.recipientId).filter(u => !reached.has(u)) } : {});
   if (subscriptions.length === 0) return Response.json({ sent: 0, ...missedOf(new Set()) });
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
