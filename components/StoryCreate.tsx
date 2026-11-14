@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Collage from '@/components/Collage';
 import Icon from '@/components/Icon';
+import StoryCamera from '@/components/StoryCamera';
 import { useBackLayer } from '@/lib/back-layers';
 
 // '스토리에 추가' 화면 (운영자 2026-11-11 인스타그램 시안): 어두운 화면 · 위에 글·음악·콜라주 카드 · 아래 카메라·사진첩.
@@ -134,7 +135,45 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
   useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
 
   const one = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); };
+  // 앱 안 카메라를 못 쓰면(권한 거절 등) 예전 화면(휴대폰 카메라 앱으로 찍기·사진첩)으로
+  const [camOff, setCamOff] = useState<string | null>(null);
   const card = 'flex-1 min-w-0 h-28 rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-2 active:scale-[0.97] transition';
+  const files = (<>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={one} />
+      <input ref={videoCamRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={one} />
+      <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={one} />
+      <input ref={collageRef} type="file" accept="image/*" multiple className="hidden" onChange={e => {
+        const fs = Array.from(e.target.files || []); e.target.value = '';
+        if (fs.length === 1) onFile(fs[0]);
+        else if (fs.length > 1) setCollageFiles(fs);
+      }} />
+      {collageFiles && <Collage files={collageFiles} onCancel={() => setCollageFiles(null)} onDone={f => { setCollageFiles(null); onFile(f); }} />}
+      {textMode && <TextStory music={textMode.music} onPickMusic={() => pickMusic()} onCancel={() => setTextMode(null)} onDone={f => { const m = textMode.music; setTextMode(null); onFile(f, m); }} />}
+  </>);
+  // 기본: 앱 안 카메라 (인스타그램처럼 열자마자 찍기). 오른쪽에 글·음악·콜라주
+  if (!camOff) {
+    const tool = 'flex items-center gap-2.5 text-white font-bold text-[0.9375rem] drop-shadow';
+    const dot = 'w-11 h-11 rounded-full bg-black/40 border border-white/30 flex items-center justify-center';
+    return (
+      <div data-no-pinch className="fixed inset-0 z-[86] bg-black text-white" role="dialog" aria-label="스토리에 추가">
+        {!textMode && !collageFiles && (
+          <StoryCamera onShot={f => onFile(f)} onUnavailable={why => setCamOff(why)} onGallery={() => galleryRef.current?.click()}>
+            <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 bg-gradient-to-b from-black/50 to-transparent">
+              <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-3xl leading-none drop-shadow" aria-label="닫기">×</button>
+              <h2 className="font-bold text-[1.125rem] drop-shadow">스토리에 추가</h2>
+              <span className="w-11" />
+            </div>
+            <div className="absolute right-3 top-[calc(4.5rem+env(safe-area-inset-top))] flex flex-col items-end gap-3">
+              <button onClick={() => setTextMode({ music: null })} className={tool}>글<span className={`${dot} font-extrabold text-lg`}>Aa</span></button>
+              <button onClick={() => pickMusic()} className={tool}>음악<span className={dot}><Icon name="music" className="w-5 h-5" /></span></button>
+              <button onClick={() => collageRef.current?.click()} className={tool}>콜라주<span className={dot}><Icon name="collage" className="w-5 h-5" /></span></button>
+            </div>
+          </StoryCamera>
+        )}
+        {files}
+      </div>
+    );
+  }
   return (
     <div data-no-pinch className="fixed inset-0 z-[86] bg-black text-white flex flex-col" role="dialog" aria-label="스토리에 추가">
       <div className="shrink-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2">
@@ -158,6 +197,7 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
           </button>
         </div>
         <p className="mt-6 mb-2 text-[1.0625rem] font-bold">사진·영상</p>
+        {camOff && <p className="-mt-1 mb-2 text-[0.8125rem] text-amber-200/90">{camOff} — 아래 단추로 휴대폰 카메라를 열어 찍을 수 있어요</p>}
         {/* 카메라: 사진·영상을 한 칸(accept="image/*,video/*")에 함께 두면 안드로이드 크롬이 카메라 대신 사진 고르기 창을 띄움(운영자 2026-11-11) → 사진 찍기·영상 찍기를 따로 */}
         <div className="grid grid-cols-2 gap-2.5">
           <div className="grid grid-rows-2 gap-2.5">
@@ -178,16 +218,7 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
         </div>
         <p className="mt-5 text-center text-[0.75rem] text-white/45">스토리는 24시간 뒤에 저절로 사라져요</p>
       </div>
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={one} />
-      <input ref={videoCamRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={one} />
-      <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={one} />
-      <input ref={collageRef} type="file" accept="image/*" multiple className="hidden" onChange={e => {
-        const fs = Array.from(e.target.files || []); e.target.value = '';
-        if (fs.length === 1) onFile(fs[0]);
-        else if (fs.length > 1) setCollageFiles(fs);
-      }} />
-      {collageFiles && <Collage files={collageFiles} onCancel={() => setCollageFiles(null)} onDone={f => { setCollageFiles(null); onFile(f); }} />}
-      {textMode && <TextStory music={textMode.music} onPickMusic={() => pickMusic()} onCancel={() => setTextMode(null)} onDone={f => { const m = textMode.music; setTextMode(null); onFile(f, m); }} />}
+      {files}
     </div>
   );
 }
