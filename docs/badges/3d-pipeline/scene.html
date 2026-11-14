@@ -1,0 +1,241 @@
+<!doctype html><meta charset="utf-8">
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<script type="importmap">{"imports":{"three":"./node_modules/three/build/three.module.js","three/addons/":"./node_modules/three/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+
+const Q = new URLSearchParams(location.search);
+const SIZE = +(Q.get('size') || 512);
+const TIERS = [
+  ['#c9ced6', '#7d858f', '#4d545d'], ['#8fe0a0', '#2f9a4b', '#155f2a'], ['#8cc3f7', '#2f73d0', '#163f85'],
+  ['#ff7a7a', '#d81e2c', '#7a0010'], ['#fff59a', '#ffd60a', '#b89400'], ['#fff6c8', '#f0b92a', '#a87200'], ['#ffd1f0', '#9b6cf0', '#1fb5c9'],
+];
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(SIZE, SIZE);
+renderer.setClearColor(0x000000, 0);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.25;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const pmrem = new THREE.PMREMGenerator(renderer);
+// 금이 진짜 금처럼 보이도록: 어두운 방에 밝은 조명판 몇 개 (명암 대비가 커야 금속 광택이 남)
+function studioEnv() {
+  const e = new THREE.Scene();
+  const room = new THREE.Mesh(new THREE.SphereGeometry(20, 32, 16), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.3, 0.2, 0.07), side: THREE.BackSide })); e.add(room);
+  const panel = (w, h, x, y, z, c) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(...c), side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); e.add(m); };
+  panel(10, 3, 0, 12, 4, [6, 5.4, 4.4]);     // 위 큰 조명
+  panel(3, 8, -12, 3, 6, [5, 4.4, 3.4]);      // 왼쪽 세로 조명
+  panel(3, 6, 12, 1, 3, [3.5, 2.8, 1.8]);     // 오른쪽 따뜻한 조명
+  panel(8, 2, 0, -10, 8, [1.6, 1.3, 0.9]);    // 아래 반사판
+  panel(2, 2, 6, 8, 12, [9, 8.5, 7.5]);       // 반짝 점
+  return e;
+}
+scene.environment = pmrem.fromScene(studioEnv(), 0.02).texture;
+scene.environmentIntensity = 1.0;
+
+const camera = new THREE.PerspectiveCamera(22, 1, 0.1, 100);
+camera.position.set(0, 0.05, 9.2);
+camera.lookAt(0, 0.12, 0);
+
+const key = new THREE.DirectionalLight(0xfff1d0, 2.6); key.position.set(-3, 4, 6); scene.add(key);
+const rim = new THREE.DirectionalLight(0xffd27a, 1.6); rim.position.set(4, 2, -2); scene.add(rim);
+const fill = new THREE.DirectionalLight(0xffffff, 0.8); fill.position.set(2, -3, 5); scene.add(fill);
+
+const gold = new THREE.MeshPhysicalMaterial({ color: 0xffc23a, metalness: 1, roughness: 0.26, envMapIntensity: 1.6, clearcoat: 0.3, clearcoatRoughness: 0.2 });
+const goldLight = gold.clone(); goldLight.color = new THREE.Color(0xffd863); goldLight.roughness = 0.18;
+
+const champion = Q.get('champion') === '1';
+const tier = Math.max(1, Math.min(7, +(Q.get('tier') || 6)));
+const num = Q.get('num') || '';
+const root = new THREE.Group(); scene.add(root);
+const medal = new THREE.Group(); root.add(medal);
+
+// --- 메달: 둥근 금 테 + 등급 색 에나멜 판 ---
+const R = 1;
+{
+  const pts = [];
+  const prof = [[0.8, 0.02], [0.82, 0.1], [0.88, 0.16], [0.95, 0.15], [1.0, 0.08], [1.0, -0.06], [0.96, -0.1], [0.8, -0.1]];
+  for (const [r, z] of prof) pts.push(new THREE.Vector2(r * R, z));
+  const g = new THREE.LatheGeometry(pts, 128); g.rotateX(Math.PI / 2);
+  const ring = new THREE.Mesh(g, gold); medal.add(ring);
+  const t = new THREE.Mesh(new THREE.TorusGeometry(0.775 * R, 0.018, 16, 128), goldLight); t.position.z = 0.03; medal.add(t);
+}
+function discTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 1024; const x = c.getContext('2d');
+  const [l, m, d] = TIERS[tier - 1];
+  if (tier === 7) {
+    const g = x.createLinearGradient(0, 0, 1024, 1024);
+    g.addColorStop(0, '#ff8ad8'); g.addColorStop(0.35, '#9b6cf0'); g.addColorStop(0.7, '#36c6e0'); g.addColorStop(1, '#7ef0b0');
+    x.fillStyle = g; x.fillRect(0, 0, 1024, 1024);
+  } else {
+    const g = x.createRadialGradient(360, 300, 20, 512, 512, 760);
+    g.addColorStop(0, l); g.addColorStop(0.55, m); g.addColorStop(1, d);
+    x.fillStyle = g; x.fillRect(0, 0, 1024, 1024);
+  }
+  // 은은한 방사형 결 (금속 메달 느낌)
+  x.globalAlpha = 0.06; x.strokeStyle = '#fff';
+  for (let i = 0; i < 180; i++) { const a = i / 180 * Math.PI * 2; x.beginPath(); x.moveTo(512, 512); x.lineTo(512 + 800 * Math.cos(a), 512 + 800 * Math.sin(a)); x.lineWidth = 3; x.stroke(); }
+  x.globalAlpha = 1;
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace; return tx;
+}
+const metalTier = tier === 6;
+// 등급 = 재질: 겨자씨 백랍(은회색 금속) · 새싹 에메랄드 · 줄기 사파이어 · 꽃 루비 · 열매 시트린(노란 보석) · 큰 나무 순금 · 생명의 나무 오팔
+const GEM = { 2: 0x05863c, 3: 0x0b47c8, 4: 0xc4061f, 5: 0xff9d00 };
+const neutralEnv = pmrem.fromScene(new RoomEnvironment(), 0.03).texture;
+function brushed() { const c = document.createElement('canvas'); c.width = c.height = 1024; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, 1024, 1024); x.globalAlpha = 0.08; x.strokeStyle = '#888'; for (let i = 0; i < 360; i++) { const a = i / 360 * Math.PI * 2; x.beginPath(); x.moveTo(512, 512); x.lineTo(512 + 800 * Math.cos(a), 512 + 800 * Math.sin(a)); x.lineWidth = 2; x.stroke(); } const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; }
+let discMat;
+if (tier === 1) discMat = new THREE.MeshPhysicalMaterial({ map: brushed(), envMap: neutralEnv, color: 0x98a2ae, metalness: 1, roughness: 0.3, clearcoat: 0.5, envMapIntensity: 1.3 });
+else if (tier === 6) discMat = new THREE.MeshPhysicalMaterial({ map: brushed(), color: 0xffdc6a, metalness: 1, roughness: 0.2, clearcoat: 0.6, clearcoatRoughness: 0.1, envMapIntensity: 2.4 });
+else if (tier === 7) discMat = new THREE.MeshPhysicalMaterial({ map: discTexture(), metalness: 0.1, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05, iridescence: 1, iridescenceIOR: 1.6, iridescenceThicknessRange: [200, 700], sheen: 1, sheenColor: new THREE.Color(0xffffff), sheenRoughness: 0.3, emissive: new THREE.Color(0xffffff), emissiveMap: discTexture(), emissiveIntensity: 0.25 });
+else discMat = new THREE.MeshPhysicalMaterial({ color: GEM[tier], metalness: 0, roughness: 0.03, clearcoat: 1, clearcoatRoughness: 0, ior: 1.77, specularIntensity: 1, envMapIntensity: 2.4, emissive: new THREE.Color(GEM[tier]), emissiveIntensity: tier === 5 ? 0.14 : 0.07, flatShading: true, side: THREE.DoubleSide });
+const silverRim = tier <= 3;
+if (silverRim) { medal.children.forEach(m => { m.material = m.material === gold ? new THREE.MeshPhysicalMaterial({ envMap: neutralEnv, color: 0xe4e8ee, metalness: 1, roughness: 0.18, clearcoat: 0.4, envMapIntensity: 1.2 }) : new THREE.MeshPhysicalMaterial({ envMap: neutralEnv, color: 0xffffff, metalness: 1, roughness: 0.12, envMapIntensity: 1.4 }); }); }
+{
+  let g;
+  if (GEM[tier]) {
+    // 보석: 윗면(테이블) + 비스듬한 깎은 면 16개
+    const prof = [[0, 0.2], [0.34, 0.2], [0.58, 0.12], [0.8, 0.0]].map(([r, z]) => new THREE.Vector2(r, z));
+    g = new THREE.LatheGeometry(prof, 16); g.rotateX(Math.PI / 2); g.rotateZ(Math.PI / 16);
+  } else {
+    g = new THREE.CircleGeometry(0.8 * R, 128);
+    const p = g.attributes.position; for (let i = 0; i < p.count; i++) { const r = Math.hypot(p.getX(i), p.getY(i)) / 0.8; p.setZ(i, 0.05 * (1 - r * r)); }
+    g.computeVertexNormals();
+  }
+  const disc = new THREE.Mesh(g, discMat); medal.add(disc);
+}
+
+// --- 문양: 흰 진주빛 돋을새김 (그림을 위로 볼록하게 밀어 올린 판) ---
+async function loadImg(src) { const im = new Image(); im.src = src; await im.decode(); return im; }
+async function emblem() {
+  const src = Q.get('emb'); if (!src) return;
+  const im = await loadImg(src);
+  const N = 512, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  x.drawImage(im, 0, 0, N, N);
+  const a = x.getImageData(0, 0, N, N).data;
+  // 높이 = 알파를 흐린 것 → 가장자리가 둥근 돋을새김
+  const c2 = document.createElement('canvas'); c2.width = c2.height = N; const y = c2.getContext('2d');
+  y.filter = 'blur(5px)'; y.drawImage(c, 0, 0); const h = y.getImageData(0, 0, N, N).data;
+  const S = 0.92 * (num ? 0.95 : 1), seg = 220;
+  const g = new THREE.PlaneGeometry(S, S, seg, seg);
+  const p = g.attributes.position, uv = g.attributes.uv, alpha = [];
+  for (let i = 0; i < p.count; i++) {
+    const u = Math.min(N - 1, Math.floor(uv.getX(i) * N)), v = Math.min(N - 1, Math.floor((1 - uv.getY(i)) * N));
+    const k = (v * N + u) * 4; p.setZ(i, 0.075 * (h[k + 3] / 255) * ((h[k] + 40) / 295));
+  }
+  g.computeVertexNormals();
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.MeshPhysicalMaterial({ map: tx, alphaMap: tx, transparent: true, alphaTest: 0.35, color: 0xffffff, metalness: 0.05, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.1, sheen: 0.5, sheenColor: new THREE.Color(0xfff2c8), emissive: new THREE.Color(0xffffff), emissiveMap: tx, emissiveIntensity: 0.4 });
+  const mesh = new THREE.Mesh(g, m); mesh.position.set(0, num ? 0.1 : 0, GEM[tier] ? 0.205 : 0.05); medal.add(mesh);
+}
+
+// --- 숫자 판 ---
+function plate() {
+  if (!num) return;
+  const c = document.createElement('canvas'); c.width = 512; c.height = 192; const x = c.getContext('2d');
+  x.fillStyle = TIERS[tier - 1][2]; x.beginPath(); x.roundRect(8, 8, 496, 176, 88); x.fill();
+  x.lineWidth = 14; x.strokeStyle = tier <= 3 ? '#f2f4f7' : '#ffe08a'; x.stroke();
+  x.fillStyle = '#fff'; x.font = '900 112px "Noto Sans KR", sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(num, 256, 102);
+  const tx = new THREE.CanvasTexture(c); tx.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(0.78, 0.29), new THREE.MeshPhysicalMaterial({ map: tx, transparent: true, roughness: 0.3, clearcoat: 1 }));
+  m.position.set(0, -0.56, GEM[tier] ? 0.2 : 0.1); medal.add(m);
+}
+
+// --- 월계관 (1등): 뾰족한 금 잎이 줄기 양쪽에 짝지어, 잎마다 가운데가 볼록 ---
+function leafGeo() {
+  const s = new THREE.Shape(); const L = 0.4, W = 0.115;
+  s.moveTo(0, 0); s.bezierCurveTo(L * 0.25, W * 1.3, L * 0.7, W * 1.15, L, 0); s.bezierCurveTo(L * 0.7, -W * 1.15, L * 0.25, -W * 1.3, 0, 0);
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.01, bevelEnabled: true, bevelThickness: 0.018, bevelSize: 0.012, bevelSegments: 3, curveSegments: 24 });
+  const p = g.attributes.position;
+  for (let i = 0; i < p.count; i++) { const x = p.getX(i), y = p.getY(i); const w = W * Math.sin(Math.PI * Math.min(1, Math.max(0, x / L))) + 1e-3; p.setZ(i, p.getZ(i) + 0.05 * Math.max(0, 1 - (y / w) ** 2) - 0.03 * (x / L) ** 2); }
+  g.computeVertexNormals(); return g;
+}
+function laurel() {
+  const grp = new THREE.Group(); const LG = leafGeo(); const RR = 1.22;
+  for (const side of [1, -1]) {
+    const from = side > 0 ? 98 : 82, to = side > 0 ? 232 : -52, n = 10;
+    const pts = []; for (let i = 0; i <= 40; i++) { const d = (from + (to - from) * i / 40) * Math.PI / 180; pts.push(new THREE.Vector3(RR * Math.cos(d), -RR * Math.sin(d), -0.02)); }
+    grp.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 80, 0.022, 10), gold));
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1), d = from + (to - from) * t, a = d * Math.PI / 180;
+      const x = RR * Math.cos(a), y = -RR * Math.sin(a);
+      const tan = -(d + (side > 0 ? 90 : -90)) * Math.PI / 180, k = 1.18 - t * 0.42;
+      for (const off of [-34, 30]) {
+        const m = new THREE.Mesh(LG, i % 2 ? goldLight : gold);
+        m.position.set(x, y, 0);
+        m.rotation.z = tan + (off * side) * Math.PI / 180;
+        m.rotateX((off > 0 ? 0.35 : -0.35) * side);
+        m.scale.setScalar(k); grp.add(m);
+      }
+    }
+    const ta = to * Math.PI / 180; const tip = new THREE.Mesh(LG, goldLight);
+    tip.position.set(RR * Math.cos(ta), -RR * Math.sin(ta), 0); tip.rotation.z = -(to + (side > 0 ? 90 : -90)) * Math.PI / 180; tip.scale.setScalar(0.8); grp.add(tip);
+  }
+  // 맨 아래 다이아몬드
+  const dia = new THREE.Mesh(new THREE.OctahedronGeometry(0.12, 0), new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: 0, roughness: 0.02, ior: 2.4, transmission: 0.6, thickness: 0.2, specularIntensity: 1, clearcoat: 1, flatShading: true, envMapIntensity: 4, emissive: new THREE.Color(0xfff4d0), emissiveIntensity: 0.25 }));
+  dia.scale.set(1, 1.15, 0.6); dia.rotation.y = Math.PI / 4; dia.position.set(0, -RR - 0.03, 0.12); grp.add(dia);
+  return grp;
+}
+
+// --- 왕관 (1등): 둥근 띠 + 뾰족한 끝 + 진주 + 루비 + 붉은 벨벳, Y축으로 빙글빙글 ---
+function crown() {
+  const grp = new THREE.Group();
+  const Rc = 0.46, H = 0.17;
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(Rc, Rc * 0.97, H, 96, 1, true), gold); band.material = gold.clone(); band.material.side = THREE.DoubleSide; grp.add(band);
+  for (const [y, r] of [[H / 2, 0.022], [-H / 2, 0.028]]) { const t = new THREE.Mesh(new THREE.TorusGeometry(Rc * (y > 0 ? 1 : 0.97), r, 12, 96), goldLight); t.rotation.x = Math.PI / 2; t.position.y = y; grp.add(t); }
+  // 벨벳
+  const vel = new THREE.Mesh(new THREE.SphereGeometry(Rc * 0.95, 48, 24, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshPhysicalMaterial({ color: 0x5a0410, roughness: 0.9, sheen: 0.6, sheenColor: new THREE.Color(0xc0202e), sheenRoughness: 0.6 }));
+  vel.scale.y = 0.62; vel.position.y = H / 2 - 0.02; grp.add(vel);
+  // 뾰족한 끝 8개 (큰 것·작은 것 번갈아), 띠 둥근 면을 따라 휘게
+  const N = 8;
+  const pearl = new THREE.MeshPhysicalMaterial({ color: 0xfff6e6, roughness: 0.18, metalness: 0, clearcoat: 1, sheen: 1, sheenColor: new THREE.Color(0xffe2b0), iridescence: 0.4 });
+  const ruby = new THREE.MeshPhysicalMaterial({ color: 0xb00418, roughness: 0.04, metalness: 0.1, clearcoat: 1, clearcoatRoughness: 0, ior: 1.77, specularIntensity: 1, envMapIntensity: 2.2, sheen: 0.3, sheenColor: new THREE.Color(0xff6070) });
+  for (let i = 0; i < N; i++) {
+    const big = i % 2 === 0, h = big ? 0.36 : 0.22, w = (2 * Math.PI * Rc) / N * 0.62;
+    const s = new THREE.Shape(); s.moveTo(-w, 0); s.quadraticCurveTo(-w * 0.25, h * 0.35, 0, h); s.quadraticCurveTo(w * 0.25, h * 0.35, w, 0); s.lineTo(-w, 0);
+    const g = new THREE.ExtrudeGeometry(s, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2, curveSegments: 16 });
+    // 원통면에 감기
+    const p = g.attributes.position; for (let j = 0; j < p.count; j++) { const x = p.getX(j), z = p.getZ(j); const ang = x / Rc; const rr = Rc + z - 0.01; p.setX(j, rr * Math.sin(ang)); p.setZ(j, rr * Math.cos(ang)); }
+    g.computeVertexNormals();
+    const a = i / N * Math.PI * 2;
+    const spike = new THREE.Mesh(g, big ? goldLight : gold); spike.position.y = H / 2; spike.rotation.y = a; grp.add(spike);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.048 : 0.036, 24, 16), goldLight);
+    tip.position.set(Math.sin(a) * (Rc + 0.005), H / 2 + h + 0.02, Math.cos(a) * (Rc + 0.005)); grp.add(tip);
+    if (big) { // 큰 끝 가운데 붉은 보석
+      const gm = new THREE.Mesh(new THREE.SphereGeometry(0.05, 24, 16), ruby); gm.scale.set(0.8, 1.35, 0.5);
+      gm.position.set(Math.sin(a) * (Rc + 0.035), H / 2 + h * 0.42, Math.cos(a) * (Rc + 0.035)); gm.rotation.y = a; grp.add(gm);
+    }
+    // 띠의 보석: 큰 루비와 작은 진주 번갈아
+    const ga = a + Math.PI / N * 0;
+    const bj = new THREE.Mesh(new THREE.SphereGeometry(big ? 0.055 : 0.03, 24, 16), big ? ruby : pearl); bj.scale.set(1, 0.8, 0.55);
+    bj.position.set(Math.sin(ga) * (Rc + 0.02), 0, Math.cos(ga) * (Rc + 0.02)); bj.rotation.y = ga; grp.add(bj);
+  }
+  return grp;
+}
+
+let crownGrp = null, crownSpin = null;
+if (champion) {
+  medal.scale.setScalar(0.74); medal.position.y = -0.12;
+  const lau = laurel(); lau.scale.setScalar(0.74 * 1.02); lau.position.y = -0.12; root.add(lau);
+  medal.position.z = 0.02;
+  crownSpin = new THREE.Group(); crownGrp = crown(); crownSpin.add(crownGrp);
+  const tilt = new THREE.Group(); tilt.add(crownSpin); tilt.rotation.x = 0.22; tilt.position.set(0, 0.74, 0.25); tilt.scale.setScalar(1.12); root.add(tilt);
+}
+root.position.y = champion ? -0.08 : 0;
+if (!champion) { camera.position.set(0, 0, 6.3); camera.lookAt(0, 0, 0); }
+
+await emblem(); plate();
+const FR = +(Q.get('frames') || 24);
+window.renderFrame = (i) => {
+  if (crownSpin) crownSpin.rotation.y = -(i / FR) * (Math.PI / 2);
+  else root.rotation.y = 0.22 * Math.sin(i / FR * Math.PI * 2);
+  renderer.render(scene, camera);
+  return renderer.domElement.toDataURL('image/png');
+};
+window.ready = true;
+</script>

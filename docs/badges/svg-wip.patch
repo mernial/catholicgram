@@ -1,0 +1,210 @@
+diff --git a/app/globals.css b/app/globals.css
+index f294780..529bf87 100644
+--- a/app/globals.css
++++ b/app/globals.css
+@@ -537,3 +537,12 @@ html[data-theme="charcoal"] .to-yellow-50 { --tw-gradient-to: rgb(66 32 6 / 0.5)
+ }
+ .eq-bar { transform-origin: bottom; animation: eqBar 0.9s ease-in-out infinite; }
+ @media (prefers-reduced-motion: reduce) { .eq-bar { animation: none; } }
++
++/* 1등 왕관이 제자리에서 빙글빙글 (components/BadgeIcon Crown, 운영자 2026-11-14) */
++@keyframes crownSpin { 0% { transform: scaleX(1); } 25% { transform: scaleX(0.08); } 50% { transform: scaleX(-1); } 75% { transform: scaleX(0.08); } 100% { transform: scaleX(1); } }
++.cg-crown { transform-box: fill-box; transform-origin: center; animation: crownSpin 2.8s ease-in-out infinite; }
++@keyframes cgTwinkle { 0%, 100% { opacity: 0; transform: scale(0.3); } 15% { opacity: 1; transform: scale(1.1); } 35% { opacity: 0; transform: scale(0.4); } }
++.cg-twinkle { transform-box: fill-box; transform-origin: center; animation: cgTwinkle 2.4s ease-in-out infinite; }
++@keyframes cgShine { 0% { transform: translateX(0); } 55%, 100% { transform: translateX(80px); } }
++.cg-shine { animation: cgShine 3.2s ease-in-out infinite; }
++@media (prefers-reduced-motion: reduce) { .cg-crown, .cg-twinkle, .cg-shine { animation: none; } }
+diff --git a/components/BadgeIcon.tsx b/components/BadgeIcon.tsx
+index 9d40d78..06b47a5 100644
+--- a/components/BadgeIcon.tsx
++++ b/components/BadgeIcon.tsx
+@@ -77,7 +77,7 @@ export function Medal({ colors, rim = 'gold', size = 40, title, className = '',
+ }
+ 
+ // 문양 (가운데 0,0 기준, 반지름 24 안에 그린다) — 한눈에 알아보이는 그림으로
+-const EMBLEMS: Record<string, ReactNode> = {
++export const EMBLEMS: Record<string, ReactNode> = {
+   // 공감왕: 큰 하트 (오른쪽 위 반짝)
+   hearts: (
+     <g>
+@@ -409,40 +409,98 @@ function Numbered({ n, children }: { n: string; children: ReactNode }) {
+ // 등급 = 메달 색 자체(겨자씨 회색·새싹 초록·줄기 파랑·꽃 빨강·열매 노랑·큰 나무 진한 금속 금색·생명의 나무 무지개), 아래 숫자 판.
+ // champion = 그 활동 1등 → 메달을 조금 줄이고 둘레에 금 월계관 + 위에 왕관
+ function laurel(id: string) {
+-  const leaf = (r: number, from: number, to: number, n: number, side: 1 | -1) => Array.from({ length: n }, (_, i) => {
+-    const a = (from + (to - from) * i / (n - 1)) * Math.PI / 180; const x = 32 + r * Math.cos(a), y = 32 + r * Math.sin(a);
+-    return <ellipse key={`${side}${i}`} cx={x.toFixed(2)} cy={y.toFixed(2)} rx="2.3" ry="4.7" fill={`url(#${id}L)`} stroke="#7a520c" strokeWidth="0.55" transform={`rotate(${(a * 180 / Math.PI + (side > 0 ? 62 : -62)).toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})`} />;
+-  });
++  // 끝이 뾰족한 잎이 줄기 양쪽으로 짝지어 붙은 진짜 월계수 가지 (운영자 예시 2026-11-14)
++  const LEAF = 'M0 0C2.2-2.8 6.4-3.1 9.6 0C6.4 3.1 2.2 2.8 0 0Z';
++  const R = 26.6;
++  const branch = (side: 1 | -1) => {
++    const out: ReactNode[] = [];
++    const from = side > 0 ? 100 : 80, to = side > 0 ? 238 : -58, n = 7;
++    for (let i = 0; i < n; i++) {
++      const t = i / (n - 1), deg = from + (to - from) * t, a = deg * Math.PI / 180;
++      const x = 32 + R * Math.cos(a), y = 32 + R * Math.sin(a);
++      const tan = deg + (side > 0 ? 90 : -90), k = 1.12 - t * 0.38;
++      for (const [off, w] of [[-38 * side, 'o'], [34 * side, 'i']] as const) {
++        out.push(<g key={`${side}${i}${w}`} transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${(tan + off).toFixed(1)}) scale(${k.toFixed(2)})`}>
++          <path d={LEAF} fill={`url(#${id}L)`} stroke="#6e4705" strokeWidth="0.4" />
++          <path d="M0.7 0Q4.8 -0.3 8.7 0" fill="none" stroke="#fff6cf" strokeOpacity="0.85" strokeWidth="0.35" />
++        </g>);
++      }
++    }
++    const ta = to * Math.PI / 180, tx = 32 + R * Math.cos(ta), ty = 32 + R * Math.sin(ta);
++    out.push(<g key={`${side}tip`} transform={`translate(${tx.toFixed(2)} ${ty.toFixed(2)}) rotate(${to + (side > 0 ? 90 : -90)}) scale(0.78)`}><path d={LEAF} fill={`url(#${id}L)`} stroke="#6e4705" strokeWidth="0.4" /></g>);
++    return out;
++  };
++  const arc = (side: 1 | -1) => { const f = (side > 0 ? 100 : 80) * Math.PI / 180, t = (side > 0 ? 238 : -58) * Math.PI / 180;
++    return `M${(32 + R * Math.cos(f)).toFixed(2)} ${(32 + R * Math.sin(f)).toFixed(2)} A${R} ${R} 0 0 ${side > 0 ? 1 : 0} ${(32 + R * Math.cos(t)).toFixed(2)} ${(32 + R * Math.sin(t)).toFixed(2)}`; };
+   return (<>
+     <defs>
+-      <linearGradient id={`${id}L`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff2b8" /><stop offset="0.5" stopColor="#e6b743" /><stop offset="1" stopColor="#9a6a10" /></linearGradient>
+-      <radialGradient id={`${id}G`}><stop offset="0.5" stopColor="#ffd86b" stopOpacity="0.75" /><stop offset="1" stopColor="#ffd86b" stopOpacity="0" /></radialGradient>
++      <linearGradient id={`${id}L`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffbe0" /><stop offset="0.35" stopColor="#ffd75a" /><stop offset="0.55" stopColor="#e2a019" /><stop offset="1" stopColor="#8a5a00" /></linearGradient>
++      <radialGradient id={`${id}G`}><stop offset="0.35" stopColor="#ffe08a" stopOpacity="0.95" /><stop offset="0.7" stopColor="#ffc94a" stopOpacity="0.45" /><stop offset="1" stopColor="#ffc94a" stopOpacity="0" /></radialGradient>
++      <linearGradient id={`${id}J`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ffffff" /><stop offset="0.5" stopColor="#fff3c4" /><stop offset="1" stopColor="#d9a623" /></linearGradient>
+     </defs>
+-    <circle cx="32" cy="32" r="32" fill={`url(#${id}G)`} />
+-    {leaf(26.8, 100, 220, 8, 1)}{leaf(26.8, 80, -40, 8, -1)}
++    <circle cx="32" cy="32" r="34" fill={`url(#${id}G)`} />
++    <path d={arc(1)} fill="none" stroke="#a87208" strokeWidth="0.9" strokeLinecap="round" />
++    <path d={arc(-1)} fill="none" stroke="#a87208" strokeWidth="0.9" strokeLinecap="round" />
++    {branch(1)}{branch(-1)}
++    <path d="M32 55.2l3 3.4-3 3.4-3-3.4Z" fill={`url(#${id}J)`} stroke="#8a5a00" strokeWidth="0.45" />
++    <path d="M32 55.2l1.1 3.4L32 62" fill="#fff" fillOpacity="0.6" />
++    {[[3, 18, 1.1, 0], [61, 22, 0.9, 0.8], [6, 48, 0.8, 1.6], [58, 50, 1, 0.4], [32, 63, 0.7, 1.2]].map(([x, y, k, d], i) => <g key={i} transform={`translate(${x} ${y}) scale(${k})`}><path className="cg-twinkle" style={{ animationDelay: `${d}s` }} d="M0 -3.4 L0.7 -0.7 L3.4 0 L0.7 0.7 L0 3.4 L-0.7 0.7 L-3.4 0 L-0.7 -0.7 Z" fill="#fff" /></g>)}
+   </>);
+ }
+-const crown = <g transform="translate(32 7.5)"><path d="M-8.5 4 L-8.5 -3.5 L-4.2 0 L0 -5.6 L4.2 0 L8.5 -3.5 L8.5 4 Z" fill="#ffd34d" stroke="#8a5a00" strokeWidth="1" strokeLinejoin="round" /><circle cx="0" cy="-5.6" r="1.3" fill="#fff6c9" /></g>;
++// 1등 왕관: 크게, 빛·음영·붉은 벨벳·보석을 넣은 진짜 금처럼, 제자리에서 빙글빙글(globals.css .cg-crown) (운영자 2026-11-14 예시)
++function Crown({ id }: { id: string }) {
++  const body = 'M-10.4 1.6 L-11.2 -4.6 L-7.6 -1.2 L-5.2 -7.2 L-2.6 -3 L0 -9 L2.6 -3 L5.2 -7.2 L7.6 -1.2 L11.2 -4.6 L10.4 1.6 Z';
++  return (
++    <g transform="translate(32 14.6) scale(1.32)">
++      <defs>
++        <linearGradient id={`${id}cg`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fffbe6" /><stop offset="0.2" stopColor="#ffe27a" /><stop offset="0.45" stopColor="#f2b51f" /><stop offset="0.62" stopColor="#fff0a8" /><stop offset="0.82" stopColor="#df9d12" /><stop offset="1" stopColor="#8f5600" /></linearGradient>
++        <linearGradient id={`${id}cs`} x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#4a2a00" stopOpacity="0.45" /><stop offset="0.28" stopColor="#4a2a00" stopOpacity="0" /><stop offset="0.44" stopColor="#fff" stopOpacity="0.55" /><stop offset="0.52" stopColor="#fff" stopOpacity="0" /><stop offset="1" stopColor="#4a2a00" stopOpacity="0.45" /></linearGradient>
++        <linearGradient id={`${id}cb`} x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#fff6c4" /><stop offset="0.35" stopColor="#f6c232" /><stop offset="0.7" stopColor="#c98606" /><stop offset="1" stopColor="#7d4a00" /></linearGradient>
++        <radialGradient id={`${id}cv`} cx="0.5" cy="0.8" r="0.8"><stop offset="0" stopColor="#d4202e" /><stop offset="0.6" stopColor="#8e0b16" /><stop offset="1" stopColor="#4a0008" /></radialGradient>
++        <radialGradient id={`${id}cp`} cx="0.35" cy="0.3" r="0.75"><stop offset="0" stopColor="#ffffff" /><stop offset="0.6" stopColor="#fff1c2" /><stop offset="1" stopColor="#c8962a" /></radialGradient>
++        <radialGradient id={`${id}cr`} cx="0.35" cy="0.3" r="0.85"><stop offset="0" stopColor="#ffd0d0" /><stop offset="0.45" stopColor="#e3162a" /><stop offset="1" stopColor="#5e0008" /></radialGradient>
++      </defs>
++      <g className="cg-crown">
++        <ellipse cx="0" cy="7.4" rx="11.5" ry="1.6" fill="#000" fillOpacity="0.22" />
++        <path d="M-9.8 1.8C-8.6 -6.4 8.6 -6.4 9.8 1.8Z" fill={`url(#${id}cv)`} />
++        <path d={body} fill={`url(#${id}cg)`} stroke="#5e3500" strokeWidth="0.55" strokeLinejoin="round" />
++        <path d={body} fill={`url(#${id}cs)`} />
++        <path d="M-9.6 0.4 L-10.2 -2.8 M-5.2 -5.4 L-3.2 -2.2 M0 -7.2 L0 -3 M5.2 -5.4 L3.2 -2.2 M9.6 0.4 L10.2 -2.8" stroke="#fffbe6" strokeOpacity="0.75" strokeWidth="0.45" strokeLinecap="round" />
++        <path d="M0 -6.6l1.1 2.2L0 -2.2l-1.1-2.2Z" fill={`url(#${id}cr)`} stroke="#4a0006" strokeWidth="0.25" />
++        <path d="M-11 1.2Q0 3.6 11 1.2L11 5.6Q0 8 -11 5.6Z" fill={`url(#${id}cb)`} stroke="#5e3500" strokeWidth="0.55" strokeLinejoin="round" />
++        <path d="M-10.2 2.1Q0 4.3 10.2 2.1" fill="none" stroke="#fffbe6" strokeOpacity="0.85" strokeWidth="0.6" />
++        <path d="M-10.6 5Q0 7.3 10.6 5" fill="none" stroke="#5e3500" strokeOpacity="0.35" strokeWidth="0.5" />
++        {[[-7.6, 3.6, 1.05], [0, 4.6, 1.6], [7.6, 3.6, 1.05]].map(([x, y, rr], i) => <g key={i}><ellipse cx={x} cy={y} rx={rr * 1.05} ry={rr * 0.85} fill={`url(#${id}cr)`} stroke="#4a0006" strokeWidth="0.3" /><circle cx={x - rr * 0.35} cy={y - rr * 0.3} r={rr * 0.28} fill="#fff" fillOpacity="0.9" /></g>)}
++        {[[-3.8, 4.25], [3.8, 4.25], [-10, 3], [10, 3]].map(([x, y], i) => <circle key={`p${i}`} cx={x} cy={y} r="0.6" fill={`url(#${id}cp)`} />)}
++        {[[-11.2, -4.6, 1.15], [-5.2, -7.2, 1.25], [0, -9, 1.4], [5.2, -7.2, 1.25], [11.2, -4.6, 1.15]].map(([x, y, rr], i) => <g key={i}><circle cx={x} cy={y} r={rr} fill={`url(#${id}cp)`} stroke="#5e3500" strokeWidth="0.35" /><circle cx={x - rr * 0.35} cy={y - rr * 0.35} r={rr * 0.32} fill="#fff" /></g>)}
++      </g>
++      <g transform="translate(-7 -6)"><path className="cg-twinkle" d="M0 -2.6 L0.55 -0.55 L2.6 0 L0.55 0.55 L0 2.6 L-0.55 0.55 L-2.6 0 L-0.55 -0.55 Z" fill="#fff" /></g>
++      <g transform="translate(8.5 -1)"><path className="cg-twinkle" style={{ animationDelay: '1.1s' }} d="M0 -2 L0.45 -0.45 L2 0 L0.45 0.45 L0 2 L-0.45 0.45 L-2 0 L-0.45 -0.45 Z" fill="#fff" /></g>
++    </g>
++  );
++}
++const CHAMP_SHIFT = 'translate(32 40) scale(0.74) translate(-32 -32)';
+ 
+-function TierMedal({ def, size, champion }: { def: MemberBadgeDef; size: number | string; champion?: boolean }) {
++function TierMedal({ def, size, champion, emblemNode }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemNode?: ReactNode }) {
+   const id = `tm${useId().replace(/[^\w-]/g, '')}`;
+   const ti = Math.max(0, Math.min(6, (def.tier || 1) - 1));
+   const [l, m, d] = TIERS[ti].colors;
+   const unique = ti === 6, myth = ti === 5;
+   const r = champion ? 20.5 : 26;
+   const num = tierNum(def);
+-  const emblem = EMBLEMS[ladderOf(def.family)?.emblem || ''] || null;
++  const emblem = emblemNode ?? (EMBLEMS[ladderOf(def.family)?.emblem || ''] || null);
+   const px = typeof size === 'number' ? `${size}px` : size;
+   return (
+     <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} (${TIERS[ti].name})${champion ? ' 1등' : ''}`} style={{ width: px, height: px }}>
+       <defs>
+         {unique ? <linearGradient id={`${id}d`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff8ad8" /><stop offset="0.35" stopColor="#9b6cf0" /><stop offset="0.7" stopColor="#36c6e0" /><stop offset="1" stopColor="#7ef0b0" /></linearGradient>
+-          : myth ? <linearGradient id={`${id}d`} x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stopColor="#fff1b8" /><stop offset="0.22" stopColor="#d9a332" /><stop offset="0.42" stopColor="#7a4d05" /><stop offset="0.58" stopColor="#f3cf6a" /><stop offset="0.78" stopColor="#a8700c" /><stop offset="1" stopColor="#5a3500" /></linearGradient>
++          : myth ? <linearGradient id={`${id}d`} x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stopColor="#fffbe3" /><stop offset="0.2" stopColor="#ffe066" /><stop offset="0.42" stopColor="#e9ad1f" /><stop offset="0.56" stopColor="#fff2a6" /><stop offset="0.76" stopColor="#f0bb2e" /><stop offset="1" stopColor="#c0870a" /></linearGradient>
+           : <radialGradient id={`${id}d`} cx="0.35" cy="0.28" r="0.9"><stop offset="0" stopColor={l} /><stop offset="0.55" stopColor={m} /><stop offset="1" stopColor={d} /></radialGradient>}
+-        <linearGradient id={`${id}r`} x1="0" y1="0" x2="1" y2="1">{myth ? <><stop offset="0" stopColor="#fff6cc" /><stop offset="0.3" stopColor="#8a5a00" /><stop offset="0.55" stopColor="#ffe08a" /><stop offset="1" stopColor="#4a2c00" /></> : <><stop offset="0" stopColor={unique ? '#fff' : l} /><stop offset="0.5" stopColor={unique ? '#c7b3ff' : d} /><stop offset="1" stopColor={unique ? '#7fe3f0' : m} /></>}</linearGradient>
++        <linearGradient id={`${id}r`} x1="0" y1="0" x2="1" y2="1">{myth ? <><stop offset="0" stopColor="#fffbe0" /><stop offset="0.3" stopColor="#c48a0c" /><stop offset="0.55" stopColor="#ffec9e" /><stop offset="1" stopColor="#9a6500" /></> : <><stop offset="0" stopColor={unique ? '#fff' : l} /><stop offset="0.5" stopColor={unique ? '#c7b3ff' : d} /><stop offset="1" stopColor={unique ? '#7fe3f0' : m} /></>}</linearGradient>
+         <radialGradient id={`${id}s`} cx="0.3" cy="0.2" r="0.6"><stop offset="0" stopColor="#fff" stopOpacity={myth ? 0.6 : 0.5} /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
+         <filter id={`${id}f`} x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0.7" stdDeviation="0.6" floodOpacity="0.35" /></filter>
+       </defs>
++      <g transform={champion ? CHAMP_SHIFT : undefined}>
+       {champion && laurel(id)}
+       <circle cx="32" cy="33" r={r + 1.5} fill="#000" fillOpacity="0.18" />
+       <circle cx="32" cy="32" r={r + 1.4} fill={`url(#${id}r)`} />
+@@ -450,32 +508,43 @@ function TierMedal({ def, size, champion }: { def: MemberBadgeDef; size: number
+       <circle cx="32" cy="32" r={r - 0.6} fill={`url(#${id}s)`} />
+       {myth && <path d={`M${32 - r * 0.7} ${32 - r * 0.2} L${32 - r * 0.2} ${32 - r * 0.75} L${32 - r * 0.02} ${32 - r * 0.6} L${32 - r * 0.55} ${32 - r * 0.02} Z`} fill="#fff" fillOpacity="0.35" />}
+       <circle cx="32" cy="32" r={r - 1.6} fill="none" stroke="#fff" strokeOpacity="0.3" strokeWidth="0.8" />
+-      {unique && [[-0.6, -0.55], [0.62, -0.42], [0.5, 0.6]].map(([x, y], i) => <path key={i} d="M0 -2.6 L0.7 -0.7 L2.6 0 L0.7 0.7 L0 2.6 L-0.7 0.7 L-2.6 0 L-0.7 -0.7 Z" fill="#fff" transform={`translate(${32 + x * r} ${32 + y * r}) scale(${r / 26})`} />)}
++      {(myth || unique) && (<>
++        <clipPath id={`${id}clip`}><circle cx="32" cy="32" r={r - 0.6} /></clipPath>
++        <g clipPath={`url(#${id}clip)`}><g transform="rotate(20 32 32)"><rect className="cg-shine" x={32 - r * 1.6} y={32 - r * 1.2} width={r * 0.5} height={r * 2.4} fill="#fff" fillOpacity="0.45" /></g></g>
++        {[[-0.62, -0.58, 1, 0], [0.66, -0.45, 0.8, 0.7], [0.52, 0.62, 0.9, 1.4], [-0.5, 0.55, 0.7, 2.1]].map(([x, y, k, d], i) => <g key={i} transform={`translate(${32 + x * r} ${32 + y * r}) scale(${(r / 26) * k})`}><path className="cg-twinkle" style={{ animationDelay: `${d}s` }} d="M0 -3 L0.75 -0.75 L3 0 L0.75 0.75 L0 3 L-0.75 0.75 L-3 0 L-0.75 -0.75 Z" fill="#fff" /></g>)}
++      </>)}
+       <g filter={`url(#${id}f)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round"><g transform={`translate(32 ${num ? 30 : 32}) scale(${(r / 26) * 0.92})`}>{emblem}</g></g>
+       {num && <g><rect x={32 - (champion ? 12 : 15)} y={champion ? 45 : 48} width={champion ? 24 : 30} height={champion ? 10 : 12} rx="5.5" fill={unique ? '#5b3fb0' : d} stroke="#fff" strokeWidth="1.3" />
+         <text x="32" y={champion ? 52.7 : 57.2} textAnchor="middle" fontSize={champion ? (num.length > 4 ? 6 : 7.2) : (num.length > 4 ? 7.6 : 9)} fontWeight="900" fill="#fff" fontFamily="inherit">{num}</text></g>}
+-      {champion && crown}
++      </g>
++      {champion && <Crown id={id} />}
+     </svg>
+   );
+ }
+ 
+ // 등급이 없는 1등 뱃지(사진작가·아이디어 천사 등): 원래 메달을 줄이고 금 월계관 + 왕관
+-function ChampionMedal({ def, size }: { def: MemberBadgeDef; size: number | string }) {
++// 1등 뱃지 안쪽은 모두 같은 남색 — 색은 늘 등급(겨자씨~생명의 나무)만 뜻하게 (운영자 2026-11-14: 노랑·빨강이 애매)
++const CHAMPION_DISC: [string, string] = ['#4a6bb0', '#1c2b4f'];
++function ChampionMedal({ def, size, tier }: { def: MemberBadgeDef; size: number | string; tier?: number }) {
+   const id = `cm${useId().replace(/[^\w-]/g, '')}`;
+   const px = typeof size === 'number' ? `${size}px` : size;
+   return (
+     <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} 1등`} style={{ width: px, height: px }}>
+-      {laurel(id)}
+-      <g transform="translate(32 33) scale(0.7) translate(-32 -32)"><MedalBody id={id} colors={def.colors} rim="gold">{EMBLEMS[def.key]}</MedalBody></g>
+-      {crown}
++      <g transform={CHAMP_SHIFT}>
++        {laurel(id)}
++        <g transform="translate(32 33) scale(0.7) translate(-32 -32)"><MedalBody id={id} colors={tier ? [TIERS[tier - 1].colors[0], TIERS[tier - 1].colors[2]] : CHAMPION_DISC} rim="gold">{EMBLEMS[def.key]}</MedalBody></g>
++      </g>
++      <Crown id={id} />
+     </svg>
+   );
+ }
+ 
+-export function BadgeIcon({ badge, size = 40, className = '', champion }: { badge: MemberBadgeDef | string; size?: number | string; className?: string; champion?: boolean }) {
++export function BadgeIcon({ badge, size = 40, className = '', champion, tier }: { badge: MemberBadgeDef | string; size?: number | string; className?: string; champion?: boolean; tier?: number }) {
+   const def = typeof badge === 'string' ? badgeOf(badge) : badge;
+   if (!def) return null;
+   if (def.tier) return <span className={`inline-flex shrink-0 ${className}`}><TierMedal def={def} size={size} champion={champion} /></span>;
++  // 1등 뱃지: 그 교우의 등급(tier)을 알면 그 등급 색 메달 + 월계관 + 왕관 (등급 메달과 같은 반짝임)
++  if (def.auto && !def.permanent && tier) return <span className={`inline-flex shrink-0 ${className}`}><TierMedal def={{ ...def, tier, family: undefined }} size={size} champion emblemNode={EMBLEMS[def.key]} /></span>;
+   if (def.auto && !def.permanent) return <span className={`inline-flex shrink-0 ${className}`}><ChampionMedal def={def} size={size} /></span>;
+   return <Medal colors={def.colors} rim={def.rim} size={size} title={`${def.label} 뱃지`} className={className}>{EMBLEMS[def.key]}</Medal>;
+ }
+diff --git a/lib/badges.ts b/lib/badges.ts
+index 812eaf9..2ac6986 100644
+--- a/lib/badges.ts
++++ b/lib/badges.ts
+@@ -98,9 +98,9 @@ export const TIERS = [
+   { name: '겨자씨', colors: ['#c9ced6', '#7d858f', '#4d545d'], pill: ['#f3f4f6', '#d1d5db', '#374151'] },
+   { name: '새싹', colors: ['#8fe0a0', '#2f9a4b', '#155f2a'], pill: ['#effaf1', '#b6e6c1', '#155f2a'] },
+   { name: '줄기', colors: ['#8cc3f7', '#2f73d0', '#163f85'], pill: ['#eef5fe', '#bcd8f7', '#163f85'] },
+-  { name: '꽃', colors: ['#ff9a8f', '#d8382f', '#7e130f'], pill: ['#fff1f0', '#fbc4bf', '#9e1f1a'] },
+-  { name: '열매', colors: ['#fff09a', '#f2c21b', '#a87a00'], pill: ['#fffbe6', '#f6e08a', '#7a5a00'] },
+-  { name: '큰 나무', colors: ['#fff4c2', '#b8800f', '#5e3a00'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
++  { name: '꽃', colors: ['#ff7a7a', '#d81e2c', '#7a0010'], pill: ['#fff1f0', '#fbc4bf', '#9e1f1a'] },
++  { name: '열매', colors: ['#fff59a', '#ffd60a', '#b89400'], pill: ['#fffbe6', '#f6e08a', '#7a5a00'] },
++  { name: '큰 나무', colors: ['#fff6c8', '#f0b92a', '#a87200'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
+   { name: '생명의 나무', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
+ ] as const;
+ export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; steps: number[] }[] = [

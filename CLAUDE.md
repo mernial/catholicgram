@@ -40,7 +40,7 @@
 - 1:1 메시지: page.tsx(`chatPartnerIdRef`·`insertDm`) / 단체방 `GroupChat` `NewChat` / 사랑방 `Lounge` / 공통 `ChatMedia` `ChatSearch` `ChatGallery` `ChatCapture` `ChatSheets` `ChatDayDivider` `MessageMenu` `QuietSend` `SwipeRow` `lib/chat-actions` `lib/chat-mutes` `lib/chat-presence` `lib/typing` `lib/use-enter-send` `lib/use-press-gestures`
 - 이모티콘: `lib/stickers.ts`(팩·말·추천 `KEYWORDS`·`MOOD_GROUPS`) `StickerPanel` `PostStickerSheet` `StickerGift` / 그림 `public/stickers/<팩>/NN.webp`
 - 알림: 보내기 `app/api/push/notify` `lib/push-send` `lib/push-devices`(`onePerDevice`·일시 끄기 `paused_until`) / 서비스 워커 `public/sw.js` / 앱 쪽 page.tsx + `PushPauseSheet` `lib/push-log` `lib/alert-sound` `lib/alert-sync`
-- 뱃지: `lib/badges.ts` `BadgeIcon` `MemberBadges` `RoleBadge` `lib/badge-map` `lib/auto-badges` / SQL `supabase/member-badges.sql`
+- 뱃지: `lib/badges.ts` `BadgeIcon` `MemberBadges` `RoleBadge` `lib/badge-map` `lib/auto-badges` / SQL `supabase/member-badges.sql` / **배지 그림 제작 지시서(등급 메달·1등 왕관, 예시 그림·시안·도구)**: `docs/badges/README.md`
 - 테스터: `AdminTesters` `TesterSignup` `TesterAttendance` `TesterRestartNotice` `AppKindNotice` `lib/tester-attendance` `lib/app-kind` / API `app/api/tester` `app/api/admin/tester-activity`
 - 음악: `lib/music.ts` `lib/music-cc.ts` `MusicPicker` `MusicLibrary` `BgmAdmin` `ProfileMusicPicker` `MusicGift` `MemberMusicGift` / 파일 `public/bgm`
 - 선물·공지 창: `GiftBox` `LetterReplyPopup` `PersonalNotice` `UpdateNotes`(`lib/update-notes`) `SamsungGuide` `NoticeBoard` / 사연함 `LettersModal` / 건의함 `FeedbackModal`
