@@ -81,6 +81,8 @@ export const MEMBER_BADGES: MemberBadgeDef[] = [
   { key: 'm_streak7', label: '7일 연속', desc: '일주일 동안 하루도 빠지지 않고 들렀어요', group: 'milestone', colors: ['#f0783c', '#c2451c'], rim: 'gold', stat: 'streak', auto: true, permanent: true, threshold: 7 },
   { key: 'm_year1', label: '함께 1년', desc: '가톨릭그램과 함께한 지 1년이 되었어요', group: 'milestone', colors: ['#d4a94a', '#9a6a13'], rim: 'gold', stat: 'years', auto: true, permanent: true, threshold: 1 },
   // --- 기념 ---
+  // 테스터 명예 훈장: Play 테스트 앱으로 14일 출석을 모두 마친 테스터에게 저절로 (app/api/tester/attendance, 한 번 받으면 평생 — permanent)
+  { key: 'tester14', label: '테스터 명예 훈장', desc: '가톨릭그램 초창기 테스터로 활약하며 정식 출시를 함께 연 교우 · Play 테스트 앱으로 14일 출석을 모두 마친 분께 드리는 명예 훈장이에요', group: 'honor', colors: ['#3e5a94', '#1c2b4f'], rim: 'gold' },
   { key: 'firstfruit', label: '첫 열매', desc: '가톨릭그램의 처음을 함께한 교우', group: 'honor', colors: ['#7bbf5a', '#3f8a33'], rim: 'gold' },
 ];
 
