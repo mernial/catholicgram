@@ -4415,7 +4415,7 @@ export default function Home() {
   const showPopupNotice = !!popupNotice && !popupBlocked && !needsProfileSetup && !shownGift;
   // 개인 안내: 받는 교우에게만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (업데이트 소식보다 먼저)
   const personalToShow = personalPreview ? PERSONAL_NOTICES
-    : user && updateNotesReady ? myPersonalNotices({ handle: profile?.handle, hidden: personalHidden, closed: personalClosed }) : [];
+    : user && updateNotesReady ? myPersonalNotices({ handle: profile?.handle, name: profile?.baptismal_name, hidden: personalHidden, closed: personalClosed }) : [];
   // 운영자 답장(사연함): 아직 안 본 것만, 홈에서 다른 창·선물·팝업 공지가 없을 때 (개인 안내보다 먼저). 본 것은 giftsOpened 와 같은 길로 기억(다른 기기에도)
   const replyToShow = user && openedGifts ? replyLetters.filter(l => !openedGifts.includes(letterReplyKey(l))) : [];
   const showLetterReply = replyToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice;
