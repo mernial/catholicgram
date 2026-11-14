@@ -4794,6 +4794,16 @@ export default function Home() {
     const queue = viewerQueue.filter(id => posts.some(p => p.id === id));
     return posts.find(p => p.id === queue[queue.indexOf(selectedPostDetail.id) + dir]) || null;
   };
+  // 크게 보기 사진 미리 받기 (운영자 2026-11-14: '반응이 느린데 조금 더 빨리 보이면'): 그 글의 다음 사진 두 장 + 위아래로 넘길 앞뒤 글의 첫 사진
+  const viewerPreloadKey = selectedPostDetail ? [
+    ...selectedPostDetail.images.slice(detailImageIndex + 1, detailImageIndex + 3),
+    ...([1, -1] as const).map(d => { const n = viewerNeighbor(d); return n?.images?.[0] || n?.video_poster || ''; }),
+  ].filter(Boolean).join('|') : '';
+  useEffect(() => {
+    if (!viewerPreloadKey) return;
+    const t = setTimeout(() => viewerPreloadKey.split('|').forEach(url => { const im = new Image(); im.decoding = 'async'; im.src = url; }), 300);
+    return () => clearTimeout(t);
+  }, [viewerPreloadKey]);
   const viewerStep = (dir: 1 | -1) => {
     const next = viewerNeighbor(dir);
     if (!next) { setViewerAnimating(true); setViewerDrag(0); return false; }
@@ -4919,7 +4929,7 @@ export default function Home() {
               onClick={() => currentChatUser && openProfileCard({ id: currentChatUser.id, name: currentChatUser.baptismal_name, avatar_url: currentChatUser.avatar_url, handle: currentChatUser.handle, badge_type: currentChatUser.badge_type })}
               className="flex items-center gap-2 min-w-0 text-left" aria-label={`${currentChatUser?.baptismal_name || '교우'}님 프로필 보기`}>
               <CelebrateBand id={currentChatUser?.id}>{currentChatUser?.avatar_url ? (
-                <img loading="lazy" src={currentChatUser.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
+                <img src={currentChatUser.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover border border-stone-200 shrink-0" />
               ) : (
                 <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold shrink-0">{initial(currentChatUser?.baptismal_name)}</div>
               )}</CelebrateBand>
@@ -5563,7 +5573,7 @@ export default function Home() {
             <div className="flex items-center gap-5">
               {(() => {
                 const avatar = viewingProfile?.avatar_url ? (
-                  <img loading="lazy" src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
+                  <img src={viewingProfile.avatar_url} alt="프로필" className="w-[5.5rem] h-[5.5rem] rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-[5.5rem] h-[5.5rem] bg-stone-200 text-stone-600 rounded-full flex items-center justify-center text-4xl font-serif font-bold">
                     {initial(viewingProfile?.baptismal_name, '교')}
@@ -7523,7 +7533,7 @@ export default function Home() {
                   {peek.avatar_url ? <img loading="lazy" src={peek.avatar_url} alt="" className="w-8 h-8 rounded-full object-cover" /> : <span className="w-8 h-8 rounded-full bg-stone-200 flex items-center justify-center text-xs font-bold">{initial(peek.author_name)}</span>}
                   <span className="text-xs font-bold text-stone-800">{peek.author_name}</span>
                 </div>
-                {thumb ? <div className="bg-black flex justify-center"><img loading="lazy" src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{postPlainText(peek.content)}</p>}
+                {thumb ? <div className="bg-black flex justify-center"><img src={thumb} alt="" className="max-w-full max-h-[60dvh] object-contain" /></div> : <p className="p-5 text-sm text-stone-700 line-clamp-4">{postPlainText(peek.content)}</p>}
               </div>
             );
           })()}
@@ -7539,7 +7549,7 @@ export default function Home() {
             <div className="p-4 tablet:pt-[calc(0.75rem+env(safe-area-inset-top))] tablet:pb-3 border-b border-stone-100 flex items-center justify-between shrink-0">
               <button onClick={() => { const d = selectedPostDetail; openProfileCard({ id: d.user_id, name: d.author_name, avatar_url: d.avatar_url, handle: d.handle, badge_type: d.badge_type }); }} className="flex items-center gap-2.5 text-left">
                 <CelebrateBand id={selectedPostDetail.user_id}>{selectedPostDetail.avatar_url ? (
-                  <img loading="lazy" src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
+                  <img src={selectedPostDetail.avatar_url} alt="프로필" className="w-8 h-8 rounded-full object-cover border border-stone-200" />
                 ) : (
                   <div className="w-8 h-8 rounded-full bg-stone-200 text-stone-700 flex items-center justify-center text-xs font-serif font-bold">{initial(selectedPostDetail.author_name, '교')}</div>
                 )}</CelebrateBand>
@@ -7563,7 +7573,7 @@ export default function Home() {
                     const r = viewerRatios[src];
                     const frame = frameRatio(r);
                     return (
-                      <img loading="lazy"
+                      <img decoding="async" fetchPriority="high"
                         src={src}
                         alt="게시물 사진"
                         onClick={viewerImageTap}
@@ -7666,7 +7676,7 @@ export default function Home() {
       {/* 프로필 사진 크게 보기 (인스타그램처럼 동그랗게 크게) */}
       {avatarPreview && (
         <div className="fixed inset-0 z-[95] bg-black/85 flex flex-col items-center justify-center gap-5 p-6 animate-fade-in" onClick={() => setAvatarPreview(null)} role="dialog" aria-label="프로필 사진">
-          <img loading="lazy" src={avatarPreview.url} alt={`${avatarPreview.name}님 프로필 사진`} className="w-[min(80vw,22rem)] aspect-square rounded-full object-cover shadow-2xl border-4 border-white/20" />
+          <img src={avatarPreview.url} alt={`${avatarPreview.name}님 프로필 사진`} className="w-[min(80vw,22rem)] aspect-square rounded-full object-cover shadow-2xl border-4 border-white/20" />
           <p className="text-white text-xl font-bold">{avatarPreview.name}</p>
           <button onClick={() => setAvatarPreview(null)} className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-4 w-11 h-11 flex items-center justify-center text-white text-3xl leading-none" aria-label="닫기">×</button>
         </div>

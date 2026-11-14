@@ -32,7 +32,7 @@ export default function DeletedMessages({ onClose }: { onClose: () => void }) {
     <BottomSheet bare label="지운 메시지" onClose={onClose} z="z-[86]" tone="bg-white">
       {zoom && (
         <div className="fixed inset-0 z-[90] bg-black/90 flex items-center justify-center p-4" onClick={e => { e.stopPropagation(); setZoom(null); }}>
-          <img loading="lazy" src={zoom} alt="지운 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
+          <img src={zoom} alt="지운 사진" className="max-w-full max-h-[90dvh] object-contain rounded-lg" />
         </div>
       )}
       <div className="flex-1 min-h-0 flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
