@@ -25,9 +25,9 @@ export default function RoleBadge({ type, size = 'sm', showLabel = false, onClic
     <span role="button" tabIndex={0} onClick={open} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') open(e); }}
       className={`inline-flex items-center gap-1 shrink-0 align-middle rounded-full border font-bold leading-none cursor-pointer ${badge.className} ${showLabel ? (size === 'md' ? 'pl-0.5 pr-2 py-0.5' : 'pl-px pr-1.5 py-px') : 'p-0 border-0 bg-transparent'} ${text}`}
       title={`인증된 ${badge.label}`} aria-label={`인증된 ${badge.label} — 무슨 뱃지인지 보기`}>
-      {/* 관리자는 월계관·왕관 그림이라 같은 칸에서는 너무 작음 → 3.2배로 크게(운영자 2026-11-14 '많이 크게'). 글줄 높이는 그대로 두고 위아래·옆으로 똑같이 넘치게 — 메달 가운데가 글줄 가운데에 오도록 */}
+      {/* 관리자는 월계관·왕관 그림이라 같은 칸에서는 너무 작음 → 3.2배로 크게(운영자 2026-11-14 '많이 크게'). 왕관만 위로 넘치고 아래 월계관은 칸을 차지 — 댓글처럼 바로 밑에 글이 있어도 가리지 않게(운영자 2026-11-15 화면) */}
       {badge.key === 'admin'
-        ? (() => { const B = Math.round(icon * 3.2), ex = B - icon; return <span className="inline-flex shrink-0 relative z-[1]" style={{ margin: `-${Math.round(ex / 2)}px -${Math.round(B * 0.1)}px` }}><RoleIcon type="admin" size={B} title={`인증된 ${badge.label}`} /></span>; })()
+        ? (() => { const B = Math.round(icon * 3.2); return <span className="inline-flex shrink-0 relative z-[1]" style={{ margin: `-${Math.round(B * 0.24)}px -${Math.round(B * 0.1)}px -${Math.round(B * 0.06)}px` }}><RoleIcon type="admin" size={B} title={`인증된 ${badge.label}`} /></span>; })()
         // 성직자·수도자도 관리자 메달과 같은 지름으로 (운영자 2026-11-14 '나머지 배지들도 같은 크기로')
         : (() => { const B = Math.round(icon * 3.2 * 0.556), ex = B - icon; return <span className="inline-flex shrink-0 relative z-[1]" style={{ margin: `-${Math.round(ex / 2)}px 0` }}><RoleIcon type={badge.key} size={B} title={`인증된 ${badge.label}`} /></span>; })()}
       {showLabel && <span>{badge.label}</span>}
