@@ -334,13 +334,13 @@ function BadgePill({ keys, size, onOpen }: { keys: string[]; size: number; onOpe
   if (!first) return null;
   const def = badgeOf(first.key)!;
   // 관리자 뱃지(RoleBadge)와 같은 크기 (운영자 2026-11-14): 1등(월계관·왕관)은 칸의 3.2배, 그냥 메달은 그 안 메달과 같은 지름.
-  // 그냥 메달은 위아래로 조금 넘치고, 1등은 왕관만 위로 넘침 — 댓글처럼 바로 밑에 글이 있어도 가리지 않게(운영자 2026-11-15 화면)
+  // 그냥 메달은 위아래로 조금 넘치고, 1등은 위아래 같은 여백(-17%)으로 메달 가운데가 글줄 가운데에 — 월계관 아래 끝만 살짝 넘쳐 댓글 글을 가리지 않음(운영자 2026-11-15)
   const base = Math.max(17, size);   // RoleBadge 'xs' 칸(17)보다 작게는 안 함
   const B = first.champion ? Math.round(base * 3.2) : Math.round(base * 3.2 * 0.556), ex = B - size;
   // 이름 옆에는 뱃지 그림만 (운영자 2026-11-14: '공감 60' 같은 글자 없이, 누르면 무엇인지 — 뱃지 모두 보기 창)
   return (
     <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
-      className="inline-flex items-center shrink-0 relative z-[1]" style={{ margin: first.champion ? `-${Math.round(B * 0.24)}px -${Math.round(B * 0.1)}px -${Math.round(B * 0.06)}px` : `-${Math.round(ex / 2)}px 0` }}
+      className="inline-flex items-center shrink-0 relative z-[1]" style={{ margin: first.champion ? `-${Math.round(B * 0.17)}px -${Math.round(B * 0.1)}px` : `-${Math.round(ex / 2)}px 0` }}
       aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`} title={`${first.label}${first.champion ? ' 1등' : ''}`}>
       <BadgeIcon badge={def} size={B} champion={first.champion} />
     </button>

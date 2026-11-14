@@ -5171,6 +5171,8 @@ export default function Home() {
             <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleFileChange} className="hidden" id="photo-upload" />
             <input type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" id="photo-camera" />
             <input ref={videoInputRef} type="file" accept="video/*" onChange={handleVideoChange} className="hidden" id="video-upload" />
+            {/* 영상 찍기: 스토리처럼 바로 카메라(동영상)로 (운영자 2026-11-15) — 사진과 한 칸에 두면 안드로이드 크롬이 고르기 창을 띄우므로 따로 */}
+            <input type="file" accept="video/*" capture="environment" onChange={handleVideoChange} className="hidden" id="video-camera" />
             <input type="file" accept="image/*,video/*" onChange={handleStoryFile} className="hidden" id="story-upload" />
             {composerStep === 'pick' ? (
               <>
@@ -5227,10 +5229,13 @@ export default function Home() {
                       <Icon name="stack" className="w-4 h-4" />{composerMulti ? '여러 장 선택 중' : '여러 장 선택'}
                     </button>
                   </div>
-                  {/* 사진 칸: 카메라 · 앨범 (영상은 맨 아래 '게시물 · 스토리 · 영상' 줄에서만 — 루비로사 2026-11-03: 같은 일을 하는 '영상' 단추가 두 개라 헷갈림) */}
+                  {/* 사진 칸: 사진 찍기 · 영상 찍기 · 앨범 (영상 고르기는 맨 아래 '게시물 · 스토리 · 영상' 줄 — 루비로사 2026-11-03. 영상 찍기는 바로 카메라라 하는 일이 달라 따로 둠, 운영자 2026-11-15) */}
                   <div className="grid grid-cols-4 gap-[2px]">
                     <label htmlFor="photo-camera" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="camera" className="w-8 h-8" /><span className="text-[0.75rem]">사진 찍기</span>
+                    </label>
+                    <label htmlFor="video-camera" className="cursor-pointer aspect-square bg-[#262626] flex flex-col items-center justify-center gap-1 text-white">
+                      <Icon name="video" className="w-8 h-8" /><span className="text-[0.75rem]">영상 찍기</span>
                     </label>
                     <label htmlFor="photo-upload" className="cursor-pointer aspect-square bg-[#3a3a3a] flex flex-col items-center justify-center gap-1 text-white">
                       <Icon name="image" className="w-8 h-8" /><span className="text-[0.75rem] font-bold">사진첩 열기</span>
