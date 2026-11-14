@@ -21,6 +21,17 @@ export async function refreshAutoBadges(admin: SupabaseClient): Promise<{ awarde
       url: `/?profile=${r.user_id}`, tag: `badge-${r.user_id}`,
     } };
   });
-  const pushed = targets.length > 0 ? await sendPushTargets(admin, targets).catch(() => 0) : 0;
+  // 한 교우가 한 번에 여러 개를 받으면(처음 등급 계산 때 등) 알림은 하나로 묶음
+  const byUser = new Map<string, typeof targets>();
+  targets.forEach(t => byUser.set(t.recipientId, [...(byUser.get(t.recipientId) || []), t]));
+  const grouped = Array.from(byUser.values()).map(list => list.length === 1 ? list[0] : {
+    recipientId: list[0].recipientId,
+    payload: {
+      title: `🏅 새 뱃지 ${list.length}개를 받았어요`,
+      body: `${list.map(t => t.payload.title.replace(/^🏅 /, '').replace(/ — .*$/, '').replace(/ (도장|뱃지)를 받았어요$/, '')).join(' · ')} — 내 공간 '내 뱃지'에서 확인해 보세요`,
+      url: list[0].payload.url, tag: list[0].payload.tag,
+    },
+  });
+  const pushed = grouped.length > 0 ? await sendPushTargets(admin, grouped).catch(() => 0) : 0;
   return { awarded, pushed };
 }
