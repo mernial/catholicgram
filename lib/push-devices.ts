@@ -6,7 +6,13 @@
 export type PushSub = {
   id: string; user_id?: string; endpoint: string; p256dh: string; auth: string;
   device?: string | null; last_seen?: string | null; created_at?: string | null;
+  paused_until?: string | null; // 이 기기에서 알림을 잠시(또는 계속) 끈 때까지 (supabase/push-pause.sql)
 };
+
+// 알림을 끈 기기인지: 알림 받기(구독)는 남겨 두고 서버가 보내지 않는다 (운영자 2026-11-14: 휴대폰 알림 자체는 켜 두고 앱에서 끄기)
+export const isPaused = (s: { paused_until?: string | null }, now = Date.now()) => !!s.paused_until && Date.parse(s.paused_until) > now;
+// '다시 켤 때까지' 끈 것
+export const PAUSE_FOREVER = '9999-12-31T00:00:00.000Z';
 
 // Play 테스트 앱이 쓰는 브라우저의 구독은 기기 이름 끝에 '|play' 를 붙여 둔다 (루비로사 2026-11-01: 알림이 두 개씩 —
 // Play 앱(크롬)과 예전 삼성 인터넷 구독이 함께 받았음). 같은 기기라면 Play 앱 구독을 먼저 고르고, 없으면 가장 최근에 연 앱.
@@ -25,7 +31,9 @@ export function onePerDevice<T extends PushSub>(subs: T[]): T[] {
     const better = !cur || (isPlay(s) !== isPlay(cur) ? isPlay(s) : seenAt(s) > seenAt(cur));
     if (better) latest.set(key, s);
   }
-  return [...rest, ...latest.values()];
+  // 같은 기기에서 고른 앱이 알림을 꺼 두었으면 그 기기에는 보내지 않는다 (다른 앱으로 대신 보내지도 않음)
+  const now = Date.now();
+  return [...rest, ...latest.values()].filter(s => !isPaused(s, now));
 }
 
 // 이 브라우저가 Play 테스트 앱으로 열린 적이 있는지 (Play 앱은 크롬·삼성 인터넷의 저장소를 같이 씀 → 그 브라우저의 구독이 Play 앱의 구독)
