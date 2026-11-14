@@ -13,9 +13,10 @@ interface Signup { user_id: string; google_email: string; status: 'requested' | 
 const md = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1}월 ${d.getDate()}일`; };
 interface Who { baptismal_name: string; handle?: string | null }
 
-export default function AdminTesters({ onClose, sendPush }: {
+export default function AdminTesters({ onClose, sendPush, onPreviewRestart }: {
   onClose: () => void;
   sendPush: (type: 'tester_added', id: string) => void;
+  onPreviewRestart?: () => void; // 테스트 다시 14일 안내 창 미리 보기 (components/TesterRestartNotice)
 }) {
   const [list, setList] = useState<Signup[] | null>(null);
   const [who, setWho] = useState<Record<string, Who>>({});
@@ -100,6 +101,25 @@ export default function AdminTesters({ onClose, sendPush }: {
       setRemindResult({ people: (out.targets ?? notInstalled.length) - out.missed.length, missed: out.missed });
     } finally { setReminding(false); }
   };
+  // 테스트 다시 14일(2026-11-14): 구글 '등록함' 테스터 모두에게 알림 — 자세한 안내는 앱을 열면 어느 앱인지에 따라 다르게 뜸
+  const [restarting, setRestarting] = useState(false);
+  const [restartResult, setRestartResult] = useState<{ people: number; missed: string[] } | null>(null);
+  const restart = async () => {
+    if (restarting || added.length === 0) return;
+    if (!(await askConfirm(`구글에 등록한 ${added.length}명에게 '테스트가 14일 더 이어져요' 알림을 보낼까요?\n알림을 누르면 앱이 열리고, Play 테스트 앱인지 예전 아이콘인지에 따라 맞는 안내가 떠요. 잘 깔아 둔 분께는 '이 앱은 지우지 마세요'만 보여요.`))) return;
+    setRestarting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch('/api/push/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ type: 'tester_restart', id: 'all' }),
+      });
+      const out = await res.json().catch(() => ({})) as { targets?: number; missed?: string[] };
+      if (!res.ok || !out.missed) { alert('보내지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+      setRestartResult({ people: (out.targets ?? added.length) - out.missed.length, missed: out.missed });
+    } finally { setRestarting(false); }
+  };
   const when = (iso: string) => { const d = new Date(iso); return `${md(iso)} ${d.getHours() < 12 ? '오전' : '오후'} ${d.getHours() % 12 || 12}:${String(d.getMinutes()).padStart(2, '0')}`; };
 
   const remove = async (s: Signup) => {
@@ -166,6 +186,26 @@ export default function AdminTesters({ onClose, sendPush }: {
                           )}
                         </div>
                       )}
+                      <div className="mt-3 pt-3 border-t border-stone-100">
+                        <p className="text-sm font-bold text-stone-800">🔁 테스트 14일 더 (11월 29일까지)</p>
+                        <p className="mt-0.5 text-xs text-stone-500 leading-relaxed">테스터가 앱을 열면 안내 창이 저절로 떠요. Play 테스트 앱으로 연 분께는 &lsquo;이 앱은 지우지 마세요&rsquo;, 예전 아이콘·인터넷 창으로 연 분께는 &lsquo;Play 테스트 앱 열기&rsquo;, 설치 전인 분께는 설치 방법만 보여요.</p>
+                        <div className="mt-2 flex gap-2">
+                          {onPreviewRestart && <button onClick={onPreviewRestart} className="flex-1 py-2.5 rounded-xl border border-emerald-300 bg-white text-emerald-900 text-sm font-bold">안내 창 미리 보기</button>}
+                          {!restartResult && (
+                            <button onClick={restart} disabled={restarting || added.length === 0} className="flex-1 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:bg-stone-300">
+                              {restarting ? '보내는 중…' : `📣 ${added.length}명에게 알림`}
+                            </button>
+                          )}
+                        </div>
+                        {restartResult && (
+                          <div className="mt-2 rounded-xl bg-emerald-50 border border-emerald-200 p-2.5 text-xs text-emerald-900 leading-relaxed">
+                            <p className="font-bold">✅ {restartResult.people}명에게 알림을 보냈어요</p>
+                            {restartResult.missed.length > 0 && (
+                              <p className="mt-1 text-stone-700">알림을 꺼 두어 못 받은 분 {restartResult.missed.length}명: <b>{restartResult.missed.map(id => who[id]?.baptismal_name || '교우').join(', ')}</b><br />카카오톡으로 &lsquo;가톨릭그램 앱을 한 번 열어 안내를 봐 주세요&rsquo;라고 알려 주세요.</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
                       {lastRemindAt && !remindResult && <p className="mt-1 text-[0.6875rem] text-stone-400 text-center">이 휴대폰에서 마지막으로 보낸 때: {when(lastRemindAt)}</p>}
                     </>
                   )}
