@@ -126,7 +126,7 @@ import { PERSONAL_NOTICES, myPersonalNotices, personalHiddenKey } from '@/lib/pe
 import { PersonalNoticePopup } from '@/components/PersonalNotice';
 import { TesterRestartPopup, testerRestartVariant, testerRestartHiddenKey, TESTER_RESTART_UNTIL } from '@/components/TesterRestartNotice';
 import { TesterAttendancePopup } from '@/components/TesterAttendance';
-import { ATTEND_DAYS, attendDayNo, attendDates, attendSeenKey, attendHiddenKey, kstToday } from '@/lib/tester-attendance';
+import { ATTEND_DAYS, attendDayNo, attendDates, attendSeenKey, kstToday } from '@/lib/tester-attendance';
 import { LetterReplyPopup, letterReplyKey, type LetterReply } from '@/components/LetterReplyPopup';
 import { charCount, clipText, showHeart } from '@/lib/clip-text';
 
@@ -476,6 +476,8 @@ export default function Home() {
   const [attendDays, setAttendDays] = useState<string[] | null>(null);
   const [attendClosed, setAttendClosed] = useState(false);
   const [attendPreview, setAttendPreview] = useState(false);
+  const [attendOpen, setAttendOpen] = useState(false); // 머리줄 출석 단추로 직접 연 창
+  const [attendToday, setAttendToday] = useState(() => kstToday()); // 자정이 지나면 바뀜 → 다시 받아 오늘 창을 띄움
   const [needsProfileSetup, setNeedsProfileSetup] = useState(false);
   // 프로필을 아직 안 만들고 '둘러보기만' 하는 중 (글·댓글 등은 못 함)
   const [setupDismissed, setSetupDismissed] = useState(false);
@@ -3244,12 +3246,19 @@ export default function Home() {
       setTesterInstalled(withInstall.error || !data ? null : !!(data as { play_first_at?: string | null }).play_first_at);
     })();
   }, [user]);
-  // 출석 도장: 구글 '등록함' 안드로이드 테스터, 14일 동안, 오늘 아직 안 봤고 '다시 보지 않기' 안 했으면 — 접속 기록이 먼저 적히게 조금 기다렸다 받음
+  // 출석 도장: 구글 '등록함' 안드로이드 테스터, 14일 동안 — 출석일을 늘 받아 두고(머리줄 출석 단추가 오늘 도장을 보여 줌),
+  // 그날 처음이면 창을 저절로 띄움. 자정이 지나면(앱을 켜 둔 채·다시 열 때) 새 날 창이 또 뜸 (운영자 2026-11-14: '자정이 지나면 언제든 들어오면 팝업')
+  // 접속 기록이 먼저 적히게 조금 기다렸다 받음
+  const isAttendTester = !!user && isAndroid && testerStatus === 'added' && attendDayNo(attendToday) >= 1 && attendDayNo(attendToday) <= ATTEND_DAYS;
   useEffect(() => {
-    if (!user || !isAndroid || testerStatus !== 'added') return;
-    const no = attendDayNo();
-    if (no < 1 || no > ATTEND_DAYS) return;
-    if (storageGet(attendHiddenKey(user.id)) === '1' || storageGet(attendSeenKey(user.id, kstToday())) === '1') return;
+    const check = () => { const d = kstToday(); setAttendToday(prev => (prev === d ? prev : d)); };
+    const t = setInterval(check, 60e3);
+    document.addEventListener('visibilitychange', check);
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', check); };
+  }, []);
+  useEffect(() => { setAttendClosed(false); }, [attendToday]);
+  useEffect(() => {
+    if (!isAttendTester) return;
     let off = false;
     const timer = setTimeout(async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -3257,9 +3266,11 @@ export default function Home() {
       const res = await fetch('/api/tester/attendance', { headers: { Authorization: `Bearer ${session.access_token}` } }).catch(() => null);
       const out = res && res.ok ? await res.json().catch(() => null) as { days?: string[] } | null : null;
       if (!off && out?.days) setAttendDays(out.days);
-    }, 3500);
+    }, attendOpen ? 0 : 3500);
     return () => { off = true; clearTimeout(timer); };
-  }, [user, isAndroid, testerStatus]);
+  }, [isAttendTester, attendToday, attendOpen]);
+  const attendSeenToday = !!user && storageGet(attendSeenKey(user.id, attendToday)) === '1';
+  const attendStampedToday = myAppKind === 'play' || !!attendDays?.includes(attendToday);
   // 앱이 둘인 테스터: 지금 보는 앱이 Play 테스트 앱인지 예전 앱(홈 화면에 추가한 앱)인지 맨 위·홈 첫머리에 표시 (components/AppKindNotice)
   useEffect(() => {
     const kind = appKind();
@@ -4399,9 +4410,9 @@ export default function Home() {
   // 테스트 다시 14일 안내: 구글 '등록함' 안드로이드 테스터에게만, 11월 29일까지, 홈에서 (개인 안내·업데이트 소식보다 먼저)
   const showTesterRestart = testerRestartPreview || (!!user && updateNotesReady && isAndroid && testerStatus === 'added' && Date.now() < TESTER_RESTART_UNTIL
     && !testerRestartHidden && !testerRestartClosed && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply);
-  const showTesterAttend = attendPreview || (!!user && !!attendDays && !attendClosed && updateNotesReady && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart);
-  const closeTesterAttend = () => { if (attendPreview) { setAttendPreview(false); return; } if (user) storageSet(attendSeenKey(user.id, kstToday()), '1'); setAttendClosed(true); };
-  const hideTesterAttend = () => { if (user) { storageSet(attendHiddenKey(user.id), '1'); storageSet(attendSeenKey(user.id, kstToday()), '1'); } setAttendClosed(true); };
+  const showTesterAttend = attendPreview || (isAttendTester && !!attendDays && attendOpen)
+    || (isAttendTester && !!attendDays && !attendSeenToday && !attendClosed && updateNotesReady && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart);
+  const closeTesterAttend = () => { if (attendPreview) { setAttendPreview(false); return; } if (user) storageSet(attendSeenKey(user.id, kstToday()), '1'); setAttendClosed(true); setAttendOpen(false); };
   const closeTesterRestart = () => { if (testerRestartPreview) setTesterRestartPreview(false); else setTesterRestartClosed(true); };
   const hideTesterRestart = () => { if (user) storageSet(testerRestartHiddenKey(user.id), '1'); setTesterRestartHidden(true); };
   const showPersonal = personalPreview || (personalToShow.length > 0 && activeTab === 'home' && !popupBlocked && !needsProfileSetup && !shownGift && !showPopupNotice && !showLetterReply && !showTesterRestart && !showTesterAttend);
@@ -4919,7 +4930,7 @@ export default function Home() {
             </button>
           </div>
         )) : (
-          <div className="w-full grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+          <div className={`w-full grid ${isAttendTester ? 'grid-cols-[auto_minmax(0,1fr)_auto] gap-1' : 'grid-cols-[1fr_auto_1fr] gap-2'} items-center`}>
             {/* 인스타그램처럼: 왼쪽 + · 가운데 이름 ▾ · 오른쪽 ♡ */}
             <div className="flex items-center">
               <button onClick={openComposer} className="w-10 h-10 -ml-1.5 flex items-center justify-center text-stone-900" aria-label="새 글 만들기">
@@ -4950,7 +4961,7 @@ export default function Home() {
             </div>
             <div className="flex justify-end min-w-0">
               {user ? (
-                <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`flex items-center ${isAttendTester ? 'gap-2' : 'gap-2.5'} min-w-0`}>
                   {/* 사연 보내기 (관리자에게만) — 관리자는 사연함 */}
                   <button onClick={() => { setLettersStart('write'); setShowLetters(true); }} className={`relative ${showLetters ? 'text-rose-600' : 'text-stone-800'} hover:text-stone-900`} aria-label={isAdmin ? '사연함' : '사연 보내기'}>
                     <Icon name="loveLetter" className="w-[1.625rem] h-[1.625rem]" />
@@ -4958,6 +4969,16 @@ export default function Home() {
                       <span className="absolute -top-1.5 -right-1.5 min-w-[16px] h-4 px-1 bg-red-500 text-white text-[0.6875rem] font-bold rounded-full flex items-center justify-center">{letterNewCount > 9 ? '9+' : letterNewCount}</span>
                     )}
                   </button>
+                  {/* 테스터 출석 체크 (구글 등록 안드로이드 테스터, 14일 동안) — 누르면 출석 도장 창, 오늘 도장이면 초록 ✓·아직이면 빨간 점 */}
+                  {isAttendTester && (
+                    <button onClick={() => setAttendOpen(true)} className={`relative ${showTesterAttend ? 'text-blue-700' : 'text-stone-800'} hover:text-stone-900`}
+                      aria-label={attendStampedToday ? '출석 체크 · 오늘 출석했어요' : '출석 체크 · 오늘 아직 안 했어요'}>
+                      <Icon name="calendar" className="w-6 h-6" />
+                      {attendDays && (attendStampedToday
+                        ? <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-emerald-600 text-white text-[0.625rem] font-bold rounded-full flex items-center justify-center" aria-hidden="true">✓</span>
+                        : <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full ring-2 ring-white" aria-hidden="true" />)}
+                    </button>
+                  )}
                   {/* 고민상담 (익명 게시판) — 새 글 수 */}
                   <button onClick={() => setShowAnon(true)} className={`relative ${showAnon ? 'text-violet-700' : 'text-stone-800'} hover:text-stone-900`} aria-label={anonUnread > 0 ? `고민상담 새 글 ${anonUnread}개` : '고민상담'}>
                     <Icon name="dove" className="w-6 h-6" />
@@ -6811,7 +6832,7 @@ export default function Home() {
       {/* 테스터 14일 출석 도장 (components/TesterAttendance): Play 테스트 앱으로 연 날에만 도장 */}
       {showTesterAttend && (
         <TesterAttendancePopup days={attendPreview ? attendDates().slice(0, Math.max(0, Math.min(ATTEND_DAYS, attendDayNo()) - 1)) : (attendDays || [])} today={kstToday()}
-          isPlay={attendPreview || myAppKind === 'play'} preview={attendPreview} onClose={closeTesterAttend} onHide={attendPreview ? undefined : hideTesterAttend} />
+          isPlay={attendPreview || myAppKind === 'play'} preview={attendPreview} onClose={closeTesterAttend} />
       )}
       {/* 테스트 다시 14일 안내 (components/TesterRestartNotice): 어느 앱으로 열었는지에 따라 다른 말 */}
       {showTesterRestart && (
