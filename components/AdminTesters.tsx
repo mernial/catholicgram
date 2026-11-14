@@ -461,6 +461,7 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPr
                         const tone = seenDays <= 1 ? 'bg-emerald-50 text-emerald-900 border-emerald-200' : seenDays <= 3 ? 'bg-amber-50 text-amber-900 border-amber-200' : 'bg-red-50 text-red-800 border-red-200';
                         return (
                           <div className={`mt-1.5 rounded-lg border px-2 py-1.5 text-[0.75rem] leading-relaxed ${tone}`}>
+                            <p className="text-[0.6875rem] font-bold opacity-70">가톨릭그램 접속 기록 <span className="font-normal">(인터넷 창·예전 아이콘 포함)</span></p>
                             <p className="font-bold">
                               {a.lastSeen ? `마지막 접속 ${agoLabel(a.lastSeen)}` : '이 기간에 들어온 적 없음'} · 들어온 날 {a.days}일
                               {act.kindTracked && <> (Play 앱 {a.playDays ?? 0}일)</>}
