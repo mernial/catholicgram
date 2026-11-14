@@ -9,7 +9,7 @@ import { askConfirm } from '@/components/ConfirmDialog';
 import { AttendDots } from '@/components/TesterAttendance';
 import { ATTEND_DAYS, attendDayNo, attendStreak, kstToday } from '@/lib/tester-attendance';
 
-// 관리자 전용: 안드로이드 테스터 신청 목록 → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
+// 관리자 전용: 안드로이드 테스터 신청 목록(최근 신청이 맨 위) → 이메일을 복사해 Play Console 테스터 목록에 붙여넣고, '등록함'으로 표시하면 신청자에게 알림
 // play_first_at·play_opened_at: 그 교우가 Play 테스트 앱을 처음·마지막으로 연 때 (supabase/tester-installs.sql)
 // 테스트 다시 14일이 시작된 날(구글 검토일 2026-11-14) — 이날부터 하루하루 들어왔는지 봄
 const ACTIVITY_SINCE = '2026-11-14T00:00:00+09:00';
@@ -40,10 +40,10 @@ export default function AdminTesters({ onClose, sendPush, onPreviewRestart, onPr
   useEffect(() => { try { setLastRemindAt(localStorage.getItem('testerRemindAt')); } catch { /* 기억 못 함 */ } }, []);
 
   const fetchList = async () => {
-    const first = await supabase.from('tester_signups').select('user_id, google_email, status, created_at, play_first_at, play_opened_at').order('created_at', { ascending: true });
+    const first = await supabase.from('tester_signups').select('user_id, google_email, status, created_at, play_first_at, play_opened_at').order('created_at', { ascending: false });
     // 설치 확인 칸이 아직 없으면(tester-installs.sql 실행 전) 예전처럼
     const { data, error } = first.error
-      ? await supabase.from('tester_signups').select('user_id, google_email, status, created_at').order('created_at', { ascending: true })
+      ? await supabase.from('tester_signups').select('user_id, google_email, status, created_at').order('created_at', { ascending: false })
       : first;
     setInstallSetupNeeded(!!first.error);
     if (error) return { setupNeeded: true, list: [] as Signup[], who: {} };
