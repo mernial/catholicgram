@@ -432,7 +432,8 @@ function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum, spinSm
   const special = ti >= 5;                                    // 큰 나무·생명의 나무: 판이 반짝임
   // 메달 칸 (1등이면 월계관 안쪽으로 줄여 넣음). 단위는 바깥 칸의 %
   const m = champion ? { l: 22.21, t: 22.35, w: 55.59 } : { l: -4, t: -4, w: 108 };
-  const ew = num ? 40.05 : 46.4, ecy = num ? 45.23 : 50;
+  // 관리자 방패는 판을 거의 채우게 크게 (운영자 2026-11-14: 체크가 눈에 잘 띄게)
+  const ew = emb === 'admin' ? 66 : num ? 40.05 : 46.4, ecy = emb === 'admin' ? 50 : num ? 45.23 : 50;
   const stars = champion ? CHAMP_STARS : special ? TIER_STARS.map(([x, y, s, ph]) => [m.l + x * m.w / 100, m.t + y * m.w / 100, s * 1.5, ph] as [number, number, number, number]) : [];
   return (
     <span role="img" aria-label={label} className="shrink-0" style={{ position: 'relative', display: 'inline-block', verticalAlign: 'middle', width: px, height: px }}>
