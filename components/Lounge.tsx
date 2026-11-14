@@ -21,7 +21,7 @@ import StickerPanel, { StickerAbove, StickerButton, StickerImage, StickerWithTex
 import { chatPreview, chatStickerParts, chatText, hasStickerSuggestion, joinChatSticker, parseSticker, stickerText, type Sticker } from '@/lib/stickers';
 import { useChatMedia, ChatMediaView, MEDIA_SETUP_HINT, isMissingColumn, QuoteThumb, quoteLabel } from '@/components/ChatMedia';
 import { renderCapture, visibleIds, CaptureChoice, CaptureBar, CapturePreview, type CaptureItem } from '@/components/ChatCapture';
-import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator } from '@/components/ChatSheets';
+import { SelectCopySheet, BookmarkSheet, JumpToLatest, TypingIndicator, BackToReply } from '@/components/ChatSheets';
 import { useTyping } from '@/lib/typing';
 import { copyText, toast, useBookmarks, useHiddenMessages } from '@/lib/chat-actions';
 import { isMediaOnlyText, isVideoUrl } from '@/lib/upload';
@@ -562,9 +562,11 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
     }
   };
   const startReply = (m: LoungeMessage) => { setMenuMsg(null); setReplyTo(m); setTimeout(() => inputRef.current?.focus(), 50); };
-  const jumpTo = (id: string) => {
+  const [returnTo, setReturnTo] = useState<string | null>(null); // 답장을 눌러 옮겨 왔으면 그 답장 자리 (아래 '답장으로 돌아가기')
+  const jumpTo = (id: string, from?: string) => {
     const el = document.getElementById(`lounge-${id}`);
     if (!el) { alert('지금 화면에 없는 대화예요.'); return; }
+    setReturnTo(from ?? null);
     atBottomRef.current = false;
     el.scrollIntoView({ block: 'center', behavior: 'smooth' });
     setHighlightId(id);
@@ -575,7 +577,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
   const gestures = usePressGestures<LoungeMessage>({
     keyOf: m => m.id,
     // 한 번 누르기: 답장 말풍선이면 원래 대화로 (메뉴는 꾹 누를 때만 — 루비로사 건의)
-    onTap: m => { if (m.reply_to && document.getElementById(`lounge-${m.reply_to}`)) jumpTo(m.reply_to); },
+    onTap: m => { if (m.reply_to && document.getElementById(`lounge-${m.reply_to}`)) jumpTo(m.reply_to, m.id); },
     onDoubleTap: m => { if (canWriteRef.current) react(m, '❤️'); }, // 몰래 보는 관리자도 감정 표시는 할 수 있게 (들어왔다는 안내는 그대로 없음)
     onLongPress: (m, el) => openMenu(m, el),
     onSwipe: m => { if (canWriteRef.current) startReply(m); },
@@ -865,7 +867,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
                         className={`relative text-left px-3.5 py-2 rounded-2xl text-[1rem] leading-relaxed whitespace-pre-wrap break-words select-none [-webkit-touch-callout:none] [touch-action:pan-y] cursor-pointer ${search.currentId === m.id ? 'ring-4 ring-yellow-300' : ''} ${announceMsg ? 'bg-sky-50 border-2 border-sky-300 text-stone-900 font-bold' : sticker || withSticker ? `!px-0 !py-0 bg-transparent flex flex-col ${mine ? 'items-end' : 'items-start'}` : tone}`}>
                         {/* 답장: 원래 글 한 줄 + ↵ (누르면 그 글로) */}
                         {m.reply_to && (
-                          <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!); }}
+                          <button type="button" onClick={e => { e.stopPropagation(); jumpTo(m.reply_to!, m.id); }}
                             aria-label={`${quoted ? authorName(quoted.user_id) : '이전 대화'}에게 답장 · 눌러서 원래 글 보기`}
                             className={`flex max-w-full items-center gap-1 text-left font-normal mb-0.5 text-[0.8125rem] leading-snug ${mine && !announceMsg && !sticker && !withSticker ? 'text-white/70' : 'text-stone-400'}`}>
                             {quoted && !blockedIds.has(quoted.user_id) && <QuoteThumb m={quoted} />}
@@ -902,6 +904,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
       )}
 
       {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' (새 대화 수와 함께) */}
+      {!trash && returnTo && !stickerPick.open && !stickerPick.picked && <BackToReply onBack={() => { const r = returnTo; setReturnTo(null); if (document.getElementById(`lounge-${r}`)) jumpTo(r); }} onClose={() => setReturnTo(null)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
       {!trash && !stickerPick.open && !stickerPick.picked && !hasStickerSuggestion(input) && <JumpToLatest listRef={listRef} newCount={newBelow} onJump={() => scrollToBottom(true)} className="bottom-[calc(8rem+env(safe-area-inset-bottom))]" />}
 
       {!trash && <TypingIndicator typers={typing.typers.filter(t => !blockedIds.has(t.id))} lookup={id => (authors[id] ? { name: authors[id].baptismal_name, avatar: authors[id].avatar_url ?? null } : undefined)} />}

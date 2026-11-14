@@ -11,7 +11,7 @@ export async function POST(request: Request) {
   if (!supabaseUrl || !serviceRoleKey) return Response.json({ skipped: true });
   const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
-  const body = (await request.json().catch(() => ({}))) as { action?: string; id?: string; deviceId?: string; standalone?: boolean };
+  const body = (await request.json().catch(() => ({}))) as { action?: string; id?: string; deviceId?: string; standalone?: boolean; appKind?: string };
   if (body.action === 'ping') {
     if (!body.id || !UUID.test(body.id)) return Response.json({ error: 'bad request' }, { status: 400 });
     await admin.from('app_sessions').update({ last_seen_at: new Date().toISOString() })
@@ -38,8 +38,13 @@ export async function POST(request: Request) {
   if ((lastMinute || 0) > 300) return Response.json({ skipped: 'busy' });
   // 접속 기록은 1년까지만 둔다 (가끔 한 번씩 정리)
   if (Math.random() < 0.02) await admin.from('app_sessions').delete().lt('started_at', new Date(Date.now() - 365 * 24 * 3600 * 1000).toISOString());
-  const { data, error } = await admin.from('app_sessions')
-    .insert({ user_id: userId, device_id: deviceId, standalone: !!body.standalone }).select('id').single();
-  if (error) return Response.json({ skipped: error.message });
+  const row: Record<string, unknown> = { user_id: userId, device_id: deviceId, standalone: !!body.standalone };
+  if (body.appKind === 'play' || body.appKind === 'home' || body.appKind === 'browser') row.app_kind = body.appKind; // supabase/app-sessions-kind.sql
+  let { data, error } = await admin.from('app_sessions').insert(row).select('id').single();
+  if (error && row.app_kind && /app_kind/.test(error.message)) { // 칸 만들기 전이면 빼고 다시
+    delete row.app_kind;
+    ({ data, error } = await admin.from('app_sessions').insert(row).select('id').single());
+  }
+  if (error || !data) return Response.json({ skipped: error?.message || 'no row' });
   return Response.json({ id: data.id });
 }
