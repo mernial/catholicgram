@@ -6519,6 +6519,7 @@ export default function Home() {
                     value={intentionTitleInput}
                     onChange={e => setIntentionTitleInput(clipText(e.target.value, 30))}
                     placeholder="예: 어머니의 쾌유를 위하여"
+                    autoComplete="off"
                     className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{charCount(intentionTitleInput)}/30</span>
@@ -6529,6 +6530,7 @@ export default function Home() {
                   onChange={e => setIntentionInput(clipText(e.target.value, 100))}
                   rows={3}
                   placeholder="예: 다음 주 수술을 앞둔 어머니께서 두려움 없이 잘 회복하시도록 함께 기도해주세요."
+                  autoComplete="off"
                   className="w-full p-3 text-sm rounded-xl text-stone-900 bg-white resize-none focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                 />
                 <div className="flex items-center justify-between">
