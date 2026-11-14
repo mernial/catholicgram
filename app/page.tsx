@@ -9,7 +9,8 @@ import { frameRatio, photoFit, naturalRatio } from '@/lib/photo-frame';
 import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import { roleOf } from '@/components/BadgeIcon';
-import { BadgeShelf, BadgeRow, BadgeGrantSheet, BadgeLeaderboard, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
+import { BadgeShelf, BadgeRow, BadgeGrantSheet, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
+import BadgeCollection from '@/components/BadgeCollection';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
 import GroupChat from '@/components/GroupChat';
@@ -694,7 +695,6 @@ export default function Home() {
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [user?.id, askBadgeRefresh]);
-  useBackLayer(showBadgeBoard, () => setShowBadgeBoard(false));
   // 스토리 만들기(작은 창들) 위에서 연 음악 고르기: 뒤로가기는 음악 고르기만
   useBackLayer(showMusicPicker && musicPickerFor === 'story', () => { setShowMusicPicker(false); setMusicPickerFor('composer'); storyMusicCbRef.current = null; });
   const [stickerGiftFor, setStickerGiftFor] = useState<{ id: string; name: string; handle?: string | null } | null>(null); // 관리자: 이모티콘 선물 창
@@ -6453,7 +6453,7 @@ export default function Home() {
       )}
       {/* 관리자: 교우 뱃지 달기 (components/MemberBadges) */}
       {badgeListFor && <BadgeListDialog userId={badgeListFor.id} name={badgeListFor.name} highlight={badgeListFor.highlight} onClose={() => setBadgeListFor(null)} />}
-      {showBadgeBoard && isAdmin && <BadgeLeaderboard onClose={() => setShowBadgeBoard(false)} onOpenProfile={id => openProfileCard({ id })} />}
+      {showBadgeBoard && isAdmin && user && <BadgeCollection userId={user.id} initialTab="champ" onClose={() => setShowBadgeBoard(false)} onOpenProfile={id => openProfileCard({ id })} />}
       {badgeGrantFor && isAdmin && <BadgeGrantSheet user={badgeGrantFor} onClose={() => setBadgeGrantFor(null)} onGranted={id => sendPush('badge', id)} />}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
       {memberMusicGift && isAdmin && (
