@@ -243,7 +243,7 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
           {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보여요. 바꾸려면 &lsquo;대표로&rsquo;를 누르세요.</p>}
-          {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
+          {clergy && item(`role:${clergy}`, (clergy === 'admin' ? <span className="inline-flex" style={{ margin: '-18px -14px -12px' }}><RoleIcon type="admin" size={80} /></span> : <RoleIcon type={clergy} size={48} />), `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
           {!hidden && shownBadges(rows.map(r => r.badge_key)).map(sb => {
             const r = rows.find(x => x.badge_key === sb.key)!; const def = badgeOf(sb.key)!;
             const title = def.tier ? `${def.label} · ${TIERS[def.tier - 1].name}${sb.champion ? ` · 1등 (${sb.label})` : ''}` : def.label;
