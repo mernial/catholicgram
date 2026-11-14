@@ -15,7 +15,6 @@ import { toast } from '@/lib/chat-actions';
 import { useBadgeMap } from '@/lib/badge-map';
 import { RoleIcon, roleOf } from '@/components/BadgeIcon';
 import { BADGES } from '@/components/RoleBadge';
-import BadgeCollection from '@/components/BadgeCollection';
 
 // --- 교우 뱃지 (관리자가 일반 신자에게 달아 주는 뱃지) ---
 // 표 member_badges (supabase/member-badges.sql). 공간 머리에 '뱃지 선반'(BadgeShelf), 프로필 카드에 작은 줄(BadgeRow),
@@ -318,8 +317,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
           <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
         </span>
       </>)}
-      {list && mine && <BadgeCollection userId={userId} onClose={() => setList(false)} />}
-      {list && !mine && <BadgeListDialog userId={userId} mine={mine} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
+      {list && <BadgeListDialog userId={userId} mine={mine} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
       {/* 내 공간 머리 칸은 isolate(성당 그림) → 그 안에 그리면 창이 그 칸에 갇혀 아래 가톨릭 앱·아래 탭이 창 위로 올라왔음(루비로사 2026-11-11) → body 에 */}
       {open && createPortal(<BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />, document.body)}
       {book && createPortal(<StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />, document.body)}
