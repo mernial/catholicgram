@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { ATTEND_START, attendDates, kstDayOf } from '@/lib/tester-attendance';
+import { ATTEND_DAYS, ATTEND_START, attendDates, kstDayOf } from '@/lib/tester-attendance';
+import { sendPushTargets } from '@/lib/push-send';
 
 // 테스터 본인의 출석 도장: 14일 동안 Play 테스트 앱으로 들어온 한국 날짜들
 // GET (Authorization: Bearer 로그인 토큰) → { tracked, days: ['2026-11-14', …] }
@@ -25,5 +26,21 @@ export async function GET(request: Request) {
   const { data: signup } = await admin.from('tester_signups').select('play_opened_at').eq('user_id', user.id).maybeSingle();
   const lastPlay = (signup as { play_opened_at?: string | null } | null)?.play_opened_at;
   if (lastPlay) days.add(kstDayOf(lastPlay));
-  return Response.json({ tracked, days: [...days].filter(d => valid.has(d)).sort() });
+  const list = [...days].filter(d => valid.has(d)).sort();
+  // 14일 모두 출석했으면 '테스터 명예 훈장'(tester14)을 저절로 — 한 번 받으면 평생 (운영자 2026-11-14)
+  let honor = false, awarded = false;
+  if (list.length >= ATTEND_DAYS) {
+    honor = true;
+    const { data: had } = await admin.from('member_badges').select('id').eq('user_id', user.id).eq('badge_key', 'tester14').limit(1);
+    if (had && had.length === 0) {
+      const row = { user_id: user.id, badge_key: 'tester14', note: '14일 출석 완주 · 초창기 테스터', auto: false, permanent: true };
+      let { error: insErr } = await admin.from('member_badges').insert(row);
+      if (insErr && (insErr.code === '42703' || insErr.code === 'PGRST204')) ({ error: insErr } = await admin.from('member_badges').insert({ user_id: user.id, badge_key: 'tester14', note: row.note }));
+      if (!insErr) {
+        awarded = true;
+        await sendPushTargets(admin, [{ recipientId: user.id, payload: { title: "🏅 '테스터 명예 훈장'을 받았어요", body: '가톨릭그램 초창기 테스터로 14일 동안 함께해 주셔서 고맙습니다 🙏', url: `/?profile=${user.id}`, tag: 'badge-tester14' } }]).catch(() => 0);
+      }
+    }
+  }
+  return Response.json({ tracked, days: list, honor, awarded });
 }

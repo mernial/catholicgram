@@ -272,6 +272,27 @@ const EMBLEMS: Record<string, ReactNode> = {
       <path strokeWidth="0" d="M9.5-12l1.3 2.9 3 .4-2.2 2.1.5 3-2.6-1.5-2.6 1.5.5-3-2.2-2.1 3-.4Z" />
     </g>
   ),
+  // 테스터 명예 훈장: 월계관 + 십자가 + 14 (가톨릭그램 초창기 테스터, 14일 출석 완주)
+  tester14: (
+    <g>
+      <g strokeWidth="0" fill="#f3cf6b">
+        <ellipse cx="-6.18" cy="16.30" rx="1.8" ry="3.9" transform="rotate(174.0 -6.18 16.30)" />
+        <ellipse cx="-10.82" cy="13.45" rx="1.8" ry="3.9" transform="rotate(193.0 -10.82 13.45)" />
+        <ellipse cx="-14.29" cy="9.25" rx="1.8" ry="3.9" transform="rotate(212.0 -14.29 9.25)" />
+        <ellipse cx="-16.20" cy="4.15" rx="1.8" ry="3.9" transform="rotate(231.0 -16.20 4.15)" />
+        <ellipse cx="-16.34" cy="-1.30" rx="1.8" ry="3.9" transform="rotate(250.0 -16.34 -1.30)" />
+        <ellipse cx="-14.70" cy="-6.49" rx="1.8" ry="3.9" transform="rotate(269.0 -14.70 -6.49)" />
+        <ellipse cx="6.18" cy="16.30" rx="1.8" ry="3.9" transform="rotate(186.0 6.18 16.30)" />
+        <ellipse cx="10.82" cy="13.45" rx="1.8" ry="3.9" transform="rotate(167.0 10.82 13.45)" />
+        <ellipse cx="14.29" cy="9.25" rx="1.8" ry="3.9" transform="rotate(148.0 14.29 9.25)" />
+        <ellipse cx="16.20" cy="4.15" rx="1.8" ry="3.9" transform="rotate(129.0 16.20 4.15)" />
+        <ellipse cx="16.34" cy="-1.30" rx="1.8" ry="3.9" transform="rotate(110.0 16.34 -1.30)" />
+        <ellipse cx="14.70" cy="-6.49" rx="1.8" ry="3.9" transform="rotate(91.0 14.70 -6.49)" />
+      </g>
+      <path fill="none" stroke="#f3cf6b" strokeWidth="2.4" d="M0-17.5v7.4M-3.3-14.6h6.6" />
+      <text x="0" y="8.6" textAnchor="middle" fontSize="15.5" fontWeight="800" fill="#fff" stroke="#16223f" strokeWidth="1" paintOrder="stroke" fontFamily="inherit">14</text>
+    </g>
+  ),
   // 첫 열매: 새싹
   firstfruit: (
     <g>

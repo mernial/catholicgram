@@ -80,6 +80,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   const [sentBurst, setSentBurst] = useState<{ emoji: string; key: number } | null>(null);
   const [followed, setFollowed] = useState<Set<string>>(new Set());
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const replyTargetRef = useRef<{ id: string; user_id: string } | null>(null); // 답장을 쓰기 시작한 그 스토리 (보내는 곳이 바뀌지 않게)
   const busy = showCreate || !!draft;
   useEffect(() => { onBusyChange?.(busy); }, [busy]);
   const videoJobRef = useRef(0);
@@ -150,8 +151,12 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, [viewerOpen, pos.user, pos.item, current?.id]);
+  // 답장을 쓰는 동안(입력칸에 초점이 있거나 보내지 않은 글이 있으면) 스토리는 늘 멈춤.
+  // 예전엔 답장 칸도 스토리 칸 안이라 손가락을 떼는 순간(onPointerUp) 다시 흘러가, 쓰는 중에 다음 교우로 넘어가 그 교우에게 답장이 갔음 (운영자 2026-11-14)
+  const holdForReply = replyFocus || !!replyText.trim();
+  const pausedNow = paused || holdForReply;
   const pausedRef = useRef(false);
-  pausedRef.current = paused;
+  pausedRef.current = pausedNow;
   // 음악 스토리: 그 스토리를 보는 동안 음악 (멈추면 같이 멈춤)
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const musicKey = viewerOpen && current?.music && !current.video_url ? `${current.id}` : '';
@@ -166,16 +171,23 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     if (!pausedRef.current) a.play().catch(() => {});
     return () => { a.pause(); a.src = ''; if (audioRef.current === a) audioRef.current = null; };
   }, [musicKey]);
-  useEffect(() => { const a = audioRef.current; if (!a) return; if (paused) a.pause(); else a.play().catch(() => {}); }, [paused]);
+  useEffect(() => { const a = audioRef.current; if (!a) return; if (pausedNow) a.pause(); else a.play().catch(() => {}); }, [pausedNow]);
+  // 다른 스토리로 넘어가거나 창을 닫으면 쓰던 답장은 버림 (다른 교우에게 잘못 가지 않게)
+  const replyKey = `${viewerOpen ? 1 : 0}:${current?.id || ''}`;
+  const [replyKeySeen, setReplyKeySeen] = useState(replyKey);
+  if (replyKeySeen !== replyKey) { setReplyKeySeen(replyKey); setReplyText(''); }
+  useEffect(() => { replyTargetRef.current = null; }, [replyKey]);
   // 메시지 보내기 · 감정 보내기 (상대에게 1:1 메시지로)
   const sendReply = async (text: string, emoji?: boolean) => {
     if (!current) return;
     if (!me) { onNeedLogin(); return; }
     const t = text.trim();
     if (!t || !onReply) return;
-    const ok = await onReply({ id: current.id, user_id: current.user_id }, t);
+    const target = replyTargetRef.current && !emoji ? replyTargetRef.current : { id: current.id, user_id: current.user_id };
+    const ok = await onReply(target, t);
     if (!ok) return;
     setReplyText('');
+    replyTargetRef.current = null;
     replyRef.current?.blur();
     setSentBurst({ emoji: emoji ? t : '✓', key: Date.now() });
     setTimeout(() => setSentBurst(b => (b && Date.now() - b.key >= 1300 ? null : b)), 1400);
@@ -183,8 +195,8 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   useEffect(() => {
     const v = storyVideoRef.current;
     if (!v || !current?.video_url) return;
-    if (paused) v.pause(); else v.play().catch(() => {});
-  }, [paused, current?.id]);
+    if (pausedNow) v.pause(); else v.play().catch(() => {});
+  }, [pausedNow, current?.id]);
   // 영상 스토리: 소리와 함께 틀어 보고, 휴대폰이 막으면 소리 없이 (왼쪽 위 단추로 소리 켜기)
   const startVideo = (v: HTMLVideoElement | null) => {
     if (!v) return;
@@ -471,7 +483,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
                     <div className="flex items-center gap-1" onPointerDown={e => e.stopPropagation()}>
                       <div className="flex-1 min-w-0 flex items-center gap-1 rounded-full border border-white/60 bg-black/20 pl-4 pr-1.5 min-h-12">
                         <textarea ref={replyRef} rows={1} value={replyText} onChange={e => setReplyText(e.target.value.slice(0, 500))}
-                          onFocus={() => { setReplyFocus(true); setPaused(true); }} onBlur={() => { setReplyFocus(false); setPaused(false); }}
+                          onFocus={() => { setReplyFocus(true); setPaused(true); if (!replyTargetRef.current && current) replyTargetRef.current = { id: current.id, user_id: current.user_id }; }} onBlur={() => { setReplyFocus(false); setPaused(false); }}
                           onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && window.matchMedia('(hover: hover) and (pointer: fine)').matches) { e.preventDefault(); sendReply(replyText); } }}
                           enterKeyHint="send" placeholder={`${a?.baptismal_name || '교우'}님에게 메시지 보내기`}
                           className="flex-1 min-w-0 bg-transparent text-white placeholder-white/80 text-[0.9375rem] leading-6 py-2.5 resize-none [field-sizing:content] max-h-24 focus:outline-none" />

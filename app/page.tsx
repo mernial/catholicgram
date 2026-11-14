@@ -3275,8 +3275,10 @@ export default function Home() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
       const res = await fetch('/api/tester/attendance', { headers: { Authorization: `Bearer ${session.access_token}` } }).catch(() => null);
-      const out = res && res.ok ? await res.json().catch(() => null) as { days?: string[] } | null : null;
+      const out = res && res.ok ? await res.json().catch(() => null) as { days?: string[]; awarded?: boolean } | null : null;
       if (!off && out?.days) setAttendDays(out.days);
+      // 14일 완주로 방금 '테스터 명예 훈장'이 달렸으면 이름 옆 뱃지를 다시 읽고, 그날 본 출석 창이어도 완주 창을 한 번 더
+      if (!off && out?.awarded) { window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: '*' })); setAttendOpen(true); }
     }, attendOpen ? 0 : 3500);
     return () => { off = true; clearTimeout(timer); };
   }, [isAttendTester, attendToday, attendOpen]);

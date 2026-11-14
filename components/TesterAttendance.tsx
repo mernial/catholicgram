@@ -5,6 +5,7 @@
 // 예전 아이콘·인터넷 창으로 열었으면 도장 대신 'Play 테스트 앱 열어서 도장 찍기' (지우라는 말은 하지 않음)
 import { attendDates, attendDayNo, attendStreak, shortDate, ATTEND_DAYS } from '@/lib/tester-attendance';
 import { playAppIntent } from '@/components/AppKindNotice';
+import { BadgeIcon } from '@/components/BadgeIcon';
 
 function Seal({ day, big }: { day: string; big?: boolean }) {
   return (
@@ -76,7 +77,11 @@ export function TesterAttendancePopup({ days: dayList, today, isPlay, preview, o
           <div className="mt-2.5 mb-3 mx-1 h-2 rounded-full bg-stone-200 overflow-hidden"><i className="block h-full rounded-full bg-blue-600" style={{ width: `${(n / ATTEND_DAYS) * 100}%` }} /></div>
           <StampGrid days={days} today={today} />
           {done ? (
-            <p className="mt-3 p-3 rounded-2xl bg-blue-50 border border-blue-100 text-[0.875rem] text-stone-700 leading-relaxed">덕분에 가톨릭그램이 정식 출시에 한 걸음 더 다가갔어요. 14일 동안 함께해 주셔서 정말 고맙습니다 🙏</p>
+            <div className="mt-3 p-4 rounded-2xl bg-gradient-to-b from-amber-50 to-white border border-amber-200 text-center">
+              <div className="flex justify-center"><BadgeIcon badge="tester14" size={92} /></div>
+              <p className="mt-2 text-[1.0625rem] font-bold text-stone-900">테스터 명예 훈장을 받으셨어요 🎉</p>
+              <p className="mt-1 text-[0.875rem] text-stone-600 leading-relaxed">가톨릭그램 초창기 테스터로 활약하며 정식 출시를 함께 열어 주셨어요. 훈장은 이름 옆과 내 공간 뱃지에 평생 남아요. 14일 동안 정말 고맙습니다 🙏</p>
+            </div>
           ) : stampedToday ? (
             <p className="mt-3 p-3 rounded-2xl bg-blue-50 border border-blue-100 text-[0.875rem] text-stone-700 leading-relaxed">
               구글은 <b className="text-stone-900">Play 테스트 앱</b>을 여신 날을 세어요. 내일도 이 앱으로 한 번만 들어와 주세요.{left > 0 && <> <b className="text-stone-900">{left}일</b> 남았어요</>} 🙏
