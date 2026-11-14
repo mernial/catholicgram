@@ -129,6 +129,7 @@ export function useMemberBadges(userId: string | null | undefined) {
   const [ready, setReady] = useState(false);
   const [missing, setMissing] = useState(false); // 표가 아직 없음 (SQL 전)
   const [hidden, setHidden] = useState(false);   // 본인이 숨김 (profiles.hide_badges)
+  const [featured, setFeatured] = useState<string | null>(null); // 고른 대표 뱃지 (profiles.featured_badge)
   const [tick, setTick] = useState(0);
   const reload = useCallback(() => setTick(t => t + 1), []);
   useEffect(() => {
@@ -137,10 +138,13 @@ export function useMemberBadges(userId: string | null | undefined) {
     (async () => {
       const [{ data, error }, prof] = await Promise.all([
         supabase.from('member_badges').select('id, user_id, badge_key, note, created_at, auto').eq('user_id', userId).order('created_at', { ascending: true }),
-        supabase.from('profiles').select('hide_badges').eq('id', userId).maybeSingle(),
+        supabase.from('profiles').select('hide_badges, featured_badge').eq('id', userId).maybeSingle()
+          .then(r => (r.error ? supabase.from('profiles').select('hide_badges').eq('id', userId).maybeSingle() : r)),
       ]);
       if (!alive) return;
-      setHidden(!!(prof.data as { hide_badges?: boolean } | null)?.hide_badges);
+      const pd = prof.data as { hide_badges?: boolean; featured_badge?: string | null } | null;
+      setHidden(!!pd?.hide_badges);
+      setFeatured(pd?.featured_badge || null);
       if (error) {
         // 예전 판(auto 칸 없음)이면 auto 없이 한 번 더
         if (/auto/.test(error.message)) {
@@ -156,7 +160,9 @@ export function useMemberBadges(userId: string | null | undefined) {
     })();
     return () => { alive = false; };
   }, [userId, tick]);
-  return { rows, ready, missing, hidden, setHidden, reload };
+  // 대표 뱃지를 맨 앞으로
+  const sorted = featured && rows.some(r => r.badge_key === featured) ? [...rows.filter(r => r.badge_key === featured), ...rows.filter(r => r.badge_key !== featured)] : rows;
+  return { rows: sorted, ready, missing, hidden, setHidden, featured: sorted[0]?.badge_key || null, chosen: featured, setFeatured, reload };
 }
 
 // 뱃지 하나를 크게: 이름·뜻·받은 날 (관리자는 떼기)
@@ -182,9 +188,20 @@ function BadgeDetail({ row, admin, onClose, onRevoke }: { row: Row; admin: boole
 }
 
 // 한 교우의 뱃지 모두 보기 (뱃지를 누르면 — 인증 뱃지 + 활동 뱃지, 설명과 받은 날, 누른 것은 테두리) — 운영자 2026-11-06
-export function BadgeListDialog({ userId, name, highlight, onClose, empty, showHidden }: { userId: string; name?: string; highlight?: string; onClose: () => void; empty?: string; showHidden?: boolean }) {
+export function BadgeListDialog({ userId, name, highlight, onClose, empty, showHidden, mine }: { userId: string; name?: string; highlight?: string; onClose: () => void; empty?: string; showHidden?: boolean; mine?: boolean }) {
   useBackLayer(true, onClose);
-  const { rows, ready, hidden: hiddenRaw } = useMemberBadges(userId);
+  const { rows, ready, hidden: hiddenRaw, featured, setFeatured } = useMemberBadges(userId);
+  // 본인: 이름 옆에 보일 대표 뱃지 고르기 (운영자 2026-11-14)
+  const [picking, setPicking] = useState<string | null>(null);
+  const pick = async (key: string) => {
+    setPicking(key);
+    const { error } = await supabase.from('profiles').update({ featured_badge: key }).eq('id', userId);
+    setPicking(null);
+    if (error) { showAlert(`대표 뱃지를 저장하지 못했어요\n${/featured_badge/.test(error.message) ? '대표 뱃지 표(SQL)를 먼저 실행해야 해요.' : error.message}`); return; }
+    setFeatured(key);
+    window.dispatchEvent(new CustomEvent('member-badges-changed', { detail: userId }));
+    toast(`'${badgeOf(key)!.label}' 뱃지가 이름 옆에 보여요`);
+  };
   const hidden = hiddenRaw && !showHidden;
   const [prof, setProf] = useState<{ baptismal_name?: string; badge_type?: string | null } | null>(null);
   useEffect(() => {
@@ -196,14 +213,21 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
   const [book, setBook] = useState(false);
   const clergy = roleOf(prof?.badge_type);
   const total = (clergy ? 1 : 0) + (hidden ? 0 : rows.length);
-  const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string) => (
+  const item = (key: string, icon: ReactNode, label: string, desc: string, sub?: string, badgeKey?: string) => (
     <div key={key} className={`flex items-start gap-3 px-3 py-3 ${highlight === key ? 'bg-amber-50' : ''}`}>
       <div className="shrink-0 w-14 flex justify-center">{icon}</div>
       <div className="flex-1 min-w-0">
-        <p className="text-[0.9375rem] font-bold text-stone-900">{label}{highlight === key && <span className="ml-1.5 text-[0.6875rem] font-bold text-amber-700">눌렀어요</span>}</p>
+        <p className="text-[0.9375rem] font-bold text-stone-900">{label}
+          {badgeKey && badgeKey === featured && <span className="ml-1.5 align-middle inline-block px-1.5 py-px rounded-full bg-amber-100 text-amber-800 text-[0.6875rem] font-bold">대표</span>}
+          {highlight === key && badgeKey !== featured && <span className="ml-1.5 text-[0.6875rem] font-bold text-amber-700">눌렀어요</span>}</p>
         <p className="text-[0.875rem] text-stone-600 leading-snug mt-0.5">{desc}</p>
         {sub && <p className="text-[0.75rem] text-stone-400 mt-0.5">{sub}</p>}
       </div>
+      {mine && badgeKey && badgeKey !== featured && (
+        <button onClick={() => pick(badgeKey)} disabled={!!picking} className="shrink-0 self-center px-2.5 py-1.5 rounded-full border border-amber-300 text-amber-800 text-[0.75rem] font-bold disabled:opacity-50">
+          {picking === badgeKey ? '저장 중' : '대표로'}
+        </button>
+      )}
     </div>
   );
   // 이름 옆 뱃지는 글쓴이 단추(프로필 카드 열기) 안에 있어, 이 창 안의 누름(×·바깥)이 그 단추로 올라가면 닫힌 뒤 프로필 카드가 떴음(운영자 2026-11-06) → 누름을 여기서 멈추고 body 에 그림
@@ -216,8 +240,9 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
           <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
         </div>
         <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-stone-100 pb-[env(safe-area-inset-bottom)]">
+          {mine && !hidden && rows.length > 1 && <p className="px-4 py-2.5 text-[0.8125rem] text-stone-600 bg-stone-50">이름 옆에는 <b>대표 뱃지 하나</b>만 보이고 나머지는 +숫자로 보여요. 바꾸려면 '대표로'를 누르세요.</p>}
           {clergy && item(`role:${clergy}`, <RoleIcon type={clergy} size={48} />, `인증된 ${BADGES[clergy].label}`, BADGES[clergy].desc + (clergy === 'admin' ? '' : ' 관리자가 직접 확인하고 달아 드린 인증 뱃지예요.'))}
-          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`); })}
+          {!hidden && rows.map(r => { const def = badgeOf(r.badge_key)!; return item(r.badge_key, <BadgeIcon badge={def} size={48} />, def.label, def.desc, `${BADGE_GROUPS[def.group]} · ${fmtDate(r.created_at)} 받음${r.auto ? autoNote(r.badge_key) : ''}${r.note ? ` · “${r.note}”` : ''}`, r.badge_key); })}
           {ready && prof && total === 0 && <p className="p-8 text-center text-sm text-stone-400 leading-relaxed">{empty || '아직 받은 뱃지가 없어요.'}</p>}
           {(!ready || !prof) && total === 0 && <p className="p-8 text-center text-sm text-stone-400">불러오는 중…</p>}
           {!hidden && ready && (
@@ -269,7 +294,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   return (
     <div className="mt-3 flex items-center gap-1.5 flex-wrap">
       <button onClick={() => setList(true)} className={`${pill} bg-stone-100 text-stone-800`} aria-label={`${mine ? '내 ' : ''}뱃지 ${rows.length}개 보기`}>
-        {mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
+        {rows[0] && <BadgeIcon badge={rows[0].badge_key} size={20} />}{mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
         {hidden && !mine && <span className="font-normal text-stone-400 text-[0.6875rem]">(숨김)</span>}
       </button>
       {!missing && (stamps.length > 0 || mine) && (<>
@@ -286,7 +311,7 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
           <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
         </span>
       </>)}
-      {list && <BadgeListDialog userId={userId} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
+      {list && <BadgeListDialog userId={userId} mine={mine} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
       {/* 내 공간 머리 칸은 isolate(성당 그림) → 그 안에 그리면 창이 그 칸에 갇혀 아래 가톨릭 앱·아래 탭이 창 위로 올라왔음(루비로사 2026-11-11) → body 에 */}
       {open && createPortal(<BadgeDetail row={open} admin={admin} onClose={() => setOpen(null)} onRevoke={revoke} />, document.body)}
       {book && createPortal(<StampBook userId={userId} mine={mine} onClose={() => setBook(false)} />, document.body)}
@@ -295,40 +320,38 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
 }
 
 // 프로필 카드·목록 줄의 작은 뱃지 줄 (누르면 그 교우의 뱃지 모두 — 누구나)
-export function BadgeRow({ userId, size = 22, max = 6, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
+export function BadgeRow({ userId, size = 22, className = '' }: { userId: string; size?: number; max?: number; className?: string }) {
   const { rows, hidden } = useMemberBadges(userId);
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   if (rows.length === 0 || hidden) return null;
-  const shown = rows.slice(0, max);
+  // 대표 뱃지 하나 + 나머지 수 (운영자 2026-11-14) — 누르면 모두
   return (
-    <span className={`inline-flex items-center gap-1 ${className}`} aria-label={`뱃지 ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
-      {shown.map(r => (
-        <button key={r.id} type="button" onClick={e => { e.stopPropagation(); setOpen(r.badge_key); }} className="rounded-full" aria-label={`${badgeOf(r.badge_key)!.label} 뱃지 보기`}>
-          <BadgeIcon badge={r.badge_key} size={size} />
-        </button>
-      ))}
-      {rows.length > max && <button type="button" onClick={e => { e.stopPropagation(); setOpen(rows[max].badge_key); }} className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - max}</button>}
-      {open && <BadgeListDialog userId={userId} highlight={open} onClose={() => setOpen(null)} />}
+    <span className={`inline-flex items-center ${className}`}>
+      <button type="button" onClick={e => { e.stopPropagation(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
+        aria-label={`뱃지 ${rows.length}개 보기: ${rows.map(r => badgeOf(r.badge_key)!.label).join(', ')}`}>
+        <BadgeIcon badge={rows[0].badge_key} size={size} />
+        {rows.length > 1 && <span className="text-[0.75rem] text-stone-500 font-bold">+{rows.length - 1}</span>}
+      </button>
+      {open && <BadgeListDialog userId={userId} highlight={rows[0].badge_key} onClose={() => setOpen(false)} />}
     </span>
   );
 }
 
 // 이름 옆 작은 활동 뱃지 (글·댓글·대화·목록 어디서나, lib/badge-map 에서 한 번에 받아 둔 것) — 누르면 그 교우의 뱃지 모두
-export function NameBadges({ userId, size = 18, max = 3, className = '' }: { userId?: string | null; size?: number; max?: number; className?: string }) {
+export function NameBadges({ userId, size = 18, className = '' }: { userId?: string | null; size?: number; max?: number; className?: string }) {
   const map = useBadgeMap();
-  const [open, setOpen] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
   const keys = userId ? map[userId] : undefined;
   if (!userId || !keys || keys.length === 0) return null;
-  const shown = keys.slice(0, max);
+  // 대표 뱃지(교우가 고른 것, 없으면 첫 뱃지) 하나 + 나머지 수 '+4' (운영자 2026-11-14) — 누르면 그 교우의 뱃지 모두
   return (
-    <span className={`inline-flex items-center gap-0.5 shrink-0 ${className}`} aria-label={`뱃지 ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
-      {shown.map(k => (
-        <button key={k} type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(k); }} className="rounded-full" aria-label={`${badgeOf(k)!.label} 뱃지`}>
-          <BadgeIcon badge={k} size={size} />
-        </button>
-      ))}
-      {keys.length > max && <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(keys[max]); }} className="text-[0.6875rem] text-stone-500 font-bold">+{keys.length - max}</button>}
-      {open && <BadgeListDialog userId={userId} highlight={open} onClose={() => setOpen(null)} />}
+    <span className={`inline-flex items-center shrink-0 ${className}`}>
+      <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); setOpen(true); }} className="inline-flex items-center gap-0.5 rounded-full"
+        aria-label={`뱃지 ${keys.length}개 보기: ${keys.map(k => badgeOf(k)!.label).join(', ')}`}>
+        <BadgeIcon badge={keys[0]} size={size} />
+        {keys.length > 1 && <span className="text-[0.6875rem] text-stone-500 font-bold leading-none">+{keys.length - 1}</span>}
+      </button>
+      {open && <BadgeListDialog userId={userId} highlight={keys[0]} onClose={() => setOpen(false)} />}
     </span>
   );
 }

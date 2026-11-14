@@ -24,14 +24,22 @@ export async function loadBadgeMap(force = false) {
       const rows = (data as { user_id: string; badge_key: string }[]).filter(r => badgeOf(r.badge_key));
       const ids = Array.from(new Set(rows.map(r => r.user_id)));
       const hidden = new Set<string>();
+      const featured: Record<string, string> = {};
       if (ids.length > 0) {
-        const { data: profiles } = await supabase.from('profiles').select('id, hide_badges').in('id', ids);
-        ((profiles || []) as { id: string; hide_badges?: boolean }[]).forEach(p => { if (p.hide_badges) hidden.add(p.id); });
+        // 대표 뱃지(featured_badge, featured-badge.sql) — 칸이 없으면 빼고 다시
+        let res = await supabase.from('profiles').select('id, hide_badges, featured_badge').in('id', ids);
+        if (res.error) res = await supabase.from('profiles').select('id, hide_badges').in('id', ids) as typeof res;
+        ((res.data || []) as { id: string; hide_badges?: boolean; featured_badge?: string | null }[]).forEach(p => {
+          if (p.hide_badges) hidden.add(p.id);
+          if (p.featured_badge) featured[p.id] = p.featured_badge;
+        });
       }
       const next: BadgeMap = {};
       // 이름 옆에는 1등 뱃지·기념 뱃지를 먼저, 달성 도장(permanent)은 뒤에 (많아질 수 있으므로 +N 으로)
       rows.sort((a, b) => Number(!!badgeOf(a.badge_key)?.permanent) - Number(!!badgeOf(b.badge_key)?.permanent));
       rows.forEach(r => { if (!hidden.has(r.user_id)) (next[r.user_id] ||= []).push(r.badge_key); });
+      // 고른 대표 뱃지를 맨 앞으로 (이름 옆에는 맨 앞 하나 + 나머지 수)
+      Object.entries(next).forEach(([uid, keys]) => { const f = featured[uid]; if (f && keys.includes(f)) next[uid] = [f, ...keys.filter(k => k !== f)]; });
       map = next; loadedAt = Date.now(); emit();
     } finally { loading = null; }
   })();
