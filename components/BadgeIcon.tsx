@@ -423,7 +423,7 @@ const CHAMP_STARS: [number, number, number, number][] = (() => {
 const TIER_STARS: [number, number, number, number][] = [-120, -60, 0, 60, 120, 180].map((d, k) => [50 + 36.9 * Math.cos(d * Math.PI / 180), 50 + 36.9 * Math.sin(d * Math.PI / 180), k % 2 === 0 ? 1.2 : 0.9, k / 6]);
 const layer = { position: 'absolute', maxWidth: 'none', pointerEvents: 'none', userSelect: 'none' } as const;
 
-function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemKey?: string; label: string; tierIdx?: number; noNum?: boolean }) {
+function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum, spinSmall }: { def: MemberBadgeDef; size: number | string; champion?: boolean; emblemKey?: string; label: string; tierIdx?: number; noNum?: boolean; spinSmall?: boolean }) {
   const ti = tierIdx ?? Math.max(0, Math.min(6, (def.tier || 1) - 1));
   const px = typeof size === 'number' ? `${size}px` : size;
   const small = typeof size === 'number' && size < 34;       // 이름 옆 등 아주 작은 자리: 움직임·숫자 없이
@@ -445,7 +445,7 @@ function Badge3D({ def, size, champion, emblemKey, label, tierIdx, noNum }: { de
         </span>}
       </span>
       {champion && <img src={`${B3}/frame.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, inset: 0, width: '100%', height: '100%' }} />}
-      {champion && (small
+      {champion && (small && !spinSmall
         ? <img src={`${B3}/crown-still.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: '30.97%', top: '3.23%', width: '38.05%' }} />
         : <picture><source srcSet={`${B3}/crown-still.webp`} media="(prefers-reduced-motion: reduce)" /><img src={`${B3}/crown.webp`} alt="" draggable={false} decoding="async" style={{ ...layer, left: '30.97%', top: '3.23%', width: '38.05%' }} /></picture>)}
       {!small && stars.map(([x, y, s, ph], i) => (
@@ -529,7 +529,7 @@ const ADMIN_DEF: MemberBadgeDef = { key: 'admin', label: '관리자', desc: '', 
 export function RoleIcon({ type, size = 24, title, className = '' }: { type: string; size?: number | string; title?: string; className?: string }) {
   const id = `rl${useId().replace(/[^\w-]/g, '')}`;
   const role = roleOf(type);
-  if (role === 'admin') return <span className={`inline-flex shrink-0 ${className}`}><Badge3D def={ADMIN_DEF} size={size} champion emblemKey="admin" tierIdx={5} noNum label={title || '인증된 관리자'} /></span>;
+  if (role === 'admin') return <span className={`inline-flex shrink-0 ${className}`}><Badge3D def={ADMIN_DEF} size={size} champion emblemKey="admin" tierIdx={5} noNum spinSmall label={title || '인증된 관리자'} /></span>;
   const art = role ? ROLE_ART[role] : undefined;
   if (!art) return null;
   const px = typeof size === 'number' ? `${size}px` : size;
