@@ -326,18 +326,19 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
 }
 
 
-// 이름 옆 알약: 대표 뱃지 메달 + 글('공감 300', 1등이면 '소통왕') — 18px 메달만으로는 안 보여서 (운영자 2026-11-14 시안 ③)
+// 이름 옆: 대표 뱃지 메달(크게, 테두리 밖에 따로) + 그 옆 글('공감 300', 1등이면 '소통왕')만 둥근 테두리로 (운영자 2026-11-14)
 function BadgePill({ keys, size, onOpen }: { keys: string[]; size: number; onOpen: () => void }) {
   const first = shownBadges(keys)[0];
   if (!first) return null;
   const def = badgeOf(first.key)!;
   const [bg, bd, fg] = first.champion ? ['#fff8e1', '#f3d27a', '#7a4b00'] : def.tier ? TIERS[def.tier - 1].pill : ['#f5f5f4', '#e7e5e4', '#44403c'];
+  const medal = Math.round(size * 1.4);
   return (
     <button type="button" onClick={e => { e.stopPropagation(); e.preventDefault(); onOpen(); }}
-      className="inline-flex items-center gap-0.5 rounded-full border pl-0.5 pr-1.5 max-w-[8.5rem]" style={{ background: bg, borderColor: bd, color: fg }}
-      aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`}>
-      <BadgeIcon badge={def} size={size} champion={first.champion} />
-      <span className="truncate font-bold leading-none" style={{ fontSize: Math.max(10.5, Math.min(12.5, size * 0.62)) }}>{first.label}</span>
+      className="inline-flex items-center gap-1 min-w-0" aria-label={`대표 뱃지 ${first.label}${first.champion ? ' 1등' : ''} · 뱃지 모두 보기`}>
+      <BadgeIcon badge={def} size={medal} champion={first.champion} />
+      <span className="truncate font-bold leading-none rounded-full border px-2 py-[0.2rem] max-w-[7.5rem]"
+        style={{ background: bg, borderColor: bd, color: fg, fontSize: Math.max(10.5, Math.min(12.5, size * 0.62)) }}>{first.label}</span>
     </button>
   );
 }
