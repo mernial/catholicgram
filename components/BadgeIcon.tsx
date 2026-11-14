@@ -1,7 +1,7 @@
 'use client';
 
 import { useId, type ReactNode } from 'react';
-import { MEMBER_BADGES, badgeOf, type MemberBadgeDef } from '@/lib/badges';
+import { MEMBER_BADGES, TIERS, badgeOf, ladderOf, tierNum, type MemberBadgeDef } from '@/lib/badges';
 
 // --- 메달 모양 뱃지 그림 ---
 // 금테(물결 테두리) + 색 원판 + 흰 문양. 작게(13px)도 크게(96px)도 또렷하게 보이도록 SVG 로 그린다.
@@ -26,15 +26,10 @@ const scallop = (r = 30, bump = 1.5, n = 24) => {
 };
 const SCALLOP = scallop();
 
-export function Medal({ colors, rim = 'gold', size = 40, title, className = '', children }: {
-  colors: [string, string]; rim?: 'gold' | 'silver' | 'rose'; size?: number | string; title?: string; className?: string; children?: ReactNode;
-}) {
-  const id = `bd${useId().replace(/[^\w-]/g, '')}`;
+function MedalBody({ id, colors, rim = 'gold', children }: { id: string; colors: [string, string]; rim?: 'gold' | 'silver' | 'rose'; children?: ReactNode }) {
   const [r0, r1, r2, r3] = RIMS[rim];
-  const px = typeof size === 'number' ? `${size}px` : size;
   return (
-    <svg viewBox="0 0 64 64" width={px} height={px} className={`shrink-0 ${className}`} role="img" aria-label={title} style={{ width: px, height: px }}>
-      {title && <title>{title}</title>}
+    <>
       <defs>
         <linearGradient id={`${id}-rim`} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor={r0} /><stop offset="0.45" stopColor={r1} /><stop offset="0.62" stopColor={r2} /><stop offset="1" stopColor={r3} />
@@ -64,6 +59,19 @@ export function Medal({ colors, rim = 'gold', size = 40, title, className = '', 
       <g clipPath={`url(#${id}-clip)`} filter={`url(#${id}-sh)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round">
         <g transform="translate(32 32)">{children}</g>
       </g>
+    </>
+  );
+}
+
+export function Medal({ colors, rim = 'gold', size = 40, title, className = '', children }: {
+  colors: [string, string]; rim?: 'gold' | 'silver' | 'rose'; size?: number | string; title?: string; className?: string; children?: ReactNode;
+}) {
+  const id = `bd${useId().replace(/[^\w-]/g, '')}`;
+  const px = typeof size === 'number' ? `${size}px` : size;
+  return (
+    <svg viewBox="0 0 64 64" width={px} height={px} className={`shrink-0 ${className}`} role="img" aria-label={title} style={{ width: px, height: px }}>
+      {title && <title>{title}</title>}
+      <MedalBody id={id} colors={colors} rim={rim}>{children}</MedalBody>
     </svg>
   );
 }
@@ -397,9 +405,78 @@ function Numbered({ n, children }: { n: string; children: ReactNode }) {
   );
 }
 
-export function BadgeIcon({ badge, size = 40, className = '' }: { badge: MemberBadgeDef | string; size?: number | string; className?: string }) {
+// --- 활동 등급 메달 + 1등 월계관 (운영자 2026-11-14 시안 ③) ---
+// 등급 = 메달 색 자체(일반 회색·고급 초록·희귀 파랑·영웅 빨강·전설 노랑·신화 진한 금속 금색·유일 무지개), 아래 숫자 판.
+// champion = 그 활동 1등 → 메달을 조금 줄이고 둘레에 금 월계관 + 위에 왕관
+function laurel(id: string) {
+  const leaf = (r: number, from: number, to: number, n: number, side: 1 | -1) => Array.from({ length: n }, (_, i) => {
+    const a = (from + (to - from) * i / (n - 1)) * Math.PI / 180; const x = 32 + r * Math.cos(a), y = 32 + r * Math.sin(a);
+    return <ellipse key={`${side}${i}`} cx={x.toFixed(2)} cy={y.toFixed(2)} rx="2.3" ry="4.7" fill={`url(#${id}L)`} stroke="#7a520c" strokeWidth="0.55" transform={`rotate(${(a * 180 / Math.PI + (side > 0 ? 62 : -62)).toFixed(1)} ${x.toFixed(2)} ${y.toFixed(2)})`} />;
+  });
+  return (<>
+    <defs>
+      <linearGradient id={`${id}L`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#fff2b8" /><stop offset="0.5" stopColor="#e6b743" /><stop offset="1" stopColor="#9a6a10" /></linearGradient>
+      <radialGradient id={`${id}G`}><stop offset="0.5" stopColor="#ffd86b" stopOpacity="0.75" /><stop offset="1" stopColor="#ffd86b" stopOpacity="0" /></radialGradient>
+    </defs>
+    <circle cx="32" cy="32" r="32" fill={`url(#${id}G)`} />
+    {leaf(26.8, 100, 220, 8, 1)}{leaf(26.8, 80, -40, 8, -1)}
+  </>);
+}
+const crown = <g transform="translate(32 7.5)"><path d="M-8.5 4 L-8.5 -3.5 L-4.2 0 L0 -5.6 L4.2 0 L8.5 -3.5 L8.5 4 Z" fill="#ffd34d" stroke="#8a5a00" strokeWidth="1" strokeLinejoin="round" /><circle cx="0" cy="-5.6" r="1.3" fill="#fff6c9" /></g>;
+
+function TierMedal({ def, size, champion }: { def: MemberBadgeDef; size: number | string; champion?: boolean }) {
+  const id = `tm${useId().replace(/[^\w-]/g, '')}`;
+  const ti = Math.max(0, Math.min(6, (def.tier || 1) - 1));
+  const [l, m, d] = TIERS[ti].colors;
+  const unique = ti === 6, myth = ti === 5;
+  const r = champion ? 20.5 : 26;
+  const num = tierNum(def);
+  const emblem = EMBLEMS[ladderOf(def.family)?.emblem || ''] || null;
+  const px = typeof size === 'number' ? `${size}px` : size;
+  return (
+    <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} (${TIERS[ti].name})${champion ? ' 1등' : ''}`} style={{ width: px, height: px }}>
+      <defs>
+        {unique ? <linearGradient id={`${id}d`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff8ad8" /><stop offset="0.35" stopColor="#9b6cf0" /><stop offset="0.7" stopColor="#36c6e0" /><stop offset="1" stopColor="#7ef0b0" /></linearGradient>
+          : myth ? <linearGradient id={`${id}d`} x1="0.1" y1="0" x2="0.9" y2="1"><stop offset="0" stopColor="#fff1b8" /><stop offset="0.22" stopColor="#d9a332" /><stop offset="0.42" stopColor="#7a4d05" /><stop offset="0.58" stopColor="#f3cf6a" /><stop offset="0.78" stopColor="#a8700c" /><stop offset="1" stopColor="#5a3500" /></linearGradient>
+          : <radialGradient id={`${id}d`} cx="0.35" cy="0.28" r="0.9"><stop offset="0" stopColor={l} /><stop offset="0.55" stopColor={m} /><stop offset="1" stopColor={d} /></radialGradient>}
+        <linearGradient id={`${id}r`} x1="0" y1="0" x2="1" y2="1">{myth ? <><stop offset="0" stopColor="#fff6cc" /><stop offset="0.3" stopColor="#8a5a00" /><stop offset="0.55" stopColor="#ffe08a" /><stop offset="1" stopColor="#4a2c00" /></> : <><stop offset="0" stopColor={unique ? '#fff' : l} /><stop offset="0.5" stopColor={unique ? '#c7b3ff' : d} /><stop offset="1" stopColor={unique ? '#7fe3f0' : m} /></>}</linearGradient>
+        <radialGradient id={`${id}s`} cx="0.3" cy="0.2" r="0.6"><stop offset="0" stopColor="#fff" stopOpacity={myth ? 0.6 : 0.5} /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient>
+        <filter id={`${id}f`} x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="0.7" stdDeviation="0.6" floodOpacity="0.35" /></filter>
+      </defs>
+      {champion && laurel(id)}
+      <circle cx="32" cy="33" r={r + 1.5} fill="#000" fillOpacity="0.18" />
+      <circle cx="32" cy="32" r={r + 1.4} fill={`url(#${id}r)`} />
+      <circle cx="32" cy="32" r={r - 0.6} fill={`url(#${id}d)`} />
+      <circle cx="32" cy="32" r={r - 0.6} fill={`url(#${id}s)`} />
+      {myth && <path d={`M${32 - r * 0.7} ${32 - r * 0.2} L${32 - r * 0.2} ${32 - r * 0.75} L${32 - r * 0.02} ${32 - r * 0.6} L${32 - r * 0.55} ${32 - r * 0.02} Z`} fill="#fff" fillOpacity="0.35" />}
+      <circle cx="32" cy="32" r={r - 1.6} fill="none" stroke="#fff" strokeOpacity="0.3" strokeWidth="0.8" />
+      {unique && [[-0.6, -0.55], [0.62, -0.42], [0.5, 0.6]].map(([x, y], i) => <path key={i} d="M0 -2.6 L0.7 -0.7 L2.6 0 L0.7 0.7 L0 2.6 L-0.7 0.7 L-2.6 0 L-0.7 -0.7 Z" fill="#fff" transform={`translate(${32 + x * r} ${32 + y * r}) scale(${r / 26})`} />)}
+      <g filter={`url(#${id}f)`} fill="#fff" stroke="#fff" strokeLinecap="round" strokeLinejoin="round"><g transform={`translate(32 ${num ? 30 : 32}) scale(${(r / 26) * 0.92})`}>{emblem}</g></g>
+      {num && <g><rect x={32 - (champion ? 12 : 15)} y={champion ? 45 : 48} width={champion ? 24 : 30} height={champion ? 10 : 12} rx="5.5" fill={unique ? '#5b3fb0' : d} stroke="#fff" strokeWidth="1.3" />
+        <text x="32" y={champion ? 52.7 : 57.2} textAnchor="middle" fontSize={champion ? (num.length > 4 ? 6 : 7.2) : (num.length > 4 ? 7.6 : 9)} fontWeight="900" fill="#fff" fontFamily="inherit">{num}</text></g>}
+      {champion && crown}
+    </svg>
+  );
+}
+
+// 등급이 없는 1등 뱃지(사진작가·아이디어 천사 등): 원래 메달을 줄이고 금 월계관 + 왕관
+function ChampionMedal({ def, size }: { def: MemberBadgeDef; size: number | string }) {
+  const id = `cm${useId().replace(/[^\w-]/g, '')}`;
+  const px = typeof size === 'number' ? `${size}px` : size;
+  return (
+    <svg viewBox="0 0 64 64" width={px} height={px} className="shrink-0" role="img" aria-label={`${def.label} 1등`} style={{ width: px, height: px }}>
+      {laurel(id)}
+      <g transform="translate(32 33) scale(0.7) translate(-32 -32)"><MedalBody id={id} colors={def.colors} rim="gold">{EMBLEMS[def.key]}</MedalBody></g>
+      {crown}
+    </svg>
+  );
+}
+
+export function BadgeIcon({ badge, size = 40, className = '', champion }: { badge: MemberBadgeDef | string; size?: number | string; className?: string; champion?: boolean }) {
   const def = typeof badge === 'string' ? badgeOf(badge) : badge;
   if (!def) return null;
+  if (def.tier) return <span className={`inline-flex shrink-0 ${className}`}><TierMedal def={def} size={size} champion={champion} /></span>;
+  if (def.auto && !def.permanent) return <span className={`inline-flex shrink-0 ${className}`}><ChampionMedal def={def} size={size} /></span>;
   return <Medal colors={def.colors} rim={def.rim} size={size} title={`${def.label} 뱃지`} className={className}>{EMBLEMS[def.key]}</Medal>;
 }
 
