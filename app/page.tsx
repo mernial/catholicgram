@@ -668,6 +668,8 @@ export default function Home() {
   const [viewingSpaceVis, setViewingSpaceVis] = useState<Visibility>('public');
   const [spaceVisReady, setSpaceVisReady] = useState(true); // false = SQL 전
   const [visSheetPost, setVisSheetPost] = useState<Post | null>(null); // ⋯ 메뉴 → '보는 사람' 고르기
+  const [hidePick, setHidePick] = useState<Set<string> | null>(null); // 내 공간: 게시물 골라서 감추기(나만 보기) 중이면 고른 글 id
+  const [hideBusy, setHideBusy] = useState(false);
   const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
   const [actionUserDays, setActionUserDays] = useState<MemberDays | null>(null); // 프로필 카드 교우의 생일·축일
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
@@ -4654,6 +4656,23 @@ export default function Home() {
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
   const spaceBlocked = !!viewingUserId && user?.id !== viewingUserId && !isAdmin && (viewingSpaceVis === 'private' || (viewingSpaceVis === 'followers' && !followingIds.has(viewingUserId)));
+  // 고른 내 게시물들을 한꺼번에 나만 보기(감추기)·전체 공개(다시 보이기)로
+  const bulkVisibility = async (v: Visibility) => {
+    if (!hidePick || hidePick.size === 0 || hideBusy) return;
+    const ids = [...hidePick];
+    setHideBusy(true);
+    let ok = 0, failMsg = '';
+    for (const id of ids) {
+      const result = await callPostApi({ action: 'update', id, changes: { visibility: v } });
+      if (result.error) { failMsg = result.error; break; }
+      ok++;
+      setPosts(prev => prev.map(p => p.id === id ? { ...p, visibility: v } : p));
+    }
+    setHideBusy(false);
+    if (failMsg) { alert(failMsg); if (!ok) return; }
+    setHidePick(null);
+    setToast({ key: `bulkvis-${Date.now()}`, icon: <Icon name={v === 'private' ? 'lock' : 'globe'} className="w-7 h-7 text-stone-700" />, title: v === 'private' ? `게시물 ${ok}개를 감췄어요` : `게시물 ${ok}개를 다시 보이게 했어요`, body: v === 'private' ? '나만 볼 수 있어요 · 🔒 표시로 보여요' : '모든 교우가 볼 수 있어요', action: () => {} });
+  };
   const changeSpaceVisibility = async (v: Visibility) => {
     if (!user) return;
     if (!spaceVisReady) { alert('공간 공개 범위 기능을 준비 중이에요. (관리자: supabase/space-visibility.sql 실행 필요)'); return; }
@@ -5821,7 +5840,22 @@ export default function Home() {
             <div className="px-4 py-3 border-t border-stone-200 bg-white">
               <p className="text-[0.8125rem] font-bold text-stone-800 mb-1.5">내 공간 게시물을 볼 수 있는 사람</p>
               <VisibilityPicker value={viewingSpaceVis} onChange={v => changeSpaceVisibility(v)} />
-              <p className="text-[0.6875rem] text-stone-400 mt-1 pl-1">글 하나만 감추려면 그 글의 ⋯ → &lsquo;보는 사람&rsquo;에서 &lsquo;나만 보기&rsquo;를 골라요</p>
+              {/* 몇몇 게시물만 골라서 나만 보기로 감추기 (운영자 2026-11-15) */}
+              {!hidePick ? (
+                <button onClick={() => setHidePick(new Set())} className="mt-2.5 w-full py-2.5 rounded-xl border border-stone-300 text-[0.875rem] font-bold text-stone-800 inline-flex items-center justify-center gap-1.5">
+                  <Icon name="lock" className="w-4 h-4" />게시물 골라서 감추기
+                </button>
+              ) : (
+                <div className="mt-2.5 rounded-xl bg-stone-900 text-white p-3">
+                  <p className="text-[0.8125rem] font-bold">감출 게시물을 눌러 골라요 · {hidePick.size}개 고름</p>
+                  <p className="text-[0.6875rem] text-white/60 mt-0.5">감춘 글은 나만 보여요(홈·내 공간·영상 모두). 🔒 표시된 글을 고르면 다시 보이게 할 수 있어요</p>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5">
+                    <button disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility('private')} className="py-2 rounded-lg bg-white text-stone-900 text-[0.8125rem] font-bold disabled:opacity-40">🔒 감추기</button>
+                    <button disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility('public')} className="py-2 rounded-lg bg-white/15 text-white text-[0.8125rem] font-bold disabled:opacity-40">다시 보이기</button>
+                    <button disabled={hideBusy} onClick={() => setHidePick(null)} className="py-2 rounded-lg bg-white/15 text-white text-[0.8125rem] font-bold">취소</button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
           {(() => {
@@ -5857,9 +5891,13 @@ export default function Home() {
               gridPosts.map((post) => (
                 <div 
                   key={post.id} 
-                  onClick={() => openPostViewer(post)} 
+                  onClick={() => {
+                    if (hidePick && post.user_id === user?.id) { setHidePick(prev => { const n = new Set(prev); if (n.has(post.id)) n.delete(post.id); else n.add(post.id); return n; }); return; }
+                    openPostViewer(post);
+                  }} 
                   className="aspect-square bg-stone-100 relative group overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                 >
+                  {hidePick && post.user_id === user?.id && <span className={`absolute inset-0 z-20 ${hidePick.has(post.id) ? 'bg-black/35 ring-4 ring-inset ring-sky-400' : ''}`}><span className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white text-[0.75rem] font-bold ${hidePick.has(post.id) ? 'bg-sky-500' : 'bg-black/30'}`}>{hidePick.has(post.id) ? '✓' : ''}</span></span>}
                   {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" /></span>}
                   {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
                   {post.video_url
