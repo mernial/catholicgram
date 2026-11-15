@@ -5289,7 +5289,7 @@ export default function Home() {
                   <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
                     <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
                     {/* 스토리: 사진첩 대신 '스토리에 추가'(바로 사진·영상 찍기 카메라 + 사진첩·글·음악·콜라주)를 엶 (운영자 2026-11-15) */}
-                    {(!storiesUnavailable || isAdmin) && <button type="button" onClick={() => setStoryCreateReq(n => n + 1)} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>}
+                    {(!storiesUnavailable || isAdmin) && <button type="button" onClick={() => { storyFromComposerRef.current = true; setStoryCreateReq(n => n + 1); }} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>}
                     <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
                   </div>
                 </div>
