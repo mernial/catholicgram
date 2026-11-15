@@ -52,5 +52,5 @@
 
 ## SQL (Supabase)
 - 파일은 `supabase/*.sql` (71개). 운영자가 실행했다고 확인된 것: chat-media-menu·comment-reactions·group-chats(10-27 부분)·chat-presence·autopost
-- 아래는 '실행 필요'로 안내만 했고 실행 여부를 확인 못 한 것 — 관련 기능이 안 되면 먼저 의심: badge-ladders-27(11-14, 배지 새 그림과 함께) · push-pause(11-14) · app-sessions-kind(11-14) · terms-consent · member-badges(여러 번 다시) · alert-sync(다시) · chat-settings · group-cleanup(다시) · quiet-send · feedback-photos · bgm-dedupe · profile-music(-everyone) · sticker-gifts · letters-reply · letters-gift · tester-installs · birthday · push-devices · dm-requests · message-extras
+- 아래는 '실행 필요'로 안내만 했고 실행 여부를 확인 못 한 것 — 관련 기능이 안 되면 먼저 의심: space-visibility·post-visibility(11-15) · badge-ladders-27(11-14, 배지 새 그림과 함께) · push-pause(11-14) · app-sessions-kind(11-14) · terms-consent · member-badges(여러 번 다시) · alert-sync(다시) · chat-settings · group-cleanup(다시) · quiet-send · feedback-photos · bgm-dedupe · profile-music(-everyone) · sticker-gifts · letters-reply · letters-gift · tester-installs · birthday · push-devices · dm-requests · message-extras
 - 앱 코드는 대개 SQL 전에도 돌아가게(칸이 없으면 빼고 다시) 짠다. SQL 을 안내할 때는 위 '작업 흐름'의 규칙대로 전문 + 편집기 링크
