@@ -382,7 +382,6 @@ export default function Home() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [content, setContent] = useState('');
   const [composerPhotoIdx, setComposerPhotoIdx] = useState(0);   // 글쓰기: 크게 보이는 사진
-  const [composerVisOpen, setComposerVisOpen] = useState(false);   // 글쓰기: 공개 범위 고르기 펼침
   const [composerStickers, setComposerStickers] = useState<Sticker[]>([]); // 글쓰기: 붙인 이모티콘 (글 끝에 한 줄씩 저장)
   const [composerStickerOpen, setComposerStickerOpen] = useState(false);
   const [editingPhotoIdx, setEditingPhotoIdx] = useState<number | null>(null); // 글쓰기: 자르기·가리기 중인 사진
@@ -5357,7 +5356,7 @@ export default function Home() {
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="w-7 h-7"><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
                 </button>
                 <h2 className="font-bold text-[1.0625rem] text-stone-900">새 게시물</h2>
-                <button type="submit" disabled={!canShare} className="px-3 h-11 text-[1rem] font-bold text-blue-600 disabled:text-stone-300">{loading ? '올리는 중' : '공유'}</button>
+                <button type="submit" disabled={!canShare} className="px-3 h-11 text-[1rem] font-bold text-blue-600 disabled:text-stone-300 inline-flex items-center gap-1">{loading ? '올리는 중' : <><Icon name={VISIBILITY[composerVisibility].icon} className="w-4 h-4" />공유</>}</button>
               </div>
 
               <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
@@ -5431,6 +5430,13 @@ export default function Home() {
                 {composerStickers.length > 0 && <div className="px-4 pb-3"><PostStickers stickers={composerStickers} size="w-24 h-24" onRemove={i => setComposerStickers(prev => prev.filter((_, j) => j !== i))} /></div>}
 
                 {/* 인스타그램처럼 아래 목록 */}
+                {/* 공개 범위: 올리기 전에 바로 고름 — 접어 두지 않음 (운영자 2026-11-15: 올린 뒤 감추기 전에 남이 먼저 보는 일이 없게) */}
+                {user && (
+                  <div className="px-4 py-3 border-t border-stone-100 bg-amber-50/40">
+                    <p className="text-[0.875rem] font-bold text-stone-900 mb-1.5">누가 볼 수 있나요?</p>
+                    <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />
+                  </div>
+                )}
                 <div className="border-t border-stone-100">
                   {/* 내 이모티콘 넣기 (운영자 2026-11-14 다시 요청) — 글쓰기 화면 위에 따로 뜨는 창이라 칸 안에서 밀어도 글쓰기 화면이 막히지 않음 */}
                   <button type="button" onClick={() => setComposerStickerOpen(true)} className={row}>
@@ -5465,17 +5471,6 @@ export default function Home() {
                     <span className="flex-1 text-[0.9375rem] text-stone-900">해시태그 추가</span>
                     <span className="text-stone-400 text-xl">›</span>
                   </button>
-                  <button type="button" onClick={() => setComposerVisOpen(o => !o)} className={row}>
-                    <Icon name={VISIBILITY[composerVisibility].icon} className="w-6 h-6 text-stone-800 shrink-0" />
-                    <span className="flex-1 text-[0.9375rem] text-stone-900">공개 범위</span>
-                    <span className="text-[0.875rem] text-stone-500">{VISIBILITY[composerVisibility].label}</span>
-                    <span className="text-stone-400 text-xl">{composerVisOpen ? '⌄' : '›'}</span>
-                  </button>
-                  {composerVisOpen && user && (
-                    <div className="px-4 py-3 border-b border-stone-100">
-                      <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />
-                    </div>
-                  )}
                 </div>
               </div>
 
