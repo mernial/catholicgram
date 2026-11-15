@@ -55,6 +55,23 @@ async function mutedNow(admin: SupabaseClient, who: { userId: string; room: stri
   return new Set(data.filter(r => wanted.has(`${r.user_id}|${r.room}`)).map(r => r.user_id as string));
 }
 
+// 테스터 출석(lib/tester-attendance): 한국 날짜로 오늘·어제 Play 테스트 앱으로 들어왔는지 — 관리자 화면과 같은 기준
+// (tester_signups.play_opened_at + app_sessions.app_kind='play', app-sessions-kind.sql 전이면 play_opened_at 만)
+async function testerPlayDays(admin: SupabaseClient, rows: { user_id: unknown; play_opened_at?: unknown }[]) {
+  const kst = (ms: number) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
+  const today = kst(Date.now()), yesterday = kst(Date.now() - 86400e3);
+  const days = new Map<string, Set<string>>();
+  const add = (u: string, iso: string) => { if (!days.has(u)) days.set(u, new Set()); days.get(u)!.add(kst(Date.parse(iso))); };
+  rows.forEach(r => { if (r.play_opened_at) add(r.user_id as string, r.play_opened_at as string); });
+  const ids = rows.map(r => r.user_id as string);
+  if (ids.length) {
+    const since = new Date(Date.parse(yesterday + 'T00:00:00+09:00')).toISOString();
+    const { data, error } = await admin.from('app_sessions').select('user_id, started_at, last_seen_at').in('user_id', ids).eq('app_kind', 'play').gte('last_seen_at', since).limit(5000);
+    if (!error) (data || []).forEach(x => { add(x.user_id as string, x.started_at as string); if (x.last_seen_at) add(x.user_id as string, x.last_seen_at as string); });
+  }
+  return { today, yesterday, has: (u: string, d: string) => !!days.get(u)?.has(d) };
+}
+
 export async function POST(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -184,9 +201,9 @@ export async function POST(request: Request) {
     if (id !== 'all') query = query.eq('user_id', id);
     const { data: rows, error } = await query;
     if (error) return Response.json({ error: 'install tracking not set up' }, { status: 409 });
-    const kst = (ms: number) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
-    const today = kst(Date.now());
-    (rows || []).filter(r => !r.play_opened_at || kst(Date.parse(r.play_opened_at as string)) !== today).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
+    // 오늘 출석 도장을 이미 찍은 분(오늘 Play 앱으로 들어옴)은 빼고 (운영자 2026-11-15 '오늘 출석체크하지 않은 사람에게만')
+    const pd = await testerPlayDays(admin, rows || []);
+    (rows || []).filter(r => !pd.has(r.user_id as string, pd.today)).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
       title: '📅 오늘 출석 도장 찍으러 오세요',
       body: '테스터 교우님, Play 테스트 앱을 열면 오늘 도장이 쾅! 찍혀요 🙏',
       url: '/', tag: 'tester-attend',
@@ -195,11 +212,11 @@ export async function POST(request: Request) {
   } else if (type === 'tester_attend_good') {
     // 관리자: '출석 잘 하는 분'(어제 Play 테스트 앱을 연 분) 중 오늘 아직 안 연 분께 '오늘도 출석해 주세요' (운영자 2026-11-15, id = 'all')
     if (!user.email || !ADMIN_EMAILS.includes(user.email)) return Response.json({ error: 'forbidden' }, { status: 403 });
-    const { data: rows, error } = await admin.from('tester_signups').select('user_id, play_opened_at').eq('status', 'added').not('play_opened_at', 'is', null);
+    const { data: rows, error } = await admin.from('tester_signups').select('user_id, play_opened_at').eq('status', 'added');
     if (error) return Response.json({ error: 'install tracking not set up' }, { status: 409 });
-    const kst = (ms: number) => new Date(ms + 9 * 3600e3).toISOString().slice(0, 10);
-    const yesterday = kst(Date.now() - 86400e3);
-    (rows || []).filter(r => kst(Date.parse(r.play_opened_at as string)) === yesterday).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
+    // 어제는 왔고(출석 잘 하는 분) 오늘은 아직 출석 도장이 없는 분만
+    const pd = await testerPlayDays(admin, rows || []);
+    (rows || []).filter(r => pd.has(r.user_id as string, pd.yesterday) && !pd.has(r.user_id as string, pd.today)).forEach(r => list.push({ recipientId: r.user_id as string, payload: {
       title: '📅 오늘도 출석 도장 찍으러 오세요',
       body: '어제도 와 주셔서 감사해요! 오늘도 Play 테스트 앱을 열면 도장이 쾅! 찍혀요 🙏',
       url: '/', tag: 'tester-attend',
