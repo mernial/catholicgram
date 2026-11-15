@@ -44,7 +44,7 @@ import { extractMentions, mentionsHandle } from '@/lib/mentions';
 import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
-import { ALERT_SOUND_EVENT, playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
+import { ALERT_SOUND_EVENT, osAlert, playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
@@ -632,7 +632,7 @@ export default function Home() {
   const historyReadyRef = useRef(false); // 첫 터치 뒤에 뒤로가기용 기록을 깔았는지
   const skipNextPopRef = useRef(false); // 창을 닫으며 직접 뒤로 간 것은 무시
   const rewindRef = useRef(false);      // 메인 화면으로 돌아온 자리(base)에서 뒤로가기: 아래의 예전 화면 기록은 건너뛰고 종료 확인으로
-  const pushAlertRef = useRef<(url: string, title: string, body: string, appleBanner?: boolean) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
+  const pushAlertRef = useRef<(url: string, title: string, body: string, appleBanner?: boolean, osRing?: boolean) => void>(() => {}); // 앱을 보고 있을 때 푸시가 오면 (아래에서 채움)
   const viewingRef = useRef<(url: string) => boolean>(() => false); // 이 알림 주소의 대화방(1:1·단체)을 지금 보고 있는지 (아래에서 채움)
   const pushToastAtRef = useRef(0); // 푸시 내용을 배너로 띄운 시각 (같은 알림을 배너로 또 띄우지 않게)
   const systemPushAtRef = useRef(0); // 휴대폰 알림 배너가 뜬 시각 (서비스 워커가 알려 줌 — 그 소식을 앱 배너로 또 띄우지 않게)
@@ -803,7 +803,7 @@ export default function Home() {
       // 앱이 열려 있을 때 알림을 누르면: 새로고침 없이 해당 글/대화로 이동
       navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
         // 앱을 보고 있을 때 온 알림: 휴대폰 알림음 대신 '찬미예수님'
-        if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/'), String(e.data.title || ''), String(e.data.body || ''), !!e.data.appleBanner); return; }
+        if (e.data?.type === 'push-alert') { pushAlertRef.current(String(e.data.url || '/'), String(e.data.title || ''), String(e.data.body || ''), !!e.data.appleBanner, !!e.data.osRing); return; }
         // 휴대폰 알림 배너가 떴음 → 1분마다 확인하는 새 소식 배너로 같은 소식을 또 띄우지 않게 (아래 fresh 배너)
         if (e.data?.type === 'push-shown') { systemPushAtRef.current = Date.now(); return; }
         // 서비스 워커: '이 알림의 대화를 지금 보고 있나요?' → 보고 있으면 휴대폰 알림을 띄우지 않는다
@@ -3821,7 +3821,13 @@ export default function Home() {
     if (Date.now() - pushToastAtRef.current < 15000 || Date.now() - systemPushAtRef.current < 90000) return;
     // 가장 최근 것을 보여 주고, 여러 건이면 누를 때 알림 목록을 연다 (엉뚱한 한 건으로 가지 않게)
     const latest = [...fresh].sort((a, b) => (b.at || '').localeCompare(a.at || ''))[0];
-    setToast(fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건`, action: () => openNotifications() } : latest);
+    const shown = fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건`, action: () => openNotifications() } : latest;
+    // 안드로이드: 휴대폰 알림으로 (무음·진동·소리를 휴대폰 설정대로, 운영자 2026-11-15). 못 띄우면 예전처럼 앱 배너 + 앱 소리
+    if (isAndroidDevice()) {
+      osAlert(shown.title || '가톨릭그램', shown.body || '').then(ok => { if (!ok) { setToast(shown); if (alertSoundOn) playAlertSound(); } });
+      return;
+    }
+    setToast(shown);
     if (alertSoundOn) playAlertSound();
     navigator.vibrate?.([150, 80, 150]);
   }, [notifications, unreadMessages, followRequests]);
@@ -3852,7 +3858,7 @@ export default function Home() {
       : visibleFeastFriends.length === 1
         ? { key: `feast:${first.id}`, icon: CHEER_ICON[friendCheer(first)], title: `오늘은 ${first.baptismal_name}님의 ${CHEER_WORD[friendCheer(first)]}입니다`, body: '축하해 주세요! 🙏 눌러서 인사 보내기', action: () => congratulateFeast(first) }
         : { key: `feast:${first.id}`, icon: '🎉', title: `오늘은 ${first.baptismal_name}님 외 ${visibleFeastFriends.length - 1}명의 ${cheerWordOfMany(visibleFeastFriends.map(friendCheer))}입니다`, body: '축하해 주세요! 🙏 눌러서 보기', action: () => openNotifications() });
-    if (alertSoundOn) playAlertSound();
+    if (alertSoundOn && !isAndroidDevice()) playAlertSound(); // 안드로이드는 앱 소리가 무음을 모르므로 축일 배너는 소리 없이
   }, [user, needsProfileSetup, isMyFeastToday, feastFriends]);
 
   // 배너는 5초(휴대폰 알림 배너는 8초) 뒤 자동으로 사라짐
@@ -3977,8 +3983,10 @@ export default function Home() {
   useEffect(() => {
     if (!user) return;
     refreshAlerts(user.id, true);
-    pushAlertRef.current = (url: string, title: string, body: string, appleBanner?: boolean) => {
+    pushAlertRef.current = (url: string, title: string, body: string, appleBanner?: boolean, osRing?: boolean) => {
       refreshAlerts(user.id, url.includes('gift='));
+      // 안드로이드: 휴대폰 알림이 휴대폰 설정(무음·진동·소리)대로 울렸으니 앱 소리·배너는 내지 않음 (운영자 2026-11-15)
+      if (osRing) { pushToastAtRef.current = Date.now(); return; }
       // 지금 그 사람과 대화 중이면 메시지마다 음성·배너는 생략
       if (viewingRef.current(url)) return;
       // 아이폰·아이패드: 휴대폰 알림 배너가 이미 떴으니 앱 화면 배너는 띄우지 않는다 (운영자: 한 번 배너로 왔으면 또 안 나와도 됨). 소리는 그대로
