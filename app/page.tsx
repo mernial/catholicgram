@@ -600,6 +600,7 @@ export default function Home() {
   //   미리보기는 새 게시물 화면 위에 뜨고, 취소하면 새 게시물 화면 그대로, 스토리를 올리면 그때 새 게시물 화면을 닫음
   const restoreOverlayRef = useRef<{ group?: string; lounge?: boolean } | null>(null); // 1분 안에 다시 열린 앱: 이어서 열 단체방·사랑방
   const [storyFile, setStoryFile] = useState<{ file: File; key: number } | null>(null);
+  const [storyCreateReq, setStoryCreateReq] = useState(0); // 새 게시물 화면 '스토리' → 스토리 카메라
   const [storyFromComposer, setStoryFromComposer] = useState(false); // 새 게시물 화면에서 연 '새 스토리' (올린 뒤 내 스토리가 뜰 때까지 뒤로가기 칸을 지킴)
   const storyFromComposerRef = useRef(false);
   useEffect(() => { storyFromComposerRef.current = storyFromComposer; }, [storyFromComposer]);
@@ -5043,6 +5044,7 @@ export default function Home() {
             openRequest={storyOpenRequest}
             onOpenHandled={() => setStoryOpenRequest(null)}
             pickedFile={storyFile}
+            createRequest={storyCreateReq}
             onDraftEnd={handleStoryDraftEnd}
             onPosted={fetchStories}
             onDelete={deleteStory}
@@ -5286,7 +5288,8 @@ export default function Home() {
                 <div className="shrink-0 pt-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex justify-center">
                   <div className="flex items-center gap-1 bg-[#262626]/95 rounded-full p-1 shadow-lg">
                     <span className="px-4 py-2 rounded-full bg-white/15 text-white text-[0.9375rem] font-bold">게시물</span>
-                    {(!storiesUnavailable || isAdmin) && <label htmlFor="story-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</label>}
+                    {/* 스토리: 사진첩 대신 '스토리에 추가'(바로 사진·영상 찍기 카메라 + 사진첩·글·음악·콜라주)를 엶 (운영자 2026-11-15) */}
+                    {(!storiesUnavailable || isAdmin) && <button type="button" onClick={() => setStoryCreateReq(n => n + 1)} className="px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">스토리</button>}
                     <label htmlFor="video-upload" className="cursor-pointer px-4 py-2 rounded-full text-white/75 text-[0.9375rem] font-bold">영상</label>
                   </div>
                 </div>
