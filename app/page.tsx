@@ -664,6 +664,10 @@ export default function Home() {
   const layerEntriesRef = useRef(0); // 창 안의 작은 창(lib/back-layers)을 위해 쌓아 둔 칸 수
   const [viewingUserId, setViewingUserId] = useState<string | null>(null);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+  // 공간 공개 범위(profiles.space_visibility, supabase/space-visibility.sql): 그 공간의 게시물 목록을 누가 볼 수 있는지 (운영자 2026-11-15)
+  const [viewingSpaceVis, setViewingSpaceVis] = useState<Visibility>('public');
+  const [spaceVisReady, setSpaceVisReady] = useState(true); // false = SQL 전
+  const [visSheetPost, setVisSheetPost] = useState<Post | null>(null); // ⋯ 메뉴 → '보는 사람' 고르기
   const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
   const [actionUserDays, setActionUserDays] = useState<MemberDays | null>(null); // 프로필 카드 교우의 생일·축일
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
@@ -1249,6 +1253,13 @@ export default function Home() {
     const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', userId).single();
     // 응답이 늦게 도착해도 지금 보고 있는 프로필이 아니면 무시
     if (data && latestViewingUserIdRef.current === userId) setViewingProfile(data);
+    supabase.from('profiles').select('space_visibility').eq('id', userId).maybeSingle().then(({ data: sv, error }) => {
+      if (latestViewingUserIdRef.current !== userId) return;
+      if (error) { setSpaceVisReady(false); setViewingSpaceVis('public'); return; }
+      setSpaceVisReady(true);
+      const v = (sv as { space_visibility?: string } | null)?.space_visibility;
+      setViewingSpaceVis(v === 'followers' || v === 'private' ? v : 'public');
+    });
   };
 
   // 내가 target 을 팔로우하는 상태 (없음 / 요청 중 / 수락됨)
@@ -4642,6 +4653,16 @@ export default function Home() {
   const composerTagSuggestions = popularHashtags(posts.map(p => p.content), 12).map(t => t.tag).filter(t => !usedInDraft.has(t)).slice(0, 8);
 
   const myPosts = posts.filter(post => post.user_id === viewingUserId);
+  const spaceBlocked = !!viewingUserId && user?.id !== viewingUserId && !isAdmin && (viewingSpaceVis === 'private' || (viewingSpaceVis === 'followers' && !followingIds.has(viewingUserId)));
+  const changeSpaceVisibility = async (v: Visibility) => {
+    if (!user) return;
+    if (!spaceVisReady) { alert('공간 공개 범위 기능을 준비 중이에요. (관리자: supabase/space-visibility.sql 실행 필요)'); return; }
+    const prev = viewingSpaceVis;
+    setViewingSpaceVis(v);
+    const { error } = await supabase.from('profiles').update({ space_visibility: v }).eq('id', user.id);
+    if (error) { setViewingSpaceVis(prev); alert(/space_visibility/.test(error.message) ? '공간 공개 범위 기능을 준비 중이에요. (관리자: supabase/space-visibility.sql 실행 필요)' : '바꾸지 못했어요. 잠시 후 다시 해 주세요.'); return; }
+    setToast({ key: `spacevis-${Date.now()}`, icon: <Icon name={VISIBILITY[v].icon} className="w-7 h-7 text-stone-700" />, title: `내 공간 게시물: ${VISIBILITY[v].label}`, body: VISIBILITY[v].hint, action: () => {} });
+  };
 
   const mainScrollRef = useRef<HTMLElement>(null); // 앱 화면의 스크롤 영역
   // 키보드가 올라오면 실제로 보이는 높이에 맞춤 (키보드가 화면 높이를 줄이지 않는 휴대폰 대비)
@@ -5795,8 +5816,28 @@ export default function Home() {
             )}
           </div>
 
+          {/* 공간 공개 범위: 내 공간이면 고르기, 남의 공간이면 볼 수 있는지 (운영자 2026-11-15) */}
+          {user?.id === viewingUserId ? (
+            <div className="px-4 py-3 border-t border-stone-200 bg-white">
+              <p className="text-[0.8125rem] font-bold text-stone-800 mb-1.5">내 공간 게시물을 볼 수 있는 사람</p>
+              <VisibilityPicker value={viewingSpaceVis} onChange={v => changeSpaceVisibility(v)} />
+              <p className="text-[0.6875rem] text-stone-400 mt-1 pl-1">글 하나만 감추려면 그 글의 ⋯ → &lsquo;보는 사람&rsquo;에서 &lsquo;나만 보기&rsquo;를 골라요</p>
+            </div>
+          ) : null}
+          {(() => {
+            const owner = user?.id === viewingUserId;
+            const blocked = !owner && !isAdmin && (viewingSpaceVis === 'private' || (viewingSpaceVis === 'followers' && !(viewingUserId && followingIds.has(viewingUserId))));
+            if (!blocked) return null;
+            return (
+              <div className="border-t border-stone-200 bg-white px-6 py-14 text-center">
+                <Icon name={viewingSpaceVis === 'private' ? 'lock' : 'users'} className="w-10 h-10 mx-auto text-stone-400" />
+                <p className="mt-3 font-bold text-stone-800">{viewingSpaceVis === 'private' ? '게시물을 공개하지 않은 공간이에요' : '팔로워에게만 게시물을 보여 주는 공간이에요'}</p>
+                {viewingSpaceVis === 'followers' && <p className="mt-1 text-[0.8125rem] text-stone-500">팔로우하고 서로 이어지면 볼 수 있어요</p>}
+              </div>
+            );
+          })()}
           {/* 아이콘 탭: 게시물 / 영상 / 태그됨 */}
-          <div className="flex border-t border-stone-200 bg-white">
+          {!spaceBlocked && <><div className="flex border-t border-stone-200 bg-white">
             {([['posts', '게시물', 'stack'], ['videos', '영상', 'video'], ['tagged', '태그됨', 'user']] as const).map(([key, label, icon]) => (
               <button key={key} onClick={() => setProfileTab(key)} aria-label={label} className={`flex-1 py-2.5 flex flex-col items-center gap-0.5 text-[0.75rem] font-bold border-t-2 -mt-px ${profileTab === key ? 'border-stone-900 text-stone-900' : 'border-transparent text-stone-400'}`}>
                 <Icon name={icon} className="w-6 h-6" />{label}
@@ -5842,7 +5883,7 @@ export default function Home() {
               ))
             );
             })()}
-          </div>
+          </div></>}
         </section>
       )}
 
@@ -5925,6 +5966,24 @@ export default function Home() {
       {legalDoc && <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />}
       {showTermsConsent && user && <TermsConsentDialog onAccept={acceptTerms} onClose={() => setShowTermsConsent(false)} onOpenLegal={setLegalDoc} saving={termsSaving} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
+      {/* 글 하나의 '보는 사람' (⋯ 메뉴, 운영자 2026-11-15: 공유하기 싫은 글은 감추기) */}
+      {visSheetPost && (
+        <BottomSheet label="보는 사람" title="보는 사람" subtitle="이 글을 누가 볼 수 있는지 골라요 · 홈·내 공간·영상 모두 같아요" onClose={() => setVisSheetPost(null)} tone="bg-white" z="z-[90]">
+          <div className="px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-2">
+            {(Object.keys(VISIBILITY) as Visibility[]).map(v => {
+              const on = (visSheetPost.visibility || 'public') === v;
+              return (
+                <button key={v} type="button" onClick={async () => { const id = visSheetPost.id; setVisSheetPost(null); if (!on) await changePostVisibility(id, v); }}
+                  className={`w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl border text-left ${on ? 'border-stone-900 bg-stone-50' : 'border-stone-200 bg-white'}`}>
+                  <Icon name={VISIBILITY[v].icon} className="w-6 h-6 shrink-0 text-stone-700" />
+                  <span className="flex-1"><span className="block font-bold text-stone-900">{v === 'private' ? '나만 보기 (감추기)' : VISIBILITY[v].label}</span><span className="block text-[0.8125rem] text-stone-500">{VISIBILITY[v].hint}</span></span>
+                  {on && <Icon name="check" className="w-5 h-5 text-emerald-700" />}
+                </button>
+              );
+            })}
+          </div>
+        </BottomSheet>
+      )}
       {showMyComments && user && (
         <BottomSheet label="내 댓글" title="내 댓글" subtitle="내가 단 댓글을 모아 봤어요 · 나만 볼 수 있어요" onClose={() => setShowMyComments(false)} tone="bg-white">
           <MyComments userId={user.id} onOpen={(postId, commentId) => { setShowMyComments(false); openPostFromAlert(postId, commentId); }} />
@@ -7841,6 +7900,7 @@ export default function Home() {
                   </>
                 )}
                 {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
+                {mine && <button onClick={() => { close(); setVisSheetPost(post); }} className={`${row} text-stone-900`}><Icon name={VISIBILITY[post.visibility || 'public'].icon} className="w-6 h-6 shrink-0" />보는 사람<span className="ml-auto text-[0.875rem] text-stone-400">{VISIBILITY[post.visibility || 'public'].label} ›</span></button>}
                 {!mine && <button onClick={() => { close(); goToProfile(post.user_id); }} className={`${row} text-stone-900`}><Icon name="user" className="w-6 h-6 shrink-0" />{post.author_name}님 공간 가기</button>}
                 {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: postPlainText(post.content) }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
                 {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
