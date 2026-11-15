@@ -12,7 +12,6 @@ import Icon, { IconBadge } from '@/components/Icon';
 import { toast } from '@/lib/chat-actions';
 import { initial } from '@/lib/fancy-name';
 import BottomSheet from '@/components/BottomSheet';
-import { getSpaceMusicAuto, setSpaceMusicAuto } from '@/lib/space-music';
 import { askConfirm } from '@/components/ConfirmDialog';
 import { appKind, appKindLabel, browserName } from '@/lib/app-kind';
 import { ALERT_SOUNDS, ALERT_SOUND_EVENT, alertSoundName, getAlertSoundChoice, previewAlertSound, setAlertSoundChoice } from '@/lib/alert-sound';
@@ -174,7 +173,6 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
     window.location.replace('/');
   };
 
-  const [spaceMusicAuto, setSpaceMusicAutoState] = useState(() => getSpaceMusicAuto());
   const row = 'w-full px-4 py-3 text-sm text-left hover:bg-stone-50 border-b border-stone-100 flex items-center justify-between';
   const label = 'flex items-center gap-3';
 
@@ -258,11 +256,6 @@ export default function SettingsModal({ user, onClose, onUnblock, feastDay, onFe
                 </p>
               )}
             </div>
-            {/* 공간 음악 저절로 틀기 (이 휴대폰만) — 운영자 2026-11-15 */}
-            <button type="button" role="switch" aria-checked={spaceMusicAuto} onClick={() => { const next = !spaceMusicAuto; setSpaceMusicAutoState(next); setSpaceMusicAuto(next); }} className={row}>
-              <span className={label}><IconBadge name="music" tone="violet" /><span>공간 음악 저절로 틀기<span className="block text-xs text-stone-400 font-normal">내 공간·교우의 공간에 들어가면 배경음악이 저절로 나와요{spaceMusicAuto ? '' : ' · 꺼 두면 ▶ 를 눌러야 나와요'}</span></span></span>
-              <span className={`relative shrink-0 w-12 h-7 rounded-full transition-colors ${spaceMusicAuto ? 'bg-emerald-600' : 'bg-stone-300'}`}><span className={`absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all ${spaceMusicAuto ? 'left-[1.375rem]' : 'left-0.5'}`} /></span>
-            </button>
             <button onClick={() => openView('sound')} className={row}>
               <span className={label}><IconBadge name={sound === 'off' ? 'mute' : 'speaker'} tone="violet" />알림 소리</span>
               <span className="text-stone-400 text-xs">{alertSoundName(sound)} <span className="text-stone-300">›</span></span>

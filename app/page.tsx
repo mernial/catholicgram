@@ -45,7 +45,7 @@ import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { ALERT_SOUND_EVENT, osAlert, playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
-import { getSpaceMusicAuto } from '@/lib/space-music';
+import { getSpaceMusicAuto, setSpaceMusicAuto } from '@/lib/space-music';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
@@ -666,6 +666,8 @@ export default function Home() {
   // 공간 공개 범위(profiles.space_visibility, supabase/space-visibility.sql): 그 공간의 게시물 목록을 누가 볼 수 있는지 (운영자 2026-11-15)
   const [viewingSpaceVis, setViewingSpaceVis] = useState<Visibility>('public');
   const [spaceVisReady, setSpaceVisReady] = useState(true); // false = SQL 전
+  const [spaceMusicAuto, setSpaceMusicAutoState] = useState(true); // 공간 음악 저절로 틀기 (이 휴대폰, lib/space-music)
+  useEffect(() => { setSpaceMusicAutoState(getSpaceMusicAuto()); }, []);
   const [visSheetPost, setVisSheetPost] = useState<Post | null>(null); // ⋯ 메뉴 → '보는 사람' 고르기
   const [hidePick, setHidePick] = useState<Set<string> | null>(null); // 내 공간: 게시물 골라서 감추기(나만 보기) 중이면 고른 글 id
   const [hideBusy, setHideBusy] = useState(false);
@@ -5703,6 +5705,13 @@ export default function Home() {
               {viewingUserId && profileTrack(viewingUserId) && (
                 <div className="mt-3 flex items-center gap-2 rounded-2xl bg-violet-50 border border-violet-100 pl-1.5 pr-1.5 py-1.5">
                   {profileMusicBar(viewingUserId)}
+                  {/* 저절로 틀기 스위치 (이 휴대폰만 — 운영자 2026-11-15: 설정 대신 음악 막대에) */}
+                  <button type="button" role="switch" aria-checked={spaceMusicAuto} aria-label="공간에 들어가면 배경음악 저절로 틀기"
+                    onClick={() => { const next = !spaceMusicAuto; setSpaceMusicAutoState(next); setSpaceMusicAuto(next); setToast({ key: `smauto-${Date.now()}`, icon: <Icon name="music" className="w-7 h-7 text-violet-700" />, title: next ? '공간 음악 저절로 틀기: 켬' : '공간 음악 저절로 틀기: 끔', body: next ? '공간에 들어가면 배경음악이 저절로 나와요' : '공간에 들어가도 ▶ 를 눌러야 나와요 (이 휴대폰만)', action: () => {} }); }}
+                    className="shrink-0 flex flex-col items-center gap-0.5 px-0.5">
+                    <span className={`relative w-10 h-6 rounded-full transition-colors ${spaceMusicAuto ? 'bg-violet-600' : 'bg-stone-300'}`}><span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-all ${spaceMusicAuto ? 'left-[1.125rem]' : 'left-0.5'}`} /></span>
+                    <span className="text-[0.625rem] font-bold text-violet-800 leading-none">자동 {spaceMusicAuto ? 'ON' : 'OFF'}</span>
+                  </button>
                   {canPickProfileMusic && viewingUserId === user?.id && <button onClick={() => setShowProfileMusicPicker(true)} className="shrink-0 text-[0.8125rem] px-3 py-1.5 rounded-xl bg-white border border-violet-200 text-violet-800 font-bold">바꾸기</button>}
                 </div>
               )}
