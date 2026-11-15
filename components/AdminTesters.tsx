@@ -90,7 +90,7 @@ export default function AdminTesters({ onClose, sendPush, onPreviewAttend }: {
   // ── 알림 보내기 (서버가 다시 골라 보냄) ──
   const [sending, setSending] = useState<string | null>(null);
   const [sent, setSent] = useState<Record<string, { people: number; missed: string[] }>>({});
-  const notify = async (type: 'tester_attend' | 'tester_remind' | 'tester_switch', count: number, question: string) => {
+  const notify = async (type: 'tester_attend' | 'tester_attend_good' | 'tester_remind' | 'tester_switch', count: number, question: string) => {
     if (sending || count === 0) return;
     if (!(await askConfirm(question))) return;
     setSending(type);
@@ -210,7 +210,20 @@ export default function AdminTesters({ onClose, sendPush, onPreviewAttend }: {
 
               {section('bg-emerald-50 text-emerald-900', '✅ 출석 잘 하는 분', 'Play 테스트 앱으로 오늘이나 어제 들어온 분 (출석 많은 순)', good.length,
                 good.map(r => person(r, <>{dots(r)}<p className="text-[0.6875rem] text-stone-400 mt-0.5">연속 {attendStreak(r.days, today)}일</p></>,
-                  <span className="text-[0.6875rem] font-bold text-emerald-800 shrink-0 mt-0.5">{r.days.includes(today) ? '오늘 출석' : '어제 출석'}</span>)))}
+                  <span className="text-[0.6875rem] font-bold text-emerald-800 shrink-0 mt-0.5">{r.days.includes(today) ? '오늘 출석' : '어제 출석'}</span>)),
+                good.length > 0 && (() => {
+                  // 이 칸에서 오늘 아직 안 들어온 분(어제 출석)께만 — 오늘 이미 찍은 분은 받지 않음 (운영자 2026-11-15)
+                  const notYet = good.filter(r => !r.days.includes(today));
+                  return (
+                    <>
+                      <button onClick={() => notify('tester_attend_good', notYet.length, `출석 잘 하는 분 중 오늘 아직 안 들어온 ${notYet.length}명(${notYet.map(r => name(r.s)).join(', ')})에게 '오늘도 출석 도장 찍으러 오세요' 알림을 보낼까요?`)}
+                        disabled={!!sending || notYet.length === 0} className="mt-2 w-full py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-bold disabled:opacity-50">
+                        {sending === 'tester_attend_good' ? '보내는 중…' : notYet.length ? `📣 오늘 아직 안 온 ${notYet.length}명에게 출석 알림` : '✅ 이 칸 모두 오늘 출석했어요'}
+                      </button>
+                      {sentLine('tester_attend_good')}
+                    </>
+                  );
+                })())}
 
               {section('bg-amber-50 text-amber-900', '⚠️ 설치했는데 안 들어오는 분', 'Play 테스트 앱은 깔았는데 이틀 이상 열지 않은 분 (오래된 순)', absent.length,
                 absent.map(r => person(r, <>
