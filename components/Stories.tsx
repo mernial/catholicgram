@@ -314,7 +314,8 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
     setTrim({ start: 0, end: Math.min(info.duration, MAX_VIDEO_SECONDS) });
     setDraft({ file, url: URL.createObjectURL(file), video: true, duration: info.duration });
   };
-  const [createKey, setCreateKey] = useState(0);
+  // 처음 그릴 때의 값으로 시작 — 홈 탭을 다시 열어 이 부분이 새로 그려져도 지난 요청으로 카메라가 또 뜨지 않게 (운영자 2026-11-15)
+  const [createKey, setCreateKey] = useState(createRequest || 0);
   if (createRequest && createRequest !== createKey) { setCreateKey(createRequest); if (me) setShowCreate(true); } // 새 게시물 화면은 로그인·프로필을 마친 교우만 열 수 있음
   if (pickedFile && pickedFile.key !== pickedKey) {
     setPickedKey(pickedFile.key);
