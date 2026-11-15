@@ -1,6 +1,7 @@
 // 가톨릭그램 서비스 워커: 푸시 알림 수신 및 알림 클릭 처리
 // 휴대폰 위쪽 줄(상태 표시줄)의 작은 알림 그림: 안드로이드는 모양(투명이 아닌 곳)만 흰색으로 쓰므로
 // 앱 아이콘(꽉 찬 네모)을 주면 흰 네모가 된다 → 투명 바탕에 흰 ☧ 그림 (public/badge.svg 로 만듦)
+const isAndroid = () => /Android/i.test(self.navigator.userAgent || '');
 const BADGE = '/badge-96.png';
 const isApple = () => /iPhone|iPad|iPod|Macintosh/.test(self.navigator.userAgent) && !/Chrome|CriOS|Android/.test(self.navigator.userAgent);
 // 앱 화면에 '이 알림의 대화방을 지금 보고 있나요?' 묻기 (1.5초 안에 답이 없으면 아니라고 봄 — 앱이 화면을 그리느라 바쁘면 늦게 답함)
@@ -41,11 +42,22 @@ self.addEventListener('push', (event) => {
       // 아이폰·아이패드·맥 사파리는 푸시마다 알림을 꼭 띄워야 해서(안 띄우면 알림 권한을 거둠) 소리 없이 띄웠다가 바로 닫는다
       const viewing = (await Promise.all(visible.map(c => askViewing(c, data.url || '/')))).some(Boolean);
       // appleBanner: 아이폰·아이패드는 앱을 보는 중에도 휴대폰 알림 배너가 떠서, 앱 화면 배너까지 띄우면 같은 알림이 두 번 보인다
-      visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '', appleBanner: isApple() && !viewing }));
+      // 안드로이드: 앱을 보고 있어도 휴대폰 알림으로 울린다 → 무음이면 무음·진동이면 진동·소리면 소리 (운영자 2026-11-15:
+      // 무음인데 앱을 보는 중에 '찬미예수님'이 들림 — 앱이 내는 소리는 미디어 소리라 휴대폰 무음을 모르고, 웹은 무음인지 알 수 없음)
+      const osRing = isAndroid() && !viewing;
+      visible.forEach(c => c.postMessage({ type: 'push-alert', url: data.url || '/', title, body: data.body || '', appleBanner: isApple() && !viewing, osRing }));
       if (!viewing) windows.forEach(c => c.postMessage({ type: 'push-shown' }));
       // 안드로이드·컴퓨터: 앱 화면 배너와 앱 알림 소리(설정에서 고른 소리)로 알렸으니 휴대폰 알림은 띄우지 않는다.
       // (운영자 2026-11-03: 단체방 메시지에 '평화!'와 '찬미예수님'이 동시에 울림 — Play 앱 1.0.2 는 크롬이 소리 없이 띄운
       //  알림도 '가톨릭그램 알림' 종류로 옮기면서 소리가 나서, 앱 소리와 휴대폰 알림 소리가 겹쳤음)
+      if (osRing) {
+        const shownA = await combined(data, title);
+        await self.registration.showNotification(shownA.title, {
+          body: shownA.body, icon: data.icon || '/icon-v2-192.png', ...(data.image ? { image: data.image } : {}), badge: BADGE,
+          tag: data.tag, renotify: !!data.tag, silent: false, vibrate: [200, 100, 200], timestamp: Date.now(), data: shownA.data,
+        });
+        return;
+      }
       if (!isApple()) return;
       // 아이폰·아이패드·맥 사파리: 알림은 꼭 띄워야 하므로(안 띄우면 알림 권한을 거둬 감) 소리 없이 띄운다.
       // 앱을 보는 중에도 알림을 눌러 그 글·대화로 갈 수 있게 저절로 닫지 않는다 (앱에서 그곳을 열면 앱이 닫음)

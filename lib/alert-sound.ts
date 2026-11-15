@@ -5,6 +5,7 @@
 //  - 띵동·성당 종소리·아멘 오르간·하프·방울·새소리·물방울: 음원 파일 없이 Web Audio 로 그 자리에서 만듦
 // 앱을 닫아 두었을 때 휴대폰 위쪽에 뜨는 알림의 소리는 휴대폰이 정함(웹 알림은 소리를 고를 수 없음) → 설정에 바꾸는 법 안내
 // 브라우저 정책상 사용자가 화면을 한 번 터치한 뒤부터 소리가 난다.
+import { isAndroidDevice } from '@/lib/android-test';
 
 let ctx: AudioContext | null = null;
 
@@ -221,4 +222,15 @@ function synth(kind: string) {
       [[880, 0], [1318.5, 0.16]].forEach(([f, at]) => tones.push({ f, at, dur: 0.45, gain: 0.35, attack: 0.02 }));
   }
   tones.forEach(t => tone(c, out, t));
+}
+
+// 안드로이드: 앱이 직접 내는 소리(미디어 소리)는 휴대폰이 무음·진동이어도 울린다 → 휴대폰 알림을 띄워 휴대폰 설정대로 울리게 (운영자 2026-11-15)
+// 띄웠으면 true (앱 화면 배너는 띄우지 않아도 됨). 안드로이드가 아니거나 알림 권한이 없으면 false → 예전처럼 앱 소리
+export async function osAlert(title: string, body: string, url = '/', tag = 'cg-inapp'): Promise<boolean> {
+  try {
+    if (!isAndroidDevice() || typeof Notification === 'undefined' || Notification.permission !== 'granted' || !('serviceWorker' in navigator)) return false;
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification(title, { body, icon: '/icon-v2-192.png', badge: '/badge-96.png', tag, renotify: true, silent: false, vibrate: [200, 100, 200], data: { url } } as NotificationOptions);
+    return true;
+  } catch { return false; }
 }
