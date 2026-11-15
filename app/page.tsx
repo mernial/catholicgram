@@ -6281,7 +6281,7 @@ export default function Home() {
           {/* 위로 올려 보는 중: 오른쪽 아래 '최근 대화로' */}
           {!dmCapture && dmReturn && dmReturn.room === currentChatUser?.id && !dmSticker.open && !dmSticker.picked && <BackToReply onBack={() => { const r = dmReturn.id; setDmReturn(null); if (document.getElementById(`dm-${r}`)) jumpToMessage(r); }} onClose={() => setDmReturn(null)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
           {!dmCapture && !dmSticker.open && !dmSticker.picked && !hasStickerSuggestion(messageInput) && <JumpToLatest listRef={chatStick.listRef} onJump={() => chatStick.toBottom(true)} className="bottom-[calc(5rem+env(safe-area-inset-bottom))]" />}
-          <div ref={chatStick.listRef} {...dmStickerTap} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col">
+          <div ref={chatStick.listRef} {...dmStickerTap} className="flex-1 min-h-0 p-4 overflow-y-auto overscroll-contain flex flex-col select-none [-webkit-touch-callout:none]">
             {/* 내용이 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
             <div ref={chatStick.contentRef} className="mt-auto flex flex-col gap-3">
             {chatMessages.length === 0 ? (

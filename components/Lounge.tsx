@@ -784,7 +784,7 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col">
+      }} className="flex-1 min-h-0 min-w-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col select-none [-webkit-touch-callout:none]">
         {/* 대화가 적으면 입력창 바로 위에 붙어 보이게 (mt-auto) */}
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
         <div className="mx-auto max-w-sm text-center text-[0.8125rem] text-stone-500 bg-white/70 rounded-2xl px-4 py-2.5 mb-1 leading-relaxed">
