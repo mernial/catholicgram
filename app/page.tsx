@@ -45,6 +45,7 @@ import { popularHashtags } from '@/lib/hashtags';
 import { recordInterest } from '@/lib/interests';
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from '@/lib/push';
 import { ALERT_SOUND_EVENT, osAlert, playAlertSound, unlockAlertSound } from '@/lib/alert-sound';
+import { getSpaceMusicAuto } from '@/lib/space-music';
 import { ADMIN_EMAILS } from '@/lib/admin';
 import { signOutAndClear } from '@/lib/account';
 import FeedbackModal from '@/components/FeedbackModal';
@@ -1172,7 +1173,7 @@ export default function Home() {
 
   const goToProfile = (targetUserId: string) => {
     linkLog('profile', `${targetUserId.slice(0, 8)} ${Date.now() - lastTouchAt < 1500 ? '손으로 누름' : '자동'}`);
-    startProfileMusic(targetUserId);
+    if (getSpaceMusicAuto()) startProfileMusic(targetUserId); // 설정 '공간 음악 저절로 틀기'를 끄면 ▶ 를 눌러야
     navigate({ screen: true, tab: 'profile', viewingUserId: targetUserId });
     setActionModalUser(null);
   };
@@ -2619,7 +2620,7 @@ export default function Home() {
     if (spaceAutoRef.current !== spaceOwner) spaceAutoRef.current = null;
     if (!spaceOwner || spaceAutoRef.current || !profileTrack(spaceOwner)) return; // 곡 정보가 아직이면 오는 대로
     spaceAutoRef.current = spaceOwner;
-    startProfileMusic(spaceOwner);
+    if (getSpaceMusicAuto()) startProfileMusic(spaceOwner);
   }, [spaceOwner, profileMusicMap, bgmTracks]);
   // 그 교우의 공간을 벗어나면 멈춤 (프로필 카드에서는 틀지 않음 — 운영자 요청)
   useEffect(() => {
