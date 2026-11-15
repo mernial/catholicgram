@@ -4660,21 +4660,33 @@ export default function Home() {
   const spaceBlocked = !!viewingUserId && user?.id !== viewingUserId && !isAdmin && (viewingSpaceVis === 'private' || (viewingSpaceVis === 'followers' && !followingIds.has(viewingUserId)));
   // 고른 내 게시물들을 한꺼번에 나만 보기(감추기)·전체 공개(다시 보이기)로
   const bulkVisibility = async (v: Visibility) => {
-    if (!hidePick || hidePick.size === 0 || hideBusy) return;
-    const ids = [...hidePick];
+    if (!hidePick || hidePick.size === 0 || hideBusy || !user) return;
+    // 내 글만 (남의 글이 섞여 들어오지 않게 — 서버(/api/posts)도 본인 글만 바꿈)
+    const ids = [...hidePick].filter(id => posts.find(p => p.id === id)?.user_id === user.id);
+    if (!ids.length) return;
+    const desc = v === 'private' ? '변경 후에는 작성자 본인만 해당 게시물을 확인할 수 있습니다.' : v === 'followers' ? '변경 후에는 나를 팔로우하는 교우만 해당 게시물을 확인할 수 있습니다.' : '변경 후에는 모든 교우가 해당 게시물을 확인할 수 있습니다.';
+    if (!(await askConfirm({ title: '공개 범위를 변경하시겠습니까?', message: `선택한 ${ids.length}개 게시물을 '${VISIBILITY[v].label}'로 변경합니다. ${desc}`, ok: '변경하기', cancel: '취소' }))) return;
     setHideBusy(true);
-    let ok = 0, failMsg = '';
+    const failed: string[] = []; let firstErr = '';
     for (const id of ids) {
       const result = await callPostApi({ action: 'update', id, changes: { visibility: v } });
-      if (result.error) { failMsg = result.error; break; }
-      ok++;
+      if (result.error) { failed.push(id); firstErr ||= result.error; continue; }
       setPosts(prev => prev.map(p => p.id === id ? { ...p, visibility: v } : p));
+      setSelectedPostDetail(prev => prev && prev.id === id ? { ...prev, visibility: v } : prev);
     }
     setHideBusy(false);
-    if (failMsg) { alert(failMsg); if (!ok) return; }
+    const ok = ids.length - failed.length;
+    if (failed.length) {
+      // 실패한 글만 고른 채로 남겨 두고 다시 시도할 수 있게
+      setHidePick(new Set(failed));
+      if (await askConfirm({ title: `${failed.length}개 게시물을 바꾸지 못했어요`, message: `${ok ? `${ok}개는 바뀌었어요. ` : ''}${firstErr}`, ok: '다시 시도', cancel: '닫기' })) setTimeout(() => bulkRetryRef.current?.(v), 0);
+      return;
+    }
     setHidePick(null);
-    setToast({ key: `bulkvis-${Date.now()}`, icon: <Icon name={VISIBILITY[v].icon} className="w-7 h-7 text-stone-700" />, title: `게시물 ${ok}개를 '${VISIBILITY[v].label}'로 바꿨어요`, body: VISIBILITY[v].hint, action: () => {} });
+    setToast({ key: `bulkvis-${Date.now()}`, icon: <Icon name={VISIBILITY[v].icon} className="w-7 h-7 text-stone-700" />, title: `${ok}개 게시물의 공개 범위가 변경되었습니다`, body: `${VISIBILITY[v].label} · ${VISIBILITY[v].hint}`, action: () => {} });
   };
+  const bulkRetryRef = useRef<((v: Visibility) => void) | null>(null);
+  bulkRetryRef.current = (v: Visibility) => { bulkVisibility(v); };
   const changeSpaceVisibility = async (v: Visibility) => {
     if (!user) return;
     if (!spaceVisReady) { alert('공간 공개 범위 기능을 준비 중이에요. (관리자: supabase/space-visibility.sql 실행 필요)'); return; }
@@ -5868,21 +5880,10 @@ export default function Home() {
                 const pickable = (spaceFilter === 'all' ? myPosts : myPosts.filter(p => (p.visibility || 'public') === spaceFilter));
                 const allOn = pickable.length > 0 && pickable.every(p => hidePick.has(p.id));
                 return (
-                  <div className="rounded-2xl border border-stone-200 bg-white shadow-sm p-2.5">
-                    <div className="flex items-center gap-2">
-                      <button disabled={hideBusy} onClick={() => setHidePick(null)} className="w-8 h-8 flex items-center justify-center text-stone-700 text-2xl leading-none" aria-label="게시물 관리 닫기">×</button>
-                      <p className="flex-1 font-bold text-[0.9375rem] text-stone-900">{hideBusy ? '바꾸는 중…' : `${hidePick.size}개 선택됨`}</p>
-                      {(['private', 'followers', 'public'] as const).map(v => (
-                        <button key={v} disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility(v)}
-                          className="w-[3.6rem] py-1 rounded-lg flex flex-col items-center text-stone-800 disabled:opacity-35 active:bg-stone-100">
-                          <Icon name={VISIBILITY[v].icon} className="w-5 h-5" /><span className="text-[0.625rem] font-bold mt-0.5">{v === 'private' ? '나만 보기로' : VISIBILITY[v].label}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-1 flex items-center justify-between px-1">
-                      <span className="text-[0.6875rem] text-stone-500">게시물을 눌러 고르고 위에서 공개 범위를 눌러요</span>
-                      <button onClick={() => setHidePick(allOn ? new Set() : new Set(pickable.map(p => p.id)))} className="text-[0.75rem] font-bold text-sky-700">{allOn ? '선택 풀기' : '전체 선택'}</button>
-                    </div>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/50 px-2 py-2 flex items-center gap-2">
+                    <button disabled={hideBusy} onClick={() => setHidePick(null)} className="w-8 h-8 flex items-center justify-center text-stone-700 text-2xl leading-none" aria-label="게시물 관리 닫기">×</button>
+                    <p className="flex-1 font-bold text-[0.9375rem] text-stone-900">{hidePick.size}개 선택됨</p>
+                    <button onClick={() => setHidePick(allOn ? new Set() : new Set(pickable.map(p => p.id)))} className="px-3 py-1.5 rounded-full bg-white border border-amber-300 text-[0.8125rem] font-bold text-amber-800">{allOn ? '선택 해제' : '전체 선택'}</button>
                   </div>
                 );
               })()}
@@ -5908,7 +5909,7 @@ export default function Home() {
               </button>
             ))}
           </div>
-          <div className="grid grid-cols-3 gap-0.5 bg-white">
+          <div className={`grid grid-cols-3 gap-0.5 bg-white ${hidePick ? 'pb-36' : ''}`}>
             {(() => {
               const ownSpace = user?.id === viewingUserId;
               const byVis = (list: Post[]) => (ownSpace && spaceFilter !== 'all' ? list.filter(p => (p.visibility || 'public') === spaceFilter) : list);
@@ -5929,7 +5930,7 @@ export default function Home() {
                   }} 
                   className="aspect-square bg-stone-100 relative group overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                 >
-                  {hidePick && post.user_id === user?.id && <span className={`absolute inset-0 z-20 ${hidePick.has(post.id) ? 'bg-black/35 ring-4 ring-inset ring-sky-400' : ''}`}><span className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white text-[0.75rem] font-bold ${hidePick.has(post.id) ? 'bg-sky-500' : 'bg-black/30'}`}>{hidePick.has(post.id) ? '✓' : ''}</span></span>}
+                  {hidePick && post.user_id === user?.id && <span className={`absolute inset-0 z-20 ${hidePick.has(post.id) ? 'bg-black/20 ring-4 ring-inset ring-amber-400' : ''}`}><span className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 flex items-center justify-center text-white text-[0.75rem] font-bold ${hidePick.has(post.id) ? 'bg-amber-500 border-amber-100' : 'bg-black/30 border-white'}`}>{hidePick.has(post.id) ? '✓' : ''}</span></span>}
                   {(post.user_id === user?.id || (post.visibility && post.visibility !== 'public')) && !(hidePick && post.user_id === user?.id) && <span className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/45 border border-white/80 text-white flex items-center justify-center" title={VISIBILITY[post.visibility || 'public'].label}><Icon name={VISIBILITY[post.visibility || 'public'].icon} className="w-4 h-4" /></span>}
                   {post.music && <span className="absolute top-1 left-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
                   {post.video_url
@@ -6054,7 +6055,7 @@ export default function Home() {
       )}
       {/* 글 하나의 '보는 사람' (⋯ 메뉴, 운영자 2026-11-15: 공유하기 싫은 글은 감추기) */}
       {visSheetPost && (
-        <BottomSheet label="보는 사람" title="보는 사람" subtitle="이 글을 누가 볼 수 있는지 골라요 · 홈·내 공간·영상 모두 같아요" onClose={() => setVisSheetPost(null)} tone="bg-white" z="z-[90]">
+        <BottomSheet label="공개 범위 변경" title="공개 범위 변경" subtitle="이 게시물을 누가 볼 수 있는지 골라요 · 홈·내 공간·영상 모두 같아요" onClose={() => setVisSheetPost(null)} tone="bg-white" z="z-[90]">
           <div className="px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-2">
             {(Object.keys(VISIBILITY) as Visibility[]).map(v => {
               const on = (visSheetPost.visibility || 'public') === v;
@@ -7986,7 +7987,7 @@ export default function Home() {
                   </>
                 )}
                 {mine && <button onClick={() => { close(); startEditPost(post); }} className={`${row} text-stone-900`}><Icon name="pencil" className="w-6 h-6 shrink-0" />수정</button>}
-                {mine && <button onClick={() => { close(); setVisSheetPost(post); }} className={`${row} text-stone-900`}><Icon name={VISIBILITY[post.visibility || 'public'].icon} className="w-6 h-6 shrink-0" />보는 사람<span className="ml-auto text-[0.875rem] text-stone-400">{VISIBILITY[post.visibility || 'public'].label} ›</span></button>}
+                {mine && <button onClick={() => { close(); setVisSheetPost(post); }} className={`${row} text-stone-900`}><Icon name={VISIBILITY[post.visibility || 'public'].icon} className="w-6 h-6 shrink-0" />공개 범위 변경<span className="ml-auto text-[0.875rem] text-stone-400">{VISIBILITY[post.visibility || 'public'].label} ›</span></button>}
                 {!mine && <button onClick={() => { close(); goToProfile(post.user_id); }} className={`${row} text-stone-900`}><Icon name="user" className="w-6 h-6 shrink-0" />{post.author_name}님 공간 가기</button>}
                 {user && !mine && <button onClick={() => { close(); setReportTarget({ type: 'post', id: post.id, userId: post.user_id, userName: post.author_name, preview: postPlainText(post.content) }); }} className={`${row} text-red-600`}><Icon name="siren" className="w-6 h-6 shrink-0" />신고하기</button>}
                 {canDelete && <button onClick={() => { close(); handleDeletePost(post.id); }} className={`${row} text-red-600`}><Icon name="trash" className="w-6 h-6 shrink-0" />삭제</button>}
@@ -8046,6 +8047,22 @@ export default function Home() {
         </div>
       )}
 
+      {/* 게시물 관리: 고른 게시물의 공개 범위를 한 번에 (아래 떠 있는 막대, 운영자 2026-11-15 요청서) */}
+      {hidePick && activeTab === 'profile' && user?.id === viewingUserId && (
+        <div className="fixed left-0 right-0 max-w-xl tablet:max-w-none mx-auto z-[45] px-3 bottom-[calc(4.6rem+env(safe-area-inset-bottom))]">
+          <div className="rounded-2xl bg-white border border-amber-200 shadow-xl p-2.5">
+            <p className="text-[0.8125rem] font-bold text-stone-800 px-1 mb-1.5">{hideBusy ? '바꾸는 중…' : hidePick.size ? `${hidePick.size}개 게시물 선택됨` : '게시물을 눌러 골라 주세요'}</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(['public', 'followers', 'private'] as const).map(v => (
+                <button key={v} disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility(v)}
+                  className={`py-2.5 rounded-xl text-[0.8125rem] font-bold inline-flex items-center justify-center gap-1 disabled:opacity-40 ${v === 'private' ? 'bg-stone-900 text-white' : 'bg-amber-50 text-stone-800 border border-amber-200'}`}>
+                  <Icon name={VISIBILITY[v].icon} className="w-4 h-4" />{VISIBILITY[v].label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* 하단 네비게이션 */}
       {activeTab !== 'chat' && (
         <nav className={`fixed bottom-0 left-0 right-0 max-w-xl tablet:max-w-none mx-auto border-t flex items-center justify-around z-40 pb-safe ${activeTab === 'reels' ? 'bg-black border-white/10' : 'bg-white border-stone-200'}`}>
