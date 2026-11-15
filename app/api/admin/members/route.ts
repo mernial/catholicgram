@@ -1,9 +1,10 @@
+import { deleteAccountData } from '@/lib/account-delete';
 import { createClient, type SupabaseClient, type User } from '@supabase/supabase-js';
 import { ADMIN_EMAILS } from '@/lib/admin';
 
 // 관리자 전용 회원 관리
 // GET  : 가입 회원 목록과 상태 (가입일, 최근 접속, 접속 횟수, 로그인 방식, 글·댓글 수, 받은 하트·기도, 신고 수, 알림 여부, 이용 정지 여부)
-// POST : { action: 'suspend' | 'unsuspend' | 'dismiss-reports', userId } 이용 정지 / 해제 / 신고 해제
+// POST : { action: 'suspend' | 'unsuspend' | 'dismiss-reports' | 'delete', userId } 이용 정지 / 해제 / 신고 해제 / 계정 삭제(관리자 계정은 못 지움)
 //        정지하면 로그인이 막히고, 이미 로그인한 기기도 최대 1시간 안에 로그아웃된다.
 
 const FOREVER = '876000h'; // 약 100년
@@ -140,7 +141,17 @@ export async function POST(request: Request) {
   const { admin, me } = auth;
 
   const { action, userId } = ((await request.json().catch(() => ({}))) ?? {}) as { action?: string; userId?: string };
-  if (!userId || !['suspend', 'unsuspend', 'dismiss-reports'].includes(action || '')) return Response.json({ error: 'bad request' }, { status: 400 });
+  if (!userId || !['suspend', 'unsuspend', 'dismiss-reports', 'delete'].includes(action || '')) return Response.json({ error: 'bad request' }, { status: 400 });
+
+  // 계정 삭제 (운영자 2026-11-15: 다른 계정으로 다시 만든 교우의 예전 계정 등) — 본인 탈퇴와 같은 정리. 관리자·나 자신은 못 지움
+  if (action === 'delete') {
+    if (userId === me.id) return Response.json({ error: '내 계정은 여기서 지울 수 없어요' }, { status: 400 });
+    const { data: target } = await admin.auth.admin.getUserById(userId);
+    if (target?.user?.email && ADMIN_EMAILS.includes(target.user.email)) return Response.json({ error: '관리자 계정은 지울 수 없어요' }, { status: 400 });
+    const result = await deleteAccountData(admin, userId);
+    if (result.error) return Response.json({ error: result.error }, { status: 500 });
+    return Response.json({ ok: true, deleted: true });
+  }
 
   // 신고 해제: 이 회원에 대한 미처리 신고를 모두 '해제(dismissed)'로
   if (action === 'dismiss-reports') {

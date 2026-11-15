@@ -118,6 +118,18 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
     setMembers(prev => prev?.map(x => x.id === m.id ? { ...x, suspended: !!result.suspended } : x) || prev);
   };
 
+  // 계정 삭제 (운영자 2026-11-15: 다른 계정으로 다시 만든 교우의 예전 계정 등) — 글·댓글·메시지·사진까지 모두 지워지고 되돌릴 수 없음
+  const deleteMember = async (m: AdminMember) => {
+    const name = m.baptismal_name || m.email || '이 회원';
+    if (!(await askConfirm(`${name}${m.handle ? ` (@${m.handle})` : ''}님의 계정을 지울까요?\n글·댓글·메시지·사진이 모두 지워지고 되돌릴 수 없어요.`))) return;
+    if (!(await askConfirm(`정말 지울까요? 마지막 확인이에요.\n${name}${m.handle ? ` (@${m.handle})` : ''}`))) return;
+    setBusyId(m.id);
+    const result = await callApi('POST', { action: 'delete', userId: m.id });
+    setBusyId(null);
+    if (result.error) { alert(result.error); return; }
+    setMembers(prev => prev?.filter(x => x.id !== m.id) || prev);
+  };
+
   // 이 회원에 대한 미처리 신고를 모두 해제 (글은 그대로, 신고 표시만 없앰)
   const dismissReports = async (m: AdminMember) => {
     const name = m.baptismal_name || m.email || '이 회원';
@@ -282,6 +294,12 @@ export default function AdminMembers({ onClose, onMessage, onOpenProfile }: {
                           {busyId === m.id ? '처리 중...' : m.suspended ? '정지 해제' : <><Icon name="prohibit" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />이용 정지</>}
                         </button>
                       </div>
+                    )}
+                    {!m.is_admin && (
+                      <button onClick={() => deleteMember(m)} disabled={busyId === m.id}
+                        className="w-full text-xs py-2 rounded-lg font-bold text-red-700 bg-red-50 border border-red-200 disabled:opacity-50">
+                        <Icon name="trash" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />계정 삭제
+                      </button>
                     )}
                     {!m.is_admin && m.open_reports > 0 && (
                       <button
