@@ -670,6 +670,8 @@ export default function Home() {
   const [visSheetPost, setVisSheetPost] = useState<Post | null>(null); // ⋯ 메뉴 → '보는 사람' 고르기
   const [hidePick, setHidePick] = useState<Set<string> | null>(null); // 내 공간: 게시물 골라서 감추기(나만 보기) 중이면 고른 글 id
   const [hideBusy, setHideBusy] = useState(false);
+  const [spaceFilter, setSpaceFilter] = useState<'all' | Visibility>('all'); // 내 공간: 공개 범위별로 골라 보기
+  const [showSpaceSettings, setShowSpaceSettings] = useState(false); // 공간 공개·새 글 기본 공개 범위 창
   const [spaceDays, setSpaceDays] = useState<MemberDays | null>(null);   // 보고 있는 공간 주인의 생일·축일 (리본)
   const [actionUserDays, setActionUserDays] = useState<MemberDays | null>(null); // 프로필 카드 교우의 생일·축일
   const [viewingBio, setViewingBio] = useState(''); // 내 공간 한 줄 소개
@@ -4671,7 +4673,7 @@ export default function Home() {
     setHideBusy(false);
     if (failMsg) { alert(failMsg); if (!ok) return; }
     setHidePick(null);
-    setToast({ key: `bulkvis-${Date.now()}`, icon: <Icon name={v === 'private' ? 'lock' : 'globe'} className="w-7 h-7 text-stone-700" />, title: v === 'private' ? `게시물 ${ok}개를 감췄어요` : `게시물 ${ok}개를 다시 보이게 했어요`, body: v === 'private' ? '나만 볼 수 있어요 · 🔒 표시로 보여요' : '모든 교우가 볼 수 있어요', action: () => {} });
+    setToast({ key: `bulkvis-${Date.now()}`, icon: <Icon name={VISIBILITY[v].icon} className="w-7 h-7 text-stone-700" />, title: `게시물 ${ok}개를 '${VISIBILITY[v].label}'로 바꿨어요`, body: VISIBILITY[v].hint, action: () => {} });
   };
   const changeSpaceVisibility = async (v: Visibility) => {
     if (!user) return;
@@ -5835,27 +5837,55 @@ export default function Home() {
             )}
           </div>
 
-          {/* 공간 공개 범위: 내 공간이면 고르기, 남의 공간이면 볼 수 있는지 (운영자 2026-11-15) */}
+          {/* 내 공간: 공개 범위 필터 + 게시물 관리 (운영자 2026-11-15 시안 — 큰 설명 칸 대신 간결하게) */}
           {user?.id === viewingUserId ? (
-            <div className="px-4 py-3 border-t border-stone-200 bg-white">
-              <p className="text-[0.8125rem] font-bold text-stone-800 mb-1.5">내 공간 게시물을 볼 수 있는 사람</p>
-              <VisibilityPicker value={viewingSpaceVis} onChange={v => changeSpaceVisibility(v)} />
-              {/* 몇몇 게시물만 골라서 나만 보기로 감추기 (운영자 2026-11-15) */}
+            <div className="px-3 py-2.5 border-t border-stone-200 bg-white">
               {!hidePick ? (
-                <button onClick={() => setHidePick(new Set())} className="mt-2.5 w-full py-2.5 rounded-xl border border-stone-300 text-[0.875rem] font-bold text-stone-800 inline-flex items-center justify-center gap-1.5">
-                  <Icon name="lock" className="w-4 h-4" />게시물 골라서 감추기
-                </button>
-              ) : (
-                <div className="mt-2.5 rounded-xl bg-stone-900 text-white p-3">
-                  <p className="text-[0.8125rem] font-bold">감출 게시물을 눌러 골라요 · {hidePick.size}개 고름</p>
-                  <p className="text-[0.6875rem] text-white/60 mt-0.5">감춘 글은 나만 보여요(홈·내 공간·영상 모두). 🔒 표시된 글을 고르면 다시 보이게 할 수 있어요</p>
-                  <div className="mt-2 grid grid-cols-3 gap-1.5">
-                    <button disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility('private')} className="py-2 rounded-lg bg-white text-stone-900 text-[0.8125rem] font-bold disabled:opacity-40">🔒 감추기</button>
-                    <button disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility('public')} className="py-2 rounded-lg bg-white/15 text-white text-[0.8125rem] font-bold disabled:opacity-40">다시 보이기</button>
-                    <button disabled={hideBusy} onClick={() => setHidePick(null)} className="py-2 rounded-lg bg-white/15 text-white text-[0.8125rem] font-bold">취소</button>
+                <div className="rounded-2xl border border-amber-200 bg-amber-50/40 p-3">
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-[0.9375rem] text-stone-900 inline-flex items-center gap-1.5"><Icon name="lock" className="w-4 h-4" />공개 범위 필터</p>
+                    <button onClick={() => { setHidePick(new Set()); setProfileTab('posts'); }} className="px-2.5 py-1 rounded-full bg-white border border-stone-200 text-[0.75rem] font-bold text-stone-700">게시물 관리 ›</button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="공개 범위로 골라 보기">
+                    {(['public', 'followers', 'private'] as const).map(f => {
+                      const n = myPosts.filter(p => (p.visibility || 'public') === f).length;
+                      const on = spaceFilter === f;
+                      return (
+                        <button key={f} role="radio" aria-checked={on} onClick={() => setSpaceFilter(on ? 'all' : f)}
+                          className={`py-2 rounded-xl border flex flex-col items-center ${on ? 'bg-stone-900 text-white border-stone-900' : 'bg-white text-stone-700 border-stone-200'}`}>
+                          <span className="text-[0.8125rem] font-bold inline-flex items-center gap-1"><Icon name={VISIBILITY[f].icon} className="w-4 h-4" />{VISIBILITY[f].label}</span>
+                          <span className={`text-[0.875rem] ${on ? 'text-white/80' : 'text-stone-500'}`}>{n.toLocaleString()}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between text-[0.6875rem] text-stone-500 px-0.5">
+                    <span>{spaceFilter === 'all' ? `모든 게시물 ${myPosts.length}개 · 눌러서 골라 보기` : `${VISIBILITY[spaceFilter].label} 게시물만 보는 중 · 한 번 더 누르면 모두`}</span>
+                    <button onClick={() => setShowSpaceSettings(true)} className="font-bold text-stone-600 underline underline-offset-2">공간 공개 · {VISIBILITY[viewingSpaceVis].label}</button>
                   </div>
                 </div>
-              )}
+              ) : (() => {
+                const pickable = (spaceFilter === 'all' ? myPosts : myPosts.filter(p => (p.visibility || 'public') === spaceFilter));
+                const allOn = pickable.length > 0 && pickable.every(p => hidePick.has(p.id));
+                return (
+                  <div className="rounded-2xl border border-stone-200 bg-white shadow-sm p-2.5">
+                    <div className="flex items-center gap-2">
+                      <button disabled={hideBusy} onClick={() => setHidePick(null)} className="w-8 h-8 flex items-center justify-center text-stone-700 text-2xl leading-none" aria-label="게시물 관리 닫기">×</button>
+                      <p className="flex-1 font-bold text-[0.9375rem] text-stone-900">{hideBusy ? '바꾸는 중…' : `${hidePick.size}개 선택됨`}</p>
+                      {(['private', 'followers', 'public'] as const).map(v => (
+                        <button key={v} disabled={!hidePick.size || hideBusy} onClick={() => bulkVisibility(v)}
+                          className="w-[3.6rem] py-1 rounded-lg flex flex-col items-center text-stone-800 disabled:opacity-35 active:bg-stone-100">
+                          <Icon name={VISIBILITY[v].icon} className="w-5 h-5" /><span className="text-[0.625rem] font-bold mt-0.5">{v === 'private' ? '나만 보기로' : VISIBILITY[v].label}</span>
+                        </button>
+                      ))}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between px-1">
+                      <span className="text-[0.6875rem] text-stone-500">게시물을 눌러 고르고 위에서 공개 범위를 눌러요</span>
+                      <button onClick={() => setHidePick(allOn ? new Set() : new Set(pickable.map(p => p.id)))} className="text-[0.75rem] font-bold text-sky-700">{allOn ? '선택 풀기' : '전체 선택'}</button>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           ) : null}
           {(() => {
@@ -5880,10 +5910,12 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-3 gap-0.5 bg-white">
             {(() => {
+              const ownSpace = user?.id === viewingUserId;
+              const byVis = (list: Post[]) => (ownSpace && spaceFilter !== 'all' ? list.filter(p => (p.visibility || 'public') === spaceFilter) : list);
               const gridPosts = profileTab === 'posts'
-                ? myPosts
+                ? byVis(myPosts)
                 : profileTab === 'videos'
-                ? myPosts.filter(p => p.video_url)
+                ? byVis(myPosts.filter(p => p.video_url))
                 : posts.filter(p => p.user_id !== viewingUserId && !blockedIds.has(p.user_id) && mentionsHandle(p.content, viewingProfile?.handle));
               return gridPosts.length === 0 ? (
               <div className="col-span-3 p-12 text-center text-stone-400 text-sm bg-white">{profileTab === 'posts' ? '게시물이 없습니다.' : profileTab === 'videos' ? '아직 올린 영상이 없어요.' : '아직 태그된 글이 없어요.'}</div>
@@ -5898,8 +5930,8 @@ export default function Home() {
                   className="aspect-square bg-stone-100 relative group overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
                 >
                   {hidePick && post.user_id === user?.id && <span className={`absolute inset-0 z-20 ${hidePick.has(post.id) ? 'bg-black/35 ring-4 ring-inset ring-sky-400' : ''}`}><span className={`absolute top-1.5 right-1.5 w-6 h-6 rounded-full border-2 border-white flex items-center justify-center text-white text-[0.75rem] font-bold ${hidePick.has(post.id) ? 'bg-sky-500' : 'bg-black/30'}`}>{hidePick.has(post.id) ? '✓' : ''}</span></span>}
-                  {post.visibility && post.visibility !== 'public' && <span className="absolute top-1 left-1 z-10 text-[0.6875rem] bg-black/55 text-white rounded-full px-1.5 py-0.5"><Icon name={VISIBILITY[post.visibility].icon} className="w-3.5 h-3.5" /></span>}
-                  {post.music && <span className="absolute top-1 right-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
+                  {(post.user_id === user?.id || (post.visibility && post.visibility !== 'public')) && !(hidePick && post.user_id === user?.id) && <span className="absolute top-1.5 right-1.5 z-10 w-7 h-7 rounded-full bg-black/45 border border-white/80 text-white flex items-center justify-center" title={VISIBILITY[post.visibility || 'public'].label}><Icon name={VISIBILITY[post.visibility || 'public'].icon} className="w-4 h-4" /></span>}
+                  {post.music && <span className="absolute top-1 left-1 z-10 text-xs bg-black/50 text-white rounded-full w-6 h-6 flex items-center justify-center"><Icon name="music" className="w-3.5 h-3.5" /></span>}
                   {post.video_url
                     ? <span className="absolute bottom-1.5 right-1.5 z-10 text-white drop-shadow"><Icon name="play" fill className="w-5 h-5" /></span>
                     : (post.images?.length || 0) > 1 && <span className="absolute bottom-1.5 right-1.5 z-10 text-white drop-shadow"><Icon name="stack" fill className="w-5 h-5" /></span>}
@@ -6004,6 +6036,22 @@ export default function Home() {
       {legalDoc && <LegalSheet doc={legalDoc} onClose={() => setLegalDoc(null)} />}
       {showTermsConsent && user && <TermsConsentDialog onAccept={acceptTerms} onClose={() => setShowTermsConsent(false)} onOpenLegal={setLegalDoc} saving={termsSaving} />}
       {/* 내 댓글: 내가 단 댓글 모아 보기 (나만 보임) */}
+      {/* 공간 공개 · 새 게시물 기본 공개 범위 (운영자 2026-11-15 시안) */}
+      {showSpaceSettings && (
+        <BottomSheet label="공개 범위 설정" title="공개 범위 설정" onClose={() => setShowSpaceSettings(false)} tone="bg-white" z="z-[90]">
+          <div className="px-4 pb-[calc(1.25rem+env(safe-area-inset-bottom))] flex flex-col gap-4">
+            <div>
+              <p className="text-[0.875rem] font-bold text-stone-900 mb-1.5">내 공간 게시물을 볼 수 있는 사람</p>
+              <VisibilityPicker value={viewingSpaceVis} onChange={v => changeSpaceVisibility(v)} />
+            </div>
+            <div>
+              <p className="text-[0.875rem] font-bold text-stone-900 mb-1.5">새 게시물 기본 공개 범위</p>
+              <VisibilityPicker value={composerVisibility} onChange={v => { setComposerVisibility(v); storageSet('postVisibility', v); }} />
+              <p className="text-[0.6875rem] text-stone-400 mt-1 pl-1">글을 쓸 때마다 다시 고르지 않아도 이 값으로 올라가요 (글쓰기 화면에서 그때그때 바꿀 수도 있어요)</p>
+            </div>
+          </div>
+        </BottomSheet>
+      )}
       {/* 글 하나의 '보는 사람' (⋯ 메뉴, 운영자 2026-11-15: 공유하기 싫은 글은 감추기) */}
       {visSheetPost && (
         <BottomSheet label="보는 사람" title="보는 사람" subtitle="이 글을 누가 볼 수 있는지 골라요 · 홈·내 공간·영상 모두 같아요" onClose={() => setVisSheetPost(null)} tone="bg-white" z="z-[90]">
