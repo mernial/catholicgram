@@ -352,7 +352,17 @@ export async function POST(request: Request) {
     const { data: post } = await admin.from('posts').select('id, user_id, author_name, content, created_at').eq('id', id).single();
     if (!post || post.user_id !== user.id) return Response.json({ error: 'forbidden' }, { status: 403 });
     if (Date.now() - new Date(post.created_at).getTime() > MAX_AGE_MS) return Response.json({ skipped: 'too old' });
-    list.push(...await postMentionTargets(admin, post)); // 외부 자동 게시(/api/autopost)와 같은 알림
+    // 공개 범위(post-visibility.sql): 나만 보기 글은 태그 알림을 보내지 않고(글 내용이 알림으로 새지 않게), 팔로워만 글은 나를 팔로우하는 교우에게만
+    const { data: visRow, error: visErr } = await admin.from('posts').select('visibility').eq('id', id).maybeSingle();
+    const vis = visErr ? 'public' : ((visRow as { visibility?: string } | null)?.visibility || 'public');
+    if (vis === 'private') return Response.json({ skipped: 'private post' });
+    let targets = await postMentionTargets(admin, post); // 외부 자동 게시(/api/autopost)와 같은 알림
+    if (vis === 'followers' && targets.length) {
+      const { data: fl } = await admin.from('follows').select('follower_id').eq('following_id', user.id).eq('status', 'accepted').in('follower_id', targets.map(t => t.recipientId));
+      const ok = new Set((fl || []).map(f => f.follower_id as string));
+      targets = targets.filter(t => ok.has(t.recipientId));
+    }
+    list.push(...targets);
     if (list.length === 0) return Response.json({ skipped: 'no mentions' });
   } else if (type === 'story') {
     // 새 스토리 → 나를 팔로우하는 교우들에게
