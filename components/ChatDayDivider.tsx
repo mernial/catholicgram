@@ -17,10 +17,11 @@ export function isNewChatDay<T extends { created_at: string }>(list: T[], i: num
   return true;
 }
 
+// 글자를 고르지 못하게: 메시지를 두 번 눌러 하트를 줄 때 날짜 글자가 골라져 크롬 '검색' 막대가 뜨던 문제(운영자 2026-11-15)
 export function ChatDayDivider({ iso }: { iso: string }) {
   const label = chatDayLabel(iso);
   return (
-    <div role="separator" aria-label={label} className="flex items-center gap-3 my-2 text-[0.8125rem] text-stone-500">
+    <div role="separator" aria-label={label} className="flex items-center gap-3 my-2 text-[0.8125rem] text-stone-500 select-none [-webkit-touch-callout:none]">
       <span className="flex-1 h-px bg-stone-300" />
       <span className="shrink-0 bg-white/80 rounded-full px-3 py-1">{label}</span>
       <span className="flex-1 h-px bg-stone-300" />

@@ -722,7 +722,7 @@ export default function GroupChat({ user, chatId, adminView = false, blockedIds,
         const el = e.currentTarget;
         atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
         if (atBottomRef.current && newBelow) setNewBelow(0);
-      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col">
+      }} className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-3 flex flex-col select-none [-webkit-touch-callout:none]">
         <div ref={contentRef} className="mt-auto flex flex-col gap-2">
           {hasOlder && <button onClick={loadOlder} className="self-center text-[0.8125rem] text-stone-600 bg-white border border-stone-200 rounded-full px-4 py-1.5">이전 대화 더 보기</button>}
           {loading && <p className="text-center text-stone-400 text-sm py-10">불러오는 중...</p>}
