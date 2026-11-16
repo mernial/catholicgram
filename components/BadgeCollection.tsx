@@ -32,6 +32,8 @@ const Bar = ({ pct, color = '#c9a24a', h = 'h-1.5' }: { pct: number; color?: str
   <div className={`${h} rounded-full bg-[#efe9dc] overflow-hidden`}><div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} /></div>
 );
 
+const TIER_COLOR_WORD = ['회색', '초록', '파랑', '빨강', '노랑', '금색', '무지개'];
+
 export default function BadgeCollection({ userId, initialTab = 'home', onClose, onOpenProfile }: { userId: string; initialTab?: Tab | 'mine'; onClose: () => void; onOpenProfile?: (id: string) => void }) {
   const { rows, featured, setFeatured, reload } = useMemberBadges(userId);
   const { stamps } = useBadgeStamps(userId);
@@ -87,7 +89,6 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
     const ratio = count === undefined || next === null ? 0 : (count - prev) / (next - prev);
     return { L, count, cur, next, prev, ratio, champ: have.has(L.champion) };
   }), [keys, stats, have]);
-  const [chainId, setChainId] = useState<string | null>(null); // 활동 등급 맨 위 '겨자씨 → … → 생명의 나무' 줄에 보일 활동
   const goals = ladder.filter(x => x.next !== null && x.count !== undefined).sort((a, b) => b.ratio - a.ratio).slice(0, 3);
   const recent = useMemo(() => {
     const seen = new Set<string>();
@@ -205,43 +206,21 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
 
         {adminSelf && <p className="mt-3 rounded-2xl bg-stone-100 px-3 py-2 text-[0.75rem] text-stone-600">관리자 계정은 활동 등급(달성 기록)은 받지만, 1등 순위에서는 빠져요 — 교우들의 1등에 영향을 주지 않아요.</p>}
         {tab === 'tiers' && (<div className="flex flex-col gap-2 mt-2">
-          {/* 맨 위: 한 활동의 일곱 등급을 차례로 (운영자 2026-11-16: 무엇 다음에 무엇인지 보여야 달고 싶어짐) */}
-          {(() => {
-            const best = [...ladder].sort((a, b) => b.cur - a.cur || b.ratio - a.ratio)[0];
-            const x = ladder.find(l => l.L.id === chainId) || best;
-            if (!x) return null;
-            return (
-              <div className="rounded-2xl border-[1.5px] border-[#ecd38a] bg-gradient-to-br from-[#fff8e1] to-white p-3">
-                <div className="flex items-center justify-between">
-                  <b className="text-[0.9375rem] text-[#1f2a44]">🌱 {x.L.short} 등급 길</b>
-                  <small className="text-[0.6875rem] text-stone-500">{STAT_LABELS[x.L.stat]} {x.count === undefined ? '…' : `${fmt(x.count)}${x.L.unit}`}</small>
+          {/* 맨 위: 등급 색 일곱 가지를 차례로 — 어떤 색이 어떤 등급인지 (운영자 2026-11-16) */}
+          <div className="rounded-2xl border-[1.5px] border-[#ecd38a] bg-gradient-to-br from-[#fff8e1] to-white p-3">
+            <b className="text-[0.9375rem] text-[#1f2a44]">🌱 등급 색 · 겨자씨의 성장</b>
+            <div className="mt-2 grid grid-cols-7 gap-0.5">
+              {TIERS.map((t, i) => (
+                <div key={t.name} className="flex flex-col items-center">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={`/badges/3d/tier-${i + 1}.webp`} alt="" className="w-11 h-11 object-contain" draggable={false} />
+                  <b className="mt-0.5 text-[0.6875rem] text-[#1f2a44] leading-tight text-center">{t.name}</b>
+                  <small className="text-[0.5625rem] text-stone-500 leading-tight">{TIER_COLOR_WORD[i]}</small>
                 </div>
-                <div className="mt-2 flex items-start gap-0.5 overflow-x-auto pb-1 [scrollbar-width:none]">
-                  {x.L.steps.map((n, i) => {
-                    const d = badgeOf(`t_${x.L.id}_${i + 1}`)!;
-                    const got = i < x.cur, now = i === x.cur - 1, next = i === x.cur;
-                    return (
-                      <div key={i} className="flex items-start shrink-0">
-                        {i > 0 && <span className={`mt-5 px-0.5 text-[0.875rem] ${i <= x.cur ? 'text-amber-600' : 'text-stone-300'}`}>›</span>}
-                        <button onClick={() => setPick(d.key)} className={`w-[3.9rem] flex flex-col items-center rounded-xl py-1 ${now ? 'bg-amber-100/70 ring-1 ring-amber-300' : next ? 'border border-dashed border-stone-300' : ''}`}>
-                          <span className={got ? '' : 'opacity-40 grayscale'}><BadgeIcon badge={d} size={44} /></span>
-                          <b className={`text-[0.6875rem] leading-tight mt-0.5 ${got ? 'text-[#1f2a44]' : 'text-stone-400'}`}>{TIERS[i].name}</b>
-                          <small className={`text-[0.625rem] ${got ? 'text-amber-800' : 'text-stone-400'}`}>{fmt(n)}{x.L.unit}</small>
-                          {now && <small className="text-[0.5625rem] font-bold text-amber-700">지금</small>}
-                          {next && <small className="text-[0.5625rem] font-bold text-stone-500">다음</small>}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div className="mt-2 flex gap-1 overflow-x-auto [scrollbar-width:none]">
-                  {ladder.map(l => (
-                    <button key={l.L.id} onClick={() => setChainId(l.L.id)} className={`shrink-0 px-2.5 py-1 rounded-full text-[0.6875rem] font-bold border ${l.L.id === x.L.id ? 'bg-[#1f2a44] text-white border-[#1f2a44]' : 'bg-white text-stone-600 border-[#e3dccb]'}`}>{l.L.short}{l.cur ? ` · ${TIERS[l.cur - 1].name}` : ''}</button>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+              ))}
+            </div>
+            <p className="mt-2 text-[0.6875rem] text-stone-500 leading-relaxed">왼쪽에서 오른쪽으로 갈수록 높은 등급이에요. 어느 활동이든 메달 색이 곧 등급이에요 (큰 나무·생명의 나무는 반짝여요).</p>
+          </div>
           <p className="text-[0.75rem] text-stone-500">겨자씨 → 새싹 → 줄기 → 꽃 → 열매 → 큰 나무 → 생명의 나무 (겨자씨의 비유, 마태 13,31). 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
           {ladder.map(ladderRow)}
         </div>)}
