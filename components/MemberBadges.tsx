@@ -10,7 +10,6 @@ import { AUTO_BADGE_MIN, BADGE_GROUPS, LADDERS, MEMBER_BADGES, STAT_LABELS, TIER
 type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
-import Switch from '@/components/Switch';
 import { toast } from '@/lib/chat-actions';
 import { useBadgeMap } from '@/lib/badge-map';
 import { RoleIcon, roleOf } from '@/components/BadgeIcon';
@@ -308,20 +307,11 @@ export function BadgeListDialog({ userId, name, highlight, onClose, empty, showH
 
 // 공간 머리의 뱃지 선반
 export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; admin: boolean; mine: boolean; onGrant?: () => void }) {
-  const { rows, missing, hidden, setHidden, reload } = useMemberBadges(userId);
+  const { rows, missing, hidden, reload } = useMemberBadges(userId);
   const { stamps } = useBadgeStamps(userId, !missing);
   const [open, setOpen] = useState<Row | null>(null);
   const [book, setBook] = useState(false);
   const [list, setList] = useState(false);
-  const [saving, setSaving] = useState(false);
-  // 본인: 다른 교우에게 보일지 (기본 보임). 끄면 다른 교우의 화면(공간·프로필 카드)에서 안 보임
-  const toggleHidden = async (show: boolean) => {
-    setSaving(true);
-    const { error } = await supabase.from('profiles').update({ hide_badges: !show }).eq('id', userId);
-    setSaving(false);
-    if (error) { showAlert(`저장하지 못했어요\n${/hide_badges/.test(error.message) ? '뱃지 표(SQL)를 먼저 실행해야 해요.' : error.message}`); return; }
-    setHidden(!show); toast(show ? '뱃지를 다른 교우에게 보여요' : '뱃지를 숨겼어요 · 나만 볼 수 있어요');
-  };
   useEffect(() => {
     const h = (e: Event) => { const d = (e as CustomEvent<string>).detail; if (d === userId || d === '*') reload(); };
     window.addEventListener('member-badges-changed', h);
@@ -337,30 +327,21 @@ export function BadgeShelf({ userId, admin, mine, onGrant }: { userId: string; a
   if (hidden && !mine && !admin) return null;
   if (rows.length === 0 && stamps.length === 0 && !(admin && !missing) && !mine) return null;
   if (rows.length === 0 && mine && missing) return null;
-  // 한 줄로 (운영자 시안 2026-11-11): '내 뱃지 N' · '도장 N ›' · 보이기 단추 — 뱃지·도장은 누르면 창으로
-  const pill = 'shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 h-8 text-[0.8125rem] font-bold';
-  const count = (n: number, tone: string) => <span className={`min-w-[1.375rem] h-[1.375rem] px-1.5 rounded-full text-[0.75rem] inline-flex items-center justify-center ${tone}`}>{n}</span>;
-  const sep = <span className="w-px h-5 bg-stone-200 shrink-0" aria-hidden="true" />;
+  // 한 칸으로 정리 (운영자 2026-11-16: 내 뱃지·도장·관리가 따로 있어 알아보기 어려웠음) — 대표 뱃지 + '뱃지 N · 도장 N' · 누르면 모음 창
+  //   내 공간: 나의 뱃지 창(단 뱃지·활동 등급·1등·기념·도장·보이기 설정이 모두 그 안에) / 교우 공간: 그 교우의 뱃지 목록(도장 보기 단추 포함)
+  const shownList = shownBadges(rows.map(r => r.badge_key)); // 1등과 같은 활동 등급은 하나로 (나의 뱃지 창의 '단 뱃지'와 같은 수)
+  const first = shownList[0];
   return (
-    <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-      <button onClick={() => setList(true)} className={`${pill} bg-stone-100 text-stone-800`} aria-label={`${mine ? '내 ' : ''}뱃지 ${rows.length}개 보기`}>
-        {rows[0] && (() => { const f = shownBadges(rows.map(r => r.badge_key))[0]; return f ? <BadgeIcon badge={f.key} size={20} champion={f.champion} /> : null; })()}{mine ? '내 뱃지' : '뱃지'}{count(rows.length, 'bg-emerald-100 text-emerald-800')}
-        {hidden && !mine && <span className="font-normal text-stone-400 text-[0.6875rem]">(숨김)</span>}
-      </button>
-      {!missing && (stamps.length > 0 || mine) && (<>
-        {sep}
-        <button onClick={() => setBook(true)} className={`${pill} bg-[#fffaf0] border border-amber-200 text-amber-900`} aria-label="받은 뱃지 도장 모음 보기">
-          <span aria-hidden="true">📖</span>도장{count(stamps.length, 'bg-amber-100 text-amber-900')}<span className="text-amber-700 text-base leading-none" aria-hidden="true">›</span>
-        </button>
-      </>)}
-      {admin && !missing && <button onClick={onGrant} className={`${pill} bg-amber-50 border border-amber-200 text-amber-800 h-8 px-2.5 text-[0.75rem]`}>{mine ? '뱃지 관리' : '＋ 달기'}</button>}
-      {mine && rows.length > 0 && (<>
-        <span className="ml-auto" />
-        <span className="shrink-0 inline-flex items-center gap-1 text-[0.6875rem] text-stone-600">
-          {hidden ? '나만 보기' : <><span className="hidden min-[400px]:inline">다른 교우에게&nbsp;</span>보이기</>}
-          <Switch size="sm" on={!hidden} busy={saving} onChange={toggleHidden} label="뱃지를 다른 교우에게 보이기" />
+    <div className="mt-3 flex items-center gap-2">
+      <button onClick={() => setList(true)} className="flex-1 min-w-0 flex items-center gap-2.5 rounded-2xl border border-[#eee5d2] bg-[#fffaf0] pl-2 pr-3 py-1.5 text-left" aria-label={`${mine ? '나의 ' : ''}뱃지 ${shownList.length}개 · 도장 ${stamps.length}개 보기`}>
+        <span className="w-9 h-9 shrink-0 flex items-center justify-center">{first ? <BadgeIcon badge={first.key} size={36} champion={first.champion} /> : <span className="text-[1.375rem]" aria-hidden="true">🏅</span>}</span>
+        <span className="flex-1 min-w-0">
+          <b className="block text-[0.875rem] text-stone-900 leading-tight">{mine ? '나의 뱃지' : '뱃지'}{hidden && <span className="ml-1 font-normal text-[0.6875rem] text-stone-400">{mine ? '· 나만 보기' : '(숨김)'}</span>}</b>
+          <span className="block text-[0.75rem] text-stone-500 leading-tight mt-0.5">단 뱃지 {shownList.length} · 도장 {stamps.length}{mine ? ' · 등급·1등 보기' : ''}</span>
         </span>
-      </>)}
+        <span className="text-amber-700 text-lg leading-none" aria-hidden="true">›</span>
+      </button>
+      {admin && !missing && <button onClick={onGrant} className="shrink-0 rounded-2xl border border-amber-200 bg-amber-50 text-amber-800 text-[0.75rem] font-bold px-3 py-2.5">{mine ? '뱃지 관리' : '＋ 뱃지 달기'}</button>}
       {list && mine && <BadgeCollection userId={userId} onClose={() => setList(false)} />}
       {list && !mine && <BadgeListDialog userId={userId} mine={mine} showHidden={mine || admin} onClose={() => setList(false)} empty={mine ? `아직 받은 뱃지가 없어요 · 공감을 많이 받거나 댓글·기도지향·건의 등 활동 1등(${AUTO_BADGE_MIN} 이상)이 되거나, 글 10편·출석 30일 같은 기준을 넘으면 저절로 달려요` : undefined} />}
       {/* 내 공간 머리 칸은 isolate(성당 그림) → 그 안에 그리면 창이 그 칸에 갇혀 아래 가톨릭 앱·아래 탭이 창 위로 올라왔음(루비로사 2026-11-11) → body 에 */}

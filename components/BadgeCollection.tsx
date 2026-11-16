@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import BottomSheet from '@/components/BottomSheet';
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { StampBook, useBadgeStamps, useMemberBadges } from '@/components/MemberBadges';
+import Switch from '@/components/Switch';
 import { showAlert } from '@/components/ConfirmDialog';
 import { toast } from '@/lib/chat-actions';
 import { supabase } from '@/lib/supabase';
@@ -35,7 +36,7 @@ const Bar = ({ pct, color = '#c9a24a', h = 'h-1.5' }: { pct: number; color?: str
 const TIER_COLOR_WORD = ['회색', '초록', '파랑', '빨강', '노랑', '금색', '무지개'];
 
 export default function BadgeCollection({ userId, initialTab = 'home', onClose, onOpenProfile }: { userId: string; initialTab?: Tab | 'mine'; onClose: () => void; onOpenProfile?: (id: string) => void }) {
-  const { rows, featured, setFeatured, reload } = useMemberBadges(userId);
+  const { rows, featured, setFeatured, reload, hidden, setHidden } = useMemberBadges(userId);
   const { stamps } = useBadgeStamps(userId);
   const [tab, setTab] = useState<Tab>(initialTab === 'mine' ? 'home' : initialTab);
   const [stats, setStats] = useState<Partial<Record<StatKey, number>> | null>(null);
@@ -55,7 +56,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
-      if (session.user.id === userId && ADMIN_EMAILS.includes(session.user.email || '')) { if (alive) setAdminSelf(true); return; }
+      if (session.user.id === userId && ADMIN_EMAILS.includes(session.user.email || '') && alive) setAdminSelf(true); // 관리자도 등급 진행을 봄 (2026-11-16)
       const res = await fetch('/api/badges/stats', { headers: { authorization: `Bearer ${session.access_token}` } }).catch(() => null);
       if (!alive || !res?.ok) return;
       setStats(await res.json().catch(() => null));
@@ -96,7 +97,6 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
   }, [stamps]);
   const champs = MEMBER_BADGES.filter(b => b.auto && !b.permanent && !b.retired);
   const honors = MEMBER_BADGES.filter(b => (!b.auto && !b.tier && !b.retired) || b.key === 'm_year1');
-  const total = LADDERS.length * 7 + champs.length + honors.length;
   const featuredShown = shown.find(s => s.key === featured) || shown[0];
 
   const choose = async (key: string) => {
@@ -141,13 +141,24 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
     <BottomSheet bare label="뱃지 모음" onClose={onClose} z="z-[86]" tone="bg-[#fdfaf3]">
       <div className="shrink-0 px-5 pb-1 flex items-center gap-2">
         <h2 className="text-[1.25rem] font-bold text-[#1f2a44]">🏅 나의 뱃지</h2>
-        <button onClick={() => setBook(true)} className="ml-auto text-[0.75rem] font-bold text-amber-800 bg-[#fffaf0] border border-amber-200 rounded-full px-3 py-1">📖 받은 기록</button>
+        <span className="ml-auto" />
         <button onClick={onClose} className="w-9 h-9 -mr-2 text-stone-400 text-2xl leading-none" aria-label="닫기">×</button>
       </div>
       <div className="shrink-0 mx-4 mt-1 bg-white rounded-2xl shadow-[0_4px_16px_rgba(31,42,68,0.08)] flex divide-x divide-stone-100">
-        {([['⭐ 받은 뱃지', shown.length], ['🏆 1등', shown.filter(s => s.champion).length], ['📖 전체', total]] as const).map(([t, n]) => (
-          <div key={t} className="flex-1 text-center py-2"><small className="block text-[0.6875rem] text-stone-500">{t}</small><b className="text-[1.125rem] text-[#1f2a44]">{n}개</b></div>
+        {/* 한눈에: 지금 단 뱃지 · 그중 1등 · 지금까지 받은 도장(받은 날 기록) — 누르면 그곳으로 (운영자 2026-11-16 정리) */}
+        {([['⭐ 단 뱃지', shown.length, () => setTab('home')], ['🏆 1등', shown.filter(s => s.champion).length, () => setTab('champ')], ['📖 도장', stamps.length, () => setBook(true)]] as const).map(([t, n, go]) => (
+          <button key={t} onClick={go} className="flex-1 text-center py-2"><small className="block text-[0.6875rem] text-stone-500">{t}</small><b className="text-[1.125rem] text-[#1f2a44]">{n}개</b></button>
         ))}
+      </div>
+      <div className="shrink-0 mx-4 mt-2 flex items-center justify-between rounded-xl bg-white/70 border border-[#eee5d2] px-3 py-1.5">
+        <span className="text-[0.75rem] text-stone-600">{hidden ? '🔒 뱃지를 나만 봐요' : '👀 다른 교우에게 뱃지가 보여요'}</span>
+        <Switch size="sm" on={!hidden} busy={saving} onChange={async show => {
+          setSaving(true);
+          const { error } = await supabase.from('profiles').update({ hide_badges: !show }).eq('id', userId);
+          setSaving(false);
+          if (error) { showAlert(`저장하지 못했어요\n${/hide_badges/.test(error.message) ? '뱃지 표(SQL)를 먼저 실행해야 해요.' : error.message}`); return; }
+          setHidden(!show); toast(show ? '뱃지를 다른 교우에게 보여요' : '뱃지를 숨겼어요 · 나만 볼 수 있어요');
+        }} label="뱃지를 다른 교우에게 보이기" />
       </div>
       <div className="shrink-0 flex gap-1.5 px-4 pt-3 pb-1 overflow-x-auto [scrollbar-width:none]">{chip('home', '홈')}{chip('tiers', '활동 등급')}{chip('champ', '1등')}{chip('honor', '기념')}</div>
 
