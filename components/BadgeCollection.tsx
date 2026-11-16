@@ -33,7 +33,6 @@ const Bar = ({ pct, color = '#c9a24a', h = 'h-1.5' }: { pct: number; color?: str
   <div className={`${h} rounded-full bg-[#efe9dc] overflow-hidden`}><div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, pct))}%`, background: color }} /></div>
 );
 
-const TIER_COLOR_WORD = ['회색', '초록', '파랑', '빨강', '노랑', '금색', '무지개'];
 
 export default function BadgeCollection({ userId, initialTab = 'home', onClose, onOpenProfile }: { userId: string; initialTab?: Tab | 'mine'; onClose: () => void; onOpenProfile?: (id: string) => void }) {
   const { rows, featured, setFeatured, reload, hidden, setHidden } = useMemberBadges(userId);
@@ -226,13 +225,10 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={`/badges/3d/tier-${i + 1}.webp`} alt="" className="w-11 h-11 object-contain" draggable={false} />
                   <b className="mt-0.5 text-[0.6875rem] text-[#1f2a44] leading-tight text-center">{t.name}</b>
-                  <small className="text-[0.5625rem] text-stone-500 leading-tight">{TIER_COLOR_WORD[i]}</small>
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[0.6875rem] text-stone-500 leading-relaxed">왼쪽에서 오른쪽으로 갈수록 높은 등급이에요. 어느 활동이든 메달 색이 곧 등급이에요 (큰 나무·생명의 나무는 반짝여요).</p>
           </div>
-          <p className="text-[0.75rem] text-stone-500">겨자씨 → 새싹 → 줄기 → 꽃 → 열매 → 큰 나무 → 생명의 나무 (겨자씨의 비유, 마태 13,31). 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
           {ladder.map(ladderRow)}
         </div>)}
 
