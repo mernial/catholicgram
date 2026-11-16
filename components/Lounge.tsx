@@ -7,6 +7,7 @@ import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import { mediaMenuActions } from '@/lib/save-media';
 import Icon from '@/components/Icon';
+import { RoleIcon, roleOf } from '@/components/BadgeIcon';
 import RoleBadge from '@/components/RoleBadge';
 import { NameBadges } from '@/components/MemberBadges';
 import { CelebrateBand } from '@/components/CelebrateAvatar';
@@ -772,10 +773,14 @@ export default function Lounge({ user, isAdmin, blockedIds, focusId, online = 0,
               })}
             </div>
             <button onClick={() => adminId && onOpenProfile(adminId)} className="shrink-0 w-[3.6rem] flex flex-col items-center md:w-auto md:flex-row md:justify-end md:gap-2 md:pb-2 md:border-b md:border-amber-200" aria-label="관리자 공간">
-              <CelebrateBand id={adminId}>{a?.avatar_url
-                ? <img src={a.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-amber-300" />
-                : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{initial(a?.baptismal_name, '📢')}</span>}</CelebrateBand>
-              <span className="mt-0.5 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate flex items-center gap-0.5 md:order-first md:mt-0 md:text-[0.9375rem]"><span className="hidden md:inline text-amber-700 font-normal mr-1">📢 관리자 말씀 ·</span>{a?.baptismal_name || '관리자'}<RoleBadge type={a?.badge_type} size="xs" showLabel={false} /></span>
+              {/* 역할 뱃지는 사진 오른쪽 아래에 겹쳐서 — 이름 옆에 두면 큰 월계관 뱃지가 좁은 칸 밖으로 잘렸음 (운영자 2026-11-16) */}
+              <span className="relative inline-flex">
+                <CelebrateBand id={adminId}>{a?.avatar_url
+                  ? <img src={a.avatar_url} alt="" className="w-11 h-11 rounded-full object-cover border-2 border-amber-300" />
+                  : <span className="w-11 h-11 rounded-full bg-amber-200 text-amber-900 font-serif font-bold flex items-center justify-center border-2 border-amber-300">{initial(a?.baptismal_name, '📢')}</span>}</CelebrateBand>
+                {roleOf(a?.badge_type) && <span className="absolute -right-3 -bottom-2 z-[1] pointer-events-none"><RoleIcon type={a!.badge_type!} size={30} title="인증 뱃지" /></span>}
+              </span>
+              <span className="mt-1 max-w-full text-[0.6875rem] font-bold text-amber-900 truncate md:order-first md:mt-0 md:text-[0.9375rem]"><span className="hidden md:inline text-amber-700 font-normal mr-1">📢 관리자 말씀 ·</span>{a?.baptismal_name || '관리자'}</span>
             </button>
           </div>
         );
