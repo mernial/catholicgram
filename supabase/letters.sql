@@ -4,7 +4,7 @@ create table if not exists public.letters (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   author_name text,                                   -- 보낼 때의 세례명·닉네임
-  content text not null check (char_length(content) between 1 and 5000),
+  content text not null check (char_length(content) between 1 and 10000),
   image_url text,
   name_display text not null default 'anonymous' check (name_display in ('name', 'anonymous')), -- 방송에서 이름 공개 여부
   broadcast_ok boolean not null default true,         -- 방송에서 소개해도 되는지
