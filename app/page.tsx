@@ -3005,7 +3005,8 @@ export default function Home() {
       mentionQuery('comments', 'id, post_id, content, author_name, created_at'),
     ]);
     const merged = new Map<string, CommentNotification>();
-    (onMyPosts || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] }));
+    // 내 글에 달린 댓글이라고 다 알리지 않음 (운영자 2026-11-16) — 나에게 단 답글·나를 @태그한 댓글만 (아래)
+    void onMyPosts;
     (replies || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] || '', is_reply: true }));
     type Row = { id: string; post_id?: string; content: string; author_name: string; created_at: string };
     ((postMentions || []) as unknown as Row[]).filter(p => mentionsHandle(p.content, myHandle)).forEach(p =>
@@ -3842,7 +3843,8 @@ export default function Home() {
     const shown = fresh.length > 1 ? { ...latest, body: `${latest.body} 외 ${fresh.length - 1}건`, action: () => openNotifications() } : latest;
     // 안드로이드: 휴대폰 알림으로 (무음·진동·소리를 휴대폰 설정대로, 운영자 2026-11-15). 못 띄우면 예전처럼 앱 배너 + 앱 소리
     if (isAndroidDevice()) {
-      osAlert(shown.title || '가톨릭그램', shown.body || '').then(ok => { if (!ok) { setToast(shown); if (alertSoundOn) playAlertSound(); } });
+      setToast(shown); // 배너는 늘 (소리 없이) — 누르면 그곳으로
+      osAlert(shown.title || '가톨릭그램', shown.body || '').then(ok => { if (!ok && alertSoundOn) playAlertSound(); });
       return;
     }
     setToast(shown);
@@ -4003,8 +4005,7 @@ export default function Home() {
     refreshAlerts(user.id, true);
     pushAlertRef.current = (url: string, title: string, body: string, appleBanner?: boolean, osRing?: boolean) => {
       refreshAlerts(user.id, url.includes('gift='));
-      // 안드로이드: 휴대폰 알림이 휴대폰 설정(무음·진동·소리)대로 울렸으니 앱 소리·배너는 내지 않음 (운영자 2026-11-15)
-      if (osRing) { pushToastAtRef.current = Date.now(); return; }
+      // 안드로이드: 소리·진동은 휴대폰 알림이 휴대폰 설정(무음·진동·소리)대로 냄 → 앱은 소리 없이 화면 배너만 (운영자 2026-11-15·16: 어디서 온 알림인지 보이게, 누르면 그곳으로)
       // 지금 그 사람과 대화 중이면 메시지마다 음성·배너는 생략
       if (viewingRef.current(url)) return;
       // 아이폰·아이패드: 휴대폰 알림 배너가 이미 떴으니 앱 화면 배너는 띄우지 않는다 (운영자: 한 번 배너로 왔으면 또 안 나와도 됨). 소리는 그대로
@@ -4022,7 +4023,7 @@ export default function Home() {
         key: `push:${Date.now()}`, icon: hasIcon ? m[1] : '🔔', title: hasIcon ? m[2] : title || '새 알림', body,
         action: () => { const link = deepLinkFromSearch(new URL(url, window.location.origin).search); if (link) setDeepLink(link); else goToHome(); },
       });
-      if (storageGet('alertSound') !== 'off') playAlertSound();
+      if (!osRing && storageGet('alertSound') !== 'off') playAlertSound();
     };
     // 휴대폰 알림(푸시)이 따로 오므로 1분마다만 확인, 앱이 뒤에 있으면 쉰다 (전송량 절약)
     // 글을 치는 중이면 손을 멈춘 뒤에 (한꺼번에 여러 번 다시 그리면 아이폰 한글 자판이 조합 중이던 글자를 잃음, lib/typing-guard)
