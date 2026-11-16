@@ -108,8 +108,10 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
       catch { setSending(false); await showAlert('사진을 올리지 못했어요\n사진을 빼고 다시 보내 주세요.'); return; }
     }
     const id = crypto.randomUUID();
-    const { error: e } = await supabase.from('letters').insert({ id, user_id: user.id, author_name: authorName, content: text.slice(0, 5000), image_url, name_display: nameDisplay, broadcast_ok: broadcastOk });
+    const { error: e } = await supabase.from('letters').insert({ id, user_id: user.id, author_name: authorName, content: text.slice(0, 10000), image_url, name_display: nameDisplay, broadcast_ok: broadcastOk });
     setSending(false);
+    // 10,000자 SQL(supabase/letters-10000.sql) 전에는 5,000자가 넘으면 막힘 → 알아보기 쉽게
+    if (e && /letters_content_check/.test(e.message)) { await showAlert('사연이 너무 길어요\n지금은 5,000자까지 보낼 수 있어요. 조금 줄여서 보내 주세요.'); return; }
     if (e) { await showAlert(isSetupError(e) ? SETUP_HINT : `사연을 보내지 못했어요\n${e.message}`); return; }
     onSent(id);
     setContent(''); setPhoto(null);
@@ -302,12 +304,12 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
             <div className="p-4 flex flex-col gap-4">
               <textarea
                 value={content}
-                onChange={e => setContent(clipText(e.target.value, 5000))}
+                onChange={e => setContent(clipText(e.target.value, 10000))}
                 placeholder={'나누고 싶은 이야기, 감사한 일, 기도 부탁, 신앙 고민 등\n무엇이든 편하게 적어 주세요.'}
                 rows={9}
                 className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] leading-relaxed focus:outline-none focus:border-stone-400 resize-none"
               />
-              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{charCount(content)} / 5000</p>
+              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{charCount(content)} / 10000</p>
 
               <div>
                 <p className="text-[0.875rem] font-bold text-stone-700 mb-2">어떻게 보낼까요?</p>
