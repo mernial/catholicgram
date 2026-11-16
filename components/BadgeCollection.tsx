@@ -41,7 +41,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
   const [pick, setPick] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [book, setBook] = useState(false);
-  const [adminSelf, setAdminSelf] = useState(false); // 관리자는 활동 등급·1등에서 빠짐 (운영자 2026-11-14)
+  const [adminSelf, setAdminSelf] = useState(false); // 관리자는 1등에서만 빠짐, 활동 등급(달성 기록)은 받음 (운영자 2026-11-16)
   useBackLayer(true, onClose);
   useBackLayer(!!pick, () => setPick(null));
   const keys = useMemo(() => rows.map(r => r.badge_key), [rows]);
@@ -202,7 +202,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
           </div>
         </>)}
 
-        {adminSelf && <p className="mt-3 rounded-2xl bg-stone-100 px-3 py-2 text-[0.75rem] text-stone-600">관리자 계정은 활동 등급과 1등에서 빠져요. 교우들이 어떻게 보는지 확인하는 용도로 보세요.</p>}
+        {adminSelf && <p className="mt-3 rounded-2xl bg-stone-100 px-3 py-2 text-[0.75rem] text-stone-600">관리자 계정은 활동 등급(달성 기록)은 받지만, 1등 순위에서는 빠져요 — 교우들의 1등에 영향을 주지 않아요.</p>}
         {tab === 'tiers' && (<div className="flex flex-col gap-2 mt-2">
           <p className="text-[0.75rem] text-stone-500">겨자씨 → 새싹 → 줄기 → 꽃 → 열매 → 큰 나무 → 생명의 나무 (겨자씨의 비유, 마태 13,31). 그 활동 1등이면 금 월계관이 둘러져요. 못 받은 활동은 흐리게 보여요.</p>
           {ladder.map(ladderRow)}
