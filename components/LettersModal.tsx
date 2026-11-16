@@ -77,6 +77,12 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const [replying, setReplying] = useState(false);
   // 쓰기
   const [content, setContent] = useState('');
+  // 사연 신청 양식 (운영자 2026-11-16): 제목·사연자 이름·방송에서 불릴 이름·내용은 꼭, 신청곡은 비우면 운영자가 AI 노래로 만들어 선물
+  const [fTitle, setFTitle] = useState('');
+  const [fSender, setFSender] = useState(authorName || '');
+  const [fOnAir, setFOnAir] = useState('');
+  const [fSong, setFSong] = useState('');
+  const formReady = !!(fTitle.trim() && fSender.trim() && fOnAir.trim() && content.trim());
   const [nameDisplay, setNameDisplay] = useState<Letter['name_display']>('anonymous');
   const [broadcastOk, setBroadcastOk] = useState(true);
   const [photo, setPhoto] = useState<{ file: File; url: string } | null>(null);
@@ -99,8 +105,16 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   useEffect(() => { load(view); }, [view]);
 
   const send = async () => {
-    const text = content.trim();
-    if (!text || sending) return;
+    if (!formReady || sending) return;
+    // 양식을 한 덩이 글로 (관리자 사연함에서 그대로 읽힘 — 칸을 따로 만들지 않아 SQL 이 필요 없음)
+    const text = [
+      `📌 제목: ${fTitle.trim()}`,
+      `✍️ 사연자: ${fSender.trim()}`,
+      `🎙️ 방송에서 불릴 이름: ${fOnAir.trim()}`,
+      `🎵 신청곡: ${fSong.trim() || '없음 → 운영자가 사연에 맞는 AI 노래를 만들어 선물'}`,
+      '',
+      content.trim(),
+    ].join('\n');
     setSending(true);
     let image_url: string | null = null;
     if (photo) {
@@ -114,7 +128,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
     if (e && /letters_content_check/.test(e.message)) { await showAlert('사연이 너무 길어요\n지금은 5,000자까지 보낼 수 있어요. 조금 줄여서 보내 주세요.'); return; }
     if (e) { await showAlert(isSetupError(e) ? SETUP_HINT : `사연을 보내지 못했어요\n${e.message}`); return; }
     onSent(id);
-    setContent(''); setPhoto(null);
+    setContent(''); setPhoto(null); setFTitle(''); setFOnAir(''); setFSong('');
     setView('mine');
     await showAlert({ title: '사연을 보냈어요 💌', message: '운영자에게만 전달됩니다', icon: 'check' });
   };
@@ -302,14 +316,30 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
         <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {view === 'write' && (
             <div className="p-4 flex flex-col gap-4">
+              <div className="rounded-2xl bg-rose-50 border border-rose-100 p-3 text-[0.8125rem] text-rose-900 leading-relaxed">
+                <p className="font-bold text-[0.875rem]">💌 사연 신청 양식</p>
+                <p className="mt-0.5"><b className="text-rose-700">*</b> 표시는 꼭 적어 주세요. 신청곡을 비워 두시면 운영자가 사연에 어울리는 <b>AI 노래를 직접 만들어 선물</b>로 드려요 🎁</p>
+              </div>
+              <label className="flex flex-col gap-1"><span className="text-[0.875rem] font-bold text-stone-700">사연 제목 <b className="text-rose-600">*</b></span>
+                <input value={fTitle} onChange={e => setFTitle(clipText(e.target.value, 60))} placeholder="예: 어머니께 드리는 감사" className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-400" /></label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="flex flex-col gap-1"><span className="text-[0.875rem] font-bold text-stone-700">사연자 이름 <b className="text-rose-600">*</b></span>
+                  <input value={fSender} onChange={e => setFSender(clipText(e.target.value, 30))} placeholder="보내는 분 이름" className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-400" /></label>
+                <label className="flex flex-col gap-1"><span className="text-[0.875rem] font-bold text-stone-700">방송에서 불릴 이름 <b className="text-rose-600">*</b></span>
+                  <input value={fOnAir} onChange={e => setFOnAir(clipText(e.target.value, 30))} placeholder="예: 수원의 마리아" className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-400" /></label>
+              </div>
+              <span className="-mb-2 text-[0.875rem] font-bold text-stone-700">사연 내용 <b className="text-rose-600">*</b></span>
               <textarea
                 value={content}
-                onChange={e => setContent(clipText(e.target.value, 10000))}
+                onChange={e => setContent(clipText(e.target.value, 9800))}
                 placeholder={'나누고 싶은 이야기, 감사한 일, 기도 부탁, 신앙 고민 등\n무엇이든 편하게 적어 주세요.'}
                 rows={9}
                 className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] leading-relaxed focus:outline-none focus:border-stone-400 resize-none"
               />
-              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{charCount(content)} / 10000</p>
+              <p className="-mt-3 text-right text-[0.75rem] text-stone-400">{charCount(content)} / 9800</p>
+              <label className="flex flex-col gap-1"><span className="text-[0.875rem] font-bold text-stone-700">듣고 싶은 노래 <span className="font-normal text-stone-400">(선택)</span></span>
+                <input value={fSong} onChange={e => setFSong(clipText(e.target.value, 100))} placeholder="예: 가수 – 노래 제목" className="w-full px-4 py-3 rounded-2xl border border-stone-200 bg-stone-50 text-[1rem] focus:outline-none focus:border-stone-400" />
+                <span className="text-[0.75rem] text-stone-500">비워 두시면 운영자가 사연에 맞는 AI 노래를 만들어 선물해 드려요 🎶</span></label>
 
               <div>
                 <p className="text-[0.875rem] font-bold text-stone-700 mb-2">어떻게 보낼까요?</p>
@@ -341,7 +371,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                 </label>
               )}
 
-              <button onClick={send} disabled={!content.trim() || sending} className="w-full py-3.5 rounded-2xl bg-rose-600 disabled:bg-stone-300 text-white font-bold text-[1rem]">
+              <button onClick={send} disabled={!formReady || sending} className="w-full py-3.5 rounded-2xl bg-rose-600 disabled:bg-stone-300 text-white font-bold text-[1rem]">
                 {sending ? '보내는 중...' : '💌 사연 보내기'}
               </button>
               <p className="text-[0.75rem] text-stone-400 leading-relaxed">보내신 사연은 운영자에게만 전달됩니다. 다른 교우에게는 보이지 않아요. 운영자가 읽기 전에는 &lsquo;보낸 사연&rsquo;에서 지울 수 있어요.</p>
