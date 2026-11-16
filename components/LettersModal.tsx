@@ -9,6 +9,7 @@ import { uploadPhoto } from '@/lib/upload';
 import { useSheetDrag } from '@/lib/sheet-drag';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import StickerGift from '@/components/StickerGift';
+import MemberMusicGift from '@/components/MemberMusicGift';
 import { charCount, clipText } from '@/lib/clip-text';
 
 // 사연 보내기 (supabase/letters.sql)
@@ -42,7 +43,7 @@ const REPLY_SETUP = { title: '사연 답장을 준비 중이에요', message: '�
 const isSetupError = (e: { code?: string; message?: string } | null) =>
   !!e && (e.code === '42P01' || e.code === 'PGRST205' || /does not exist|schema cache/i.test(e.message || ''));
 
-export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onStickerGifted, onMessage, onOpenProfile, onReplied }: {
+export default function LettersModal({ user, authorName, authorHandle, isAdmin, startView, onClose, onSent, onChanged, onGift, onStickerGifted, onMusicGifted, onOpenMusicVault, onMessage, onOpenProfile, onReplied }: {
   user: User;
   authorName: string;
   authorHandle?: string | null;
@@ -50,6 +51,8 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   startView?: 'write' | 'mine';     // 알림으로 열면 '보낸 사연'
   onGift?: (id: string) => void;    // 관리자: 선물 대상으로 뽑았을 때 보낸 분께 알림
   onStickerGifted?: (grantId: string) => void; // 관리자: 보낸 분께 이모티콘을 선물했을 때 알림
+  onMusicGifted?: (grantId: string) => void;   // 관리자: 보낸 분께 노래를 선물했을 때 알림
+  onOpenMusicVault?: () => void;               // 노래 선물 창에서 '보관 음악' 열기
   onMessage?: (userId: string) => void; // 관리자: 보낸 분께 메시지 (선물 안내)
   onOpenProfile?: (target: { id: string; name: string; handle?: string }) => void; // 관리자: 보낸 분 프로필 카드
   onReplied?: (letterId: string) => void; // 관리자: 답장을 쓰면 보낸 분께 알림
@@ -67,6 +70,7 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
   const [zoom, setZoom] = useState<string | null>(null);
   useBackLayer(!!reading, () => setReading(null)); // 크게 읽기·사진에서 뒤로가기 → 사연함으로
   useBackLayer(!!zoom, () => setZoom(null));
+  const [musicGiftFor, setMusicGiftFor] = useState<Letter | null>(null); // 관리자: 보낸 분께 노래 선물 (운영자 2026-11-16)
   const [giftFor, setGiftFor] = useState<Letter | null>(null); // 관리자: 보낸 분께 선물하기 (이모티콘 · 사연 선물 대상)
   const [replyFor, setReplyFor] = useState<string | null>(null); // 관리자: 답장 쓰는 사연
   const [replyText, setReplyText] = useState('');
@@ -238,7 +242,17 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
         return (
           <div onClick={e => e.stopPropagation()}>
             <StickerGift user={{ id: l.user_id, name: l.author_name || '교우', handle: handles[l.user_id] }} onClose={() => setGiftFor(null)} onGifted={onStickerGifted}
-              extra={(l.name_display === 'name' || l.gift) && (
+              extra={<>
+                {/* 노래 선물 (보관 음악 중에서) — 운영자 2026-11-16: 사연함 선물하기에 이모티콘만 떴음 */}
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3 flex items-center gap-3">
+                  <span className="text-[2rem] leading-none shrink-0" aria-hidden="true">🎶</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-[1.0625rem] text-stone-900">노래 선물</p>
+                    <p className="text-[0.8125rem] text-stone-600">보관 음악(선물용) 중에서 골라 보내요 · 내 공간·글 음악으로 쓸 수 있어요</p>
+                  </div>
+                  <button onClick={() => { setMusicGiftFor(l); setGiftFor(null); }} className="shrink-0 px-3 py-2 rounded-xl text-[0.875rem] font-bold bg-violet-600 text-white">고르기</button>
+                </div>
+                {(l.name_display === 'name' || l.gift) && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 flex items-center gap-3">
                   <span className="text-[2rem] leading-none shrink-0" aria-hidden="true">💌</span>
                   <div className="flex-1 min-w-0">
@@ -247,10 +261,17 @@ export default function LettersModal({ user, authorName, authorHandle, isAdmin, 
                   </div>
                   <button onClick={() => toggleGift(l)} className={`shrink-0 px-3 py-2 rounded-xl text-[0.875rem] font-bold ${l.gift ? 'border border-stone-300 text-stone-600 bg-white' : 'bg-amber-500 text-white'}`}>{l.gift ? '취소' : '뽑기'}</button>
                 </div>
-              )} />
+                )}
+              </>} />
           </div>
         );
       })()}
+      {musicGiftFor && (
+        <div onClick={e => e.stopPropagation()}>
+          <MemberMusicGift user={{ id: musicGiftFor.user_id, name: musicGiftFor.author_name || '교우', handle: handles[musicGiftFor.user_id] }} onClose={() => setMusicGiftFor(null)} onGifted={onMusicGifted}
+            onOpenVault={onOpenMusicVault ? () => { setMusicGiftFor(null); onOpenMusicVault(); } : undefined} />
+        </div>
+      )}
       <div ref={sheet.sheetRef} className="bg-white w-full max-w-xl tablet:max-w-3xl h-[92dvh] sm:h-[88dvh] rounded-t-3xl sm:rounded-3xl overflow-hidden flex flex-col pb-safe" onClick={e => e.stopPropagation()}>
         <div {...sheet.handleProps} className="shrink-0 pt-2.5 flex justify-center cursor-grab touch-none" aria-hidden="true"><span className="w-12 h-1.5 rounded-full bg-stone-300" /></div>
         <div {...sheet.handleProps} className="px-4 pb-4 pt-2 border-b border-stone-100 flex items-center justify-between shrink-0 cursor-grab">

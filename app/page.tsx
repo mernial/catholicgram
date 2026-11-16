@@ -7061,6 +7061,8 @@ export default function Home() {
           startView={lettersStart}
           onGift={id => sendPush('letter_gift', id)}
           onStickerGifted={id => sendPush('sticker_gift', id)}
+          onMusicGifted={id => sendPush('music_gift', id)}
+          onOpenMusicVault={() => { setShowLetters(false); setShowMusicVault(true); }}
           onMessage={async uid => {
             const { data } = await supabase.from('profiles').select('id, baptismal_name, avatar_url, handle, badge_type').eq('id', uid).maybeSingle();
             if (!data) { alert('교우를 찾지 못했어요.'); return; }
