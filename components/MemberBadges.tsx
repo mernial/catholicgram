@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 import BottomSheet from '@/components/BottomSheet';
 import { askConfirm, showAlert } from '@/components/ConfirmDialog';
 import { useBackLayer } from '@/lib/back-layers';
-import { AUTO_BADGE_MIN, BADGE_GROUPS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, badgeRank, shownBadges, type BadgeGroup, type BadgeStamp, type MemberBadgeRow, type StatKey } from '@/lib/badges';
+import { AUTO_BADGE_MIN, BADGE_GROUPS, LADDERS, MEMBER_BADGES, STAT_LABELS, TIERS, badgeOf, badgeRank, shownBadges, type BadgeGroup, type BadgeStamp, type MemberBadgeRow, type StatKey } from '@/lib/badges';
 type Row = MemberBadgeRow & { auto?: boolean };
 import { BadgeIcon } from '@/components/BadgeIcon';
 import { clipText, charCount } from '@/lib/clip-text';
@@ -66,6 +66,13 @@ export function StampBook({ userId, name, mine, onClose }: { userId: string; nam
     m.items.push(st);
   });
   const kinds = new Set(stamps.map(s => s.badge_key)).size;
+  // 아직 받지 못한 도장 (회색) — 운영자 2026-11-16: 무엇을 못 받았는지 보이게. 활동 등급은 활동마다 일곱 칸, 1등·기념은 따로
+  const gotKeys = new Set(stamps.map(s => s.badge_key));
+  const missingLadders = LADDERS.map(L => ({ L, keys: L.steps.map((_, i) => `t_${L.id}_${i + 1}`) })).filter(x => x.keys.some(k => !gotKeys.has(k)));
+  const missingOthers = MEMBER_BADGES.filter(b => !b.retired && !b.tier && !gotKeys.has(b.key) && (b.auto || b.group === 'honor'));
+  const missingCount = missingLadders.reduce((n, x) => n + x.keys.filter(k => !gotKeys.has(k)).length, 0) + missingOthers.length;
+  const [showMissing, setShowMissing] = useState(true);
+  const explain = (key: string) => { const d = badgeOf(key); if (d) showAlert({ title: `${d.label} — 아직 받지 못했어요`, message: d.desc }); };
   return (
     <div onClick={e => e.stopPropagation()} className="contents">
     <BottomSheet bare label="도장 모음" onClose={onClose} z="z-[86]" tone="bg-white">
@@ -80,8 +87,8 @@ export function StampBook({ userId, name, mine, onClose }: { userId: string; nam
         <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           {!ready ? <p className="p-6 text-center text-sm text-stone-400">불러오는 중…</p> : missing ? (
             <div className="mt-4 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-[0.875rem] text-amber-900">아직 도장 표가 없어요. 관리자가 <b>supabase/member-badges.sql</b> 을 다시 실행하면 보여요.</div>
-          ) : stamps.length === 0 ? (
-            <p className="p-8 text-center text-[0.9375rem] text-stone-400 leading-relaxed">아직 찍힌 도장이 없어요.<br />{mine ? '활동 1등이 되거나 글 10편·출석 30일 같은 기준을 넘으면 그날 날짜로 도장이 찍혀요.' : ''}</p>
+          ) : (<>{stamps.length === 0 ? (
+            <p className="p-8 text-center text-[0.9375rem] text-stone-400 leading-relaxed">아직 찍힌 도장이 없어요.<br />{mine ? '활동 1등이 되거나 활동 등급에 오르면 그날 날짜로 도장이 찍혀요.' : ''}</p>
           ) : months.map(m => (
             <div key={m.key} className="mt-4">
               <p className="text-[0.8125rem] font-bold text-stone-500 mb-2 flex items-center gap-2">{m.label}<span className="font-normal text-stone-400">{m.items.length}개</span></p>
@@ -97,6 +104,42 @@ export function StampBook({ userId, name, mine, onClose }: { userId: string; nam
               </div>
             </div>
           ))}
+          {/* 아직 받지 못한 도장 (회색) */}
+          {missingCount > 0 && (
+            <div className="mt-6 pt-4 border-t border-dashed border-stone-200">
+              <button onClick={() => setShowMissing(v => !v)} className="w-full flex items-center justify-between text-[0.8125rem] font-bold text-stone-500">
+                <span>🔒 아직 받지 못한 도장 <span className="font-normal text-stone-400">{missingCount}개</span></span><span className="text-stone-400">{showMissing ? '접기 ▴' : '펼치기 ▾'}</span>
+              </button>
+              {showMissing && (<>
+                <div className="mt-2 flex flex-col gap-1.5">
+                  {missingLadders.map(({ L, keys }) => (
+                    <div key={L.id} className="flex items-center gap-1.5">
+                      <span className="w-14 shrink-0 text-[0.6875rem] font-bold text-stone-500 truncate">{L.short}</span>
+                      <div className="flex-1 grid grid-cols-7 gap-0.5">
+                        {keys.map((k, i) => { const got = gotKeys.has(k); return (
+                          <button key={k} onClick={() => (got ? undefined : explain(k))} className={`flex flex-col items-center ${got ? '' : 'opacity-35 grayscale'}`} aria-label={`${badgeOf(k)?.label}${got ? '' : ' (아직)'}`}>
+                            <BadgeIcon badge={k} size={30} />
+                            <span className="text-[0.5rem] text-stone-400 leading-none mt-0.5">{TIERS[i].name.replace('생명의 나무', '생명')}</span>
+                          </button>
+                        ); })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {missingOthers.length > 0 && (
+                  <div className="mt-3 grid grid-cols-5 gap-1.5">
+                    {missingOthers.map(b => (
+                      <button key={b.key} onClick={() => explain(b.key)} className="flex flex-col items-center gap-0.5 opacity-40 grayscale" aria-label={`${b.label} (아직)`}>
+                        <BadgeIcon badge={b} size={36} />
+                        <span className="text-[0.5625rem] text-stone-500 leading-tight line-clamp-1">{b.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>)}
+            </div>
+          )}
+          </>)}
         </div>
       </div>
       {open && (() => { const def = badgeOf(open.badge_key)!; const held = holding.has(open.badge_key); return (
