@@ -10,7 +10,7 @@ import { onePerDevice, type PushSub } from '@/lib/push-devices';
 export type PushPayload = { title: string; body: string; url: string; tag: string };
 export type PushTarget = { recipientId: string; payload: PushPayload };
 
-export const truncatePush = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
+export const truncatePush = (text: string, max = 80) => (text.length > max ? `${text.slice(0, /[\uDC00-\uDFFF]/.test(text[max] || '') ? max - 1 : max)}…` : text); // 이모티콘 반쪽 '�' 막기
 
 // 새 글에서 @태그된 교우에게 갈 알림 (글쓴이 빼고) — 앱에서 글을 올릴 때(/api/push/notify type=post)와 같은 알림
 export async function postMentionTargets(

@@ -4,6 +4,21 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { URL_PATTERN } from '@/components/HashtagText';
 import { registerExpander } from '@/lib/select-scope';
 
+// 자르는 자리가 이모티콘(😁 등 두 칸짜리·피부색·합쳐진 이모티콘) 한가운데면 그 앞으로 — 반쪽만 남아 '�'로 깨져 보였음 (2026-11-17)
+function graphemeFloor(text: string, at: number): number {
+  if (at <= 0 || at >= text.length) return at;
+  try {
+    const Seg = (Intl as unknown as { Segmenter?: new (l?: string, o?: { granularity: string }) => { segment: (s: string) => Iterable<{ index: number }> } }).Segmenter;
+    if (Seg) {
+      let last = 0;
+      for (const { index } of new Seg(undefined, { granularity: 'grapheme' }).segment(text)) { if (index > at) break; last = index; }
+      return last;
+    }
+  } catch { /* 아래 방식으로 */ }
+  const c = text.charCodeAt(at);
+  return c >= 0xdc00 && c <= 0xdfff ? at - 1 : at;
+}
+
 // 글을 정해진 줄 수만 보여 주고, 넘치면 마지막 줄의 글 바로 뒤에 '… 더 보기'를 붙인다.
 // 글이나 '더 보기'를 누르면 전체를 펼치고, onCollapse가 있으면 끝에 '간략히 보기'로 다시 접는다.
 export default function ClampText({ lines, expanded, onExpand, onCollapse, prefix, prefixText = '', text, renderText, className = '', selectId }: {
@@ -54,7 +69,7 @@ export default function ClampText({ lines, expanded, onExpand, onCollapse, prefi
         const st = m.index ?? 0, en = st + m[0].length;
         if (st < lo && lo < en) { lo = st; break; }
       }
-      setCut(lo);
+      setCut(graphemeFloor(text, lo));
       setLong(true);
     };
     measure();

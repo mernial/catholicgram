@@ -33,7 +33,7 @@ const giftPayload = (key: string): Payload => ({
   url: `/?gift=${encodeURIComponent(key)}`, tag: `gift-${key}`, icon: '/gift-icon-192.png', image: '/gift-banner.jpg',
 });
 
-const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, max)}…` : text);
+const truncate = (text: string, max = 80) => (text.length > max ? `${text.slice(0, /[\uDC00-\uDFFF]/.test(text[max] || '') ? max - 1 : max)}…` : text); // 이모티콘 반쪽 '�' 막기
 
 // 지금 그 대화방을 화면에 띄우고 있는 교우 (앱이 8초마다 적음, 20초 지나면 안 봄). 표가 없으면(SQL 전) 아무도 없음
 const PRESENCE_TTL_MS = 20_000;
