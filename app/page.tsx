@@ -6682,13 +6682,17 @@ export default function Home() {
                 <p className="text-xs text-white/70">오늘 하루 동안 홈 맨 위에 흘러가며 교우들이 함께 기도해요.</p>
                 <label className="text-xs font-bold text-[#fbe7b0]">기도지향 <span className="font-normal text-white/60">(30자 · 홈 맨 위에 흘러가요)</span></label>
                 <div className="relative">
-                  <input
+                  {/* 한 줄 input 은 안드로이드 크롬이 autocomplete=off 를 무시하고 자판 위에 열쇠·카드·위치(자동 채우기) 줄을 띄워, 한 줄짜리 textarea 로 (루비로사 2026-11-17) */}
+                  <textarea
                     autoFocus
+                    rows={1}
                     value={intentionTitleInput}
-                    onChange={e => setIntentionTitleInput(clipText(e.target.value, 30))}
+                    onChange={e => setIntentionTitleInput(clipText(e.target.value.replace(/[\r\n]+/g, ' '), 30))}
+                    onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }}
+                    enterKeyHint="next"
                     placeholder="예: 어머니의 쾌유를 위하여"
                     autoComplete="off"
-                    className="w-full p-3 pr-14 text-sm rounded-xl text-stone-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
+                    className="block w-full p-3 pr-14 text-sm leading-5 rounded-xl text-stone-900 bg-white resize-none overflow-hidden [field-sizing:content] focus:outline-none focus:ring-2 focus:ring-[#e8b85a]"
                   />
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[0.75rem] text-stone-400">{charCount(intentionTitleInput)}/30</span>
                 </div>
