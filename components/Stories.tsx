@@ -228,7 +228,26 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
   // 다른 스토리로 넘어가거나 창을 닫으면 쓰던 답장은 버림 (다른 교우에게 잘못 가지 않게)
   const replyKey = `${viewerOpen ? 1 : 0}:${current?.id || ''}`;
   const [replyKeySeen, setReplyKeySeen] = useState(replyKey);
-  if (replyKeySeen !== replyKey) { setReplyKeySeen(replyKey); setReplyText(''); }
+  if (replyKeySeen !== replyKey) { setReplyKeySeen(replyKey); setReplyText(''); setReplyFocus(false); }
+  // 답장 칸에 초점이 있는 채로 뒤로가기(<)로 창을 닫으면 blur 가 오지 않아, 다시 열 때 어두운 감정 여섯 칸·멈춘 화면이 그대로 남았음 (루비로사 2026-11-17)
+  //  → 창이 닫히면 초점·멈춤을 늘 풀고, 자판이 내려가면(안드로이드 뒤로가기 첫 번) 초점도 풂
+  useEffect(() => {
+    if (viewerOpen) return;
+    replyRef.current?.blur();
+    setReplyFocus(false);
+    setPaused(false);
+  }, [viewerOpen]);
+  useEffect(() => {
+    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
+    if (!replyFocus || !vv) return;
+    const baseH = vv.height; let minH = vv.height;
+    const onResize = () => {
+      minH = Math.min(minH, vv.height);
+      if (minH < baseH - 150 && vv.height > minH + 150) replyRef.current?.blur();
+    };
+    vv.addEventListener('resize', onResize);
+    return () => vv.removeEventListener('resize', onResize);
+  }, [replyFocus]);
   useEffect(() => { replyTargetRef.current = null; }, [replyKey]);
   // 메시지 보내기 · 감정 보내기 (상대에게 1:1 메시지로)
   const sendReply = async (text: string, emoji?: boolean) => {
