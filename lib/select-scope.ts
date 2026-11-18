@@ -11,7 +11,19 @@
 // (운영자 2026-11-03: 크게 보기에서 글을 고르니 휴대폰 메뉴와 막대가 같은 자리에 겹쳐 '창이 이중으로 떠')
 import { useEffect, useState } from 'react';
 
-export type SelectBarPlace = 'top' | 'bottom';
+export type SelectBarPlace = 'top' | 'topLow' | 'bottom';
+
+// 사진을 꾹 눌러 휴대폰 메뉴의 '이미지 다운로드'를 누르면 크롬이 화면 위에 '다운로드 1개 완료 · 열기' 알림을 몇 초 띄우는데,
+// 앱이 끄거나 줄일 수 없는 크롬 화면이라 위쪽 막대('글 복사')가 그 밑에 가려졌음 (루비로사 건의 2026-11-18)
+//  → 사진·영상을 꾹 누른 뒤 잠시 동안은 위쪽 막대를 그 알림 아래로 내림
+let mediaMenuAt = 0;
+if (typeof document !== 'undefined') {
+  document.addEventListener('contextmenu', e => {
+    const t = e.target as Element | null;
+    if (t && (t.tagName === 'IMG' || t.tagName === 'VIDEO' || t.closest?.('img,video'))) mediaMenuAt = Date.now();
+  }, true);
+}
+const MEDIA_MENU_MS = 25000;
 export type SelectScopeState = { id: string; place: SelectBarPlace } | null;
 
 // 휴대폰 메뉴가 뜰 높이를 짐작해 막대 자리를 정한다
@@ -23,7 +35,8 @@ function barPlace(): SelectBarPlace {
     const h = window.visualViewport?.height || window.innerHeight;
     const ROOM = 90; // 메뉴 높이 + 여백
     const menuY = r.top > ROOM ? r.top : r.bottom < h - ROOM ? r.bottom : h / 2;
-    return menuY > h * 0.5 ? 'top' : 'bottom';
+    if (menuY <= h * 0.5) return 'bottom';
+    return Date.now() - mediaMenuAt < MEDIA_MENU_MS ? 'topLow' : 'top';
   } catch { return 'bottom'; }
 }
 
