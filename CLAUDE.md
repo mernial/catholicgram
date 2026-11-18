@@ -29,7 +29,7 @@
 - 확인은 Playwright + 가짜 수파베이스(작업 폴더 `/tmp/cgexp`: `cap.mjs` + `STEPS=./steps-x.mjs`, 서버 `npx next start -p 3153`, 끝나면 `pkill -f "next start"; pkill -f next-server`) — 세션이 새로 뜨면 이 폴더는 없을 수 있음
 - 운영자 메시지 중 건의·오류 신고는 대개 테스터(루비로사 @rubyrosa 등)가 보낸 것. 특정 교우에게만 알릴 것은 `lib/personal-notices.ts`(개인 안내, `handles` 또는 `names`)
 - **popstate 처리 안에서 pushState 하지 말 것**(안드로이드 크롬이 기록 칸을 건너뛰어 뒤로가기로 앱이 꺼짐 — 기록은 누른 순간에, `pushSafe()`·`useBackLayer`)
-- 비밀값(서비스 키·API 키·키스토어·비밀번호·자동 게시 비밀값·녹음실 열쇠 `scratchpad/studio.key`)은 커밋·출력 금지. 다른 사람 이메일을 저장소에 적지 않음. Suno 곡은 ID3 꼬리표를 지우고 올림
+- 비밀값(서비스 키·API 키·키스토어·비밀번호·자동 게시 비밀값)은 커밋·출력 금지. 다른 사람 이메일을 저장소에 적지 않음. Suno 곡은 ID3 꼬리표를 지우고 올림
 - 다른 저장소(`mernial/malro-dapjang` 말로 답장 등)는 이 세션 일이 아님 — 운영자가 시킬 때만
 - 이모티콘 판 자르기: 판 가장자리와 이어진 바탕만 지우기 + 칸 사이 굽은 길 + 흰 테두리 4px + 256px webp (최근 예: scratchpad `cut16/c.py`, 기록은 `grep -n '판 자르기' docs/history/*.md`). 새 팩은 `lib/stickers.ts` `PACK_DEFS` 한 줄 + 새 말은 `KEYWORDS`, 공용은 access 없음·관리자 전용 `access:'admin'`·선물 `access:'gift'`
 
@@ -46,7 +46,7 @@
 - 선물·공지 창: `GiftBox` `LetterReplyPopup` `PersonalNotice` `UpdateNotes`(`lib/update-notes`) `SamsungGuide` `NoticeBoard` / 사연함 `LettersModal` / 건의함 `FeedbackModal`
 - 설정·관리자: `SettingsModal` `AdminMembers` `AdminStats` `AdminUsage` `DeletedMessages` `MediaStorage` `SponsorAdmin` / 관리자 이메일 `lib/admin.ts`
 - 화면 색 `lib/theme.ts` + `scripts/theme-css.py` / 기기 `lib/device.ts` `lib/visual-viewport.ts` / 공통 창 `BottomSheet` `ConfirmDialog`(`askConfirm`·`showAlert`) `lib/back-layers`
-- 서버 API: `app/api/*` (posts·comments·messages·push·cron(아침 8시 축일·생일·뱃지)·autopost·studio·version·visit·account)
+- 서버 API: `app/api/*` (posts·comments·messages·push·cron(아침 8시 축일·생일·뱃지)·autopost·version·visit·account)
 - 안드로이드: TWA 빌드 `scripts/android-build.sh`·`android/` / 하이브리드(보류) `android-app/` — 자세히 `docs/android-status.md`
 - GitHub Actions(클라우드에서 막힌 사이트 대신): `bgm-cc*.yml`(무료 음악) `link-check.yml` `app-check.yml` `android-app.yml`
 
