@@ -512,17 +512,17 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
       if (!session) return;
       const res = await fetch('/api/admin/refresh-badges', { method: 'POST', headers: { Authorization: `Bearer ${session.access_token}` } });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) { showAlert(`다시 계산하지 못했어요\n${json.error || res.status}`); return; }
-      const n = (json.awarded || []).length;
-      toast(n > 0 ? `1등 뱃지 ${n}개를 새로 달았어요` : '바뀐 1등이 없어요');
+      if (!res.ok) { console.warn('refresh-badges', json.error || res.status); return; }
       reload(); notify(); setHoldersTick(t => t + 1);
     } finally { setRefreshing(false); }
   };
+  // 창을 열 때마다 1등 뱃지를 저절로 다시 계산 (운영자 2026-11-18: '지금 다시 계산' 단추 대신 늘 자동)
+  useEffect(() => { void refreshAuto(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const toggle = async (key: string) => {
     if (busy) return;
     const def = badgeOf(key)!;
-    if (def.permanent) { showAlert(`'${def.label}'은 달성 도장이에요\n${STAT_LABELS[def.stat!]}이(가) ${def.threshold} 이상인 교우 모두에게 저절로 달리고, 한 번 받으면 떼지 않아요. 아래 '지금 다시 계산'으로 바로 맞출 수 있어요.`); return; }
-    if (def.auto) { showAlert(`'${def.label}'은 저절로 달리는 뱃지예요\n${STAT_LABELS[def.stat!]} 1등인 교우에게 매일 아침 저절로 달리고, 1등이 바뀌면 옮겨 가요. 아래 '지금 다시 계산'으로 바로 맞출 수 있어요.`); return; }
+    if (def.permanent) { showAlert(`'${def.label}'은 달성 도장이에요\n${STAT_LABELS[def.stat!]}이(가) ${def.threshold} 이상인 교우 모두에게 저절로 달리고, 한 번 받으면 떼지 않아요.`); return; }
+    if (def.auto) { showAlert(`'${def.label}'은 저절로 달리는 뱃지예요\n${STAT_LABELS[def.stat!]} 1등인 교우에게 매일 아침 저절로 달리고, 1등이 바뀌면 옮겨 가요.`); return; }
     const row = have.get(key);
     setBusy(key);
     try {
@@ -548,14 +548,7 @@ export function BadgeGrantSheet({ user, onClose, onGranted }: { user: { id: stri
             <button onClick={onClose} className="w-10 h-10 -mr-2 flex items-center justify-center text-stone-500 text-2xl leading-none" aria-label="닫기">×</button>
           </div>
           <p className="text-[0.8125rem] text-stone-500 mt-0.5">활동 뱃지(🏆)는 그 활동 1등에게 저절로 달려요(매일 아침·앱을 열 때, {AUTO_BADGE_MIN} 이상일 때만). 달성 도장(📖)은 기준을 넘은 교우 모두에게 저절로, 떼지 않아요. 기념 뱃지는 누르면 달고, 다시 누르면 떼요. 달리면 교우에게 휴대폰 알림이 가요.</p>
-          <button onClick={refreshAuto} disabled={refreshing || missing} className="mt-2 px-3 py-1.5 rounded-full bg-stone-900 text-white text-[0.8125rem] font-bold disabled:opacity-50">{refreshing ? '계산하는 중…' : '🔄 1등 뱃지 지금 다시 계산'}</button>
-          {stats && (
-            <div className="mt-2 flex flex-wrap gap-1" aria-label="이 교우의 활동">
-              {(Object.keys(STAT_LABELS) as StatKey[]).map(k => (
-                <span key={k} className="text-[0.6875rem] px-1.5 py-0.5 rounded-full bg-stone-100 text-stone-600"><b className="text-stone-900">{stats[k] ?? 0}</b> {STAT_LABELS[k]}</span>
-              ))}
-            </div>
-          )}
+          {refreshing && <p className="mt-1 text-[0.75rem] text-stone-400">1등을 다시 계산하는 중…</p>}
           <input value={note} onChange={e => setNote(clipText(e.target.value, 60))} placeholder="함께 남길 말 (선택, 예: 2026년 성탄 성가대 봉사 감사해요)" aria-label="남길 말"
             className="mt-2 w-full px-3 py-2 rounded-xl border border-stone-300 bg-stone-50 text-[0.9375rem] focus:outline-none focus:border-stone-500" />
           {note && <p className="text-right text-[0.6875rem] text-stone-400 mt-0.5">{charCount(note)}/60</p>}
