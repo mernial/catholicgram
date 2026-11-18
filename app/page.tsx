@@ -10,6 +10,7 @@ import AnonBoard from '@/components/AnonBoard';
 import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import { roleOf } from '@/components/BadgeIcon';
 import { BadgeShelf, BadgeRow, BadgeGrantSheet, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
+import SortableTiles from '@/components/SortableTiles';
 import BadgeCollection from '@/components/BadgeCollection';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
@@ -684,7 +685,6 @@ export default function Home() {
   const [actionModalUser, setActionModalUser] = useState<UserProfile | null>(null);
   const [badgeGrantFor, setBadgeGrantFor] = useState<{ id: string; name: string } | null>(null); // 관리자: 교우 뱃지 달기 창 (components/MemberBadges)
   useBackLayer(!!badgeGrantFor, () => setBadgeGrantFor(null));
-  const [showBadgeBoard, setShowBadgeBoard] = useState(false); // 관리자: 뱃지 1등 현황
   const [badgeListFor, setBadgeListFor] = useState<{ id: string; name?: string; highlight?: string } | null>(null); // 프로필 카드 인증 메달을 누르면 그 교우의 뱃지 모두
   // 앱을 열 때·뒤에 있다 돌아올 때 활동 1등 뱃지를 다시 계산해 달라고 서버에 부탁 (서버가 5분에 한 번만 실제로 계산, /api/badges/refresh)
   const badgeRefreshAtRef = useRef(0);
@@ -1799,6 +1799,7 @@ export default function Home() {
   const [showMediaStorage, setShowMediaStorage] = useState(false); // 관리자: 사진 저장소(R2)
   const [showLetters, setShowLetters] = useState(false);       // 사연 보내기 (관리자: 사연함)
   const [letterNewCount, setLetterNewCount] = useState(0);     // 관리자: 아직 안 읽은 사연 수
+  const [feedbackNewCount, setFeedbackNewCount] = useState(0); // 관리자: 아직 답하지 않은 건의 수 (받은 건의함)
   const [anonUnread, setAnonUnread] = useState(0);             // 고민상담: 마지막으로 본 뒤 새 글 수
   const [anonFocusId, setAnonFocusId] = useState<string | null>(null); // 알림으로 연 고민글
   const [anonFocusReply, setAnonFocusReply] = useState<string | null>(null); // 그 글의 새 답글
@@ -3139,7 +3140,11 @@ export default function Home() {
     if (!user?.email || !ADMIN_EMAILS.includes(user.email)) return;
     const { count, error } = await supabase.from('letters').select('id', { count: 'exact', head: true }).eq('status', 'new');
     if (!error) setLetterNewCount(count || 0);
+    const fb = await supabase.from('feedback').select('id', { count: 'exact', head: true }).is('admin_reply', null);
+    if (!fb.error) setFeedbackNewCount(fb.count || 0);
   };
+  // 건의함·사연함을 닫으면 숫자를 다시 셈 (읽거나 답한 만큼 줄게)
+  useEffect(() => { if (!showFeedback && !showLetters) fetchLetterCount(); }, [showFeedback, showLetters]); // eslint-disable-line react-hooks/exhaustive-deps
   // 내가 선물받은 전용 이모티콘 (supabase/sticker-gifts.sql 실행 전이면 조용히 비움)
   const fetchStickerGrants = async (userId: string) => {
     const { data, error } = await supabase.from('sticker_grants').select('pack_id').eq('user_id', userId);
@@ -5763,13 +5768,6 @@ export default function Home() {
                 </>
               );
               const tileCls = 'flex flex-col items-center gap-1.5 py-1.5 rounded-xl active:bg-stone-100 min-w-0';
-              const tileGrid = (tiles: Tile[]) => (
-                <div className="grid grid-cols-4 gap-x-1 gap-y-3">
-                  {tiles.map(t => 'img' in t
-                    ? <a key={t.key} href={t.href} target="_blank" rel="noopener noreferrer" aria-label={t.aria} className={tileCls}>{tileBody(t)}</a>
-                    : <button key={t.key} onClick={t.onClick} className={tileCls}>{tileBody(t)}</button>)}
-                </div>
-              );
               const myTiles: Tile[] = [
                 { key: 'comments', icon: 'reply', tone: 'sky', label: '내 댓글', onClick: () => setShowMyComments(true) },
                 { key: 'settings', icon: 'gear', tone: 'stone', label: '설정', onClick: () => { setSettingsView('main'); setShowSettings(true); } },
@@ -5780,7 +5778,7 @@ export default function Home() {
               ];
               const adminTiles: Tile[] = [
                 { key: 'members', icon: 'users', tone: 'green', label: '회원 명단', onClick: () => setShowAdminMembers(true) },
-                { key: 'feedback', icon: 'envelope', tone: 'green', label: '건의함', onClick: () => setShowFeedback(true) },
+                { key: 'feedback', icon: 'envelope', tone: 'green', label: '건의함', onClick: () => setShowFeedback(true), badge: feedbackNewCount },
                 { key: 'stats', icon: 'chart', tone: 'sky', label: '접속 통계', onClick: () => setShowAdminStats(true) },
                 { key: 'usage', icon: 'stack', tone: 'sky', label: '데이터 사용량', onClick: () => setShowAdminUsage(true) },
                 { key: 'testers', icon: 'phone', tone: 'green', label: '테스터 신청', onClick: () => setShowAdminTesters(true) },
@@ -5791,8 +5789,6 @@ export default function Home() {
                 { key: 'sponsor', icon: 'storefront', tone: 'gold', label: '광고 관리', onClick: () => setShowSponsorAdmin(true) },
                 { key: 'deleted', icon: 'trash', tone: 'stone', label: '삭제된 메시지', onClick: () => setShowDeletedMessages(true) },
                 { key: 'media', icon: 'image', tone: 'green', label: '사진 저장소', onClick: () => setShowMediaStorage(true) },
-                { key: 'badges', icon: 'crown', tone: 'gold', label: '뱃지 1등 현황', onClick: () => setShowBadgeBoard(true) },
-                { key: 'studio', icon: 'mic', tone: 'red', label: '녹음실', onClick: () => { window.location.href = '/studio'; } }, // 설명 영상 내레이션 녹음 (app/studio)
               ];
               return viewingUserId === user?.id ? (
                 <>
@@ -5825,7 +5821,10 @@ export default function Home() {
                   {isAdmin && (
                     <div className="mt-3">
                       <p className="text-[0.75rem] font-bold text-stone-400 mb-1.5 px-1">관리자</p>
-                      {tileGrid(adminTiles)}
+                      {/* 꾹 눌러 끌면 자리 바꾸기 (이 기기에 기억, 운영자 2026-11-18) */}
+                      <SortableTiles storageKey="adminTileOrder" className="grid grid-cols-4 gap-x-1 gap-y-3" tileClassName={tileCls}
+                        tiles={adminTiles.flatMap(t => 'img' in t ? [] : [{ key: t.key, onClick: t.onClick, body: tileBody(t) }])} />
+                      <p className="mt-2 text-center text-[0.75rem] text-stone-400">아이콘을 꾹 눌러 끌면 자리를 바꿀 수 있어요</p>
                     </div>
                   )}
                 </>
@@ -6621,7 +6620,6 @@ export default function Home() {
       )}
       {/* 관리자: 교우 뱃지 달기 (components/MemberBadges) */}
       {badgeListFor && <BadgeListDialog userId={badgeListFor.id} name={badgeListFor.name} highlight={badgeListFor.highlight} onClose={() => setBadgeListFor(null)} />}
-      {showBadgeBoard && isAdmin && user && <BadgeCollection userId={user.id} initialTab="champ" onClose={() => setShowBadgeBoard(false)} onOpenProfile={id => openProfileCard({ id })} />}
       {badgeGrantFor && isAdmin && <BadgeGrantSheet user={badgeGrantFor} onClose={() => setBadgeGrantFor(null)} onGranted={id => sendPush('badge', id)} />}
       {stickerGiftFor && isAdmin && <StickerGift user={stickerGiftFor} onClose={() => setStickerGiftFor(null)} onGifted={id => sendPush('sticker_gift', id)} />}
       {memberMusicGift && isAdmin && (
