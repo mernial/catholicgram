@@ -335,8 +335,11 @@ export async function POST(request: Request) {
     const notified = new Set<string>([user.id]);
     // 댓글·답글 알림은 글이 달라도 휴대폰에서 '💬 새 댓글 N개' 하나로 합침 (누르면 가장 최근 댓글의 글로)
     const group = { title: '💬 새 댓글' };
-    // 글쓴이라고 댓글마다 알리지 않음 (운영자 2026-11-16) — 나에게 단 답글이거나 나를 @태그했을 때만 (아래 replyTo·mentionedIds)
-    void post;
+    // 내 글에 댓글이 달리면 글쓴이에게 알림 (운영자 2026-11-19 다시 켬 — 11-16 에 답글·태그만으로 줄였던 것)
+    if (post && !notified.has(post.user_id)) {
+      list.push({ recipientId: post.user_id, payload: { title: replyTo === post.user_id ? '↩ 새 답글' : '💬 새 댓글', body, url, tag: 'post-comments', group } });
+      notified.add(post.user_id);
+    }
     if (replyTo && !notified.has(replyTo)) {
       list.push({ recipientId: replyTo, payload: { title: '↩ 새 답글', body, url, tag: 'post-comments', group } });
       notified.add(replyTo);
