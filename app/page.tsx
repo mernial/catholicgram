@@ -3006,8 +3006,8 @@ export default function Home() {
       mentionQuery('comments', 'id, post_id, content, author_name, created_at'),
     ]);
     const merged = new Map<string, CommentNotification>();
-    // 내 글에 달린 댓글이라고 다 알리지 않음 (운영자 2026-11-16) — 나에게 단 답글·나를 @태그한 댓글만 (아래)
-    void onMyPosts;
+    // 내 글에 달린 댓글도 알림 (운영자 2026-11-19 다시 켬 — 11-16 에 뺐던 것)
+    (onMyPosts || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] }));
     (replies || []).forEach(c => merged.set(c.id, { ...c, post_content: postContent[c.post_id] || '', is_reply: true }));
     type Row = { id: string; post_id?: string; content: string; author_name: string; created_at: string };
     ((postMentions || []) as unknown as Row[]).filter(p => mentionsHandle(p.content, myHandle)).forEach(p =>
