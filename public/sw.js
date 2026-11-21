@@ -97,6 +97,27 @@ self.addEventListener('push', (event) => {
   })());
 });
 
+// 알림 구독 주소가 바뀌면(브라우저·휴대폰이 가끔 새로 바꿈) 다시 구독해 서버에 새 주소를 적는다.
+// 예전엔 처리가 없어 바뀐 뒤 알림이 안 오다가 앱을 열어야 다시 왔음 (2026-11-21, app/api/push/resubscribe)
+const VAPID_KEY = 'BH6tMlNvrWx7w3LIdoSiiVoFlRmnVdSKYj3UsiJEBmzo5hg0S39TOrb9QlvWcKdxshVGSxrG0jYMdbsmf6RLkiY';
+const b64ToBytes = (b64) => { const s = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(s, c => c.charCodeAt(0)); };
+self.addEventListener('pushsubscriptionchange', (event) => {
+  event.waitUntil((async () => {
+    const oldSub = event.oldSubscription;
+    let sub = event.newSubscription;
+    if (!sub) {
+      sub = await self.registration.pushManager.subscribe((oldSub && oldSub.options && oldSub.options.applicationServerKey)
+        ? oldSub.options : { userVisibleOnly: true, applicationServerKey: b64ToBytes(VAPID_KEY) }).catch(() => null);
+    }
+    if (!sub || !oldSub) return; // 옛 주소를 모르면 앱을 열 때 저장됨
+    const json = sub.toJSON();
+    await fetch('/api/push/resubscribe', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldEndpoint: oldSub.endpoint, endpoint: json.endpoint, keys: json.keys }),
+    }).catch(() => {});
+  })());
+});
+
 // 사진(게시물·프로필·광고)은 한 번 받으면 휴대폰에 보관해 두고 다시 받지 않는다 (서버 전송량 절약).
 // 사진 주소는 올릴 때마다 새 이름이라 내용이 바뀌지 않는다. 영상은 부분 요청이라 제외.
 const IMG_CACHE = 'catholicgram-img-v1';

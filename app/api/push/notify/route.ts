@@ -1,4 +1,5 @@
 import webpush from 'web-push';
+import { PUSH_OPTIONS } from '@/lib/push-devices';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { ADMIN_EMAILS } from '@/lib/admin';
@@ -525,7 +526,7 @@ export async function POST(request: Request) {
 
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', vapidPublicKey, vapidPrivateKey);
   const send = (subs: typeof subscriptions) => Promise.allSettled(subs.map(sub =>
-    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)))
+    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)), PUSH_OPTIONS)
   ));
   // 메시지면 애플 기기는 잠깐 기다렸다가 아직 안 읽은 사람에게만 (위 VIEW_WAIT_MS), 나머지는 바로
   const waitApple = readersOf ? subscriptions.filter(s => isApplePush(s.endpoint)) : [];
