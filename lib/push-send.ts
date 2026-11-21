@@ -1,6 +1,7 @@
 // 서버 전용: 휴대폰 알림 보내기 (사람마다 알림 내용 하나). /api/autopost 처럼 로그인한 교우가 부르지 않는 서버 일에서 쓴다.
 // (앱이 부르는 /api/push/notify 는 메시지 알림의 '애플 기기 잠깐 기다리기'까지 있어 따로 둔다 — 보내는 방식은 같음)
 import webpush from 'web-push';
+import { PUSH_OPTIONS } from '@/lib/push-devices';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
 import { extractMentions } from '@/lib/mentions';
@@ -43,7 +44,7 @@ export async function sendPushTargets(admin: SupabaseClient, targets: PushTarget
   if (subs.length === 0) return 0;
   webpush.setVapidDetails('mailto:yunho-jo@casuwon.or.kr', VAPID_PUBLIC_KEY, privateKey);
   const results = await Promise.allSettled(subs.map(sub =>
-    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)))));
+    webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, JSON.stringify(payloadByUser.get(sub.user_id)), PUSH_OPTIONS)));
   // 만료되었거나 해지된 구독은 정리
   const expired = subs.filter((_, i) => {
     const r = results[i];

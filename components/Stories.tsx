@@ -398,7 +398,7 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
       // 나를 팔로우하는 교우들에게 알림 (실패해도 무시)
       if (created?.[0]?.id) {
         const { data: { session } } = await supabase.auth.getSession();
-        fetch('/api/push/notify', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` }, body: JSON.stringify({ type: 'story', id: created[0].id }) }).catch(() => {});
+        fetch('/api/push/notify', { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` }, body: JSON.stringify({ type: 'story', id: created[0].id }) }).catch(() => {});
       }
       await onPosted();
       setOpenMineAfterPost(true);
