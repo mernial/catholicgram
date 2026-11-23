@@ -103,13 +103,13 @@ export const TIERS = [
   { name: '큰 나무', colors: ['#ffe27a', '#e09a0c', '#7a4500'], pill: ['#fdf3dc', '#d9a94a', '#6b4300'] },
   { name: '생명의 나무', colors: ['#ffd1f0', '#9b6cf0', '#1fb5c9'], pill: ['#f6f0ff', '#d6c4fb', '#5b3fb0'] },
 ] as const;
-export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; steps: number[] }[] = [
-  { id: 'comments', short: '댓글', unit: '개', emblem: 'talker', stat: 'comments', champion: 'talker', what: '댓글을', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
-  { id: 'hearts', short: '공감', unit: '', emblem: 'hearts', stat: 'likes', champion: 'hearts', what: '글에 공감(❤️)을', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
-  { id: 'posts', short: '글', unit: '편', emblem: 'writer', stat: 'posts', champion: 'writer', what: '글을', steps: [3, 10, 30, 80, 200, 400, 800] },
+export const LADDERS: { id: string; short: string; unit: string; emblem: string; stat: StatKey; champion: string; what: string; verb?: string; steps: number[] }[] = [
+  { id: 'comments', short: '댓글', unit: '개', emblem: 'talker', stat: 'comments', champion: 'talker', what: '댓글을', verb: '달았어요', steps: [10, 50, 150, 400, 1000, 2500, 5000] },
+  { id: 'hearts', short: '공감', unit: '', emblem: 'hearts', stat: 'likes', champion: 'hearts', what: '글에 공감을', verb: '받았어요', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'posts', short: '글', unit: '편', emblem: 'writer', stat: 'posts', champion: 'writer', what: '글을', verb: '올렸어요', steps: [3, 10, 30, 80, 200, 400, 800] },
   { id: 'days', short: '출석', unit: '일', emblem: 'daily', stat: 'days', champion: 'daily', what: '가톨릭그램에 들른 날이', steps: [7, 30, 60, 120, 200, 300, 365] },
   { id: 'streak', short: '연속', unit: '일', emblem: 'streak', stat: 'streak', champion: 'streak', what: '하루도 빠지지 않고 연속으로 들른 날이', steps: [7, 14, 30, 60, 100, 200, 365] },
-  { id: 'prays', short: '기도', unit: '번', emblem: 'prayers', stat: 'praysGiven', champion: 'intercessor', what: '교우들의 글·기도지향에 기도(🙏)를', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
+  { id: 'prays', short: '기도', unit: '번', emblem: 'prayers', stat: 'praysGiven', champion: 'intercessor', what: '교우들의 글·기도지향에 기도(🙏)를', verb: '보냈어요', steps: [30, 100, 300, 1000, 3000, 7000, 15000] },
   // 1등 뱃지가 있던 나머지 활동도 모두 7단계로 (운영자 2026-11-14 '1안') — 1등 메달의 가운데 색이 그 교우의 등급. id 에는 밑줄을 쓰지 않는다(SQL 이 't_<id>_<단계>' 를 밑줄로 가름)
   { id: 'prayed', short: '받은 기도', unit: '번', emblem: 'prayers', stat: 'prays', champion: 'prayers', what: '글에 기도(🙏)를 받은 것이', steps: [20, 60, 200, 600, 1500, 4000, 8000] },
   { id: 'toppost', short: '인기 글', unit: '', emblem: 'trophy', stat: 'topPost', champion: 'trophy', what: '글 하나에 받은 공감·기도가', steps: [10, 20, 40, 70, 120, 200, 300] },
@@ -141,7 +141,7 @@ export const LADDERS: { id: string; short: string; unit: string; emblem: string;
 ];
 const fmtN = (n: number) => n.toLocaleString('en-US');
 const LADDER_DEFS: MemberBadgeDef[] = LADDERS.flatMap(L => L.steps.map((n, i) => ({
-  key: `t_${L.id}_${i + 1}`, label: `${L.short} ${fmtN(n)}${L.unit}`, desc: `${L.what} ${fmtN(n)}${L.unit || '번'} 넘었어요 · ${TIERS[i].name} 등급`,
+  key: `t_${L.id}_${i + 1}`, label: `${L.short} ${fmtN(n)}${L.unit}`, desc: `${L.what} ${fmtN(n)}${L.unit || '번'} ${L.verb ? `넘게 ${L.verb}` : '넘었어요'} · ${TIERS[i].name} 등급`,
   group: 'milestone' as BadgeGroup, colors: [TIERS[i].colors[0], TIERS[i].colors[1]] as [string, string], stat: L.stat, auto: true, permanent: true, threshold: n, tier: i + 1, family: L.id,
 })));
 MEMBER_BADGES.push(...LADDER_DEFS);
