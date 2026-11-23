@@ -5,6 +5,7 @@
 // 뱃지를 누르면 상세(큰 뱃지·등급·설명·이 등급이 된 날·7단계 줄·다음까지 남은 수·대표로 정하기)
 // 활동 숫자는 본인 것만 /api/badges/stats (lib/member-stats). 1등 교우는 member_badges(로그인한 교우는 모두 읽기)
 import { createPortal } from 'react-dom';
+import { useSheetDrag } from '@/lib/sheet-drag';
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import BottomSheet from '@/components/BottomSheet';
 import { BadgeIcon } from '@/components/BadgeIcon';
@@ -46,6 +47,7 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
   const [adminSelf, setAdminSelf] = useState(false); // 관리자는 1등에서만 빠짐, 활동 등급(달성 기록)은 받음 (운영자 2026-11-16)
   useBackLayer(true, onClose);
   useBackLayer(!!pick, () => setPick(null));
+  const pickSheet = useSheetDrag(() => setPick(null), !!pick); // 크게 보기도 아래로 끌면 그것만 닫힘
   const keys = useMemo(() => rows.map(r => r.badge_key), [rows]);
   const have = useMemo(() => new Set(keys), [keys]);
   const shown = useMemo(() => shownBadges(keys), [keys]);
@@ -136,7 +138,9 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
   const pickRow = pick ? rows.find(r => r.badge_key === pick) : undefined;
   const pickLabel = pickDef ? (pickDef.tier && pickChampion ? badgeOf(pickLadder!.L.champion)?.label || pickDef.label : pickDef.label) : '';
 
-  return createPortal(
+  // 뱃지 한 개 크게 보기·도장 모음은 뱃지 모음 창 '밖'에 둔다 — 안에 두면 창의 아래로 끌기가 그 위에서도 먹어,
+  // 크게 보기를 끌어 닫으면 뱃지 모음까지 닫히고 × 가 잘 안 눌렸음 (루비로사 2026-11-23)
+  return createPortal(<>
     <BottomSheet bare label="뱃지 모음" onClose={onClose} z="z-[86]" tone="bg-[#fdfaf3]">
       <div className="shrink-0 px-5 pb-1 flex items-center gap-2">
         <h2 className="text-[1.25rem] font-bold text-[#1f2a44]">🏅 나의 뱃지</h2>
@@ -265,33 +269,34 @@ export default function BadgeCollection({ userId, initialTab = 'home', onClose, 
         </div>)}
       </div>
 
-      {pickDef && (
-        <div className="fixed inset-0 z-[96] bg-black/55 flex items-end sm:items-center justify-center" onClick={() => setPick(null)} role="dialog" aria-label={`${pickLabel} 뱃지`}>
-          <div className="relative bg-white w-full sm:w-96 max-h-[88dvh] overflow-y-auto rounded-t-[1.75rem] sm:rounded-3xl px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-center shadow-2xl" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setPick(null)} className="absolute right-4 top-3 w-9 h-9 text-stone-400 text-2xl leading-none" aria-label="닫기">×</button>
-            <div className={`flex justify-center ${pickHave ? '' : 'opacity-45 grayscale'}`}><BadgeIcon badge={pickDef} size={124} champion={pickChampion} /></div>
-            <h3 className="mt-2 text-[1.375rem] font-bold text-[#1f2a44]">{pickLabel}</h3>
-            <div className="mt-1 flex justify-center gap-1"><TierTag def={pickDef} champion={pickChampion} /><span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-600">{pickDef.tier ? '활동 등급' : pickDef.auto && !pickDef.permanent ? '1등 뱃지' : '기념'}</span>{!pickHave && <span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-500">🔒 아직</span>}</div>
-            <p className="mt-2 text-[0.875rem] text-stone-600 leading-relaxed">{pickDef.desc}</p>
-            {pickRow && <div className="mt-3 flex justify-between rounded-2xl bg-[#fbf6ea] px-4 py-2.5 text-[0.875rem]"><span>📅 {pickDef.tier ? '이 등급이 된 날' : '받은 날'}</span><b>{ymd(pickRow.created_at)}</b></div>}
-            {pickLadder && (
-              <div className="mt-3 text-left">
-                <b className="text-[0.875rem] text-[#1f2a44]">등급 단계</b>
-                <div className="flex justify-between my-1.5">
-                  {pickLadder.L.steps.map((n, i) => <span key={n} className={`flex flex-col items-center ${i < pickLadder.cur ? '' : 'opacity-30 grayscale'}`}><BadgeIcon badge={`t_${pickLadder.L.id}_${i + 1}`} size={32} /><span className="text-[0.5625rem] text-stone-500 mt-0.5">{fmt(n)}</span></span>)}
-                </div>
-                <Bar pct={pickLadder.next === null ? 100 : pickLadder.ratio * 100} h="h-2" color={pickLadder.next === null ? '#9b6cf0' : '#c9a24a'} />
-                <p className="text-[0.75rem] text-stone-500 mt-1">{STAT_LABELS[pickLadder.L.stat]} {pickLadder.count === undefined ? '…' : `${fmt(pickLadder.count)}${pickLadder.L.unit}`}{pickLadder.next !== null && pickLadder.count !== undefined && <> · 다음 <b style={{ color: TIERS[pickLadder.cur].pill[2] }}>{TIERS[pickLadder.cur].name}</b>까지 {fmt(Math.max(0, pickLadder.next - pickLadder.count))}{pickLadder.L.unit || '번'}</>}</p>
+    </BottomSheet>
+    {pickDef && (
+      <div className="fixed inset-0 z-[96] bg-black/55 flex items-end sm:items-center justify-center" onClick={() => setPick(null)} role="dialog" aria-label={`${pickLabel} 뱃지`}>
+        <div ref={pickSheet.sheetRef} className="relative bg-white w-full sm:w-96 max-h-[88dvh] overflow-y-auto rounded-t-[1.75rem] sm:rounded-3xl px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] text-center shadow-2xl" onClick={e => e.stopPropagation()}>
+          <button onClick={() => setPick(null)} className="absolute z-10 right-2 top-2 w-11 h-11 flex items-center justify-center text-stone-400 text-2xl leading-none" aria-label="닫기">×</button>{/* z-10: 아래 큰 뱃지 그림(3D 층)이 × 위를 덮어 눌리지 않았음 */}
+          <div className={`flex justify-center ${pickHave ? '' : 'opacity-45 grayscale'}`}><BadgeIcon badge={pickDef} size={124} champion={pickChampion} /></div>
+          <h3 className="mt-2 text-[1.375rem] font-bold text-[#1f2a44]">{pickLabel}</h3>
+          <div className="mt-1 flex justify-center gap-1"><TierTag def={pickDef} champion={pickChampion} /><span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-600">{pickDef.tier ? '활동 등급' : pickDef.auto && !pickDef.permanent ? '1등 뱃지' : '기념'}</span>{!pickHave && <span className="text-[0.6875rem] font-bold rounded-full border border-[#e3dccb] px-1.5 py-px text-stone-500">🔒 아직</span>}</div>
+          <p className="mt-2 text-[0.875rem] text-stone-600 leading-relaxed">{pickDef.desc}</p>
+          {pickRow && <div className="mt-3 flex justify-between rounded-2xl bg-[#fbf6ea] px-4 py-2.5 text-[0.875rem]"><span>📅 {pickDef.tier ? '이 등급이 된 날' : '받은 날'}</span><b>{ymd(pickRow.created_at)}</b></div>}
+          {pickLadder && (
+            <div className="mt-3 text-left">
+              <b className="text-[0.875rem] text-[#1f2a44]">등급 단계</b>
+              <div className="flex justify-between my-1.5">
+                {pickLadder.L.steps.map((n, i) => <span key={n} className={`flex flex-col items-center ${i < pickLadder.cur ? '' : 'opacity-30 grayscale'}`}><BadgeIcon badge={`t_${pickLadder.L.id}_${i + 1}`} size={32} /><span className="text-[0.5625rem] text-stone-500 mt-0.5">{fmt(n)}</span></span>)}
               </div>
-            )}
-            {pickHave && (pick === featured
-              ? <p className="mt-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">★ 대표 뱃지예요</p>
-              : <button disabled={saving} onClick={async () => { await choose(pick!); setPick(null); }} className="mt-4 w-full py-3 rounded-2xl bg-[#1f2a44] text-white text-[0.9375rem] font-bold disabled:opacity-50">{saving ? '저장 중' : '★ 대표 뱃지로 정하기'}</button>)}
-          </div>
+              <Bar pct={pickLadder.next === null ? 100 : pickLadder.ratio * 100} h="h-2" color={pickLadder.next === null ? '#9b6cf0' : '#c9a24a'} />
+              <p className="text-[0.75rem] text-stone-500 mt-1">{STAT_LABELS[pickLadder.L.stat]} {pickLadder.count === undefined ? '…' : `${fmt(pickLadder.count)}${pickLadder.L.unit}`}{pickLadder.next !== null && pickLadder.count !== undefined && <> · 다음 <b style={{ color: TIERS[pickLadder.cur].pill[2] }}>{TIERS[pickLadder.cur].name}</b>까지 {fmt(Math.max(0, pickLadder.next - pickLadder.count))}{pickLadder.L.unit || '번'}</>}</p>
+            </div>
+          )}
+          {pickHave && (pick === featured
+            ? <p className="mt-4 py-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-[0.9375rem] font-bold">★ 대표 뱃지예요</p>
+            : <button disabled={saving} onClick={async () => { await choose(pick!); setPick(null); }} className="mt-4 w-full py-3 rounded-2xl bg-[#1f2a44] text-white text-[0.9375rem] font-bold disabled:opacity-50">{saving ? '저장 중' : '★ 대표 뱃지로 정하기'}</button>)}
         </div>
-      )}
-      {book && <StampBook userId={userId} mine onClose={() => setBook(false)} />}
-    </BottomSheet>,
+      </div>
+    )}
+    {book && <StampBook userId={userId} mine onClose={() => setBook(false)} />}
+    </>,
     document.body,
   );
 }
