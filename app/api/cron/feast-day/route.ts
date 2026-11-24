@@ -1,3 +1,4 @@
+import { nextSolarOfLunar } from '@/lib/lunar';
 import webpush from 'web-push';
 import { createClient } from '@supabase/supabase-js';
 import { VAPID_PUBLIC_KEY } from '@/lib/push';
@@ -42,6 +43,16 @@ export async function GET(request: Request) {
   // 활동 1등 뱃지 다시 계산 (lib/auto-badges, 표가 없으면(SQL 전) 오류만 기록)
   const badges = await refreshAutoBadges(admin).catch(e => ({ awarded: [], pushed: 0, error: String(e) }));
   console.log('auto badges', JSON.stringify(badges));
+
+  // 음력 생일(supabase/birthday-lunar.sql): 해마다 양력 날짜가 바뀌므로 매일 아침 '다가오는 양력 날짜'로 birthday 를 다시 맞춘다
+  // (생일 당일엔 오늘 날짜 그대로 → 아래 생일 축하에 잡힘, 다음 날 다음 해 날짜로 옮겨 감). 칸이 없으면(SQL 전) 그냥 지나감
+  const lunarRows = await admin.from('profiles').select('id, birthday, birthday_lunar').not('birthday_lunar', 'is', null);
+  if (!lunarRows.error) {
+    for (const r of (lunarRows.data || []) as { id: string; birthday: string | null; birthday_lunar: string }[]) {
+      const sol = nextSolarOfLunar(r.birthday_lunar);
+      if (sol && sol !== r.birthday) await admin.from('profiles').update({ birthday: sol }).eq('id', r.id);
+    }
+  }
 
   // 생일 칸(birthday.sql)이 아직 없으면 축일만
   type Celebrant = { id: string; baptismal_name: string | null; feast_day?: string | null; birthday?: string | null };
