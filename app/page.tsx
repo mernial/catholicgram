@@ -4845,7 +4845,8 @@ export default function Home() {
   }, []);
 
   // 다른 탭으로 가면 + 메뉴 접기
-  useEffect(() => { setFabOpen(false); }, [activeTab]);
+  // 탭을 옮기면 떠 있던 + 메뉴·'가톨릭그램 ▾' 보기 고르기 메뉴도 닫음 (루비로사 2026-11-24: 아래 메시지 단추를 눌러도 보기 메뉴가 그대로 남음)
+  useEffect(() => { setFabOpen(false); setFeedMenuOpen(false); }, [activeTab]);
   // 홈을 떠났다 돌아오면 맨 위 첫 글부터 보이므로, 펼쳐 두었던 글도 접어 둔다 (루비로사 2026-11-24: 내 공간 → 뒤로 → 펼친 채 남음)
   useEffect(() => { if (activeTab !== 'home') setExpandedPosts(prev => (prev.size ? new Set() : prev)); }, [activeTab]);
 
