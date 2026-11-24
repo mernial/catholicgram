@@ -4742,6 +4742,7 @@ export default function Home() {
   const refreshFeed = async () => {
     if (refreshState === 'loading') return;
     scrollToTop();
+    setExpandedPosts(prev => (prev.size ? new Set() : prev)); // 새로고침하면 펼쳐 본 글(… 더 보기)도 다시 접음 (루비로사 2026-11-24)
     setRefreshState('loading');
     await Promise.all([fetchPosts(), fetchIntentions(), fetchNotices()]).catch(() => {});
     setRefreshState('done');
@@ -4845,6 +4846,8 @@ export default function Home() {
 
   // 다른 탭으로 가면 + 메뉴 접기
   useEffect(() => { setFabOpen(false); }, [activeTab]);
+  // 홈을 떠났다 돌아오면 맨 위 첫 글부터 보이므로, 펼쳐 두었던 글도 접어 둔다 (루비로사 2026-11-24: 내 공간 → 뒤로 → 펼친 채 남음)
+  useEffect(() => { if (activeTab !== 'home') setExpandedPosts(prev => (prev.size ? new Set() : prev)); }, [activeTab]);
 
   // 크게 보기 손가락 밀기: 사진 좌우로 밀면 다음 사진, (탐색에서 열었으면) 위로 밀면 다음 추천 글
   const [viewerQueue, setViewerQueue] = useState<string[] | null>(null);
