@@ -11,6 +11,7 @@ import RoleBadge, { BADGES } from '@/components/RoleBadge';
 import { roleOf } from '@/components/BadgeIcon';
 import { BadgeShelf, BadgeRow, BadgeGrantSheet, NameBadges, BadgeListDialog } from '@/components/MemberBadges';
 import SortableTiles from '@/components/SortableTiles';
+import { lunarSupported, nextSolarOfLunar } from '@/lib/lunar';
 import BadgeCollection from '@/components/BadgeCollection';
 import Lounge, { loungeSeenKey } from '@/components/Lounge';
 import { ALERT_SYNC_EVENT, queueAlertSync, syncAlertState } from '@/lib/alert-sync';
@@ -491,6 +492,7 @@ export default function Home() {
   const [setupError, setSetupError] = useState('');
   const [feastDayInput, setFeastDayInput] = useState('');
   const [birthdayInput, setBirthdayInput] = useState('');   // 생일 'MM-DD' (가입·프로필 수정)
+  const [birthdayLunar, setBirthdayLunar] = useState(false); // 생일을 음력으로 적었는지 (supabase/birthday-lunar.sql, 루비로사 건의 2026-11-24)
   const metaBirthdayTriedRef = useRef<string | null>(null);
   const [birthdayPromptHidden, setBirthdayPromptHidden] = useState(true); // 내 공간 '생일을 알려 주세요' 안내를 닫았는지 (이 휴대폰)
   const [nicknameInput, setNicknameInput] = useState('');   // 공개 닉네임 (baptismalName 은 비공개 실명)
@@ -2101,7 +2103,9 @@ export default function Home() {
     setSetupError('');
 
     const feastDay = isValidFeastDay(feastDayInput) ? feastDayInput : null;
-    const birthday = isValidFeastDay(birthdayInput) ? birthdayInput : null;
+    // 음력 생일: 적은 날(음력)은 birthday_lunar 에, 다가오는 양력 날짜는 birthday 에 (리본·알림은 birthday 로 — 해마다 아침 8시 cron 이 다시 맞춤)
+    const lunarPicked = birthdayLunar && isValidFeastDay(birthdayInput) ? birthdayInput : null;
+    const birthday = lunarPicked ? nextSolarOfLunar(lunarPicked) : isValidFeastDay(birthdayInput) ? birthdayInput : null;
     // 이메일은 보내지 않는다: 서버가 로그인 정보에서 채우고, 앱에서는 읽을 수 없다 (supabase/profiles-email-private.sql)
     const row = { id: user.id, baptismal_name: nickname, handle: cleanHandle };
     const termsAt = profileEditMode ? undefined : new Date().toISOString(); // 가입 때 약관 동의(필수 체크) 시각
@@ -2118,6 +2122,10 @@ export default function Home() {
       birthdaySkipped = !error;
     }
 
+    if (!error && !birthdaySkipped) {
+      const lu = await supabase.from('profiles').update({ birthday_lunar: lunarPicked }).eq('id', user.id);
+      if (lu.error && lunarPicked && isAdmin) showAlert({ title: '음력 생일 칸이 아직 없어요', message: '올해 양력 날짜로는 저장했어요.\n관리자: Supabase 에서 supabase/birthday-lunar.sql 을 실행해 주세요.' });
+    }
     if (!error) {
       // 실명은 비공개 표에, 내가 쓴 글/댓글의 작성자 이름은 새 닉네임으로
       await supabase.from('profile_private').upsert({ id: user.id, real_name: baptismalName.trim(), updated_at: new Date().toISOString() });
@@ -2144,6 +2152,12 @@ export default function Home() {
     setBaptismalName(myRealName);
     setFeastDayInput(profile.feast_day || '');
     setBirthdayInput(profile.birthday || '');
+    setBirthdayLunar(false);
+    // 음력으로 적어 둔 교우는 음력 날짜를 보여 줌 (칸이 없으면(SQL 전) 양력 그대로)
+    supabase.from('profiles').select('birthday_lunar').eq('id', profile.id).maybeSingle().then(({ data }) => {
+      const lu = (data as { birthday_lunar?: string | null } | null)?.birthday_lunar;
+      if (lu) { setBirthdayInput(lu); setBirthdayLunar(true); }
+    }, () => {});
     setSetupError('');
     setShowFancyName(false);
     setProfileEditMode(true);
@@ -7941,8 +7955,19 @@ export default function Home() {
               </div>
 
               <div>
-                <label className="text-[0.8125rem] font-bold text-stone-500 mb-1 block text-left">🎂 나의 생일 <span className="font-normal text-stone-400">(월·일, 선택)</span></label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[0.8125rem] font-bold text-stone-500 block text-left">🎂 나의 생일 <span className="font-normal text-stone-400">(월·일, 선택)</span></label>
+                  {lunarSupported() && (
+                    <span className="inline-flex rounded-full bg-stone-100 p-0.5 text-[0.8125rem] font-bold" role="radiogroup" aria-label="양력·음력">
+                      {([[false, '양력'], [true, '음력']] as const).map(([lu, label]) => (
+                        <button key={label} type="button" role="radio" aria-checked={birthdayLunar === lu} onClick={() => setBirthdayLunar(lu)}
+                          className={`px-3 py-1 rounded-full ${birthdayLunar === lu ? 'bg-white text-stone-900 shadow-sm' : 'text-stone-500'}`}>{label}</button>
+                      ))}
+                    </span>
+                  )}
+                </div>
                 <FeastDayPicker value={birthdayInput} onChange={setBirthdayInput} what="생일" />
+                {birthdayLunar && isValidFeastDay(birthdayInput) && (() => { const sol = nextSolarOfLunar(birthdayInput); return sol ? <p className="text-[0.8125rem] font-bold text-rose-600 mt-1.5">음력 {Number(birthdayInput.slice(0, 2))}월 {Number(birthdayInput.slice(3))}일 → 다가오는 생일은 양력 {Number(sol.slice(0, 2))}월 {Number(sol.slice(3))}일 · 해마다 저절로 맞춰요</p> : null; })()}
                 <p className="text-[0.75rem] text-stone-400 mt-1.5 leading-snug">생일 날 프로필 사진 위에 &lsquo;오늘 생일이에요&rsquo; 리본이 달리고, 나를 팔로우하는 교우에게 축하해 달라는 알림이 가요. 태어난 해는 받지 않아요.</p>
               </div>
 
