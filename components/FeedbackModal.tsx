@@ -1,7 +1,7 @@
 'use client';
 
 import { useBackLayer } from '@/lib/back-layers';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import Icon from '@/components/Icon';
@@ -87,9 +87,11 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
   sendPush: (type: 'feedback' | 'feedback_reply' | 'report_reply', id: string) => void;
 }) {
   // 'reports': 관리자는 받은 신고 전체, 일반 회원은 내가 한 신고와 처리 결과
-  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'answered' | 'reports'>(initialView || (isAdmin ? 'inbox' : 'write'));
+  // 'mybugs'(회원 '내 신고'): 내가 보낸 오류 신고 + 내가 한 글·댓글 신고 (루비로사 건의 2026-11-25: '내 건의'엔 건의만, '내 신고'엔 오류 신고)
+  const [view, setView] = useState<'write' | 'mine' | 'inbox' | 'answered' | 'reports' | 'mybugs'>(initialView === 'reports' && !isAdmin ? 'mybugs' : initialView || (isAdmin ? 'inbox' : 'write'));
   const [reportReplyDrafts, setReportReplyDrafts] = useState<{ [id: string]: string }>({});
   const [reports, setReports] = useState<Report[]>([]);
+  const jumpedRef = useRef(false);
   const [category, setCategory] = useState<Feedback['category']>('suggestion');
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
@@ -119,7 +121,14 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
       if (error.code === '42P01' || error.code === 'PGRST205' || /does not exist|schema cache/i.test(error.message)) setSetupNeeded(true);
       return;
     }
-    setItems((data || []) as Feedback[]);
+    const list = (data || []) as Feedback[];
+    setItems(list);
+    // 답변 알림으로 '내 건의'를 열었는데 가장 최근 답변이 오류 신고면 '내 신고'로
+    if (mode === 'mine' && initialView === 'mine' && !jumpedRef.current) {
+      jumpedRef.current = true;
+      const latest = list.filter(f => f.replied_at).sort((a, b) => (b.replied_at || '').localeCompare(a.replied_at || ''))[0];
+      if (latest?.category === 'bug') setView('mybugs');
+    }
   };
 
   const fetchReports = async () => {
@@ -172,6 +181,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
 
   useEffect(() => {
     if (view === 'reports') fetchReports();
+    else if (view === 'mybugs') { fetchItems('mine'); fetchReports(); }
     else if (view !== 'write') fetchItems(view === 'answered' ? 'inbox' : view);
   }, [view]);
 
@@ -243,18 +253,38 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
     ? items.filter(f => !f.admin_reply)
     : view === 'answered'
       ? items.filter(f => !!f.admin_reply).sort((a, b) => (b.replied_at || '').localeCompare(a.replied_at || ''))
-      : items;
+      : view === 'mine' ? items.filter(f => f.category !== 'bug')
+        : view === 'mybugs' ? items.filter(f => f.category === 'bug')
+          : items;
   const pendingCount = items.filter(f => !f.admin_reply).length;
 
   // 관리자(운영자)에게는 '건의하기'·'내 건의'가 필요 없으므로 받은 건의·답변·신고만
   const tabs: { key: typeof view; label: string }[] = [
-    ...(!isAdmin ? [{ key: 'write' as const, label: '건의하기' }, { key: 'mine' as const, label: '내 건의' }, { key: 'reports' as const, label: '내 신고' }] : []),
+    ...(!isAdmin ? [{ key: 'write' as const, label: '건의하기' }, { key: 'mine' as const, label: '내 건의' }, { key: 'mybugs' as const, label: '내 신고' }] : []),
     ...(isAdmin ? [
       { key: 'inbox' as const, label: `받은 건의함${pendingCount ? ` (${pendingCount})` : ''}` },
       { key: 'answered' as const, label: '답변한 건의' },
       { key: 'reports' as const, label: '신고' },
     ] : []),
   ];
+
+  // 회원: 내가 한 글·댓글 신고와 처리 결과
+  const myReportCard = (r: Report) => (
+              <div key={r.id} className="p-4 flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
+                  <span className="font-bold text-stone-700">{REPORT_TYPE[r.target_type]} · {REPORT_REASON[r.reason] || r.reason}</span>
+                  <span className={`px-2 py-0.5 rounded-full border font-bold ${REPORT_STATUS[r.status].className}`}>{r.status === 'open' ? '확인 중' : '처리됨'}</span>
+                </div>
+                {r.target_preview && <p className="text-sm text-stone-600 bg-stone-50 rounded-lg p-2.5 whitespace-pre-wrap line-clamp-2">{r.target_preview}</p>}
+                <p className="text-[0.8125rem] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')} 신고</p>
+                {r.admin_reply ? (
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                    <p className="text-xs font-bold text-blue-800 mb-1"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />운영자 답변</p>
+                    <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">{r.admin_reply}</p>
+                  </div>
+                ) : r.status === 'open' && <p className="text-xs text-stone-500">운영자가 확인하고 있어요. 처리되면 알림으로 알려드려요.</p>}
+              </div>
+  );
 
   return (
     <BottomSheet bare label="건의함" onClose={onClose} z="z-[85]" tone="bg-white">
@@ -291,22 +321,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
         ) : view === 'reports' ? (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-stone-100 mt-2">
             {!loading && reports.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">{isAdmin ? '접수된 신고가 없습니다.' : '내가 한 신고가 없어요.'}</div>}
-            {!isAdmin && reports.map(r => (
-              <div key={r.id} className="p-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
-                  <span className="font-bold text-stone-700">{REPORT_TYPE[r.target_type]} · {REPORT_REASON[r.reason] || r.reason}</span>
-                  <span className={`px-2 py-0.5 rounded-full border font-bold ${REPORT_STATUS[r.status].className}`}>{r.status === 'open' ? '확인 중' : '처리됨'}</span>
-                </div>
-                {r.target_preview && <p className="text-sm text-stone-600 bg-stone-50 rounded-lg p-2.5 whitespace-pre-wrap line-clamp-2">{r.target_preview}</p>}
-                <p className="text-[0.8125rem] text-stone-400">{new Date(r.created_at).toLocaleString('ko-KR')} 신고</p>
-                {r.admin_reply ? (
-                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
-                    <p className="text-xs font-bold text-blue-800 mb-1"><Icon name="crown" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />운영자 답변</p>
-                    <p className="text-sm text-stone-800 whitespace-pre-wrap leading-relaxed">{r.admin_reply}</p>
-                  </div>
-                ) : r.status === 'open' && <p className="text-xs text-stone-500">운영자가 확인하고 있어요. 처리되면 알림으로 알려드려요.</p>}
-              </div>
-            ))}
+            {!isAdmin && reports.map(myReportCard)}
             {isAdmin && reports.map(r => (
               <div key={r.id} className="p-4 flex flex-col gap-2">
                 <div className="flex items-center justify-between gap-2 text-[0.8125rem]">
@@ -387,9 +402,9 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
         ) : (
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain divide-y divide-stone-100 mt-2">
             {loading && items.length === 0 && <div className="p-10 text-center text-stone-400 text-sm">불러오는 중...</div>}
-            {!loading && shownItems.length === 0 && (
+            {!loading && shownItems.length === 0 && !(view === 'mybugs' && reports.length > 0) && (
               <div className="p-10 text-center text-stone-400 text-sm">
-                {view === 'inbox' ? '답변을 기다리는 건의가 없습니다.' : view === 'answered' ? '아직 답변한 건의가 없습니다.' : '아직 보낸 건의가 없습니다.'}
+                {view === 'inbox' ? '답변을 기다리는 건의가 없습니다.' : view === 'answered' ? '아직 답변한 건의가 없습니다.' : view === 'mybugs' ? '내가 한 신고가 없어요.' : '아직 보낸 건의가 없습니다.'}
               </div>
             )}
             {shownItems.map(item => view === 'answered' && openAnsweredId !== item.id ? (
@@ -433,13 +448,13 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                   </div>
                 )}
 
-                {view === 'mine' && item.admin_reply && (
+                {(view === 'mine' || view === 'mybugs') && item.admin_reply && (
                   <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
                     <p className="text-[0.8125rem] font-bold text-blue-700 mb-1"><Icon name="envelope" className="w-[1.1em] h-[1.1em] inline-block align-[-0.2em] mr-1" />운영자 답변</p>
                     <p className="text-xs text-stone-800 whitespace-pre-wrap">{item.admin_reply}</p>
                   </div>
                 )}
-                {view === 'mine' && item.status === 'received' && (
+                {(view === 'mine' || view === 'mybugs') && item.status === 'received' && (
                   <div className="flex justify-end">
                     <button onClick={() => deleteItem(item)} className="text-[0.8125rem] text-stone-400 hover:text-red-500">삭제</button>
                   </div>
@@ -478,6 +493,7 @@ export default function FeedbackModal({ user, isAdmin, initialView, onClose, sen
                 )}
               </div>
             ))}
+            {view === 'mybugs' && reports.map(myReportCard)}
           </div>
         )}
       </div>
