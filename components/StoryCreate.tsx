@@ -134,7 +134,20 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
   const pickMusic = () => onPickMusic(m => setTextMode({ music: m }));
   useEffect(() => { document.body.style.overflow = 'hidden'; return () => { document.body.style.overflow = ''; }; }, []);
 
-  const one = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); };
+  // 사진첩·콜라주를 고르는 동안은 앱 안 카메라를 끈다 (교우 건의 2026-11-27: 찍은 사진은 올라가는데 휴대폰에 저장된 사진은 안 올라감 —
+  // 카메라가 켜진 채 사진 고르기 창으로 가면 안드로이드가 메모리를 아끼려 앱 화면을 닫아 버려, 고른 사진이 돌아올 곳이 없었음)
+  const [picking, setPicking] = useState(false);
+  const openPicker = (input: HTMLInputElement | null) => {
+    if (!input) return;
+    setPicking(true);
+    const back = () => setPicking(false);
+    input.addEventListener('cancel', back, { once: true }); // 아무것도 안 고르고 닫으면 카메라 다시 켬
+    // 'cancel' 을 모르는 휴대폰: 앱으로 돌아온 뒤 조금 있어도 고른 게 없으면 카메라로
+    const onFocus = () => { window.removeEventListener('focus', onFocus); setTimeout(() => { if (!input.files?.length) back(); }, 1500); };
+    window.addEventListener('focus', onFocus);
+    input.click();
+  };
+  const one = (e: React.ChangeEvent<HTMLInputElement>) => { const f = e.target.files?.[0]; e.target.value = ''; setPicking(false); if (f) onFile(f); };
   // 앱 안 카메라를 못 쓰면(권한 거절 등) 예전 화면(휴대폰 카메라 앱으로 찍기·사진첩)으로
   const [camOff, setCamOff] = useState<string | null>(null);
   const card = 'flex-1 min-w-0 h-28 rounded-2xl bg-[#1d1d1f] flex flex-col items-center justify-center gap-2 active:scale-[0.97] transition';
@@ -143,7 +156,7 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
       <input ref={videoCamRef} type="file" accept="video/*" capture="environment" className="hidden" onChange={one} />
       <input ref={galleryRef} type="file" accept="image/*,video/*" className="hidden" onChange={one} />
       <input ref={collageRef} type="file" accept="image/*" multiple className="hidden" onChange={e => {
-        const fs = Array.from(e.target.files || []); e.target.value = '';
+        const fs = Array.from(e.target.files || []); e.target.value = ''; setPicking(false);
         if (fs.length === 1) onFile(fs[0]);
         else if (fs.length > 1) setCollageFiles(fs);
       }} />
@@ -156,8 +169,15 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
     const dot = 'w-11 h-11 rounded-full bg-black/40 border border-white/30 flex items-center justify-center';
     return (
       <div data-no-pinch className="fixed inset-0 z-[86] bg-black text-white" role="dialog" aria-label="스토리에 추가">
-        {!textMode && !collageFiles && (
-          <StoryCamera onShot={f => onFile(f)} onUnavailable={why => setCamOff(why)} onGallery={() => galleryRef.current?.click()}>
+        {picking && !textMode && !collageFiles && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 text-white/80">
+            <span className="w-8 h-8 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            <p className="text-[0.9375rem]">사진을 고르는 중…</p>
+            <button onClick={() => setPicking(false)} className="mt-2 px-4 py-2 rounded-full border border-white/40 text-[0.875rem] font-bold">카메라로 돌아가기</button>
+          </div>
+        )}
+        {!picking && !textMode && !collageFiles && (
+          <StoryCamera onShot={f => onFile(f)} onUnavailable={why => setCamOff(why)} onGallery={() => openPicker(galleryRef.current)}>
             <div className="absolute top-0 inset-x-0 flex items-center justify-between px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] pb-2 bg-gradient-to-b from-black/50 to-transparent">
               <button onClick={onClose} className="w-11 h-11 flex items-center justify-center text-3xl leading-none drop-shadow" aria-label="닫기">×</button>
               <h2 className="font-bold text-[1.125rem] drop-shadow">스토리에 추가</h2>
@@ -166,7 +186,7 @@ export default function StoryCreate({ onClose, onFile, onPickMusic }: {
             <div className="absolute right-3 top-[calc(4.5rem+env(safe-area-inset-top))] flex flex-col items-end gap-3">
               <button onClick={() => setTextMode({ music: null })} className={tool}>글<span className={`${dot} font-extrabold text-lg`}>Aa</span></button>
               <button onClick={() => pickMusic()} className={tool}>음악<span className={dot}><Icon name="music" className="w-5 h-5" /></span></button>
-              <button onClick={() => collageRef.current?.click()} className={tool}>콜라주<span className={dot}><Icon name="collage" className="w-5 h-5" /></span></button>
+              <button onClick={() => openPicker(collageRef.current)} className={tool}>콜라주<span className={dot}><Icon name="collage" className="w-5 h-5" /></span></button>
             </div>
           </StoryCamera>
         )}
