@@ -381,7 +381,13 @@ export default function Stories({ posts, unavailable, openRequest, onOpenHandled
         } finally { setVideoStatus(''); }
         media = { images: [], video_url: videoUrl, video_poster: posterUrl };
       } else {
-        const compressed = await imageCompression(draft.file, PHOTO_OPTIONS);
+        // 줄이기(압축)에 실패하면: 보통 사진(jpg·png·webp)이고 크지 않으면 그대로 올리고, 아니면(HEIC 등) 무엇 때문인지 알려 줌 (교우 건의 2026-11-27)
+        let compressed: Blob;
+        try { compressed = await imageCompression(draft.file, PHOTO_OPTIONS); }
+        catch {
+          if (/^image\/(jpeg|png|webp)$/.test(draft.file.type) && draft.file.size < 8 * 1024 * 1024) compressed = draft.file;
+          else { alert(/hei[cf]/i.test(`${draft.file.type} ${draft.file.name}`) ? '이 사진은 HEIC 형식이라 올릴 수 없어요.\n휴대폰 카메라 설정에서 \'고효율 사진\'을 끄거나, 사진을 캡처해서 올려 주세요.' : '이 사진을 읽지 못했어요. 다른 사진을 골라 주세요.'); return; }
+        }
         const name = `story_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`;
         media = { images: [await uploadMedia(compressed, { kind: 'stories', ext: 'jpg', contentType: 'image/jpeg', bucket: 'community-images', path: name })] };
       }
